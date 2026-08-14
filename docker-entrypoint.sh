@@ -14,4 +14,10 @@ case "${DSH_TELEMETRY_DISABLED:-true}" in
     ;;
 esac
 
+if [ -n "${DSH_TRUSTED_HOST:-}" ] \
+  && [ "${1:-}" = "dsh" ] \
+  && [ "${2:-}" = "web" ]; then
+  set -- "$@" --trusted-host "$DSH_TRUSTED_HOST"
+fi
+
 exec "$@"

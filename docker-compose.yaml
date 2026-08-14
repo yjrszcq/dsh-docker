@@ -8,6 +8,7 @@ services:
     environment:
       DSH_HOME: /home/node/.dsh
       DSH_TELEMETRY_DISABLED: "${DSH_TELEMETRY_DISABLED:-true}"
+      DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
     volumes:
       - dsh-data:/home/node/.dsh
       - ${DSH_WORKSPACE:-./workspace}:/workspace

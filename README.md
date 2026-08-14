@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
+    environment:
+      DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
     volumes:
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
@@ -29,6 +31,12 @@ services:
 
    ```bash
    mkdir -p data workspace
+   ```
+
+   容器以 UID/GID `1000:1000` 的 `node` 用户运行。如果目录曾由 root 或 Docker 自动创建，启动时可能出现 `EACCES: permission denied`。可修复目录所有权后重试：
+
+   ```bash
+   sudo chown -R 1000:1000 data workspace
    ```
 
 2. 启动服务：
@@ -63,6 +71,8 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
+> **远程访问注意：** 如果通过局域网 IP 或域名访问，需要把端口映射改为 `-p 0.0.0.0:3080:3080`，并在 `docker run` 参数中增加 `-e DSH_TRUSTED_HOST=192.168.1.100`；请将示例 IP 替换为浏览器实际访问的 IP 或域名，且不要包含协议或路径。
+
 如果 bind mount 出现权限错误，请确保宿主机目录可由容器内的 `node` 用户（UID/GID 1000）读写；或者像 Compose 示例一样使用具名卷保存 `$DSH_HOME`。
 
 ## Compose 配置
@@ -76,6 +86,7 @@ docker run -d \
 | `DSH_PORT` | `3080` | 宿主机端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用遥测，仅接受 `true` 或 `false` |
+| `DSH_TRUSTED_HOST` | 空 | 浏览器实际访问的 IP 或域名，用于通过 `/api` 信任校验 |
 
 例如：
 
@@ -83,6 +94,7 @@ docker run -d \
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
+DSH_TRUSTED_HOST=192.168.1.100
 ```
 
 修改后重新启动：
@@ -97,17 +109,22 @@ DeepSeek Harness 是编码 Agent，能够在挂载的 workspace 中读写文件�
 
 Compose 默认仅监听宿主机的 `127.0.0.1`。如需从其他设备访问，优先使用带身份认证的反向代理、VPN 或 SSH 隧道。只有在明确了解风险时，才将 `DSH_LISTEN_ADDRESS` 设置为 `0.0.0.0`。
 
-使用自定义域名反向代理时，还需把域名加入上游的浏览器信任列表。例如在 Compose 服务中增加：
+从局域网 IP 或自定义域名访问时，还必须通过 `DSH_TRUSTED_HOST` 声明浏览器实际使用的 IP 或域名，否则 `/api` 请求会返回 HTTP 403。例如在 `.env` 中配置局域网访问：
 
-```yaml
-command:
-  - dsh
-  - web
-  - --patch
-  - /opt/dsh/docker.cordis.yml
-  - --trusted-host
-  - dsh.example.com
+```dotenv
+DSH_LISTEN_ADDRESS=0.0.0.0
+DSH_TRUSTED_HOST=192.168.1.100
 ```
+
+使用反向代理域名时可填写 `DSH_TRUSTED_HOST=dsh.example.com`。不要包含 `http://`、`https://` 或路径；通常无需填写端口，不带端口的值可匹配该地址的任意端口。修改后运行 `docker compose up -d --force-recreate`。
+
+`DSH_TRUSTED_HOST` 只能通过普通 `/api` 请求的 Host 信任校验。上游仍将设置、凭据和宿主机操作等敏感接口限制为仅回环地址可用，因此从局域网 IP 或域名打开时，`settings.describe` 等接口仍可能返回 403。如需完整使用设置界面，建议建立 SSH 隧道并通过本机回环地址访问：
+
+```bash
+ssh -L 3080:127.0.0.1:3080 user@server
+```
+
+然后打开 <http://127.0.0.1:3080>。
 
 容器默认设置 `DSH_TELEMETRY_DISABLED=true`。设置为 `false` 可启用上游遥测；启用前请先了解遥测内容可能包含的会话和 workspace 信息。入口脚本会把布尔值转换为上游实际使用的环境变量语义。
 
