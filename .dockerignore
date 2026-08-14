@@ -3,4 +3,5 @@
 .env
 workspace
 README.md
+README_CN.md
 docker-compose.yaml

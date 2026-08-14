@@ -1,16 +1,18 @@
-# dsh-docker
+# DSH-Docker
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
+English | [中文](README_CN.md)
 
-本仓库不包含、也不复制 DeepSeek Harness 的源码。镜像构建时会从 npm 安装指定版本的官方 `@deepseek-ai/dsh` 包，并应用少量容器适配补丁；仓库本身维护容器化配置、补丁和镜像发布工作流。
+An unofficial Docker image build repository for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-> DeepSeek Harness 目前处于 Developer Preview，可能会出现不兼容更新。本镜像不隶属于 DeepSeek AI；上游项目及软件许可证以官方仓库为准。
+This repository does not include or redistribute the DeepSeek Harness source code. During the image build, the specified version of the official `@deepseek-ai/dsh` package is installed from npm and a small set of container-specific patches is applied. This repository maintains only the container configuration, patches, and image publishing workflow.
 
-## 快速开始
+> DeepSeek Harness is currently in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI. The upstream project and software licenses are governed by the official repository.
+
+## Quick Start
 
 ### Docker Compose
 
-最简 `docker-compose.yaml`：
+Minimal `docker-compose.yaml`:
 
 ```yaml
 services:
@@ -27,39 +29,39 @@ services:
       - ./workspace:/workspace
 ```
 
-> **远程访问注意：** 如果通过局域网 IP 或域名访问，请在 `.env` 中设置 `DSH_LISTEN_ADDRESS=0.0.0.0` 和 `DSH_TRUSTED_HOST=192.168.1.100`；请将示例 IP 替换为浏览器实际访问的 IP 或域名，且不要包含协议或路径。修改后运行 `docker compose up -d --force-recreate`。
+> **Remote access:** To access the service through a LAN IP address or domain, set `DSH_LISTEN_ADDRESS=0.0.0.0` and `DSH_TRUSTED_HOST=192.168.1.100` in `.env`. Replace the example IP address with the IP address or domain actually used by the browser, without a scheme or path. Then run `docker compose up -d --force-recreate`.
 
-1. 创建宿主机数据和 workspace 目录：
+1. Create the host data and workspace directories:
 
    ```bash
    mkdir -p data workspace
    ```
 
-   容器以 UID/GID `1000:1000` 的 `node` 用户运行。如果目录曾由 root 或 Docker 自动创建，启动时可能出现 `EACCES: permission denied`。可修复目录所有权后重试：
+   The container runs as the `node` user with UID/GID `1000:1000`. If a directory was previously created by root or automatically by Docker, startup may fail with `EACCES: permission denied`. Correct the directory ownership and try again:
 
    ```bash
    sudo chown -R 1000:1000 data workspace
    ```
 
-2. 启动服务：
+2. Start the service:
 
    ```bash
    docker compose up -d
    ```
 
-3. 打开 <http://127.0.0.1:3080>，点击 **Choose workspace**，添加并选择 `/workspace`。
+3. Open <http://127.0.0.1:3080>, click **Choose workspace**, then add and select `/workspace`.
 
-   网页目录选择器的初始路径由 `DSH_DEFAULT_WORKSPACE` 控制，默认是 `/workspace`。
+   The initial path shown by the web directory picker is controlled by `DSH_DEFAULT_WORKSPACE` and defaults to `/workspace`.
 
-4. 在 **Settings → Models** 中配置 DeepSeek API Key 或其他兼容模型。
+4. Configure a DeepSeek API key or another compatible model under **Settings → Models**.
 
-停止服务：
+Stop the service:
 
 ```bash
 docker compose down
 ```
 
-Harness 的配置、凭据和会话数据保存在具名卷 `dsh-data` 中；工作文件默认保存在当前目录的 `workspace` 中。
+Harness configuration, credentials, and session data are stored in the `dsh-data` named volume. Workspace files are stored in the `workspace` directory under the current directory by default.
 
 ### Docker CLI
 
@@ -75,97 +77,97 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-> **远程访问注意：** 如果通过局域网 IP 或域名访问，需要把端口映射改为 `-p 0.0.0.0:3080:3080`，并在 `docker run` 参数中增加 `-e DSH_TRUSTED_HOST=192.168.1.100`；请将示例 IP 替换为浏览器实际访问的 IP 或域名，且不要包含协议或路径。
+> **Remote access:** To access the service through a LAN IP address or domain, change the port mapping to `-p 0.0.0.0:3080:3080` and add `-e DSH_TRUSTED_HOST=192.168.1.100` to the `docker run` arguments. Replace the example IP address with the IP address or domain actually used by the browser, without a scheme or path.
 
-如果 bind mount 出现权限错误，请确保宿主机目录可由容器内的 `node` 用户（UID/GID 1000）读写；或者像 Compose 示例一样使用具名卷保存 `$DSH_HOME`。
+If a bind mount reports a permission error, ensure that the host directory is readable and writable by the container's `node` user (UID/GID 1000). Alternatively, use a named volume for `$DSH_HOME`, as shown in the Compose example.
 
-## Compose 配置
+## Compose Configuration
 
-复制示例配置，并按需修改：
+Copy the example configuration and edit it as needed:
 
 ```bash
 cp .env.example .env
 ```
 
-也可以直接通过 shell 环境变量覆盖默认值。
+You can also override the defaults with shell environment variables.
 
-### Compose 文件变量
+### Compose File Variables
 
-以下变量只用于 Compose 文件的插值，不会传入容器：
+The following variables are used only for interpolation in the Compose file and are not passed into the container:
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_IMAGE_TAG` | `latest` | 镜像标签 |
-| `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机监听地址 |
-| `DSH_PORT` | `3080` | 宿主机端口 |
-| `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
+| `DSH_IMAGE_TAG` | `latest` | Image tag |
+| `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host listen address |
+| `DSH_PORT` | `3080` | Host port |
+| `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
 
-### 容器环境变量
+### Container Environment Variables
 
-以下变量通过 Compose 的 `environment` 传入容器。`DSH_HOME` 由 Compose 固定设置，其余变量可从 `.env` 或 shell 环境读取：
+The following variables are passed into the container through the Compose `environment` section. `DSH_HOME` is fixed by the Compose file; the remaining variables can be read from `.env` or the shell environment:
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_HOME` | `/home/node/.dsh` | Harness 在容器内的配置和数据目录 |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 网页目录选择器初始显示的容器内目录，该目录必须已存在 |
-| `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用遥测，仅接受 `true` 或 `false` |
-| `DSH_TRUSTED_HOST` | 空 | 浏览器实际访问的 IP 或域名，用于通过 `/api` 信任校验 |
+| `DSH_HOME` | `/home/node/.dsh` | Harness configuration and data directory inside the container |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial container directory shown by the web directory picker; the directory must exist |
+| `DSH_TELEMETRY_DISABLED` | `true` | Whether to disable telemetry; accepts only `true` or `false` |
+| `DSH_TRUSTED_HOST` | Empty | IP address or domain actually used by the browser, required to pass `/api` trust checks |
 
-例如：
+Example:
 
 ```dotenv
-# Compose 文件变量
+# Compose file variables
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
 
-# 容器环境变量
+# Container environment variables
 DSH_DEFAULT_WORKSPACE=/workspace
 DSH_TRUSTED_HOST=192.168.1.100
 ```
 
-修改后重新启动：
+Restart the service after making changes:
 
 ```bash
 docker compose up -d
 ```
 
-## 安全提示
+## Security
 
-DeepSeek Harness 是编码 Agent，能够在挂载的 workspace 中读写文件并执行命令。当前 Web UI 不应直接暴露到不可信网络。
+DeepSeek Harness is a coding agent that can read and write files and execute commands in the mounted workspace. Do not expose the current Web UI directly to an untrusted network.
 
-Compose 默认仅监听宿主机的 `127.0.0.1`。如需从其他设备访问，优先使用带身份认证的反向代理、VPN 或 SSH 隧道。只有在明确了解风险时，才将 `DSH_LISTEN_ADDRESS` 设置为 `0.0.0.0`。
+By default, Compose listens only on the host's `127.0.0.1`. For access from another device, prefer an authenticated reverse proxy, VPN, or SSH tunnel. Set `DSH_LISTEN_ADDRESS` to `0.0.0.0` only when you understand the risks.
 
-从局域网 IP 或自定义域名访问时，还必须通过 `DSH_TRUSTED_HOST` 声明浏览器实际使用的 IP 或域名，否则 `/api` 请求会返回 HTTP 403。例如在 `.env` 中配置局域网访问：
+When accessing the service through a LAN IP address or custom domain, you must also use `DSH_TRUSTED_HOST` to declare the IP address or domain actually used by the browser. Otherwise, `/api` requests will return HTTP 403. For example, configure LAN access in `.env` as follows:
 
 ```dotenv
 DSH_LISTEN_ADDRESS=0.0.0.0
 DSH_TRUSTED_HOST=192.168.1.100
 ```
 
-使用反向代理域名时可填写 `DSH_TRUSTED_HOST=dsh.example.com`。不要包含 `http://`、`https://` 或路径；通常无需填写端口，不带端口的值可匹配该地址的任意端口。修改后运行 `docker compose up -d --force-recreate`。
+When using a reverse proxy, you can set `DSH_TRUSTED_HOST=dsh.example.com`. Do not include `http://`, `https://`, or a path. A port is usually unnecessary because a value without a port can match that address on any port. After changing the configuration, run `docker compose up -d --force-recreate`.
 
-本镜像会在构建时修改上游的特权 API 信任判断，使 `DSH_TRUSTED_HOST` 同时适用于设置、凭据和宿主机操作等敏感接口，解决从可信局域网 IP 或域名访问时 `settings.describe` 等接口返回 403 的问题。该补丁不会增加身份认证：任何能够访问 Web UI 并使用可信 Host 的用户都可能修改凭据、执行命令和读写 workspace，因此请仅在可信网络中使用，或在前面部署带身份认证的反向代理。
+During the image build, this image patches the upstream privileged API trust check so that `DSH_TRUSTED_HOST` also applies to sensitive endpoints for settings, credentials, and host operations. This resolves HTTP 403 responses from endpoints such as `settings.describe` when accessing the service through a trusted LAN IP address or domain. The patch does not add authentication: anyone who can access the Web UI using a trusted Host may be able to modify credentials, execute commands, and read or write the workspace. Use this feature only on a trusted network or behind an authenticated reverse proxy.
 
-如果不希望放宽这些接口，建议不设置 `DSH_TRUSTED_HOST`，并建立 SSH 隧道后通过本机回环地址访问：
+If you do not want to relax access to these endpoints, leave `DSH_TRUSTED_HOST` unset and connect through an SSH tunnel using a local loopback address:
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-然后打开 <http://127.0.0.1:3080>。
+Then open <http://127.0.0.1:3080>.
 
-容器默认设置 `DSH_TELEMETRY_DISABLED=true`。设置为 `false` 可启用上游遥测；启用前请先了解遥测内容可能包含的会话和 workspace 信息。入口脚本会把布尔值转换为上游实际使用的环境变量语义。
+The container sets `DSH_TELEMETRY_DISABLED=true` by default. Set it to `false` to enable upstream telemetry. Before enabling telemetry, review whether the collected data may contain session or workspace information. The entrypoint converts this Boolean setting to the environment-variable semantics expected by the upstream package.
 
-## 自己构建镜像
+## Build the Image Locally
 
-构建最新 npm 版本：
+Build the latest npm version:
 
 ```bash
 docker build -t deepseek-harness:local .
 ```
 
-构建指定版本：
+Build a specific version:
 
 ```bash
 docker build \
@@ -173,7 +175,7 @@ docker build \
   -t deepseek-harness:0.1.0-rc.6 .
 ```
 
-本地运行：
+Run the local image:
 
 ```bash
 docker run --rm \
@@ -182,32 +184,4 @@ docker run --rm \
   deepseek-harness:local
 ```
 
-镜像基于 Node.js 24，并预装 `pnpm`、Git、OpenSSH Client、curl、jq 和 ripgrep，方便 Harness 在 workspace 内工作和安装插件。
-
-## GitHub Actions 发布到 Docker Hub
-
-工作流位于 `.github/workflows/docker.yaml`，参考了 [`yjrszcq/auto-novel`](https://github.com/yjrszcq/auto-novel/blob/main/.github/workflows/docker.yaml) 的手动发布方式，会构建并推送 `linux/amd64` 和 `linux/arm64` 镜像。
-
-1. 在 Docker Hub 创建 `szcq/deepseek-harness` 仓库。
-2. 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中新增 Repository Secret：
-   - Name：`DOCKER_TOKEN`
-   - Value：Docker Hub Access Token
-3. 打开 **Actions → Build and Push Docker Image → Run workflow**。
-4. 直接确认默认的 `latest`，工作流会从 npm 查询并使用当前确切版本；也可以改为指定版本，例如 `0.1.0-rc.6`。
-
-发布成功后会推送两个标签：
-
-- `szcq/deepseek-harness:<解析后的确切版本>`
-- `szcq/deepseek-harness:latest`
-
-无论输入 `latest` 还是确切版本，镜像的版本标签都会使用 npm 返回的确切版本号，因此构建结果仍然可追溯。
-
-## 更新 DeepSeek Harness
-
-查看 npm 上已发布的版本：
-
-```bash
-npm view @deepseek-ai/dsh version
-```
-
-也可以直接运行 GitHub Actions 并保留默认的 `latest`；工作流会自动完成查询，无需把上游源码同步到本仓库。
+The image is based on Node.js 24 and includes `pnpm`, Git, the OpenSSH client, curl, jq, and ripgrep so Harness can work in the workspace and install plugins.
