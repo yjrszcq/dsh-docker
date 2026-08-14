@@ -10,10 +10,24 @@
 
 ### Docker Compose
 
-1. 创建宿主机 workspace：
+最简 `docker-compose.yaml`：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3080:3080"
+    volumes:
+      - ./data:/home/node/.dsh
+      - ./workspace:/workspace
+```
+
+1. 创建宿主机数据和 workspace 目录：
 
    ```bash
-   mkdir -p workspace
+   mkdir -p data workspace
    ```
 
 2. 启动服务：
