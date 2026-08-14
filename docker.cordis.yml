@@ -1,0 +1,6 @@
+# Containers need to listen beyond their own loopback interface. The Compose
+# example still publishes the port on the host's 127.0.0.1 by default.
+- id: webserver
+  config:
+    host: 0.0.0.0
+    port: 3080

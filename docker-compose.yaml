@@ -1,0 +1,18 @@
+name: dsh-docker
+
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:${DSH_IMAGE_TAG:-latest}
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:${DSH_PORT:-3080}:3080"
+    environment:
+      DSH_HOME: /home/node/.dsh
+      DSH_TELEMETRY_DISABLED: "1"
+    volumes:
+      - dsh-data:/home/node/.dsh
+      - ${DSH_WORKSPACE:-./workspace}:/workspace
+
+volumes:
+  dsh-data:
