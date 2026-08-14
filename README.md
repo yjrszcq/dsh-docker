@@ -2,7 +2,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
 
-本仓库不包含、也不复制 DeepSeek Harness 的源码。镜像构建时会从 npm 安装指定版本的官方 `@deepseek-ai/dsh` 包，并对远程访问的 Host 信任校验应用一个小型补丁；仓库本身维护容器化配置、补丁和镜像发布工作流。
+本仓库不包含、也不复制 DeepSeek Harness 的源码。镜像构建时会从 npm 安装指定版本的官方 `@deepseek-ai/dsh` 包，并应用少量容器适配补丁；仓库本身维护容器化配置、补丁和镜像发布工作流。
 
 > DeepSeek Harness 目前处于 Developer Preview，可能会出现不兼容更新。本镜像不隶属于 DeepSeek AI；上游项目及软件许可证以官方仓库为准。
 
@@ -47,7 +47,7 @@ services:
 
 3. 打开 <http://127.0.0.1:3080>，点击 **Choose workspace**，添加并选择 `/workspace`。
 
-   本镜像已将网页目录选择器的初始路径设置为 `/workspace`。
+   网页目录选择器的初始路径由 `DSH_DEFAULT_WORKSPACE` 控制，默认是 `/workspace`。
 
 4. 在 **Settings → Models** 中配置 DeepSeek API Key 或其他兼容模型。
 
@@ -93,6 +93,7 @@ cp .env.example .env
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机监听地址 |
 | `DSH_PORT` | `3080` | 宿主机端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 网页目录选择器初始显示的容器内目录，该目录必须已存在 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用遥测，仅接受 `true` 或 `false` |
 | `DSH_TRUSTED_HOST` | 空 | 浏览器实际访问的 IP 或域名，用于通过 `/api` 信任校验 |
 
@@ -102,6 +103,7 @@ cp .env.example .env
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
+DSH_DEFAULT_WORKSPACE=/workspace
 DSH_TRUSTED_HOST=192.168.1.100
 ```
 

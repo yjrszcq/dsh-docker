@@ -38,6 +38,7 @@ COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /usr/local/li
 RUN ln -s ../lib/node_modules/@deepseek-ai/dsh/lib/bin.js /usr/local/bin/dsh
 
 ENV DSH_HOME=/home/node/.dsh \
+    DSH_DEFAULT_WORKSPACE=/workspace \
     DSH_TELEMETRY_DISABLED=true
 
 COPY --chown=node:node docker.cordis.yml /opt/dsh/docker.cordis.yml

@@ -24,6 +24,6 @@ replaceExactlyOnce(
 replaceExactlyOnce(
   '/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js',
   'const target = resolve(path ?? home);',
-  'const target = resolve(path ?? "/workspace");',
+  'const target = resolve(path ?? process.env.DSH_DEFAULT_WORKSPACE ?? home);',
   'directory picker default path',
 )
