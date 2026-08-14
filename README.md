@@ -2,7 +2,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
 
-本仓库不包含、也不复制 DeepSeek Harness 的源码。镜像构建时会从 npm 安装指定版本的官方 `@deepseek-ai/dsh` 包，仓库本身只维护容器化配置和镜像发布工作流。
+本仓库不包含、也不复制 DeepSeek Harness 的源码。镜像构建时会从 npm 安装指定版本的官方 `@deepseek-ai/dsh` 包，并对远程访问的 Host 信任校验应用一个小型补丁；仓库本身维护容器化配置、补丁和镜像发布工作流。
 
 > DeepSeek Harness 目前处于 Developer Preview，可能会出现不兼容更新。本镜像不隶属于 DeepSeek AI；上游项目及软件许可证以官方仓库为准。
 
@@ -46,6 +46,8 @@ services:
    ```
 
 3. 打开 <http://127.0.0.1:3080>，点击 **Choose workspace**，添加并选择 `/workspace`。
+
+   本镜像已将网页目录选择器的初始路径设置为 `/workspace`。
 
 4. 在 **Settings → Models** 中配置 DeepSeek API Key 或其他兼容模型。
 
@@ -124,7 +126,9 @@ DSH_TRUSTED_HOST=192.168.1.100
 
 使用反向代理域名时可填写 `DSH_TRUSTED_HOST=dsh.example.com`。不要包含 `http://`、`https://` 或路径；通常无需填写端口，不带端口的值可匹配该地址的任意端口。修改后运行 `docker compose up -d --force-recreate`。
 
-`DSH_TRUSTED_HOST` 只能通过普通 `/api` 请求的 Host 信任校验。上游仍将设置、凭据和宿主机操作等敏感接口限制为仅回环地址可用，因此从局域网 IP 或域名打开时，`settings.describe` 等接口仍可能返回 403。如需完整使用设置界面，建议建立 SSH 隧道并通过本机回环地址访问：
+本镜像会在构建时修改上游的特权 API 信任判断，使 `DSH_TRUSTED_HOST` 同时适用于设置、凭据和宿主机操作等敏感接口，解决从可信局域网 IP 或域名访问时 `settings.describe` 等接口返回 403 的问题。该补丁不会增加身份认证：任何能够访问 Web UI 并使用可信 Host 的用户都可能修改凭据、执行命令和读写 workspace，因此请仅在可信网络中使用，或在前面部署带身份认证的反向代理。
+
+如果不希望放宽这些接口，建议不设置 `DSH_TRUSTED_HOST`，并建立 SSH 隧道后通过本机回环地址访问：
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
