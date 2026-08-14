@@ -188,9 +188,3 @@ npm view @deepseek-ai/dsh version
 ```
 
 也可以直接运行 GitHub Actions 并保留默认的 `latest`；工作流会自动完成查询，无需把上游源码同步到本仓库。
-
-## 相关项目
-
-- [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
-- [yjrszcq/auto-novel Docker workflow](https://github.com/yjrszcq/auto-novel/blob/main/.github/workflows/docker.yaml)
-- [yjrszcq/sharelatex](https://github.com/yjrszcq/sharelatex)
