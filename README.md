@@ -16,6 +16,7 @@
 services:
   deepseek-harness:
     image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
