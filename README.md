@@ -60,6 +60,7 @@ docker run -d \
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机监听地址 |
 | `DSH_PORT` | `3080` | 宿主机端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
+| `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用遥测，仅接受 `true` 或 `false` |
 
 例如：
 
@@ -93,7 +94,7 @@ command:
   - dsh.example.com
 ```
 
-容器默认设置 `DSH_TELEMETRY_DISABLED=1`。若需要启用上游遥测，请显式修改 Compose 配置，并先了解遥测内容可能包含的会话和 workspace 信息。
+容器默认设置 `DSH_TELEMETRY_DISABLED=true`。设置为 `false` 可启用上游遥测；启用前请先了解遥测内容可能包含的会话和 workspace 信息。入口脚本会把布尔值转换为上游实际使用的环境变量语义。
 
 ## 自己构建镜像
 

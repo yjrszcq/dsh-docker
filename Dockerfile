@@ -34,9 +34,10 @@ COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /usr/local/li
 RUN ln -s ../lib/node_modules/@deepseek-ai/dsh/lib/bin.js /usr/local/bin/dsh
 
 ENV DSH_HOME=/home/node/.dsh \
-    DSH_TELEMETRY_DISABLED=1
+    DSH_TELEMETRY_DISABLED=true
 
 COPY --chown=node:node docker.cordis.yml /opt/dsh/docker.cordis.yml
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
@@ -49,5 +50,5 @@ EXPOSE 3080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl --fail --silent --show-error http://127.0.0.1:3080/ >/dev/null || exit 1
 
-ENTRYPOINT ["tini", "--"]
+ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["dsh", "web", "--patch", "/opt/dsh/docker.cordis.yml"]
