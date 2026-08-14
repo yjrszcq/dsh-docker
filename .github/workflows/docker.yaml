@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: DeepSeek Harness npm version and image tag
+        description: DeepSeek Harness npm version (latest resolves automatically)
         required: true
+        default: latest
         type: string
 
 env:
@@ -22,6 +23,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Resolve DeepSeek Harness version
+        id: dsh-version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          requested="${REQUESTED_VERSION:-latest}"
+          version="$(npm view "@deepseek-ai/dsh@${requested}" version)"
+
+          if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Unable to resolve '$requested' to one valid image tag" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building @deepseek-ai/dsh $version" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -34,7 +51,7 @@ jobs:
           username: ${{ env.IMAGE_OWNER }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push ${{ env.IMAGE_NAME }} image
+      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.dsh-version.outputs.version }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -43,9 +60,9 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ inputs.version }}
+            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
           tags: |
-            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}
             ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -132,14 +132,14 @@ docker run --rm \
    - Name：`DOCKER_TOKEN`
    - Value：Docker Hub Access Token
 3. 打开 **Actions → Build and Push Docker Image → Run workflow**。
-4. 输入官方 npm 版本，例如 `0.1.0-rc.6`。
+4. 直接确认默认的 `latest`，工作流会从 npm 查询并使用当前确切版本；也可以改为指定版本，例如 `0.1.0-rc.6`。
 
 发布成功后会推送两个标签：
 
-- `szcq/deepseek-harness:<输入的版本>`
+- `szcq/deepseek-harness:<解析后的确切版本>`
 - `szcq/deepseek-harness:latest`
 
-建议填写确切版本号，不要填写 `latest`，这样构建结果可追溯。
+无论输入 `latest` 还是确切版本，镜像的版本标签都会使用 npm 返回的确切版本号，因此构建结果仍然可追溯。
 
 ## 更新 DeepSeek Harness
 
@@ -149,7 +149,7 @@ docker run --rm \
 npm view @deepseek-ai/dsh version
 ```
 
-然后在 GitHub Actions 中以该版本号重新运行工作流即可，无需把上游源码同步到本仓库。
+也可以直接运行 GitHub Actions 并保留默认的 `latest`；工作流会自动完成查询，无需把上游源码同步到本仓库。
 
 ## 相关项目
 
