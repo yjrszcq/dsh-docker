@@ -1,0 +1,1 @@
+%dsh-sudo-true ALL=(ALL:ALL) NOPASSWD: ALL

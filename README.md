@@ -22,6 +22,8 @@ services:
     restart: unless-stopped
     ports:
       - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+    group_add:
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
     environment:
       DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
     volumes:
@@ -79,6 +81,8 @@ docker run -d \
 
 > **Remote access:** To access the service through a LAN IP address or domain, change the port mapping to `-p 0.0.0.0:3080:3080` and add `-e DSH_TRUSTED_HOST=192.168.1.100` to the `docker run` arguments. Replace the example IP address with the IP address or domain actually used by the browser, without a scheme or path.
 
+> **Optional root access:** Add `--group-add dsh-sudo-true` to the `docker run` arguments to allow the Agent to run commands through passwordless `sudo`. Omit it to keep root access disabled.
+
 If a bind mount reports a permission error, ensure that the host directory is readable and writable by the container's `node` user (UID/GID 1000). Alternatively, use a named volume for `$DSH_HOME`, as shown in the Compose example.
 
 ## Compose Configuration
@@ -101,6 +105,7 @@ The following variables are used only for interpolation in the Compose file and 
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host listen address |
 | `DSH_PORT` | `3080` | Host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
+| `DSH_SUDO_ENABLED` | `false` | Whether to grant the Agent unrestricted root access through passwordless `sudo`; accepts only `true` or `false` |
 
 ### Container Environment Variables
 
@@ -120,6 +125,7 @@ Example:
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
+DSH_SUDO_ENABLED=false
 
 # Container environment variables
 DSH_DEFAULT_WORKSPACE=/workspace
@@ -156,6 +162,8 @@ ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
 Then open <http://127.0.0.1:3080>.
+
+Setting `DSH_SUDO_ENABLED=true` grants the Agent unrestricted root access inside the container through passwordless `sudo`. The setting takes effect only when the container is created, so run `docker compose up -d --force-recreate` after changing it. Do not combine this option with Docker Socket access, privileged mode, or sensitive host mounts.
 
 The container sets `DSH_TELEMETRY_DISABLED=true` by default. Set it to `false` to enable upstream telemetry. Before enabling telemetry, review whether the collected data may contain session or workspace information. The entrypoint converts this Boolean setting to the environment-variable semantics expected by the upstream package.
 

@@ -22,6 +22,8 @@ services:
     restart: unless-stopped
     ports:
       - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+    group_add:
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
     environment:
       DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
     volumes:
@@ -79,6 +81,8 @@ docker run -d \
 
 > **远程访问注意：** 如果通过局域网 IP 或域名访问，需要把端口映射改为 `-p 0.0.0.0:3080:3080`，并在 `docker run` 参数中增加 `-e DSH_TRUSTED_HOST=192.168.1.100`；请将示例 IP 替换为浏览器实际访问的 IP 或域名，且不要包含协议或路径。
 
+> **可选 root 权限：** 在 `docker run` 参数中增加 `--group-add dsh-sudo-true`，即可允许 Agent 通过免密码 `sudo` 执行命令；不添加则保持禁用 root 权限。
+
 如果 bind mount 出现权限错误，请确保宿主机目录可由容器内的 `node` 用户（UID/GID 1000）读写；或者像 Compose 示例一样使用具名卷保存 `$DSH_HOME`。
 
 ## Compose 配置
@@ -101,6 +105,7 @@ cp .env.example .env
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机监听地址 |
 | `DSH_PORT` | `3080` | 宿主机端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
+| `DSH_SUDO_ENABLED` | `false` | 是否允许 Agent 通过免密码 `sudo` 获得不受限制的 root 权限，仅接受 `true` 或 `false` |
 
 ### 容器环境变量
 
@@ -120,6 +125,7 @@ cp .env.example .env
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
+DSH_SUDO_ENABLED=false
 
 # 容器环境变量
 DSH_DEFAULT_WORKSPACE=/workspace
@@ -156,6 +162,8 @@ ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
 然后打开 <http://127.0.0.1:3080>。
+
+设置 `DSH_SUDO_ENABLED=true` 后，Agent 可以通过免密码 `sudo` 获得容器内不受限制的 root 权限。该设置只在创建容器时生效，修改后请运行 `docker compose up -d --force-recreate`。请勿同时启用 Docker Socket、特权模式或敏感宿主机目录挂载。
 
 容器默认设置 `DSH_TELEMETRY_DISABLED=true`。设置为 `false` 可启用上游遥测；启用前请先了解遥测内容可能包含的会话和 workspace 信息。入口脚本会把布尔值转换为上游实际使用的环境变量语义。
 
