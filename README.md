@@ -19,13 +19,15 @@ services:
     container_name: deepseek-harness
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3080:3080"
+      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
     environment:
       DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
     volumes:
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
 ```
+
+> **远程访问注意：** 如果通过局域网 IP 或域名访问，请在 `.env` 中设置 `DSH_LISTEN_ADDRESS=0.0.0.0` 和 `DSH_TRUSTED_HOST=192.168.1.100`；请将示例 IP 替换为浏览器实际访问的 IP 或域名，且不要包含协议或路径。修改后运行 `docker compose up -d --force-recreate`。
 
 1. 创建宿主机数据和 workspace 目录：
 
@@ -85,7 +87,11 @@ docker run -d \
 cp .env.example .env
 ```
 
-也可以直接通过 shell 环境变量覆盖默认值：
+也可以直接通过 shell 环境变量覆盖默认值。
+
+### Compose 文件变量
+
+以下变量只用于 Compose 文件的插值，不会传入容器：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -93,6 +99,14 @@ cp .env.example .env
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机监听地址 |
 | `DSH_PORT` | `3080` | 宿主机端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载为 `/workspace` 的宿主机目录 |
+
+### 容器环境变量
+
+以下变量通过 Compose 的 `environment` 传入容器。`DSH_HOME` 由 Compose 固定设置，其余变量可从 `.env` 或 shell 环境读取：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DSH_HOME` | `/home/node/.dsh` | Harness 在容器内的配置和数据目录 |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 网页目录选择器初始显示的容器内目录，该目录必须已存在 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用遥测，仅接受 `true` 或 `false` |
 | `DSH_TRUSTED_HOST` | 空 | 浏览器实际访问的 IP 或域名，用于通过 `/api` 信任校验 |
@@ -100,9 +114,12 @@ cp .env.example .env
 例如：
 
 ```dotenv
+# Compose 文件变量
 DSH_IMAGE_TAG=0.1.0-rc.6
 DSH_PORT=8080
 DSH_WORKSPACE=/path/to/project
+
+# 容器环境变量
 DSH_DEFAULT_WORKSPACE=/workspace
 DSH_TRUSTED_HOST=192.168.1.100
 ```
