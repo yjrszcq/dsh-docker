@@ -36,24 +36,21 @@ services:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
     volumes:
-      - dsh-data:/home/node/.dsh
+      - ./data:/home/node/.dsh
       - ./workspace:/workspace
-
-volumes:
-  dsh-data:
 ```
 
 ```bash
-mkdir -p workspace
+mkdir -p data workspace
 docker compose up -d
 ```
 
-Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in the `dsh-data` volume; `./workspace` is mounted at `/workspace`.
+Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in `./data`; `./workspace` is mounted at `/workspace`.
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
 ```bash
-sudo chown -R 1000:1000 workspace
+sudo chown -R 1000:1000 data workspace
 ```
 
 Copy the example settings before customizing the deployment:

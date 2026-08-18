@@ -36,24 +36,21 @@ services:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
     volumes:
-      - dsh-data:/home/node/.dsh
+      - ./data:/home/node/.dsh
       - ./workspace:/workspace
-
-volumes:
-  dsh-data:
 ```
 
 ```bash
-mkdir -p workspace
+mkdir -p data workspace
 docker compose up -d
 ```
 
-打开 <http://127.0.0.1:3080>。配置、凭据和会话保存在 `dsh-data` 具名卷中；`./workspace` 挂载到 `/workspace`。
+打开 <http://127.0.0.1:3080>。配置、凭据和会话保存在 `./data`；`./workspace` 挂载到 `/workspace`。
 
 容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
 
 ```bash
-sudo chown -R 1000:1000 workspace
+sudo chown -R 1000:1000 data workspace
 ```
 
 需要自定义部署时，先复制示例配置：
