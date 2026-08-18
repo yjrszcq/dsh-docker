@@ -1,6 +1,12 @@
 function parseRequestAuthority(value) {
+  if (
+    value === ''
+    || /[\s/@?#]/.test(value)
+    || value.endsWith(':')
+  ) return undefined
   try {
-    return new URL(`http://${value}`)
+    const parsed = new URL(`http://${value}`)
+    return parsed.hostname === '' ? undefined : parsed
   } catch {
     return undefined
   }

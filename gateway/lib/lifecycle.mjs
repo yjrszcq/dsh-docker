@@ -68,7 +68,7 @@ export async function terminateDsh(child, { graceMs = 5_000 } = {}) {
   const graceful = await Promise.race([exited, delay(graceMs).then(() => false)])
   if (!graceful && child.exitCode === null && child.signalCode === null) {
     const forcedExit = once(child, 'exit')
-    child.kill('SIGKILL')
+    if (!child.kill('SIGKILL')) return
     await forcedExit
   }
 }
@@ -160,6 +160,7 @@ export async function runGateway(config, {
       await closeServer()
       return outcome.code === null || outcome.code === 0 ? 1 : outcome.code
     }
+    await closeServer().catch(() => {})
     await terminateDsh(child)
     return 1
   } catch (error) {

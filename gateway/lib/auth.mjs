@@ -88,17 +88,36 @@ async function readForm(request) {
 }
 
 export class LoginRateLimiter {
-  constructor({ attempts = 5, windowMs = 60_000, now = Date.now } = {}) {
+  constructor({
+    attempts = 5,
+    globalAttempts = 100,
+    maxClients = 1024,
+    windowMs = 60_000,
+    now = Date.now,
+  } = {}) {
     this.attempts = attempts
+    this.globalAttempts = globalAttempts
+    this.maxClients = maxClients
     this.windowMs = windowMs
     this.now = now
     this.clients = new Map()
+    this.global = { count: 0, resetAt: 0 }
   }
 
   allow(client) {
     const now = this.now()
+    if (this.global.resetAt <= now) this.global = { count: 0, resetAt: now + this.windowMs }
+    this.global.count += 1
+    if (this.global.count > this.globalAttempts) return false
+
     const current = this.clients.get(client)
     if (current === undefined || current.resetAt <= now) {
+      if (this.clients.size >= this.maxClients) {
+        for (const [key, value] of this.clients) {
+          if (value.resetAt <= now) this.clients.delete(key)
+        }
+      }
+      if (!this.clients.has(client) && this.clients.size >= this.maxClients) return false
       this.clients.set(client, { count: 1, resetAt: now + this.windowMs })
       return true
     }

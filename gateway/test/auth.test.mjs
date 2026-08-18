@@ -172,3 +172,14 @@ test('login rate limiter resets windows and successful clients', () => {
   limiter.reset('client')
   assert.equal(limiter.allow('client'), true)
 })
+
+test('login rate limiter bounds global attempts and tracked clients', () => {
+  const globallyLimited = new LoginRateLimiter({ attempts: 10, globalAttempts: 2 })
+  assert.equal(globallyLimited.allow('one'), true)
+  assert.equal(globallyLimited.allow('two'), true)
+  assert.equal(globallyLimited.allow('three'), false)
+
+  const clientLimited = new LoginRateLimiter({ attempts: 10, globalAttempts: 10, maxClients: 1 })
+  assert.equal(clientLimited.allow('one'), true)
+  assert.equal(clientLimited.allow('two'), false)
+})

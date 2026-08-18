@@ -113,6 +113,7 @@ function proxyHttp(request, response, options) {
   })
   upstream.on('error', () => rejectHttp(response, 502, 'bad gateway'))
   request.on('aborted', () => upstream.destroy())
+  response.on('close', () => upstream.destroy())
   request.pipe(upstream)
 }
 

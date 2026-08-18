@@ -59,6 +59,12 @@ test('request inspection rejects missing and malformed browser authorities', () 
     accepted: false,
     reason: 'invalid-host',
   })
+  for (const host of ['ok.example/path', 'user@ok.example', 'ok.example?', 'ok.example#x', 'ok.example:']) {
+    assert.deepEqual(inspectExternalRequest({ host }, trusted), {
+      accepted: false,
+      reason: 'invalid-host',
+    }, host)
+  }
   assert.deepEqual(inspectExternalRequest({ host: 'ok.example', origin: 'null' }, trusted), {
     accepted: false,
     reason: 'invalid-origin',
