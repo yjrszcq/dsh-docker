@@ -16,6 +16,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim AS runtime
+ARG PNPM_VERSION=11.7.0
 
 LABEL org.opencontainers.image.title="DeepSeek Harness" \
       org.opencontainers.image.description="Unofficial container image for DeepSeek Harness" \
@@ -37,7 +38,7 @@ RUN apt-get update \
         tini \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
-    && npm install --global "pnpm@11.7.0" \
+    && npm install --global "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 COPY docker-sudoers /etc/sudoers.d/dsh-sudo
