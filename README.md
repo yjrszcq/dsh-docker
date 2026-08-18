@@ -108,8 +108,8 @@ For remote access, change the published address and add the gateway settings, fo
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an existing, accessible absolute directory |
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
-| `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
+| `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
 | `DSH_PROXY_POLYFILL` | `true` | Inject a guarded `crypto.randomUUID` compatibility shim; `true` or `false` |
 
 `DSH_TRUSTED_HOSTS` has these semantics:

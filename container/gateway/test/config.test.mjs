@@ -81,15 +81,15 @@ test('validateWorkspace accepts directories and rejects invalid targets', async 
     assert.equal(await validateWorkspace(directory), directory)
     const config = await loadConfig({
       DSH_DEFAULT_WORKSPACE: directory,
-      DSH_PROXY_PASSWORD: '',
       DSH_PROXY_USERNAME: 'unused',
+      DSH_PROXY_PASSWORD: '',
     })
     assert.equal(config.password, '')
     assert.equal(config.username, 'unused')
     await assert.rejects(() => loadConfig({
       DSH_DEFAULT_WORKSPACE: directory,
-      DSH_PROXY_PASSWORD: 'secret',
       DSH_PROXY_USERNAME: 'invalid:name',
+      DSH_PROXY_PASSWORD: 'secret',
     }), UsageError)
     await assert.rejects(() => validateWorkspace('relative'), UsageError)
     await assert.rejects(() => validateWorkspace(file), UsageError)

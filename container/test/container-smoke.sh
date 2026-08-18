@@ -19,8 +19,8 @@ if [ "$#" -eq 0 ]; then
 fi
 
 docker run --detach --name "$container" \
-  --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_PROXY_USERNAME=smoke-user \
+  --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
   "$image" >/dev/null
 

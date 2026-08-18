@@ -108,8 +108,8 @@ docker run -d \
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径；必须是已存在、可访问的绝对目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；仅接受 `true` 或 `false` |
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
-| `DSH_PROXY_PASSWORD` | 空 | 可选的单一 gateway 密码；留空即禁用 gateway 密码认证 |
 | `DSH_PROXY_USERNAME` | 空 | 可选的 HTTP Basic 用户名；密码为空时忽略 |
+| `DSH_PROXY_PASSWORD` | 空 | 可选的单一 gateway 密码；留空即禁用 gateway 密码认证 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码；仅接受 `true` 或 `false` |
 
 `DSH_TRUSTED_HOSTS` 的语义如下：

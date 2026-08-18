@@ -8,8 +8,8 @@ export const EXTERNAL_PORT = 3080
 
 export function createDshEnvironment(environment, config) {
   const childEnvironment = { ...environment, DSH_DEFAULT_WORKSPACE: config.workspace }
-  delete childEnvironment.DSH_PROXY_PASSWORD
   delete childEnvironment.DSH_PROXY_USERNAME
+  delete childEnvironment.DSH_PROXY_PASSWORD
   delete childEnvironment.DSH_PROXY_POLYFILL
   delete childEnvironment.DSH_TRUSTED_HOST
   delete childEnvironment.DSH_TRUSTED_HOSTS

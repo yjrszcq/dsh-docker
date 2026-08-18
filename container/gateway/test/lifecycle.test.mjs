@@ -52,8 +52,8 @@ const config = Object.freeze({
 test('DSH environment preserves values while normalizing gateway-only settings', () => {
   const disabled = createDshEnvironment({
     KEEP: 'yes',
-    DSH_PROXY_PASSWORD: 'do not forward',
     DSH_PROXY_USERNAME: 'do not forward',
+    DSH_PROXY_PASSWORD: 'do not forward',
     DSH_TELEMETRY_DISABLED: 'true',
     DSH_TRUSTED_HOSTS: '*',
   }, config)
@@ -62,8 +62,8 @@ test('DSH environment preserves values while normalizing gateway-only settings',
     DSH_DEFAULT_WORKSPACE: '/workspace',
     DSH_TELEMETRY_DISABLED: '1',
   })
-  assert.equal(disabled.DSH_PROXY_PASSWORD, undefined)
   assert.equal(disabled.DSH_PROXY_USERNAME, undefined)
+  assert.equal(disabled.DSH_PROXY_PASSWORD, undefined)
   assert.equal(disabled.DSH_TRUSTED_HOSTS, undefined)
   const enabled = createDshEnvironment({ DSH_TELEMETRY_DISABLED: 'true' }, {
     ...config,

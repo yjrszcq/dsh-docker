@@ -85,8 +85,8 @@ export async function validateWorkspace(path) {
 
 export async function loadConfig(environment = process.env) {
   const workspace = await validateWorkspace(environment.DSH_DEFAULT_WORKSPACE ?? '/workspace')
-  const password = environment.DSH_PROXY_PASSWORD ?? ''
   const username = environment.DSH_PROXY_USERNAME ?? ''
+  const password = environment.DSH_PROXY_PASSWORD ?? ''
   if (password !== '' && username.includes(':')) {
     throw new UsageError('DSH_PROXY_USERNAME cannot contain a colon when authentication is enabled')
   }

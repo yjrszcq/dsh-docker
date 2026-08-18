@@ -15,8 +15,8 @@ function render(overrides = {}) {
         DSH_IMAGE_TAG: 'latest',
         DSH_LISTEN_ADDRESS: '127.0.0.1',
         DSH_PORT: '3080',
-        DSH_PROXY_PASSWORD: '',
         DSH_PROXY_USERNAME: '',
+        DSH_PROXY_PASSWORD: '',
         DSH_PROXY_POLYFILL: 'true',
         DSH_SUDO_ENABLED: 'false',
         DSH_TELEMETRY_DISABLED: 'true',
@@ -34,8 +34,8 @@ function render(overrides = {}) {
 const defaults = render()
 assert.equal(defaults.ports[0].host_ip, '127.0.0.1')
 assert.equal(defaults.ports[0].published, '3080')
-assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
 assert.equal(defaults.environment.DSH_PROXY_USERNAME, '')
+assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
 assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')
 assert.equal(defaults.environment.DSH_TRUSTED_HOSTS, '')
 assert.deepEqual(defaults.group_add, ['dsh-sudo-false'])
@@ -43,8 +43,8 @@ assert.deepEqual(defaults.group_add, ['dsh-sudo-false'])
 const configured = render({
   DSH_LISTEN_ADDRESS: '0.0.0.0',
   DSH_PORT: '4080',
-  DSH_PROXY_PASSWORD: 'compose-secret',
   DSH_PROXY_USERNAME: 'compose-user',
+  DSH_PROXY_PASSWORD: 'compose-secret',
   DSH_PROXY_POLYFILL: 'false',
   DSH_SUDO_ENABLED: 'true',
   DSH_TELEMETRY_DISABLED: 'false',
@@ -52,8 +52,8 @@ const configured = render({
 })
 assert.equal(configured.ports[0].host_ip, '0.0.0.0')
 assert.equal(configured.ports[0].published, '4080')
-assert.equal(configured.environment.DSH_PROXY_PASSWORD, 'compose-secret')
 assert.equal(configured.environment.DSH_PROXY_USERNAME, 'compose-user')
+assert.equal(configured.environment.DSH_PROXY_PASSWORD, 'compose-secret')
 assert.equal(configured.environment.DSH_PROXY_POLYFILL, 'false')
 assert.equal(configured.environment.DSH_TELEMETRY_DISABLED, 'false')
 assert.equal(configured.environment.DSH_TRUSTED_HOSTS, '192.168.1.10,dsh.example:8443')
