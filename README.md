@@ -179,10 +179,3 @@ node container/test/compose-config.mjs
 With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener.
 
 The runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support.
-
-## Migration from the previous image behavior
-
-- Prefer `DSH_TRUSTED_HOSTS`; the old `DSH_TRUSTED_HOST` remains a temporary compatibility input.
-- Remote accepted requests now receive complete loopback DSH functionality through the gateway and the browser connection patch; the old server-side privileged-API patch and Cordis listener overlay are gone.
-- `DSH_PROXY_PASSWORD` is optional and defaults to no password authentication.
-- The default host publication remains `127.0.0.1:3080`.

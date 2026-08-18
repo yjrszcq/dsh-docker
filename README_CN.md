@@ -179,10 +179,3 @@ node container/test/compose-config.mjs
 有可用 Docker daemon 时，`container/test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。
 
 运行时镜像基于 Node.js 24，并包含 `pnpm`、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。
-
-## 从旧版镜像行为迁移
-
-- 推荐改用 `DSH_TRUSTED_HOSTS`；旧的 `DSH_TRUSTED_HOST` 暂时作为兼容输入保留。
-- 被 gateway 接受的远程请求现在会通过 gateway 和浏览器连接补丁获得完整 loopback DSH 功能；旧的服务端特权 API 补丁和 Cordis 监听覆盖均已删除。
-- `DSH_PROXY_PASSWORD` 可选，默认不启用密码认证。
-- 宿主机端口仍默认绑定 `127.0.0.1:3080`。
