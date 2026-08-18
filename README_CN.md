@@ -10,6 +10,19 @@
 
 ## 快速开始
 
+### 一键部署
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  --group-add dsh-sudo-true \
+  -p 3080:3080 \
+  -v "$(pwd)/data:/home/node/.dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
 ### Docker Compose
 
 精简版 `docker-compose.yaml`：
@@ -30,19 +43,6 @@ services:
     volumes:
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
-```
-
-### Docker CLI
-
-```bash
-docker run -d \
-  --name deepseek-harness \
-  --restart unless-stopped \
-  --group-add dsh-sudo-true \
-  -p 3080:3080 \
-  -v "$(pwd)/data:/home/node/.dsh" \
-  -v "$(pwd)/workspace:/workspace" \
-  szcq/deepseek-harness:latest
 ```
 
 ### 使用说明

@@ -10,6 +10,19 @@ The image installs the official `@deepseek-ai/dsh` npm package at build time. Re
 
 ## Quick start
 
+### One-command deployment
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  --group-add dsh-sudo-true \
+  -p 3080:3080 \
+  -v "$(pwd)/data:/home/node/.dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
 ### Docker Compose
 
 Minimal `docker-compose.yaml`:
@@ -30,19 +43,6 @@ services:
     volumes:
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
-```
-
-### Docker CLI
-
-```bash
-docker run -d \
-  --name deepseek-harness \
-  --restart unless-stopped \
-  --group-add dsh-sudo-true \
-  -p 3080:3080 \
-  -v "$(pwd)/data:/home/node/.dsh" \
-  -v "$(pwd)/workspace:/workspace" \
-  szcq/deepseek-harness:latest
 ```
 
 ### Usage notes
