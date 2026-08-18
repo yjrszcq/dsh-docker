@@ -80,7 +80,7 @@ Open <http://127.0.0.1:3080>.
 
 ### Important notes
 
-#### Permissions and port exposure
+#### Permissions
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
@@ -90,7 +90,16 @@ sudo chown -R 1000:1000 data workspace
 
 For the one-command deployment, omit `--group-add dsh-sudo-true` to disable passwordless sudo. With Compose, set `DSH_SUDO_ENABLED=false`.
 
-> **Attention:** The short port syntax `3080:3080` normally publishes the port on every host interface. Bind a specific host address or apply an external firewall when network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
+#### Port exposure
+
+The short port syntax `3080:3080` normally publishes the port on every host interface. To accept connections only from the Docker host, use `127.0.0.1:3080:3080` in Compose:
+
+```yaml
+ports:
+  - "127.0.0.1:3080:3080"
+```
+
+The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an external firewall when additional network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 
 #### Remote access
 

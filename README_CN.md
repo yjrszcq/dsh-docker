@@ -80,7 +80,7 @@ docker compose up -d --force-recreate
 
 ### 注意事项
 
-#### 权限与端口暴露
+#### 权限
 
 容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
 
@@ -90,7 +90,16 @@ sudo chown -R 1000:1000 data workspace
 
 一键部署时，删除 `--group-add dsh-sudo-true` 即可关闭免密码 sudo；使用 Compose 时设置 `DSH_SUDO_ENABLED=false`。
 
-> **注意：** 短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。需要限制网络访问时，请自行绑定指定宿主机地址或配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
+#### 端口暴露
+
+短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。如需仅允许从 Docker 宿主机访问，请在 Compose 中使用 `127.0.0.1:3080:3080`：
+
+```yaml
+ports:
+  - "127.0.0.1:3080:3080"
+```
+
+等价的 `docker run` 参数为 `-p 127.0.0.1:3080:3080`。需要进一步限制网络访问时，请配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
 
 #### 远程访问
 
