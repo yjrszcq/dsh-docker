@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
 
-COPY patch-upstream.mjs /tmp/patch-upstream.mjs
+COPY patch-directory-picker.mjs /tmp/patch-directory-picker.mjs
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -9,8 +9,8 @@ RUN apt-get update \
         make \
         python3 \
     && npm install --global "@deepseek-ai/dsh@${DSH_VERSION}" \
-    && node /tmp/patch-upstream.mjs \
-    && rm /tmp/patch-upstream.mjs \
+    && node /tmp/patch-directory-picker.mjs \
+    && rm /tmp/patch-directory-picker.mjs \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim
@@ -45,9 +45,11 @@ RUN ln -s ../lib/node_modules/@deepseek-ai/dsh/lib/bin.js /usr/local/bin/dsh
 
 ENV DSH_HOME=/home/node/.dsh \
     DSH_DEFAULT_WORKSPACE=/workspace \
+    DSH_PROXY_POLYFILL=true \
     DSH_TELEMETRY_DISABLED=true
 
-COPY --chown=node:node docker.cordis.yml /opt/dsh/docker.cordis.yml
+COPY --chown=node:node gateway/package.json gateway/index.mjs /opt/dsh-gateway/
+COPY --chown=node:node gateway/lib /opt/dsh-gateway/lib
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /home/node/.dsh /workspace \
@@ -59,7 +61,7 @@ WORKDIR /workspace
 EXPOSE 3080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl --fail --silent --show-error http://127.0.0.1:3080/ >/dev/null || exit 1
+    CMD curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
-CMD ["dsh", "web", "--patch", "/opt/dsh/docker.cordis.yml"]
+CMD ["node", "/opt/dsh-gateway/index.mjs"]
