@@ -42,7 +42,7 @@ function authorization(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
 }
 
-async function withGateway(password, callback) {
+async function withGateway(password, callback, username = '') {
   let upstreamRequests = 0
   let upstreamHeaders
   const upstream = createServer((incoming, response) => {
@@ -54,6 +54,7 @@ async function withGateway(password, callback) {
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     password,
+    username,
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
@@ -65,13 +66,13 @@ async function withGateway(password, callback) {
   }
 }
 
-test('empty password leaves gateway access transparent', async () => {
+test('empty password leaves gateway access transparent even with a username', async () => {
   await withGateway('', async ({ gatewayPort, requests }) => {
     const response = await request(gatewayPort, { headers: { host: 'dsh.example' } })
     assert.equal(response.status, 200)
     assert.equal(response.body, 'upstream')
     assert.equal(requests(), 1)
-  })
+  }, 'unused')
 })
 
 test('password access challenges every unauthenticated request with HTTP Basic', async () => {
@@ -101,6 +102,22 @@ test('HTTP Basic ignores the username, accepts the password, and hides credentia
     assert.equal(requests(), 1)
     assert.equal(headers().authorization, undefined)
   })
+})
+
+test('configured username and password must both match', async () => {
+  await withGateway('secret', async ({ gatewayPort, requests }) => {
+    for (const [username, password] of [['wrong', 'secret'], ['account', 'wrong']]) {
+      const rejected = await request(gatewayPort, {
+        headers: { authorization: authorization(username, password), host: 'dsh.example' },
+      })
+      assert.equal(rejected.status, 401)
+    }
+    const accepted = await request(gatewayPort, {
+      headers: { authorization: authorization('account', 'secret'), host: 'dsh.example' },
+    })
+    assert.equal(accepted.status, 200)
+    assert.equal(requests(), 1)
+  }, 'account')
 })
 
 test('malformed HTTP Basic credentials are rejected', async () => {

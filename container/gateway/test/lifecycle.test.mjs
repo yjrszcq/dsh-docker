@@ -42,6 +42,7 @@ class FakeServer extends EventEmitter {
 
 const config = Object.freeze({
   password: '',
+  username: '',
   polyfill: true,
   telemetryDisabled: true,
   trustedHosts: Object.freeze({ wildcard: false, authorities: Object.freeze([]) }),
@@ -52,6 +53,7 @@ test('DSH environment preserves values while normalizing gateway-only settings',
   const disabled = createDshEnvironment({
     KEEP: 'yes',
     DSH_PROXY_PASSWORD: 'do not forward',
+    DSH_PROXY_USERNAME: 'do not forward',
     DSH_TELEMETRY_DISABLED: 'true',
     DSH_TRUSTED_HOSTS: '*',
   }, config)
@@ -61,6 +63,7 @@ test('DSH environment preserves values while normalizing gateway-only settings',
     DSH_TELEMETRY_DISABLED: '1',
   })
   assert.equal(disabled.DSH_PROXY_PASSWORD, undefined)
+  assert.equal(disabled.DSH_PROXY_USERNAME, undefined)
   assert.equal(disabled.DSH_TRUSTED_HOSTS, undefined)
   const enabled = createDshEnvironment({ DSH_TELEMETRY_DISABLED: 'true' }, {
     ...config,
@@ -100,10 +103,14 @@ test('gateway owns DSH arguments, environment, and graceful signal shutdown', as
   const child = new FakeChild()
   const signalSource = new EventEmitter()
   let invocation
-  const running = runGateway(config, {
+  let gatewayOptions
+  const running = runGateway({ ...config, password: 'secret', username: 'account' }, {
     environment: { KEEP: 'yes' },
     externalPort: 0,
-    gatewayFactory: () => new FakeServer(),
+    gatewayFactory: (options) => {
+      gatewayOptions = options
+      return new FakeServer()
+    },
     readiness: async () => {},
     signalSource,
     spawnImpl: (command, arguments_, options) => {
@@ -118,6 +125,8 @@ test('gateway owns DSH arguments, environment, and graceful signal shutdown', as
   assert.deepEqual(invocation.arguments_, ['web', '--host', '127.0.0.1', '--port', '3079'])
   assert.equal(invocation.options.env.KEEP, 'yes')
   assert.equal(invocation.options.env.DSH_TELEMETRY_DISABLED, '1')
+  assert.equal(gatewayOptions.password, 'secret')
+  assert.equal(gatewayOptions.username, 'account')
   assert.deepEqual(child.kills, ['SIGTERM'])
 })
 

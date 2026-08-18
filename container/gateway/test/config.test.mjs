@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
+  loadConfig,
   parseBoolean,
   parseTrustedAuthority,
   parseTrustedHosts,
@@ -78,6 +79,18 @@ test('validateWorkspace accepts directories and rejects invalid targets', async 
   await writeFile(file, 'x')
   try {
     assert.equal(await validateWorkspace(directory), directory)
+    const config = await loadConfig({
+      DSH_DEFAULT_WORKSPACE: directory,
+      DSH_PROXY_PASSWORD: '',
+      DSH_PROXY_USERNAME: 'unused',
+    })
+    assert.equal(config.password, '')
+    assert.equal(config.username, 'unused')
+    await assert.rejects(() => loadConfig({
+      DSH_DEFAULT_WORKSPACE: directory,
+      DSH_PROXY_PASSWORD: 'secret',
+      DSH_PROXY_USERNAME: 'invalid:name',
+    }), UsageError)
     await assert.rejects(() => validateWorkspace('relative'), UsageError)
     await assert.rejects(() => validateWorkspace(file), UsageError)
     await assert.rejects(() => validateWorkspace(join(directory, 'missing')), UsageError)

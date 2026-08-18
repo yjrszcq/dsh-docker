@@ -174,7 +174,8 @@ export function createGatewayServer({
   upstreamPort = INTERNAL_PORT,
   isReady = () => true,
   password = '',
-  passwordAccess = createPasswordAccess(password),
+  username = '',
+  passwordAccess = createPasswordAccess(password, { username }),
 }) {
   const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, isReady, passwordAccess }
   const upgradedSockets = new Set()

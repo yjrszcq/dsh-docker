@@ -6,13 +6,16 @@ function digest(value) {
   return createHash('sha256').update(value).digest()
 }
 
-function passwordFromAuthorization(header) {
+function credentialsFromAuthorization(header) {
   if (typeof header !== 'string') return undefined
   const match = /^Basic ([A-Za-z0-9+/]+={0,2})$/i.exec(header)
   if (match === null || match[1].length % 4 !== 0) return undefined
   const credentials = Buffer.from(match[1], 'base64').toString('utf8')
   const separator = credentials.indexOf(':')
-  return separator < 0 ? undefined : credentials.slice(separator + 1)
+  return separator < 0 ? undefined : {
+    username: credentials.slice(0, separator),
+    password: credentials.slice(separator + 1),
+  }
 }
 
 function sendText(response, status, message, headers = {}) {
@@ -67,14 +70,21 @@ export class LoginRateLimiter {
   }
 }
 
-export function createPasswordAccess(password, { rateLimiter = new LoginRateLimiter() } = {}) {
+export function createPasswordAccess(password, {
+  rateLimiter = new LoginRateLimiter(),
+  username = '',
+} = {}) {
   const enabled = password !== ''
   const passwordDigest = digest(password)
+  const usernameDigest = digest(username)
 
   function isAuthenticated(request) {
     if (!enabled) return true
-    const supplied = passwordFromAuthorization(request.headers.authorization)
-    return supplied !== undefined && timingSafeEqual(digest(supplied), passwordDigest)
+    const supplied = credentialsFromAuthorization(request.headers.authorization)
+    if (supplied === undefined) return false
+    const passwordMatches = timingSafeEqual(digest(supplied.password), passwordDigest)
+    const usernameMatches = timingSafeEqual(digest(supplied.username), usernameDigest)
+    return passwordMatches && (username === '' || usernameMatches)
   }
 
   function handleHttp(request, response) {

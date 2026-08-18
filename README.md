@@ -109,6 +109,7 @@ For remote access, change the published address and add the gateway settings, fo
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
 | `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
+| `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_POLYFILL` | `true` | Inject a guarded `crypto.randomUUID` compatibility shim; `true` or `false` |
 
 `DSH_TRUSTED_HOSTS` has these semantics:
@@ -128,9 +129,9 @@ The image makes this behavior through its only upstream compiled-output patch. T
 
 ## Password access
 
-When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authentication so the browser presents its native authentication dialog. Although that protocol includes a username field, the gateway ignores it and validates only the password. Failed attempts are rate-limited.
+When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authentication so the browser presents its native authentication dialog. If `DSH_PROXY_USERNAME` is empty, the gateway ignores the supplied username and validates only the password. If both variables are non-empty, both values must match. Setting only `DSH_PROXY_USERNAME` does not enable authentication. Failed attempts are rate-limited.
 
-The password is not trimmed, logged, or persisted by the gateway, and the `Authorization` header is removed before requests reach DSH. Browsers may retain Basic credentials for the browsing session and do not provide a reliable gateway logout operation. Use HTTPS for remote access because Basic credentials are encoded, not encrypted. TLS termination remains outside this image.
+The username and password are not trimmed, logged, or persisted by the gateway, and the `Authorization` header is removed before requests reach DSH. An active username cannot contain `:` because HTTP Basic uses it as the field separator. Browsers may retain Basic credentials for the browsing session and do not provide a reliable gateway logout operation. Use HTTPS for remote access because Basic credentials are encoded, not encrypted. TLS termination remains outside this image.
 
 You may leave `DSH_PROXY_PASSWORD` empty when using a DSH auth plugin or another access-control layer. The gateway does not install, configure, or detect third-party auth plugins.
 

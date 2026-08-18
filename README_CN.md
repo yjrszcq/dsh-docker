@@ -109,6 +109,7 @@ docker run -d \
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；仅接受 `true` 或 `false` |
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
 | `DSH_PROXY_PASSWORD` | 空 | 可选的单一 gateway 密码；留空即禁用 gateway 密码认证 |
+| `DSH_PROXY_USERNAME` | 空 | 可选的 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码；仅接受 `true` 或 `false` |
 
 `DSH_TRUSTED_HOSTS` 的语义如下：
@@ -128,9 +129,9 @@ docker run -d \
 
 ## 密码访问
 
-`DSH_PROXY_PASSWORD` 非空时，gateway 使用 HTTP Basic 认证，由浏览器显示原生认证对话框。该协议固定包含用户名字段，但 gateway 会忽略用户名，只验证密码。失败尝试受到频率限制。
+`DSH_PROXY_PASSWORD` 非空时，gateway 使用 HTTP Basic 认证，由浏览器显示原生认证对话框。`DSH_PROXY_USERNAME` 为空时，gateway 忽略浏览器提交的用户名，只验证密码；两者均非空时，用户名和密码都必须匹配。单独设置 `DSH_PROXY_USERNAME` 不会启用认证。失败尝试受到频率限制。
 
-gateway 不会裁剪、记录或持久化密码，并会在请求进入 DSH 前删除 `Authorization` 请求头。浏览器可能在当前浏览会话中保留 Basic 凭据，且没有可靠的 gateway 退出操作。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密。TLS 终止仍由镜像外部负责。
+gateway 不会裁剪、记录或持久化用户名和密码，并会在请求进入 DSH 前删除 `Authorization` 请求头。HTTP Basic 使用 `:` 分隔字段，因此启用认证时用户名不能包含 `:`。浏览器可能在当前浏览会话中保留 Basic 凭据，且没有可靠的 gateway 退出操作。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密。TLS 终止仍由镜像外部负责。
 
 使用 DSH auth 插件或其他访问控制层时，可以直接将 `DSH_PROXY_PASSWORD` 留空。gateway 不安装、配置或检测第三方 auth 插件。
 

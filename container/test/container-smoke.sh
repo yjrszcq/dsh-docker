@@ -20,6 +20,7 @@ fi
 
 docker run --detach --name "$container" \
   --env DSH_PROXY_PASSWORD=smoke-password \
+  --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_TRUSTED_HOSTS=smoke.example \
   "$image" >/dev/null
 
@@ -42,7 +43,12 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/)"
 [ "$status" = 401 ]
 
-docker exec "$container" curl --fail --silent --user ':smoke-password' \
+status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
+  --user 'wrong-user:smoke-password' --header 'Host: smoke.example' \
+  http://127.0.0.1:3080/)"
+[ "$status" = 401 ]
+
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 
 docker exec "$container" sh -c '
