@@ -31,7 +31,7 @@ services:
     ports:
       - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
     group_add:
-      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-true}"
     environment:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
@@ -80,11 +80,14 @@ A reverse proxy must preserve the browser-facing `Host` header. TLS certificates
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/workspace:/workspace" \
   -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
 ```
+
+Omit `--group-add dsh-sudo-true` to run without passwordless sudo.
 
 For remote access, change the published address and add the gateway settings, for example `-p 0.0.0.0:3080:3080 -e DSH_TRUSTED_HOSTS=192.168.1.100 -e DSH_PROXY_PASSWORD=...`.
 
@@ -98,7 +101,7 @@ For remote access, change the published address and add the gateway settings, fo
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
 | `DSH_PORT` | `3080` | Published host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
-| `DSH_SUDO_ENABLED` | `false` | Add unrestricted passwordless `sudo` inside the container; `true` or `false` |
+| `DSH_SUDO_ENABLED` | `true` | Add unrestricted passwordless `sudo` inside the container; `true` or `false` |
 
 ### Container variables
 
@@ -149,7 +152,7 @@ Compose publishes only to host loopback by default. Before exposing `0.0.0.0`, u
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-`DSH_SUDO_ENABLED=true` additionally gives the agent unrestricted root access inside the container. Do not combine it with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
+Compose enables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=false` to disable it. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
 
 ## Browser compatibility
 

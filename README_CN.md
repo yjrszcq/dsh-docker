@@ -31,7 +31,7 @@ services:
     ports:
       - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
     group_add:
-      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-true}"
     environment:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
@@ -80,11 +80,14 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/workspace:/workspace" \
   -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
 ```
+
+如需关闭免密码 sudo，请删除 `--group-add dsh-sudo-true`。
 
 远程访问时需调整发布地址并增加 gateway 配置，例如 `-p 0.0.0.0:3080:3080 -e DSH_TRUSTED_HOSTS=192.168.1.100 -e DSH_PROXY_PASSWORD=...`。
 
@@ -98,7 +101,7 @@ docker run -d \
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机端口发布地址 |
 | `DSH_PORT` | `3080` | 宿主机发布端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载到 `/workspace` 的宿主机目录 |
-| `DSH_SUDO_ENABLED` | `false` | 是否在容器内提供不受限制的免密码 `sudo`；仅接受 `true` 或 `false` |
+| `DSH_SUDO_ENABLED` | `true` | 是否在容器内提供不受限制的免密码 `sudo`；仅接受 `true` 或 `false` |
 
 ### 容器环境变量
 
@@ -149,7 +152,7 @@ Compose 默认只发布到宿主机 loopback。暴露到 `0.0.0.0` 前，应配�
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-设置 `DSH_SUDO_ENABLED=true` 后，Agent 还会获得容器内不受限制的 root 权限。除非明确需要这种权限，否则不要同时启用特权模式、Docker Socket 或敏感宿主机目录挂载。
+Compose 默认向 Agent 提供容器内不受限制的免密码 root 权限；设置 `DSH_SUDO_ENABLED=false` 可将其关闭。除非明确需要这些权限，否则不要将 sudo 与特权模式、Docker Socket 或敏感宿主机目录挂载同时使用。
 
 ## 浏览器兼容
 
