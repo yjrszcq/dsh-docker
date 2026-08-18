@@ -2,6 +2,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
+import { createPasswordAccess } from './auth.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
 export const INTERNAL_PORT = 3079
@@ -154,31 +155,45 @@ export function createGatewayServer({
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
   isReady = () => true,
+  password = '',
+  passwordAccess = createPasswordAccess(password),
 }) {
-  const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, isReady }
+  const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, isReady, passwordAccess }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
-    const trust = inspectExternalRequest(request.headers, options.trustedHosts)
-    if (!trust.accepted) {
-      rejectHttp(response, 403, 'forbidden')
-      return
-    }
-    const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
-    if (pathname === HEALTH_PATH) {
-      if (options.isReady()) {
-        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
-        response.end('ok\n')
-      } else {
-        rejectHttp(response, 503, 'unavailable')
-      }
-      return
-    }
-    proxyHttp(request, response, options)
+    void handleRequest(request, response)
   })
+  async function handleRequest(request, response) {
+    try {
+      const trust = inspectExternalRequest(request.headers, options.trustedHosts)
+      if (!trust.accepted) {
+        rejectHttp(response, 403, 'forbidden')
+        return
+      }
+      const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+      if (pathname === HEALTH_PATH) {
+        if (options.isReady()) {
+          response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
+          response.end('ok\n')
+        } else {
+          rejectHttp(response, 503, 'unavailable')
+        }
+        return
+      }
+      if (await options.passwordAccess.handleHttp(request, response, pathname)) return
+      proxyHttp(request, response, options)
+    } catch {
+      rejectHttp(response, 400, 'bad request')
+    }
+  }
   server.on('upgrade', (request, socket, head) => {
     const trust = inspectExternalRequest(request.headers, options.trustedHosts)
     if (!trust.accepted) {
       rejectUpgrade(socket, 403, 'Forbidden')
+      return
+    }
+    if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
+      rejectUpgrade(socket, 401, 'Unauthorized')
       return
     }
     upgradedSockets.add(socket)
