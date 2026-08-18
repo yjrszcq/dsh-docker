@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+
+function render(overrides = {}) {
+  const result = spawnSync(
+    'docker',
+    ['compose', '-f', 'docker-compose.yaml', 'config', '--format', 'json'],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DSH_DEFAULT_WORKSPACE: '/workspace',
+        DSH_IMAGE_TAG: 'latest',
+        DSH_LISTEN_ADDRESS: '127.0.0.1',
+        DSH_PORT: '3080',
+        DSH_PROXY_PASSWORD: '',
+        DSH_PROXY_POLYFILL: 'true',
+        DSH_SUDO_ENABLED: 'false',
+        DSH_TELEMETRY_DISABLED: 'true',
+        DSH_TRUSTED_HOST: '',
+        DSH_TRUSTED_HOSTS: '',
+        DSH_WORKSPACE: './workspace',
+        ...overrides,
+      },
+    },
+  )
+  assert.equal(result.status, 0, result.stderr)
+  return JSON.parse(result.stdout).services['deepseek-harness']
+}
+
+const defaults = render()
+assert.equal(defaults.ports[0].host_ip, '127.0.0.1')
+assert.equal(defaults.ports[0].published, '3080')
+assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
+assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')
+assert.equal(defaults.environment.DSH_TRUSTED_HOSTS, '')
+assert.deepEqual(defaults.group_add, ['dsh-sudo-false'])
+
+const configured = render({
+  DSH_LISTEN_ADDRESS: '0.0.0.0',
+  DSH_PORT: '4080',
+  DSH_PROXY_PASSWORD: 'compose-secret',
+  DSH_PROXY_POLYFILL: 'false',
+  DSH_SUDO_ENABLED: 'true',
+  DSH_TELEMETRY_DISABLED: 'false',
+  DSH_TRUSTED_HOSTS: '192.168.1.10,dsh.example:8443',
+})
+assert.equal(configured.ports[0].host_ip, '0.0.0.0')
+assert.equal(configured.ports[0].published, '4080')
+assert.equal(configured.environment.DSH_PROXY_PASSWORD, 'compose-secret')
+assert.equal(configured.environment.DSH_PROXY_POLYFILL, 'false')
+assert.equal(configured.environment.DSH_TELEMETRY_DISABLED, 'false')
+assert.equal(configured.environment.DSH_TRUSTED_HOSTS, '192.168.1.10,dsh.example:8443')
+assert.deepEqual(configured.group_add, ['dsh-sudo-true'])
+
+const legacy = render({ DSH_TRUSTED_HOST: 'old.example', DSH_TRUSTED_HOSTS: '' })
+assert.equal(legacy.environment.DSH_TRUSTED_HOST, 'old.example')
+assert.equal(legacy.environment.DSH_TRUSTED_HOSTS, '')
+
+console.log('Compose configuration checks passed')
