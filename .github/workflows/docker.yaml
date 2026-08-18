@@ -98,22 +98,6 @@ jobs:
           username: ${{ env.IMAGE_OWNER }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.dsh-version.outputs.version }}
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: false
-          build-args: |
-            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
-          tags: |
-            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}
-            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Build and push ${{ env.IMAGE_NAME }} devtools ${{ steps.dsh-version.outputs.version }}
         uses: docker/build-push-action@v7
         with:
@@ -125,8 +109,32 @@ jobs:
           build-args: |
             DSH_VERSION=${{ steps.dsh-version.outputs.version }}
             INSTALL_DEVTOOLS=true
-          tags: |
-            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}-devtools
-            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest-devtools
+          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}-devtools
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.dsh-version.outputs.version }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish latest-devtools tag
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest-devtools" \
+            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.dsh-version.outputs.version }}-devtools"
+
+      - name: Publish latest tag
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest" \
+            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.dsh-version.outputs.version }}"
