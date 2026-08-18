@@ -81,8 +81,8 @@ docker run -d \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
+  -v "$(pwd)/data:/home/node/.dsh" \
   -v "$(pwd)/workspace:/workspace" \
-  -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
 ```
 
