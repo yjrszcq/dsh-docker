@@ -47,36 +47,19 @@ services:
 
 ### Usage notes
 
-#### Prepare directories
-
 Create the bind-mount directories before using either deployment method:
 
 ```bash
 mkdir -p data workspace
 ```
 
-#### Start with Compose
-
-Start the Compose deployment directly:
-
-```bash
-docker compose up -d
-```
-
-To customize it, copy the example environment file before recreating the container:
+Start Compose with `docker compose up -d`. To customize it, copy the example environment file beforehand:
 
 ```bash
 cp .env.example .env
-docker compose up -d --force-recreate
 ```
 
-#### Access and storage
-
-Open <http://127.0.0.1:3080>.
-
-- `./data` stores DSH configuration, credentials, and sessions.
-
-- `./workspace` is mounted at `/workspace`.
+Open <http://127.0.0.1:3080>. DSH data is stored in `./data`; `./workspace` is mounted at `/workspace`.
 
 ### Important notes
 

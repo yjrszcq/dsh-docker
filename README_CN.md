@@ -47,36 +47,19 @@ services:
 
 ### 使用说明
 
-#### 准备目录
-
 使用任一部署方式前，先创建 bind mount 目录：
 
 ```bash
 mkdir -p data workspace
 ```
 
-#### 启动 Compose
-
-直接启动 Compose 部署：
-
-```bash
-docker compose up -d
-```
-
-需要自定义时，先复制示例环境文件，再重新创建容器：
+执行 `docker compose up -d` 启动 Compose；如需自定义，请提前复制示例环境文件：
 
 ```bash
 cp .env.example .env
-docker compose up -d --force-recreate
 ```
 
-#### 访问与持久化
-
-打开 <http://127.0.0.1:3080>。
-
-- `./data` 保存 DSH 配置、凭据和会话。
-
-- `./workspace` 挂载到 `/workspace`。
+打开 <http://127.0.0.1:3080>。DSH 数据保存在 `./data`，`./workspace` 挂载到 `/workspace`。
 
 ### 注意事项
 
