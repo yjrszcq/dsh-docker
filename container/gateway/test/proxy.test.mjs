@@ -8,6 +8,7 @@ import {
   createGatewayServer,
   HEALTH_PATH,
   INTERNAL_AUTHORITY,
+  upstreamRequestHeaders,
 } from '../lib/proxy.mjs'
 
 async function listen(server) {
@@ -93,6 +94,18 @@ test('trusted HTTP requests reach upstream with loopback headers', async () => {
     assert.equal(payload.headers.origin, `http://${INTERNAL_AUTHORITY}`)
     assert.equal(payload.headers['accept-encoding'], 'identity')
   })
+})
+
+test('upstream headers remove connection tokens and the gateway session Cookie', () => {
+  const headers = upstreamRequestHeaders({
+    connection: 'keep-alive, x-remove',
+    cookie: 'dsh_gateway_session=secret; dsh_preference=yes',
+    host: 'dsh.example',
+    'x-remove': 'hop-by-hop',
+  })
+  assert.equal(headers.connection, undefined)
+  assert.equal(headers['x-remove'], undefined)
+  assert.equal(headers.cookie, 'dsh_preference=yes')
 })
 
 test('untrusted requests are rejected without reaching upstream', async () => {

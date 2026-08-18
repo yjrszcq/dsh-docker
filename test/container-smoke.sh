@@ -51,8 +51,11 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
 docker exec "$container" curl --fail --silent --cookie /tmp/dsh-smoke-cookie \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 
-docker exec "$container" sh -c \
-  "ps -eo args | rg --fixed-strings 'dsh web --host 127.0.0.1 --port 3079' >/dev/null"
+docker exec "$container" sh -c '
+  gateway_pid="$(pgrep -f "^node /opt/dsh-gateway/index.mjs$")"
+  ps --ppid "$gateway_pid" -o args= \
+    | rg --fixed-strings "dsh web --host 127.0.0.1 --port 3079" >/dev/null
+'
 
 docker exec "$container" curl --fail --silent --noproxy '*' \
   http://127.0.0.1:3079/ >/dev/null

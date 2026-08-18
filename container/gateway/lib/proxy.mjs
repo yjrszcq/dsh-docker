@@ -2,7 +2,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
-import { createPasswordAccess } from './auth.mjs'
+import { createPasswordAccess, SESSION_COOKIE } from './auth.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
 export const INTERNAL_PORT = 3079
@@ -23,19 +23,43 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
 ])
 
+function excludedHeaderNames(headers) {
+  const excluded = new Set(HOP_BY_HOP_HEADERS)
+  if (typeof headers.connection === 'string') {
+    for (const name of headers.connection.split(',')) excluded.add(name.trim().toLowerCase())
+  }
+  return excluded
+}
+
 function copyEndToEndHeaders(headers) {
+  const excluded = excludedHeaderNames(headers)
   const copied = {}
   for (const [name, value] of Object.entries(headers)) {
-    if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase()) && value !== undefined) copied[name] = value
+    if (!excluded.has(name.toLowerCase()) && value !== undefined) copied[name] = value
   }
   return copied
 }
 
+function withoutGatewaySessionCookie(value) {
+  if (typeof value !== 'string') return undefined
+  const remaining = value.split(';').filter((part) => {
+    const separator = part.indexOf('=')
+    return separator < 0 || part.slice(0, separator).trim() !== SESSION_COOKIE
+  })
+  return remaining.map(part => part.trim()).filter(Boolean).join('; ') || undefined
+}
+
 export function upstreamRequestHeaders(headers) {
+  const excluded = excludedHeaderNames(headers)
   const rewritten = copyEndToEndHeaders(headers)
   rewritten.host = INTERNAL_AUTHORITY
   rewritten['accept-encoding'] = 'identity'
-  if (typeof headers.origin === 'string') rewritten.origin = `http://${INTERNAL_AUTHORITY}`
+  if (!excluded.has('origin') && typeof headers.origin === 'string') {
+    rewritten.origin = `http://${INTERNAL_AUTHORITY}`
+  }
+  const cookie = excluded.has('cookie') ? undefined : withoutGatewaySessionCookie(headers.cookie)
+  if (cookie === undefined) delete rewritten.cookie
+  else rewritten.cookie = cookie
   return rewritten
 }
 
