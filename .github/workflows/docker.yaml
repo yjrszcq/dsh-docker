@@ -31,8 +31,8 @@ jobs:
       - name: Verify gateway and Compose configuration
         run: |
           npm test --prefix container/gateway
-          node test/compose-config.mjs
-          sh -n test/container-smoke.sh
+          node container/test/compose-config.mjs
+          sh -n container/test/container-smoke.sh
 
       - name: Resolve DeepSeek Harness version
         id: dsh-version
@@ -71,7 +71,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run container smoke checks
-        run: test/container-smoke.sh "dsh-gateway-smoke:${{ github.run_id }}"
+        run: container/test/container-smoke.sh "dsh-gateway-smoke:${{ github.run_id }}"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
