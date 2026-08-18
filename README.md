@@ -4,7 +4,7 @@ English | [中文](README_CN.md)
 
 An unofficial Docker image build repository for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway and one exact-match patch for the directory picker's initial path. No upstream privileged-API code is patched.
+The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway, one exact-match patch for the directory picker's initial path, and their integration checks. No upstream privileged-API code is patched.
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
@@ -19,6 +19,29 @@ tini
 The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
 
 ## Quick start
+
+Minimal `docker-compose.yaml`:
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+    group_add:
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
+    environment:
+      DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
+      DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
+    volumes:
+      - dsh-data:/home/node/.dsh
+      - ./workspace:/workspace
+
+volumes:
+  dsh-data:
+```
 
 ```bash
 mkdir -p workspace
@@ -146,10 +169,10 @@ Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
 npm test --prefix container/gateway
-node test/compose-config.mjs
+node container/test/compose-config.mjs
 ```
 
-With a Docker daemon available, `test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener.
+With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener.
 
 The runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support.
 

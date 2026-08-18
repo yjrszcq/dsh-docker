@@ -4,7 +4,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
 
-镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：一个轻量 gateway，以及一处用于目录选择器初始路径的精确匹配补丁。镜像不再修改上游特权 API 代码。
+镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：一个轻量 gateway、一处用于目录选择器初始路径的精确匹配补丁，以及对应的集成检查。镜像不再修改上游特权 API 代码。
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本镜像不隶属于 DeepSeek AI。
 
@@ -19,6 +19,29 @@ tini
 gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一密码，再将 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
 
 ## 快速开始
+
+精简版 `docker-compose.yaml`：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+    group_add:
+      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
+    environment:
+      DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
+      DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
+    volumes:
+      - dsh-data:/home/node/.dsh
+      - ./workspace:/workspace
+
+volumes:
+  dsh-data:
+```
 
 ```bash
 mkdir -p workspace
@@ -146,10 +169,10 @@ docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 
 ```bash
 npm test --prefix container/gateway
-node test/compose-config.mjs
+node container/test/compose-config.mjs
 ```
 
-有可用 Docker daemon 时，`test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。
+有可用 Docker daemon 时，`container/test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。
 
 运行时镜像基于 Node.js 24，并包含 `pnpm`、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。
 
