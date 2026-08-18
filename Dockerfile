@@ -50,7 +50,6 @@ ENV DSH_HOME=/home/node/.dsh \
 
 COPY --chown=node:node gateway/package.json gateway/index.mjs /opt/dsh-gateway/
 COPY --chown=node:node gateway/lib /opt/dsh-gateway/lib
-COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
@@ -63,5 +62,5 @@ EXPOSE 3080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
 
-ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+ENTRYPOINT ["tini", "--"]
 CMD ["node", "/opt/dsh-gateway/index.mjs"]
