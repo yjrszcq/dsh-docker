@@ -18,15 +18,19 @@ docker run --rm --entrypoint sh "$image" -c '
 
   for command in \
     bash curl dig file g++ git htop ip jq less lsof make nano nc openssl ping \
-    pip pip3 pkg-config ps python3 rg rsync ssh tmux tree unzip vim wget xz zip; do
+    pkg-config ps python3 rg rsync ssh tmux tree unzip uv uvx vim wget xz zip; do
     command -v "$command" >/dev/null
   done
 
-  [ "$(command -v python3)" = /opt/dsh-python/bin/python3 ]
-  [ "$(command -v pip)" = /opt/dsh-python/bin/pip ]
-  python3 -c "import sys; assert sys.prefix == '\''/opt/dsh-python'\''"
-  python3 -c "import os, site; assert any(os.access(path, os.W_OK) for path in site.getsitepackages())"
-  pip --version >/dev/null
+  [ "$(command -v python3)" = /usr/bin/python3 ]
+  ! command -v pip >/dev/null
+  ! command -v pip3 >/dev/null
+  [ ! -e /opt/dsh-python ]
+  uv --version | grep "^uv 0\.11\.32$" >/dev/null
+  uvx --version | grep "^uvx 0\.11\.32$" >/dev/null
+  grep '\''^python-downloads = "manual"$'\'' /etc/uv/uv.toml >/dev/null
+  uv run --isolated --no-python-downloads -- python -c \
+    "import sys; assert sys.prefix != sys.base_prefix"
 
   venv="$(mktemp -d)/venv"
   python3 -m venv "$venv"

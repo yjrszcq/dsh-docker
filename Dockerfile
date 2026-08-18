@@ -58,7 +58,8 @@ COPY --chown=node:node container/gateway/lib /opt/dsh-gateway/lib
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
 
-ARG INSTALL_DEVTOOLS
+ARG INSTALL_DEVTOOLS=false
+ARG UV_VERSION=0.11.32
 
 RUN case "$INSTALL_DEVTOOLS" in \
         true) apt-get update \
@@ -85,15 +86,18 @@ RUN case "$INSTALL_DEVTOOLS" in \
                 wget \
                 xz-utils \
                 zip \
-            && python3 -m venv /opt/dsh-python \
-            && chown -R node:node /opt/dsh-python \
+            && curl --fail --location --silent --show-error \
+                "https://astral.sh/uv/${UV_VERSION}/install.sh" \
+                --output /tmp/uv-installer.sh \
+            && UV_UNMANAGED_INSTALL=/usr/local/bin sh /tmp/uv-installer.sh \
+            && mkdir -p /etc/uv \
+            && printf '%s\n' 'python-downloads = "manual"' > /etc/uv/uv.toml \
+            && rm /tmp/uv-installer.sh \
             && rm -rf /var/lib/apt/lists/* \
             ;; \
-        "") ;; \
-        *) echo "INSTALL_DEVTOOLS must be true or unset" >&2; exit 64 ;; \
+        false) ;; \
+        *) echo "INSTALL_DEVTOOLS must be true or false" >&2; exit 64 ;; \
     esac
-
-ENV PATH="${INSTALL_DEVTOOLS:+/opt/dsh-python/bin:}${PATH}"
 
 USER node
 WORKDIR /workspace
