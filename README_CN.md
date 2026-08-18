@@ -8,17 +8,9 @@
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本镜像不隶属于 DeepSeek AI。
 
-## 工作方式
-
-```text
-tini
-  └─ gateway        0.0.0.0:3080
-       └─ dsh web   127.0.0.1:3079
-```
-
-gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一密码，再将 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
-
 ## 快速开始
+
+### Docker Compose
 
 精简版 `docker-compose.yaml`：
 
@@ -40,39 +32,6 @@ services:
       - ./workspace:/workspace
 ```
 
-```bash
-mkdir -p data workspace
-docker compose up -d
-```
-
-打开 <http://127.0.0.1:3080>。配置、凭据和会话保存在 `./data`；`./workspace` 挂载到 `/workspace`。
-
-容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
-
-```bash
-sudo chown -R 1000:1000 data workspace
-```
-
-需要自定义部署时，先复制示例配置：
-
-```bash
-cp .env.example .env
-docker compose up -d --force-recreate
-```
-
-### 远程访问
-
-通过局域网地址或反向代理域名访问时，需要放行浏览器实际使用的 authority：
-
-```dotenv
-DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
-DSH_PROXY_PASSWORD=请设置一个强密码
-```
-
-`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不请求浏览器认证。
-
-反向代理必须保留浏览器侧的 `Host` 请求头。TLS 证书和终止由镜像外部负责。
-
 ### Docker CLI
 
 ```bash
@@ -86,9 +45,45 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
+### 使用说明
+
+使用任一示例前，先创建 bind mount 目录：
+
+```bash
+mkdir -p data workspace
+```
+
+使用 `docker compose up -d` 启动 Compose 部署。需要自定义时，先复制示例配置：
+
+```bash
+cp .env.example .env
+docker compose up -d --force-recreate
+```
+
+打开 <http://127.0.0.1:3080>。配置、凭据和会话保存在 `./data`；`./workspace` 挂载到 `/workspace`。
+
+容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
+
+```bash
+sudo chown -R 1000:1000 data workspace
+```
+
 如需关闭免密码 sudo，请删除 `--group-add dsh-sudo-true`。
 
 > **注意：** 短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。需要限制网络访问时，请自行绑定指定宿主机地址或配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
+
+### 远程访问
+
+通过局域网地址或反向代理域名访问时，需要放行浏览器实际使用的 authority：
+
+```dotenv
+DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
+DSH_PROXY_PASSWORD=请设置一个强密码
+```
+
+`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不请求浏览器认证。
+
+反向代理必须保留浏览器侧的 `Host` 请求头。TLS 证书和终止由镜像外部负责。
 
 ## 配置
 
@@ -132,6 +127,16 @@ docker run -d \
 ### 浏览器 loopback 行为
 
 官方 DSH 还会根据页面公开 hostname 判定浏览器是否为 loopback，并在非 loopback 页面禁用 Host 持久化设置。由于本镜像 gateway 放行的浏览器拥有完整 DSH 权限，第二处精确匹配的编译产物补丁会将该浏览器连接标记为 loopback，使前端行为与 gateway 转发给上游的 loopback `Host`/`Origin` 保持一致。服务端特权方法实现不作修改。
+
+## Gateway 工作方式
+
+```text
+tini
+  └─ gateway        0.0.0.0:3080
+       └─ dsh web   127.0.0.1:3079
+```
+
+gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一密码，再将 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
 
 ## 密码访问
 

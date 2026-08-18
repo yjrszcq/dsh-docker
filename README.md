@@ -8,17 +8,9 @@ The image installs the official `@deepseek-ai/dsh` npm package at build time. Re
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
-## How it works
-
-```text
-tini
-  └─ gateway        0.0.0.0:3080
-       └─ dsh web   127.0.0.1:3079
-```
-
-The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
-
 ## Quick start
+
+### Docker Compose
 
 Minimal `docker-compose.yaml`:
 
@@ -40,39 +32,6 @@ services:
       - ./workspace:/workspace
 ```
 
-```bash
-mkdir -p data workspace
-docker compose up -d
-```
-
-Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in `./data`; `./workspace` is mounted at `/workspace`.
-
-The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
-
-```bash
-sudo chown -R 1000:1000 data workspace
-```
-
-Copy the example settings before customizing the deployment:
-
-```bash
-cp .env.example .env
-docker compose up -d --force-recreate
-```
-
-### Remote access
-
-For a LAN address or reverse-proxy domain, allow the authority used by the browser:
-
-```dotenv
-DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
-DSH_PROXY_PASSWORD=choose-a-strong-password
-```
-
-`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication.
-
-A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
-
 ### Docker CLI
 
 ```bash
@@ -86,9 +45,45 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
+### Usage notes
+
+Create the bind-mount directories before using either example:
+
+```bash
+mkdir -p data workspace
+```
+
+Start the Compose deployment with `docker compose up -d`. Copy the example settings before customizing it:
+
+```bash
+cp .env.example .env
+docker compose up -d --force-recreate
+```
+
+Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in `./data`; `./workspace` is mounted at `/workspace`.
+
+The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
+
+```bash
+sudo chown -R 1000:1000 data workspace
+```
+
 Omit `--group-add dsh-sudo-true` to run without passwordless sudo.
 
 > **Attention:** The short port syntax `3080:3080` normally publishes the port on every host interface. Bind a specific host address or apply an external firewall when network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
+
+### Remote access
+
+For a LAN address or reverse-proxy domain, allow the authority used by the browser:
+
+```dotenv
+DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
+DSH_PROXY_PASSWORD=choose-a-strong-password
+```
+
+`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication.
+
+A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
 
 ## Configuration
 
@@ -132,6 +127,16 @@ The image makes this behavior through an exact-match compiled-output patch. The 
 ### Browser loopback behavior
 
 Official DSH also classifies the browser from the public page hostname and disables Host-backed settings on non-loopback pages. Because every browser admitted by this image's gateway receives full DSH authority, a second exact-match compiled-output patch marks that browser connection as loopback. This keeps the browser UI consistent with the loopback `Host`/`Origin` values the gateway sends upstream. The server-side privileged-method implementation remains unchanged.
+
+## How the gateway works
+
+```text
+tini
+  └─ gateway        0.0.0.0:3080
+       └─ dsh web   127.0.0.1:3079
+```
+
+The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
 
 ## Password access
 
