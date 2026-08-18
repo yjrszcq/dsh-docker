@@ -33,6 +33,7 @@ RUN apt-get update \
         openssh-client \
         procps \
         python3 \
+        python3-venv \
         ripgrep \
         sudo \
         tini \
@@ -78,7 +79,6 @@ RUN case "$INSTALL_DEVTOOLS" in \
                 netcat-openbsd \
                 openssl \
                 pkg-config \
-                python3-venv \
                 rsync \
                 tmux \
                 tree \

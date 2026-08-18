@@ -208,6 +208,6 @@ node container/test/compose-config.mjs
 
 有可用 Docker daemon 时，`container/test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。`container/test/devtools-smoke.sh <image>` 用于检查开发工具版。
 
-标准运行时镜像基于 Node.js 24，并包含 `pnpm`、Python 3、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。开发工具版还包含 Bash 补全、`build-essential`、DNS 与网络诊断工具、压缩与文件工具、Vim 等交互式终端工具、Python `venv`、`pkg-config`，以及固定版本的 uv。
+标准运行时镜像基于 Node.js 24，并包含带 `venv` 的 Python 3、`pnpm`、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。开发工具版还包含 Bash 补全、`build-essential`、DNS 与网络诊断工具、压缩与文件工具、Vim 等交互式终端工具、`pkg-config`，以及固定版本的 uv。
 
 开发工具版使用 uv，不再预创建共享 Python 环境。一次性脚本可使用 `uv run --with requests script.py`，项目可使用 `uv sync` 和 `uv run`。镜像有意不提供裸 `pip`、`pip3` 命令，同时保留 `python3 -m venv` 以兼容传统用法。uv 不会自动下载 Python；如需其他版本，可显式执行 `uv python install <version>`。

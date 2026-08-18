@@ -208,6 +208,6 @@ node container/test/compose-config.mjs
 
 With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener. `container/test/devtools-smoke.sh <image>` verifies the devtools variant.
 
-The standard runtime image is based on Node.js 24 and includes `pnpm`, Python 3, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support. The devtools variant additionally includes Bash completion, `build-essential`, DNS and network diagnostics, archive and file utilities, Vim and other interactive terminal tools, Python `venv`, `pkg-config`, and a pinned uv installation.
+The standard runtime image is based on Node.js 24 and includes `pnpm`, Python 3 with `venv`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support. The devtools variant additionally includes Bash completion, `build-essential`, DNS and network diagnostics, archive and file utilities, Vim and other interactive terminal tools, `pkg-config`, and a pinned uv installation.
 
 The devtools image uses uv instead of a shared pre-created Python environment. For disposable scripts, use commands such as `uv run --with requests script.py`; projects can use `uv sync` and `uv run`. Bare `pip` and `pip3` commands are intentionally absent, while `python3 -m venv` remains available for compatibility. Automatic Python downloads are disabled, but an additional version can be installed explicitly with `uv python install <version>`.
