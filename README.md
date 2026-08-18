@@ -208,4 +208,6 @@ node container/test/compose-config.mjs
 
 With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener. `container/test/devtools-smoke.sh <image>` verifies the devtools variant.
 
-The standard runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support. The devtools variant additionally includes Bash completion, `build-essential`, DNS and network diagnostics, archive and file utilities, interactive terminal tools, Python 3 with `venv`, and `pkg-config`.
+The standard runtime image is based on Node.js 24 and includes `pnpm`, Python 3, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support. The devtools variant additionally includes Bash completion, `build-essential`, DNS and network diagnostics, archive and file utilities, Vim and other interactive terminal tools, Python `venv`, and `pkg-config`.
+
+The devtools image creates `/opt/dsh-python` at build time and places its executables first in `PATH`. Agents can therefore use `python3`, `pip`, and `pip3` directly without activating an environment. Runtime-installed packages remain isolated from Debian's system Python; projects that require independent dependency sets should still create their own virtual environments.

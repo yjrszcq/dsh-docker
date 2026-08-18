@@ -12,15 +12,21 @@ docker run --rm --entrypoint sh "$image" -c '
   for package in \
     bash-completion build-essential dnsutils file htop iproute2 iputils-ping less lsof \
     nano netcat-openbsd openssl pkg-config python3 python3-venv rsync tmux tree unzip \
-    wget xz-utils zip; do
+    vim wget xz-utils zip; do
     dpkg-query --show "$package" >/dev/null
   done
 
   for command in \
     bash curl dig file g++ git htop ip jq less lsof make nano nc openssl ping \
-    pkg-config ps python3 rg rsync ssh tmux tree unzip wget xz zip; do
+    pip pip3 pkg-config ps python3 rg rsync ssh tmux tree unzip vim wget xz zip; do
     command -v "$command" >/dev/null
   done
+
+  [ "$(command -v python3)" = /opt/dsh-python/bin/python3 ]
+  [ "$(command -v pip)" = /opt/dsh-python/bin/pip ]
+  python3 -c "import sys; assert sys.prefix == '\''/opt/dsh-python'\''"
+  python3 -c "import os, site; assert any(os.access(path, os.W_OK) for path in site.getsitepackages())"
+  pip --version >/dev/null
 
   venv="$(mktemp -d)/venv"
   python3 -m venv "$venv"

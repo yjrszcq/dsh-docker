@@ -35,6 +35,8 @@ until docker exec "$container" curl --fail --silent \
   sleep 1
 done
 
+docker exec "$container" sh -c 'command -v python3' >/dev/null
+
 status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
   --header 'Host: evil.example' http://127.0.0.1:3080/)"
 [ "$status" = 403 ]

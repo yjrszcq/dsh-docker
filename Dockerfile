@@ -19,6 +19,8 @@ FROM node:24-bookworm-slim AS runtime
 
 ARG INSTALL_DEVTOOLS=false
 
+ENV PATH="/opt/dsh-python/bin:${PATH}"
+
 LABEL org.opencontainers.image.title="DeepSeek Harness" \
       org.opencontainers.image.description="Unofficial container image for DeepSeek Harness" \
       org.opencontainers.image.source="https://github.com/yjrszcq/dsh-docker" \
@@ -33,6 +35,7 @@ RUN apt-get update \
         jq \
         openssh-client \
         procps \
+        python3 \
         ripgrep \
         sudo \
         tini \
@@ -51,15 +54,17 @@ RUN apt-get update \
             netcat-openbsd \
             openssl \
             pkg-config \
-            python3 \
             python3-venv \
             rsync \
             tmux \
             tree \
             unzip \
+            vim \
             wget \
             xz-utils \
             zip \
+            && python3 -m venv /opt/dsh-python \
+            && chown -R node:node /opt/dsh-python \
             ;; \
         false) ;; \
         *) echo "INSTALL_DEVTOOLS must be true or false" >&2; exit 64 ;; \
