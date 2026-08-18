@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
 
-COPY patch-directory-picker.mjs /tmp/patch-directory-picker.mjs
+COPY container/patch-directory-picker.mjs /tmp/patch-directory-picker.mjs
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -48,8 +48,8 @@ ENV DSH_HOME=/home/node/.dsh \
     DSH_PROXY_POLYFILL=true \
     DSH_TELEMETRY_DISABLED=true
 
-COPY --chown=node:node gateway/package.json gateway/index.mjs /opt/dsh-gateway/
-COPY --chown=node:node gateway/lib /opt/dsh-gateway/lib
+COPY --chown=node:node container/gateway/package.json container/gateway/index.mjs /opt/dsh-gateway/
+COPY --chown=node:node container/gateway/lib /opt/dsh-gateway/lib
 
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
