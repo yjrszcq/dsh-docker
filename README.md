@@ -4,7 +4,7 @@ English | [中文](README_CN.md)
 
 An unofficial Docker image build repository for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway, one exact-match patch for the directory picker's initial path, and their integration checks. No upstream privileged-API code is patched.
+The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway, exact-match patches for the directory picker's initial path and the browser's loopback classification, and their integration checks. No upstream server-side privileged-API code is patched.
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
@@ -125,7 +125,11 @@ Values must not contain a scheme, path, credentials, or subdomain wildcard. For 
 
 `DSH_DEFAULT_WORKSPACE` only changes the initial path shown when the web directory picker receives no explicit path. It is not a filesystem sandbox: users can select other paths that the container's `node` user can access. The gateway validates this variable before starting, and invalid values exit with status 64.
 
-The image makes this behavior through its only upstream compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the image build instead of silently applying the wrong edit.
+The image makes this behavior through an exact-match compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the image build instead of silently applying the wrong edit.
+
+### Browser loopback behavior
+
+Official DSH also classifies the browser from the public page hostname and disables Host-backed settings on non-loopback pages. Because every browser admitted by this image's gateway receives full DSH authority, a second exact-match compiled-output patch marks that browser connection as loopback. This keeps the browser UI consistent with the loopback `Host`/`Origin` values the gateway sends upstream. The server-side privileged-method implementation remains unchanged.
 
 ## Password access
 
@@ -179,6 +183,6 @@ The runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl
 ## Migration from the previous image behavior
 
 - Prefer `DSH_TRUSTED_HOSTS`; the old `DSH_TRUSTED_HOST` remains a temporary compatibility input.
-- Remote accepted requests now receive complete loopback DSH functionality through the gateway; the old privileged-API upstream patch and Cordis listener overlay are gone.
+- Remote accepted requests now receive complete loopback DSH functionality through the gateway and the browser connection patch; the old server-side privileged-API patch and Cordis listener overlay are gone.
 - `DSH_PROXY_PASSWORD` is optional and defaults to no password authentication.
 - The default host publication remains `127.0.0.1:3080`.

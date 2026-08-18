@@ -2,6 +2,7 @@ FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
 
 COPY container/patches/directory-picker.mjs /tmp/patch-directory-picker.mjs
+COPY container/patches/browser-loopback.mjs /tmp/patch-browser-loopback.mjs
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -10,7 +11,8 @@ RUN apt-get update \
         python3 \
     && npm install --global "@deepseek-ai/dsh@${DSH_VERSION}" \
     && node /tmp/patch-directory-picker.mjs \
-    && rm /tmp/patch-directory-picker.mjs \
+    && node /tmp/patch-browser-loopback.mjs \
+    && rm /tmp/patch-directory-picker.mjs /tmp/patch-browser-loopback.mjs \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim

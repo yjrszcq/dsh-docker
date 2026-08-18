@@ -51,6 +51,10 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 
+docker exec "$container" rg --fixed-strings --count-matches 'isLoopback: true,' \
+  /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js \
+  | rg '^1$' >/dev/null
+
 docker exec "$container" sh -c '
   gateway_pid="$(pgrep -f "^node /opt/dsh-gateway/index.mjs$")"
   ps --ppid "$gateway_pid" -o args= \

@@ -4,7 +4,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
 
-镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：一个轻量 gateway、一处用于目录选择器初始路径的精确匹配补丁，以及对应的集成检查。镜像不再修改上游特权 API 代码。
+镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：一个轻量 gateway、目录选择器初始路径和浏览器 loopback 判定的精确匹配补丁，以及对应的集成检查。镜像不修改上游服务端特权 API 代码。
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本镜像不隶属于 DeepSeek AI。
 
@@ -125,7 +125,11 @@ docker run -d \
 
 `DSH_DEFAULT_WORKSPACE` 只影响网页目录选择器未收到显式路径时显示的初始位置，它不是文件系统沙箱。用户仍可选择容器内 `node` 用户有权访问的其他路径。gateway 会在启动前验证该变量；值无效时以状态码 64 退出。
 
-这是镜像对上游编译产物保留的唯一补丁。补丁必须精确匹配一次，因此遇到不兼容的上游版本时，镜像构建会明确失败，而不会静默修改错误位置。
+这是镜像对上游编译产物保留的精确匹配补丁之一。补丁必须精确匹配一次，因此遇到不兼容的上游版本时，镜像构建会明确失败，而不会静默修改错误位置。
+
+### 浏览器 loopback 行为
+
+官方 DSH 还会根据页面公开 hostname 判定浏览器是否为 loopback，并在非 loopback 页面禁用 Host 持久化设置。由于本镜像 gateway 放行的浏览器拥有完整 DSH 权限，第二处精确匹配的编译产物补丁会将该浏览器连接标记为 loopback，使前端行为与 gateway 转发给上游的 loopback `Host`/`Origin` 保持一致。服务端特权方法实现不作修改。
 
 ## 密码访问
 
@@ -179,6 +183,6 @@ node container/test/compose-config.mjs
 ## 从旧版镜像行为迁移
 
 - 推荐改用 `DSH_TRUSTED_HOSTS`；旧的 `DSH_TRUSTED_HOST` 暂时作为兼容输入保留。
-- 被 gateway 接受的远程请求现在会获得完整 loopback DSH 功能；旧的特权 API 上游补丁和 Cordis 监听覆盖均已删除。
+- 被 gateway 接受的远程请求现在会通过 gateway 和浏览器连接补丁获得完整 loopback DSH 功能；旧的服务端特权 API 补丁和 Cordis 监听覆盖均已删除。
 - `DSH_PROXY_PASSWORD` 可选，默认不启用密码认证。
 - 宿主机端口仍默认绑定 `127.0.0.1:3080`。
