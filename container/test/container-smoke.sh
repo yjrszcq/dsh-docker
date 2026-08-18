@@ -58,9 +58,9 @@ docker exec "$container" rg --fixed-strings --count-matches 'isLoopback: true,' 
   | rg '^1$' >/dev/null
 
 docker exec "$container" sh -c '
-  gateway_pid="$(pgrep -f "^node /opt/dsh-gateway/index.mjs$")"
+  gateway_pid="$(pgrep -f "^/usr/local/bin/node /opt/dsh-gateway/index.mjs$")"
   ps --ppid "$gateway_pid" -o args= \
-    | rg --fixed-strings "dsh web --host 127.0.0.1 --port 3079" >/dev/null
+    | rg --fixed-strings "/usr/local/bin/dsh web --host 127.0.0.1 --port 3079" >/dev/null
 '
 
 docker exec "$container" curl --fail --silent --noproxy '*' \

@@ -17,10 +17,6 @@ RUN apt-get update \
 
 FROM node:24-bookworm-slim AS runtime
 
-ARG INSTALL_DEVTOOLS
-
-ENV PATH="${INSTALL_DEVTOOLS:+/opt/dsh-python/bin:}${PATH}"
-
 LABEL org.opencontainers.image.title="DeepSeek Harness" \
       org.opencontainers.image.description="Unofficial container image for DeepSeek Harness" \
       org.opencontainers.image.source="https://github.com/yjrszcq/dsh-docker" \
@@ -39,36 +35,6 @@ RUN apt-get update \
         ripgrep \
         sudo \
         tini \
-    && case "$INSTALL_DEVTOOLS" in \
-        true) apt-get install -y --no-install-recommends \
-            bash-completion \
-            build-essential \
-            dnsutils \
-            file \
-            htop \
-            iproute2 \
-            iputils-ping \
-            less \
-            lsof \
-            nano \
-            netcat-openbsd \
-            openssl \
-            pkg-config \
-            python3-venv \
-            rsync \
-            tmux \
-            tree \
-            unzip \
-            vim \
-            wget \
-            xz-utils \
-            zip \
-            && python3 -m venv /opt/dsh-python \
-            && chown -R node:node /opt/dsh-python \
-            ;; \
-        "") ;; \
-        *) echo "INSTALL_DEVTOOLS must be true or unset" >&2; exit 64 ;; \
-    esac \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
     && npm install --global "pnpm@11.7.0" \
@@ -92,13 +58,50 @@ COPY --chown=node:node container/gateway/lib /opt/dsh-gateway/lib
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
 
+ARG INSTALL_DEVTOOLS
+
+RUN case "$INSTALL_DEVTOOLS" in \
+        true) apt-get update \
+            && apt-get install -y --no-install-recommends \
+                bash-completion \
+                build-essential \
+                dnsutils \
+                file \
+                htop \
+                iproute2 \
+                iputils-ping \
+                less \
+                lsof \
+                nano \
+                netcat-openbsd \
+                openssl \
+                pkg-config \
+                python3-venv \
+                rsync \
+                tmux \
+                tree \
+                unzip \
+                vim \
+                wget \
+                xz-utils \
+                zip \
+            && python3 -m venv /opt/dsh-python \
+            && chown -R node:node /opt/dsh-python \
+            && rm -rf /var/lib/apt/lists/* \
+            ;; \
+        "") ;; \
+        *) echo "INSTALL_DEVTOOLS must be true or unset" >&2; exit 64 ;; \
+    esac
+
+ENV PATH="${INSTALL_DEVTOOLS:+/opt/dsh-python/bin:}${PATH}"
+
 USER node
 WORKDIR /workspace
 
 EXPOSE 3080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
+    CMD /usr/bin/curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
 
-ENTRYPOINT ["tini", "--"]
-CMD ["node", "/opt/dsh-gateway/index.mjs"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/node", "/opt/dsh-gateway/index.mjs"]

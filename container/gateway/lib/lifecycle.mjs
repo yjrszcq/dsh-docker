@@ -5,6 +5,7 @@ import { createGatewayServer, closeGatewayServer, INTERNAL_HOST, INTERNAL_PORT }
 
 export const EXTERNAL_HOST = '0.0.0.0'
 export const EXTERNAL_PORT = 3080
+const DSH_EXECUTABLE = '/usr/local/bin/dsh'
 
 export function createDshEnvironment(environment, config) {
   const childEnvironment = { ...environment, DSH_DEFAULT_WORKSPACE: config.workspace }
@@ -99,7 +100,7 @@ export async function runGateway(config, {
   externalHost = EXTERNAL_HOST,
   externalPort = EXTERNAL_PORT,
 } = {}) {
-  const child = spawnImpl('dsh', ['web', '--host', INTERNAL_HOST, '--port', String(INTERNAL_PORT)], {
+  const child = spawnImpl(DSH_EXECUTABLE, ['web', '--host', INTERNAL_HOST, '--port', String(INTERNAL_PORT)], {
     env: createDshEnvironment(environment, config),
     stdio: 'inherit',
   })

@@ -121,7 +121,7 @@ test('gateway owns DSH arguments, environment, and graceful signal shutdown', as
   await new Promise(resolve => setImmediate(resolve))
   signalSource.emit('SIGTERM')
   assert.equal(await running, 0)
-  assert.equal(invocation.command, 'dsh')
+  assert.equal(invocation.command, '/usr/local/bin/dsh')
   assert.deepEqual(invocation.arguments_, ['web', '--host', '127.0.0.1', '--port', '3079'])
   assert.equal(invocation.options.env.KEEP, 'yes')
   assert.equal(invocation.options.env.DSH_TELEMETRY_DISABLED, '1')
