@@ -78,6 +78,8 @@ Open <http://127.0.0.1:3080>.
 
 - `./workspace` is mounted at `/workspace`.
 
+### Important notes
+
 #### Permissions and port exposure
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
@@ -90,7 +92,7 @@ For the one-command deployment, omit `--group-add dsh-sudo-true` to disable pass
 
 > **Attention:** The short port syntax `3080:3080` normally publishes the port on every host interface. Bind a specific host address or apply an external firewall when network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 
-### Remote access
+#### Remote access
 
 For a LAN address or reverse-proxy domain, allow the authority used by the browser:
 

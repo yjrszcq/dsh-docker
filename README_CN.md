@@ -78,6 +78,8 @@ docker compose up -d --force-recreate
 
 - `./workspace` 挂载到 `/workspace`。
 
+### 注意事项
+
 #### 权限与端口暴露
 
 容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
@@ -90,7 +92,7 @@ sudo chown -R 1000:1000 data workspace
 
 > **注意：** 短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。需要限制网络访问时，请自行绑定指定宿主机地址或配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
 
-### 远程访问
+#### 远程访问
 
 通过局域网地址或反向代理域名访问时，需要放行浏览器实际使用的 authority：
 
