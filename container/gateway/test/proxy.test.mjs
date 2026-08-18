@@ -53,6 +53,7 @@ async function withServers(callback, { polyfill = true } = {}) {
         'content-type': 'text/html; charset=utf-8',
         'content-length': String(Buffer.byteLength(body)),
         etag: 'stale-after-injection',
+        'last-modified': 'Mon, 17 Aug 2026 00:00:00 GMT',
       })
       response.end(body)
       return
@@ -96,16 +97,18 @@ test('trusted HTTP requests reach upstream with loopback headers', async () => {
   })
 })
 
-test('upstream headers remove connection tokens and the gateway session Cookie', () => {
+test('upstream headers remove connection tokens and gateway authorization', () => {
   const headers = upstreamRequestHeaders({
+    authorization: 'Basic c2VjcmV0',
     connection: 'keep-alive, x-remove',
-    cookie: 'dsh_gateway_session=secret; dsh_preference=yes',
+    cookie: 'dsh_plugin_session=preserved',
     host: 'dsh.example',
     'x-remove': 'hop-by-hop',
   })
   assert.equal(headers.connection, undefined)
   assert.equal(headers['x-remove'], undefined)
-  assert.equal(headers.cookie, 'dsh_preference=yes')
+  assert.equal(headers.authorization, undefined)
+  assert.equal(headers.cookie, 'dsh_plugin_session=preserved')
 })
 
 test('untrusted requests are rejected without reaching upstream', async () => {
@@ -131,8 +134,9 @@ test('HTML responses receive a guarded polyfill and updated metadata', async () 
     assert.equal(response.status, 200)
     assert.match(response.body, /<head><script>/)
     assert.match(response.body, /getRandomValues/)
-    assert.equal(response.headers['cache-control'], 'no-store')
+    assert.equal(response.headers['cache-control'], 'no-cache')
     assert.equal(response.headers.etag, undefined)
+    assert.equal(response.headers['last-modified'], undefined)
     assert.equal(Number(response.headers['content-length']), Buffer.byteLength(response.body))
   })
 })

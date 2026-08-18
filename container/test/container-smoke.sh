@@ -40,15 +40,9 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
 
 status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/)"
-[ "$status" = 303 ]
+[ "$status" = 401 ]
 
-status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
-  --cookie-jar /tmp/dsh-smoke-cookie --data-urlencode 'password=smoke-password' \
-  --data-urlencode 'return=/' --header 'Host: smoke.example' \
-  http://127.0.0.1:3080/_dsh_gateway/login)"
-[ "$status" = 303 ]
-
-docker exec "$container" curl --fail --silent --cookie /tmp/dsh-smoke-cookie \
+docker exec "$container" curl --fail --silent --user ':smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 
 docker exec "$container" sh -c '

@@ -2,7 +2,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
-import { createPasswordAccess, SESSION_COOKIE } from './auth.mjs'
+import { BASIC_AUTH_CHALLENGE, createPasswordAccess } from './auth.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
 export const INTERNAL_PORT = 3079
@@ -40,15 +40,6 @@ function copyEndToEndHeaders(headers) {
   return copied
 }
 
-function withoutGatewaySessionCookie(value) {
-  if (typeof value !== 'string') return undefined
-  const remaining = value.split(';').filter((part) => {
-    const separator = part.indexOf('=')
-    return separator < 0 || part.slice(0, separator).trim() !== SESSION_COOKIE
-  })
-  return remaining.map(part => part.trim()).filter(Boolean).join('; ') || undefined
-}
-
 export function upstreamRequestHeaders(headers) {
   const excluded = excludedHeaderNames(headers)
   const rewritten = copyEndToEndHeaders(headers)
@@ -57,9 +48,7 @@ export function upstreamRequestHeaders(headers) {
   if (!excluded.has('origin') && typeof headers.origin === 'string') {
     rewritten.origin = `http://${INTERNAL_AUTHORITY}`
   }
-  const cookie = excluded.has('cookie') ? undefined : withoutGatewaySessionCookie(headers.cookie)
-  if (cookie === undefined) delete rewritten.cookie
-  else rewritten.cookie = cookie
+  delete rewritten.authorization
   return rewritten
 }
 
@@ -72,9 +61,11 @@ function rejectHttp(response, status, message) {
   response.end(`${message}\n`)
 }
 
-function rejectUpgrade(socket, status, reason) {
+function rejectUpgrade(socket, status, reason, headers = {}) {
   if (!socket.destroyed) {
-    socket.end(`HTTP/1.1 ${String(status)} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
+    const lines = [`HTTP/1.1 ${String(status)} ${reason}`, 'Connection: close', 'Content-Length: 0']
+    for (const [name, value] of Object.entries(headers)) lines.push(`${name}: ${value}`)
+    socket.end(`${lines.join('\r\n')}\r\n\r\n`)
   }
 }
 
@@ -102,7 +93,8 @@ async function writeInjectedHtml(upstream, response) {
   const body = Buffer.from(injectRandomUuidPolyfill(Buffer.concat(chunks).toString('utf8')))
   const headers = proxyResponseHeaders(upstream.headers)
   delete headers.etag
-  headers['cache-control'] = 'no-store'
+  delete headers['last-modified']
+  headers['cache-control'] = 'no-cache'
   headers['content-length'] = String(body.byteLength)
   response.writeHead(upstream.statusCode ?? 502, upstream.statusMessage, headers)
   response.end(body)
@@ -206,7 +198,7 @@ export function createGatewayServer({
         }
         return
       }
-      if (await options.passwordAccess.handleHttp(request, response, pathname)) return
+      if (options.passwordAccess.handleHttp(request, response)) return
       proxyHttp(request, response, options)
     } catch {
       rejectHttp(response, 400, 'bad request')
@@ -219,7 +211,7 @@ export function createGatewayServer({
       return
     }
     if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
-      rejectUpgrade(socket, 401, 'Unauthorized')
+      rejectUpgrade(socket, 401, 'Unauthorized', { 'WWW-Authenticate': BASIC_AUTH_CHALLENGE })
       return
     }
     upgradedSockets.add(socket)

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import test from 'node:test'
-import { LoginRateLimiter, LOGIN_PATH, LOGOUT_PATH, SESSION_COOKIE } from '../lib/auth.mjs'
+import { BASIC_AUTH_CHALLENGE, LoginRateLimiter } from '../lib/auth.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
 import { closeGatewayServer, createGatewayServer, HEALTH_PATH } from '../lib/proxy.mjs'
 
@@ -38,10 +38,16 @@ function request(port, { path = '/', method = 'GET', headers = {}, body = '' } =
   })
 }
 
+function authorization(username, password) {
+  return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
+}
+
 async function withGateway(password, callback) {
   let upstreamRequests = 0
-  const upstream = createServer((_incoming, response) => {
+  let upstreamHeaders
+  const upstream = createServer((incoming, response) => {
     upstreamRequests += 1
+    upstreamHeaders = incoming.headers
     response.end('upstream')
   })
   const upstreamPort = await listen(upstream)
@@ -52,7 +58,7 @@ async function withGateway(password, callback) {
   })
   const gatewayPort = await listen(gateway)
   try {
-    await callback({ gatewayPort, requests: () => upstreamRequests })
+    await callback({ gatewayPort, requests: () => upstreamRequests, headers: () => upstreamHeaders })
   } finally {
     await closeGatewayServer(gateway)
     await close(upstream)
@@ -68,79 +74,58 @@ test('empty password leaves gateway access transparent', async () => {
   })
 })
 
-test('password access distinguishes navigation and API requests', async () => {
+test('password access challenges every unauthenticated request with HTTP Basic', async () => {
   await withGateway('correct horse', async ({ gatewayPort, requests }) => {
-    const page = await request(gatewayPort, {
-      path: '/sessions',
-      headers: { accept: 'text/html', host: 'dsh.example' },
-    })
-    assert.equal(page.status, 303)
-    assert.equal(page.headers.location, `${LOGIN_PATH}?return=%2Fsessions`)
-
-    const api = await request(gatewayPort, {
-      path: '/api/sessions',
-      headers: { accept: 'application/json', host: 'dsh.example' },
-    })
-    assert.equal(api.status, 401)
+    for (const path of ['/sessions', '/api/sessions']) {
+      const response = await request(gatewayPort, { path, headers: { host: 'dsh.example' } })
+      assert.equal(response.status, 401)
+      assert.equal(response.headers['www-authenticate'], BASIC_AUTH_CHALLENGE)
+      assert.equal(response.headers['cache-control'], 'no-store')
+    }
     assert.equal(requests(), 0)
   })
 })
 
-test('login issues an in-memory strict cookie and authorizes requests', async () => {
-  await withGateway('correct horse', async ({ gatewayPort, requests }) => {
+test('HTTP Basic ignores the username, accepts the password, and hides credentials upstream', async () => {
+  await withGateway('密:码', async ({ gatewayPort, requests, headers }) => {
     const rejected = await request(gatewayPort, {
-      path: LOGIN_PATH,
-      method: 'POST',
-      headers: { host: 'dsh.example' },
-      body: 'password=wrong&return=%2Fsettings',
+      headers: { authorization: authorization('ignored', 'wrong'), host: 'dsh.example' },
     })
     assert.equal(rejected.status, 401)
-    assert.equal(rejected.headers['set-cookie'], undefined)
 
     const accepted = await request(gatewayPort, {
-      path: LOGIN_PATH,
-      method: 'POST',
-      headers: { host: 'dsh.example', 'x-forwarded-proto': 'https' },
-      body: 'password=correct+horse&return=%2Fsettings',
+      headers: { authorization: authorization('anything', '密:码'), host: 'dsh.example' },
     })
-    assert.equal(accepted.status, 303)
-    assert.equal(accepted.headers.location, '/settings')
-    const cookie = accepted.headers['set-cookie'][0]
-    assert.match(cookie, new RegExp(`^${SESSION_COOKIE}=[A-Za-z0-9_-]{43};`))
-    assert.match(cookie, /HttpOnly/)
-    assert.match(cookie, /SameSite=Strict/)
-    assert.match(cookie, /Secure/)
-    assert.doesNotMatch(cookie, /correct/)
-
-    const authorized = await request(gatewayPort, {
-      path: '/api/settings',
-      headers: { cookie: cookie.split(';', 1)[0], host: 'dsh.example' },
-    })
-    assert.equal(authorized.status, 200)
-    assert.equal(authorized.body, 'upstream')
+    assert.equal(accepted.status, 200)
+    assert.equal(accepted.body, 'upstream')
     assert.equal(requests(), 1)
-
-    const logout = await request(gatewayPort, {
-      path: LOGOUT_PATH,
-      method: 'POST',
-      headers: { cookie: cookie.split(';', 1)[0], host: 'dsh.example' },
-    })
-    assert.equal(logout.status, 303)
-    assert.match(logout.headers['set-cookie'][0], /Max-Age=0/)
+    assert.equal(headers().authorization, undefined)
   })
 })
 
-test('health remains available but untrusted login requests are rejected first', async () => {
+test('malformed HTTP Basic credentials are rejected', async () => {
+  await withGateway('secret', async ({ gatewayPort, requests }) => {
+    for (const value of ['Bearer secret', 'Basic !!!', `Basic ${Buffer.from('missing-colon').toString('base64')}`]) {
+      const response = await request(gatewayPort, {
+        headers: { authorization: value, host: 'dsh.example' },
+      })
+      assert.equal(response.status, 401)
+    }
+    assert.equal(requests(), 0)
+  })
+})
+
+test('health remains available but untrusted requests are rejected first', async () => {
   await withGateway('secret', async ({ gatewayPort, requests }) => {
     const health = await request(gatewayPort, { path: HEALTH_PATH, headers: { host: '127.0.0.1' } })
     assert.equal(health.status, 200)
-    const login = await request(gatewayPort, { path: LOGIN_PATH, headers: { host: 'evil.example' } })
-    assert.equal(login.status, 403)
+    const untrusted = await request(gatewayPort, { headers: { host: 'evil.example' } })
+    assert.equal(untrusted.status, 403)
     assert.equal(requests(), 0)
   })
 })
 
-test('password-protected WebSocket upgrades fail before reaching upstream', async () => {
+test('password-protected WebSocket upgrades return an HTTP Basic challenge', async () => {
   await withGateway('secret', async ({ gatewayPort, requests }) => {
     const client = netConnect(gatewayPort, '127.0.0.1')
     try {
@@ -154,6 +139,7 @@ test('password-protected WebSocket upgrades fail before reaching upstream', asyn
         client.once('error', reject)
       })
       assert.match(response, /^HTTP\/1\.1 401 Unauthorized/)
+      assert.match(response, new RegExp(`WWW-Authenticate: ${BASIC_AUTH_CHALLENGE}`))
       assert.equal(requests(), 0)
     } finally {
       client.destroy()

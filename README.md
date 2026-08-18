@@ -70,9 +70,9 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
 
-`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway displays no login page and performs no password authentication. This is independent of any DSH auth plugin.
+`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication. This is independent of any DSH auth plugin.
 
-A reverse proxy must preserve the browser-facing `Host` header and should forward `X-Forwarded-Proto`. TLS certificates and termination are managed outside this image.
+A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
 
 ### Docker CLI
 
@@ -128,9 +128,9 @@ The image makes this behavior through its only upstream compiled-output patch. T
 
 ## Password access
 
-When `DSH_PROXY_PASSWORD` is non-empty, the gateway provides a password-only login page—there is no username. Successful login creates a high-entropy session held only in gateway memory and an `HttpOnly`, `SameSite=Strict` cookie. Restarting the container invalidates sessions. Login attempts are rate-limited.
+When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authentication so the browser presents its native authentication dialog. Although that protocol includes a username field, the gateway ignores it and validates only the password. Failed attempts are rate-limited.
 
-The password is not trimmed, logged, persisted by the gateway, or placed in browser storage. Under HTTPS, a reverse proxy should set `X-Forwarded-Proto: https` so the gateway adds the Cookie's `Secure` attribute. TLS termination remains outside this image.
+The password is not trimmed, logged, or persisted by the gateway, and the `Authorization` header is removed before requests reach DSH. Browsers may retain Basic credentials for the browsing session and do not provide a reliable gateway logout operation. Use HTTPS for remote access because Basic credentials are encoded, not encrypted. TLS termination remains outside this image.
 
 You may leave `DSH_PROXY_PASSWORD` empty when using a DSH auth plugin or another access-control layer. The gateway does not install, configure, or detect third-party auth plugins.
 
@@ -149,6 +149,8 @@ ssh -L 3080:127.0.0.1:3080 user@server
 ## Browser compatibility
 
 By default, the gateway injects a feature-detected `crypto.randomUUID` polyfill into HTML responses. It runs only when `randomUUID` is absent and uses `crypto.getRandomValues`; there is no `Math.random` fallback. Set `DSH_PROXY_POLYFILL=false` if all clients provide the API or a DSH update no longer needs the shim.
+
+Injected HTML uses `Cache-Control: no-cache` and drops upstream validators that no longer describe the modified body. Browsers therefore revalidate the entry document instead of retaining a stale version; unmodified static assets keep their upstream caching behavior.
 
 ## Build and test
 

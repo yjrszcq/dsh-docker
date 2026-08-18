@@ -70,9 +70,9 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=请设置一个强密码
 ```
 
-`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不显示登录页，也不执行密码认证。这与是否安装 DSH auth 插件无关。
+`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不请求浏览器认证。这与是否安装 DSH auth 插件无关。
 
-反向代理必须保留浏览器侧的 `Host` 请求头，并建议转发 `X-Forwarded-Proto`。TLS 证书和终止由镜像外部负责。
+反向代理必须保留浏览器侧的 `Host` 请求头。TLS 证书和终止由镜像外部负责。
 
 ### Docker CLI
 
@@ -128,9 +128,9 @@ docker run -d \
 
 ## 密码访问
 
-`DSH_PROXY_PASSWORD` 非空时，gateway 提供只有密码、没有用户名的登录页。登录成功后，会话密钥只保存在 gateway 内存中，浏览器仅收到 `HttpOnly`、`SameSite=Strict` Cookie；重启容器会使全部会话失效。登录尝试受到频率限制。
+`DSH_PROXY_PASSWORD` 非空时，gateway 使用 HTTP Basic 认证，由浏览器显示原生认证对话框。该协议固定包含用户名字段，但 gateway 会忽略用户名，只验证密码。失败尝试受到频率限制。
 
-gateway 不会裁剪、记录或持久化密码，也不会将密码放入浏览器存储。使用 HTTPS 时，反向代理应设置 `X-Forwarded-Proto: https`，以便 gateway 为 Cookie 添加 `Secure` 属性。TLS 终止仍由镜像外部负责。
+gateway 不会裁剪、记录或持久化密码，并会在请求进入 DSH 前删除 `Authorization` 请求头。浏览器可能在当前浏览会话中保留 Basic 凭据，且没有可靠的 gateway 退出操作。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密。TLS 终止仍由镜像外部负责。
 
 使用 DSH auth 插件或其他访问控制层时，可以直接将 `DSH_PROXY_PASSWORD` 留空。gateway 不安装、配置或检测第三方 auth 插件。
 
@@ -149,6 +149,8 @@ ssh -L 3080:127.0.0.1:3080 user@server
 ## 浏览器兼容
 
 gateway 默认向 HTML 响应注入经过特性检测的 `crypto.randomUUID` polyfill。它只在 `randomUUID` 不存在时运行，并只使用 `crypto.getRandomValues`，不会降级到 `Math.random`。如果所有客户端都已提供该 API，或后续 DSH 不再需要此兼容，可设置 `DSH_PROXY_POLYFILL=false`。
+
+注入后的 HTML 使用 `Cache-Control: no-cache`，并删除已不能描述修改后响应体的上游缓存校验器。浏览器会重新验证入口文档，避免长期使用旧版本；未修改的静态资源继续沿用上游缓存策略。
 
 ## 构建与测试
 
