@@ -29,7 +29,7 @@ services:
     container_name: deepseek-harness
     restart: unless-stopped
     ports:
-      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+      - "3080:3080"
     group_add:
       - "dsh-sudo-${DSH_SUDO_ENABLED:-true}"
     environment:
@@ -62,10 +62,9 @@ docker compose up -d --force-recreate
 
 ### 远程访问
 
-通过局域网地址或反向代理域名访问时，需要发布到对应宿主机接口，并放行浏览器实际使用的 authority：
+通过局域网地址或反向代理域名访问时，需要放行浏览器实际使用的 authority：
 
 ```dotenv
-DSH_LISTEN_ADDRESS=0.0.0.0
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=请设置一个强密码
 ```
@@ -81,7 +80,7 @@ docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
-  -p 127.0.0.1:3080:3080 \
+  -p 3080:3080 \
   -v "$(pwd)/workspace:/workspace" \
   -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
@@ -89,7 +88,7 @@ docker run -d \
 
 如需关闭免密码 sudo，请删除 `--group-add dsh-sudo-true`。
 
-远程访问时需调整发布地址并增加 gateway 配置，例如 `-p 0.0.0.0:3080:3080 -e DSH_TRUSTED_HOSTS=192.168.1.100 -e DSH_PROXY_PASSWORD=...`。
+> **注意：** 短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。需要限制网络访问时，请自行绑定指定宿主机地址或配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
 
 ## 配置
 
@@ -146,7 +145,7 @@ gateway 不会裁剪、记录或持久化用户名和密码，并会在请求进
 
 能访问 gateway，就等同于拥有完整 DSH 权限。被放行的用户可能读取或替换模型凭据、执行命令，并读写容器 `node` 用户可访问的所有路径，而不只是 `/workspace`。Host allowlist 用于防御 DNS rebinding，不是用户身份认证。
 
-Compose 默认只发布到宿主机 loopback。暴露到 `0.0.0.0` 前，应配置强 gateway 密码、合适的 DSH auth 插件、带认证的反向代理、VPN 或其他可信访问边界。SSH 隧道可以保持默认 loopback 策略：
+快速开始示例使用 Docker 短端口语法，可能通过宿主机的所有网络接口访问。允许不可信网络访问前，应配置强 gateway 密码、合适的 DSH auth 插件、带认证的反向代理、VPN 或其他可信访问边界。显式绑定 loopback 后可配合 SSH 隧道使用：
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server

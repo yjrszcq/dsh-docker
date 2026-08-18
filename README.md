@@ -29,7 +29,7 @@ services:
     container_name: deepseek-harness
     restart: unless-stopped
     ports:
-      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
+      - "3080:3080"
     group_add:
       - "dsh-sudo-${DSH_SUDO_ENABLED:-true}"
     environment:
@@ -62,10 +62,9 @@ docker compose up -d --force-recreate
 
 ### Remote access
 
-For a LAN address or reverse-proxy domain, publish on the required host interface and allow the authority used by the browser:
+For a LAN address or reverse-proxy domain, allow the authority used by the browser:
 
 ```dotenv
-DSH_LISTEN_ADDRESS=0.0.0.0
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
@@ -81,7 +80,7 @@ docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
-  -p 127.0.0.1:3080:3080 \
+  -p 3080:3080 \
   -v "$(pwd)/workspace:/workspace" \
   -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
@@ -89,7 +88,7 @@ docker run -d \
 
 Omit `--group-add dsh-sudo-true` to run without passwordless sudo.
 
-For remote access, change the published address and add the gateway settings, for example `-p 0.0.0.0:3080:3080 -e DSH_TRUSTED_HOSTS=192.168.1.100 -e DSH_PROXY_PASSWORD=...`.
+> **Attention:** The short port syntax `3080:3080` normally publishes the port on every host interface. Bind a specific host address or apply an external firewall when network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 
 ## Configuration
 
@@ -146,7 +145,7 @@ You may leave `DSH_PROXY_PASSWORD` empty when using a DSH auth plugin or another
 
 Gateway access is full DSH access. An admitted user may be able to read or replace model credentials, execute commands, and read or write every path available to the container's `node` user—not only `/workspace`. The Host allowlist is anti-rebinding input validation, not user authentication.
 
-Compose publishes only to host loopback by default. Before exposing `0.0.0.0`, use a strong gateway password, a suitable DSH auth plugin, an authenticated reverse proxy, a VPN, or another trusted access boundary. An SSH tunnel keeps the default loopback policy:
+The quick-start examples use Docker's short port syntax and may be reachable through every host interface. Before allowing untrusted network access, use a strong gateway password, a suitable DSH auth plugin, an authenticated reverse proxy, a VPN, or another trusted access boundary. An SSH tunnel can be used with an explicitly loopback-bound deployment:
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
