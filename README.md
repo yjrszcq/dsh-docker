@@ -47,20 +47,38 @@ services:
 
 ### Usage notes
 
-Create the bind-mount directories before using either example:
+#### Prepare directories
+
+Create the bind-mount directories before using either deployment method:
 
 ```bash
 mkdir -p data workspace
 ```
 
-Start the Compose deployment with `docker compose up -d`. Copy the example settings before customizing it:
+#### Start with Compose
+
+Start the Compose deployment directly:
+
+```bash
+docker compose up -d
+```
+
+To customize it, copy the example environment file before recreating the container:
 
 ```bash
 cp .env.example .env
 docker compose up -d --force-recreate
 ```
 
-Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in `./data`; `./workspace` is mounted at `/workspace`.
+#### Access and storage
+
+Open <http://127.0.0.1:3080>.
+
+- `./data` stores DSH configuration, credentials, and sessions.
+
+- `./workspace` is mounted at `/workspace`.
+
+#### Permissions and port exposure
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
@@ -68,7 +86,7 @@ The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessi
 sudo chown -R 1000:1000 data workspace
 ```
 
-Omit `--group-add dsh-sudo-true` to run without passwordless sudo.
+For the one-command deployment, omit `--group-add dsh-sudo-true` to disable passwordless sudo. With Compose, set `DSH_SUDO_ENABLED=false`.
 
 > **Attention:** The short port syntax `3080:3080` normally publishes the port on every host interface. Bind a specific host address or apply an external firewall when network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 

@@ -47,20 +47,38 @@ services:
 
 ### 使用说明
 
-使用任一示例前，先创建 bind mount 目录：
+#### 准备目录
+
+使用任一部署方式前，先创建 bind mount 目录：
 
 ```bash
 mkdir -p data workspace
 ```
 
-使用 `docker compose up -d` 启动 Compose 部署。需要自定义时，先复制示例配置：
+#### 启动 Compose
+
+直接启动 Compose 部署：
+
+```bash
+docker compose up -d
+```
+
+需要自定义时，先复制示例环境文件，再重新创建容器：
 
 ```bash
 cp .env.example .env
 docker compose up -d --force-recreate
 ```
 
-打开 <http://127.0.0.1:3080>。配置、凭据和会话保存在 `./data`；`./workspace` 挂载到 `/workspace`。
+#### 访问与持久化
+
+打开 <http://127.0.0.1:3080>。
+
+- `./data` 保存 DSH 配置、凭据和会话。
+
+- `./workspace` 挂载到 `/workspace`。
+
+#### 权限与端口暴露
 
 容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
 
@@ -68,7 +86,7 @@ docker compose up -d --force-recreate
 sudo chown -R 1000:1000 data workspace
 ```
 
-如需关闭免密码 sudo，请删除 `--group-add dsh-sudo-true`。
+一键部署时，删除 `--group-add dsh-sudo-true` 即可关闭免密码 sudo；使用 Compose 时设置 `DSH_SUDO_ENABLED=false`。
 
 > **注意：** 短端口语法 `3080:3080` 通常会将端口发布到宿主机的所有网络接口。需要限制网络访问时，请自行绑定指定宿主机地址或配置外部防火墙。`DSH_TRUSTED_HOSTS` 只校验 HTTP authority，不能替代网络隔离或身份认证。
 
