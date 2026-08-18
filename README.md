@@ -4,192 +4,158 @@ English | [中文](README_CN.md)
 
 An unofficial Docker image build repository for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-This repository does not include or redistribute the DeepSeek Harness source code. During the image build, the specified version of the official `@deepseek-ai/dsh` package is installed from npm and a small set of container-specific patches is applied. This repository maintains only the container configuration, patches, and image publishing workflow.
+The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway and one exact-match patch for the directory picker's initial path. No upstream privileged-API code is patched.
 
-> DeepSeek Harness is currently in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI. The upstream project and software licenses are governed by the official repository.
+> DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
-## Quick Start
+## How it works
 
-### Docker Compose
-
-Minimal `docker-compose.yaml`:
-
-```yaml
-services:
-  deepseek-harness:
-    image: szcq/deepseek-harness:latest
-    container_name: deepseek-harness
-    restart: unless-stopped
-    ports:
-      - "${DSH_LISTEN_ADDRESS:-127.0.0.1}:3080:3080"
-    group_add:
-      - "dsh-sudo-${DSH_SUDO_ENABLED:-false}"
-    environment:
-      DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-}"
-    volumes:
-      - ./data:/home/node/.dsh
-      - ./workspace:/workspace
+```text
+tini
+  └─ gateway        0.0.0.0:3080
+       └─ dsh web   127.0.0.1:3079
 ```
 
-> **Remote access:** To access the service through a LAN IP address or domain, set `DSH_LISTEN_ADDRESS=0.0.0.0` and `DSH_TRUSTED_HOST=192.168.1.100` in `.env`. Replace the example IP address with the IP address or domain actually used by the browser, without a scheme or path. Then run `docker compose up -d --force-recreate`.
+The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
 
-1. Create the host data and workspace directories:
-
-   ```bash
-   mkdir -p data workspace
-   ```
-
-   The container runs as the `node` user with UID/GID `1000:1000`. If a directory was previously created by root or automatically by Docker, startup may fail with `EACCES: permission denied`. Correct the directory ownership and try again:
-
-   ```bash
-   sudo chown -R 1000:1000 data workspace
-   ```
-
-2. Start the service:
-
-   ```bash
-   docker compose up -d
-   ```
-
-3. Open <http://127.0.0.1:3080>, click **Choose workspace**, then add and select `/workspace`.
-
-   The initial path shown by the web directory picker is controlled by `DSH_DEFAULT_WORKSPACE` and defaults to `/workspace`.
-
-4. Configure a DeepSeek API key or another compatible model under **Settings → Models**.
-
-Stop the service:
+## Quick start
 
 ```bash
-docker compose down
+mkdir -p workspace
+docker compose up -d
 ```
 
-Harness configuration, credentials, and session data are stored in the `dsh-data` named volume. Workspace files are stored in the `workspace` directory under the current directory by default.
+Open <http://127.0.0.1:3080>. Configuration, credentials, and sessions are stored in the `dsh-data` volume; `./workspace` is mounted at `/workspace`.
+
+The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
+
+```bash
+sudo chown -R 1000:1000 workspace
+```
+
+Copy the example settings before customizing the deployment:
+
+```bash
+cp .env.example .env
+docker compose up -d --force-recreate
+```
+
+### Remote access
+
+For a LAN address or reverse-proxy domain, publish on the required host interface and allow the authority used by the browser:
+
+```dotenv
+DSH_LISTEN_ADDRESS=0.0.0.0
+DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
+DSH_PROXY_PASSWORD=choose-a-strong-password
+```
+
+`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway displays no login page and performs no password authentication. This is independent of any DSH auth plugin.
+
+A reverse proxy must preserve the browser-facing `Host` header and should forward `X-Forwarded-Proto`. TLS certificates and termination are managed outside this image.
 
 ### Docker CLI
 
 ```bash
-mkdir -p workspace data
-
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/workspace:/workspace" \
-  -v "$(pwd)/data:/home/node/.dsh" \
+  -v dsh-data:/home/node/.dsh \
   szcq/deepseek-harness:latest
 ```
 
-> **Remote access:** To access the service through a LAN IP address or domain, change the port mapping to `-p 0.0.0.0:3080:3080` and add `-e DSH_TRUSTED_HOST=192.168.1.100` to the `docker run` arguments. Replace the example IP address with the IP address or domain actually used by the browser, without a scheme or path.
+For remote access, change the published address and add the gateway settings, for example `-p 0.0.0.0:3080:3080 -e DSH_TRUSTED_HOSTS=192.168.1.100 -e DSH_PROXY_PASSWORD=...`.
 
-> **Optional root access:** Add `--group-add dsh-sudo-true` to the `docker run` arguments to allow the Agent to run commands through passwordless `sudo`. Omit it to keep root access disabled.
+## Configuration
 
-If a bind mount reports a permission error, ensure that the host directory is readable and writable by the container's `node` user (UID/GID 1000). Alternatively, use a named volume for `$DSH_HOME`, as shown in the Compose example.
-
-## Compose Configuration
-
-Copy the example configuration and edit it as needed:
-
-```bash
-cp .env.example .env
-```
-
-You can also override the defaults with shell environment variables.
-
-### Compose File Variables
-
-The following variables are used only for interpolation in the Compose file and are not passed into the container:
+### Compose-only variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DSH_IMAGE_TAG` | `latest` | Image tag |
-| `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host listen address |
-| `DSH_PORT` | `3080` | Host port |
+| `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
+| `DSH_PORT` | `3080` | Published host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
-| `DSH_SUDO_ENABLED` | `false` | Whether to grant the Agent unrestricted root access through passwordless `sudo`; accepts only `true` or `false` |
+| `DSH_SUDO_ENABLED` | `false` | Add unrestricted passwordless `sudo` inside the container; `true` or `false` |
 
-### Container Environment Variables
-
-The following variables are passed into the container through the Compose `environment` section. `DSH_HOME` is fixed by the Compose file; the remaining variables can be read from `.env` or the shell environment:
+### Container variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_HOME` | `/home/node/.dsh` | Harness configuration and data directory inside the container |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial container directory shown by the web directory picker; the directory must exist |
-| `DSH_TELEMETRY_DISABLED` | `true` | Whether to disable telemetry; accepts only `true` or `false` |
-| `DSH_TRUSTED_HOST` | Empty | IP address or domain actually used by the browser, required to pass `/api` trust checks |
+| `DSH_HOME` | `/home/node/.dsh` | DSH configuration and data directory |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an existing, accessible absolute directory |
+| `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
+| `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
+| `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
+| `DSH_PROXY_POLYFILL` | `true` | Inject a guarded `crypto.randomUUID` compatibility shim; `true` or `false` |
 
-Example:
+`DSH_TRUSTED_HOSTS` has these semantics:
 
-```dotenv
-# Compose file variables
-DSH_IMAGE_TAG=0.1.0-rc.6
-DSH_PORT=8080
-DSH_WORKSPACE=/path/to/project
-DSH_SUDO_ENABLED=false
+- Empty: accept loopback Hosts only.
+- One value: accept loopback plus that host; without a port it matches any port.
+- Comma-separated values: accept every listed authority.
+- `*`: accept any Host. This disables the Host allowlist, but Origin/Fetch Metadata and optional password checks remain.
 
-# Container environment variables
-DSH_DEFAULT_WORKSPACE=/workspace
-DSH_TRUSTED_HOST=192.168.1.100
-```
+Values must not contain a scheme, path, credentials, or subdomain wildcard. For example, `dsh.example.com`, `dsh.example.com:8443`, `192.168.1.100`, and `[fd00::1]:3080` are valid. The legacy single-value `DSH_TRUSTED_HOST` remains supported; do not set both variables at once.
 
-Restart the service after making changes:
+### Workspace behavior
 
-```bash
-docker compose up -d
-```
+`DSH_DEFAULT_WORKSPACE` only changes the initial path shown when the web directory picker receives no explicit path. It is not a filesystem sandbox: users can select other paths that the container's `node` user can access. The gateway validates this variable before starting, and invalid values exit with status 64.
 
-## Security
+The image makes this behavior through its only upstream compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the image build instead of silently applying the wrong edit.
 
-DeepSeek Harness is a coding agent that can read and write files and execute commands in the mounted workspace. Do not expose the current Web UI directly to an untrusted network.
+## Password access
 
-By default, Compose listens only on the host's `127.0.0.1`. For access from another device, prefer an authenticated reverse proxy, VPN, or SSH tunnel. Set `DSH_LISTEN_ADDRESS` to `0.0.0.0` only when you understand the risks.
+When `DSH_PROXY_PASSWORD` is non-empty, the gateway provides a password-only login page—there is no username. Successful login creates a high-entropy session held only in gateway memory and an `HttpOnly`, `SameSite=Strict` cookie. Restarting the container invalidates sessions. Login attempts are rate-limited.
 
-When accessing the service through a LAN IP address or custom domain, you must also use `DSH_TRUSTED_HOST` to declare the IP address or domain actually used by the browser. Otherwise, `/api` requests will return HTTP 403. For example, configure LAN access in `.env` as follows:
+The password is not trimmed, logged, persisted by the gateway, or placed in browser storage. Under HTTPS, a reverse proxy should set `X-Forwarded-Proto: https` so the gateway adds the Cookie's `Secure` attribute. TLS termination remains outside this image.
 
-```dotenv
-DSH_LISTEN_ADDRESS=0.0.0.0
-DSH_TRUSTED_HOST=192.168.1.100
-```
+You may leave `DSH_PROXY_PASSWORD` empty when using a DSH auth plugin or another access-control layer. The gateway does not install, configure, or detect third-party auth plugins.
 
-When using a reverse proxy, you can set `DSH_TRUSTED_HOST=dsh.example.com`. Do not include `http://`, `https://`, or a path. A port is usually unnecessary because a value without a port can match that address on any port. After changing the configuration, run `docker compose up -d --force-recreate`.
+## Security model
 
-During the image build, this image patches the upstream privileged API trust check so that `DSH_TRUSTED_HOST` also applies to sensitive endpoints for settings, credentials, and host operations. This resolves HTTP 403 responses from endpoints such as `settings.describe` when accessing the service through a trusted LAN IP address or domain. The patch does not add authentication: anyone who can access the Web UI using a trusted Host may be able to modify credentials, execute commands, and read or write the workspace. Use this feature only on a trusted network or behind an authenticated reverse proxy.
+Gateway access is full DSH access. An admitted user may be able to read or replace model credentials, execute commands, and read or write every path available to the container's `node` user—not only `/workspace`. The Host allowlist is anti-rebinding input validation, not user authentication.
 
-If you do not want to relax access to these endpoints, leave `DSH_TRUSTED_HOST` unset and connect through an SSH tunnel using a local loopback address:
+Compose publishes only to host loopback by default. Before exposing `0.0.0.0`, use a strong gateway password, a suitable DSH auth plugin, an authenticated reverse proxy, a VPN, or another trusted access boundary. An SSH tunnel keeps the default loopback policy:
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-Then open <http://127.0.0.1:3080>.
+`DSH_SUDO_ENABLED=true` additionally gives the agent unrestricted root access inside the container. Do not combine it with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
 
-Setting `DSH_SUDO_ENABLED=true` grants the Agent unrestricted root access inside the container through passwordless `sudo`. The setting takes effect only when the container is created, so run `docker compose up -d --force-recreate` after changing it. Do not combine this option with Docker Socket access, privileged mode, or sensitive host mounts.
+## Browser compatibility
 
-The container sets `DSH_TELEMETRY_DISABLED=true` by default. Set it to `false` to enable upstream telemetry. Before enabling telemetry, review whether the collected data may contain session or workspace information. The entrypoint converts this Boolean setting to the environment-variable semantics expected by the upstream package.
+By default, the gateway injects a feature-detected `crypto.randomUUID` polyfill into HTML responses. It runs only when `randomUUID` is absent and uses `crypto.getRandomValues`; there is no `Math.random` fallback. Set `DSH_PROXY_POLYFILL=false` if all clients provide the API or a DSH update no longer needs the shim.
 
-## Build the Image Locally
-
-Build the latest npm version:
+## Build and test
 
 ```bash
 docker build -t deepseek-harness:local .
 ```
 
-Build a specific version:
+Build a specific official package version:
 
 ```bash
-docker build \
-  --build-arg DSH_VERSION=0.1.0-rc.6 \
-  -t deepseek-harness:0.1.0-rc.6 .
+docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 ```
 
-Run the local image:
+Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
-docker run --rm \
-  -p 127.0.0.1:3080:3080 \
-  -v "$(pwd)/workspace:/workspace" \
-  deepseek-harness:local
+npm test --prefix container/gateway
+node test/compose-config.mjs
 ```
 
-The image is based on Node.js 24 and includes `pnpm`, Git, the OpenSSH client, curl, jq, and ripgrep so Harness can work in the workspace and install plugins.
+With a Docker daemon available, `test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener.
+
+The runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support.
+
+## Migration from the previous image behavior
+
+- Prefer `DSH_TRUSTED_HOSTS`; the old `DSH_TRUSTED_HOST` remains a temporary compatibility input.
+- Remote accepted requests now receive complete loopback DSH functionality through the gateway; the old privileged-API upstream patch and Cordis listener overlay are gone.
+- `DSH_PROXY_PASSWORD` is optional and defaults to no password authentication.
+- The default host publication remains `127.0.0.1:3080`.
