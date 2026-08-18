@@ -1,6 +1,9 @@
 .git
 .github
+.checkpoint-karpathy
 .env
+temp
+test
 workspace
 README.md
 README_CN.md

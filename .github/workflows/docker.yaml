@@ -23,6 +23,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify gateway and Compose configuration
+        run: |
+          npm test --prefix container/gateway
+          node test/compose-config.mjs
+          sh -n test/container-smoke.sh
+
       - name: Resolve DeepSeek Harness version
         id: dsh-version
         env:
@@ -44,6 +55,23 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Build smoke-test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+          tags: dsh-gateway-smoke:${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run container smoke checks
+        run: test/container-smoke.sh "dsh-gateway-smoke:${{ github.run_id }}"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4

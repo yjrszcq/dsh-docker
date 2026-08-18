@@ -68,7 +68,8 @@ cleanup
 trap - EXIT INT TERM
 
 set +e
-docker run --rm --env DSH_DEFAULT_WORKSPACE=/missing-dsh-workspace "$image" >/dev/null 2>&1
+timeout 15s docker run --rm --env DSH_DEFAULT_WORKSPACE=/missing-dsh-workspace \
+  "$image" >/dev/null 2>&1
 status=$?
 set -e
 [ "$status" -eq 64 ]
