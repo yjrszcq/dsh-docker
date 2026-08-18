@@ -90,17 +90,6 @@ sudo chown -R 1000:1000 data workspace
 
 For the one-command deployment, omit `--group-add dsh-sudo-true` to disable passwordless sudo. With Compose, set `DSH_SUDO_ENABLED=false`.
 
-#### Port exposure
-
-The short port syntax `3080:3080` normally publishes the port on every host interface. To accept connections only from the Docker host, use `127.0.0.1:3080:3080` in Compose:
-
-```yaml
-ports:
-  - "127.0.0.1:3080:3080"
-```
-
-The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an external firewall when additional network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
-
 #### Remote access
 
 For a LAN address or reverse-proxy domain, allow the authority used by the browser:
@@ -113,6 +102,17 @@ DSH_PROXY_PASSWORD=choose-a-strong-password
 `DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication.
 
 A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
+
+#### Port exposure
+
+The short port syntax `3080:3080` normally publishes the port on every host interface. To accept connections only from the Docker host, use `127.0.0.1:3080:3080` in Compose:
+
+```yaml
+ports:
+  - "127.0.0.1:3080:3080"
+```
+
+The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an external firewall when additional network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 
 ## Configuration
 
