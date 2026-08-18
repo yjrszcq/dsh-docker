@@ -33,6 +33,7 @@ jobs:
           npm test --prefix container/gateway
           node container/test/compose-config.mjs
           sh -n container/test/container-smoke.sh
+          sh -n container/test/devtools-smoke.sh
 
       - name: Resolve DeepSeek Harness version
         id: dsh-version
@@ -73,6 +74,24 @@ jobs:
       - name: Run container smoke checks
         run: container/test/container-smoke.sh "dsh-gateway-smoke:${{ github.run_id }}"
 
+      - name: Build devtools smoke-test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+            INSTALL_DEVTOOLS=true
+          tags: dsh-gateway-devtools-smoke:${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run devtools smoke checks
+        run: container/test/devtools-smoke.sh "dsh-gateway-devtools-smoke:${{ github.run_id }}"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -92,5 +111,22 @@ jobs:
           tags: |
             ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}
             ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push ${{ env.IMAGE_NAME }} devtools ${{ steps.dsh-version.outputs.version }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+            INSTALL_DEVTOOLS=true
+          tags: |
+            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}-devtools
+            ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest-devtools
           cache-from: type=gha
           cache-to: type=gha,mode=max

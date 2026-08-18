@@ -8,6 +8,13 @@ The image installs the official `@deepseek-ai/dsh` npm package at build time. Re
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
+Two image variants are published from the same DSH version and container adaptations:
+
+| Variant | Rolling tag | Versioned tag | Contents |
+| --- | --- | --- | --- |
+| Standard | `latest` | `<version>` | DSH and the runtime utilities required for normal use |
+| Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus a general-purpose development toolset |
+
 ## Quick start
 
 ### One-command deployment
@@ -186,6 +193,12 @@ Build a specific official package version:
 docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 ```
 
+Build the devtools variant:
+
+```bash
+docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
+```
+
 Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
@@ -193,6 +206,6 @@ npm test --prefix container/gateway
 node container/test/compose-config.mjs
 ```
 
-With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener.
+With a Docker daemon available, `container/test/container-smoke.sh [image]` builds or tests an image and verifies the managed process, trust/password flow, and loopback-only DSH listener. `container/test/devtools-smoke.sh <image>` verifies the devtools variant.
 
-The runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support.
+The standard runtime image is based on Node.js 24 and includes `pnpm`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo support. The devtools variant additionally includes Bash completion, `build-essential`, DNS and network diagnostics, archive and file utilities, interactive terminal tools, Python 3 with `venv`, and `pkg-config`.

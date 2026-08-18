@@ -8,6 +8,13 @@
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本镜像不隶属于 DeepSeek AI。
 
+同一 DSH 版本和容器适配会发布两种镜像：
+
+| 变体 | 滚动标签 | 固定版本标签 | 内容 |
+| --- | --- | --- | --- |
+| 标准版 | `latest` | `<version>` | DSH 和正常使用所需的运行工具 |
+| 开发工具版 | `latest-devtools` | `<version>-devtools` | 标准版加通用开发工具集 |
+
 ## 快速开始
 
 ### 一键部署
@@ -186,6 +193,12 @@ docker build -t deepseek-harness:local .
 docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 ```
 
+构建开发工具版：
+
+```bash
+docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
+```
+
 使用 Node.js 24 和 Docker Compose 运行本地检查：
 
 ```bash
@@ -193,6 +206,6 @@ npm test --prefix container/gateway
 node container/test/compose-config.mjs
 ```
 
-有可用 Docker daemon 时，`container/test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。
+有可用 Docker daemon 时，`container/test/container-smoke.sh [image]` 会构建或测试镜像，并检查受管理进程、Host/密码流程以及 DSH 仅监听 loopback。`container/test/devtools-smoke.sh <image>` 用于检查开发工具版。
 
-运行时镜像基于 Node.js 24，并包含 `pnpm`、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。
+标准运行时镜像基于 Node.js 24，并包含 `pnpm`、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo 支持。开发工具版还包含 Bash 补全、`build-essential`、DNS 与网络诊断工具、压缩与文件工具、交互式终端工具、带 `venv` 的 Python 3，以及 `pkg-config`。

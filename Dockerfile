@@ -15,7 +15,9 @@ RUN apt-get update \
     && rm /tmp/patch-directory-picker.mjs /tmp/patch-browser-loopback.mjs \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
-FROM node:24-bookworm-slim
+FROM node:24-bookworm-slim AS runtime
+
+ARG INSTALL_DEVTOOLS=false
 
 LABEL org.opencontainers.image.title="DeepSeek Harness" \
       org.opencontainers.image.description="Unofficial container image for DeepSeek Harness" \
@@ -34,6 +36,34 @@ RUN apt-get update \
         ripgrep \
         sudo \
         tini \
+    && case "$INSTALL_DEVTOOLS" in \
+        true) apt-get install -y --no-install-recommends \
+            bash-completion \
+            build-essential \
+            dnsutils \
+            file \
+            htop \
+            iproute2 \
+            iputils-ping \
+            less \
+            lsof \
+            nano \
+            netcat-openbsd \
+            openssl \
+            pkg-config \
+            python3 \
+            python3-venv \
+            rsync \
+            tmux \
+            tree \
+            unzip \
+            wget \
+            xz-utils \
+            zip \
+            ;; \
+        false) ;; \
+        *) echo "INSTALL_DEVTOOLS must be true or false" >&2; exit 64 ;; \
+    esac \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
     && npm install --global "pnpm@11.7.0" \
