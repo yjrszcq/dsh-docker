@@ -63,7 +63,7 @@ Open <http://127.0.0.1:3080>. DSH data is stored in `./data`; `./workspace` is m
 
 ### Important notes
 
-#### Permissions
+#### Permission notes
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
