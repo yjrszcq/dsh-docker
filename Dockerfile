@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
 
-COPY container/patch-directory-picker.mjs /tmp/patch-directory-picker.mjs
+COPY container/patches/directory-picker.mjs /tmp/patch-directory-picker.mjs
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
