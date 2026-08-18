@@ -69,7 +69,7 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=请设置一个强密码
 ```
 
-`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不请求浏览器认证。这与是否安装 DSH auth 插件无关。
+`DSH_PROXY_PASSWORD` 始终允许留空；留空表示 gateway 不请求浏览器认证。
 
 反向代理必须保留浏览器侧的 `Host` 请求头。TLS 证书和终止由镜像外部负责。
 
@@ -139,13 +139,11 @@ docker run -d \
 
 gateway 不会裁剪、记录或持久化用户名和密码，并会在请求进入 DSH 前删除 `Authorization` 请求头。HTTP Basic 使用 `:` 分隔字段，因此启用认证时用户名不能包含 `:`。浏览器可能在当前浏览会话中保留 Basic 凭据，且没有可靠的 gateway 退出操作。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密。TLS 终止仍由镜像外部负责。
 
-使用 DSH auth 插件或其他访问控制层时，可以直接将 `DSH_PROXY_PASSWORD` 留空。gateway 不安装、配置或检测第三方 auth 插件。
-
 ## 安全模型
 
 能访问 gateway，就等同于拥有完整 DSH 权限。被放行的用户可能读取或替换模型凭据、执行命令，并读写容器 `node` 用户可访问的所有路径，而不只是 `/workspace`。Host allowlist 用于防御 DNS rebinding，不是用户身份认证。
 
-快速开始示例使用 Docker 短端口语法，可能通过宿主机的所有网络接口访问。允许不可信网络访问前，应配置强 gateway 密码、合适的 DSH auth 插件、带认证的反向代理、VPN 或其他可信访问边界。显式绑定 loopback 后可配合 SSH 隧道使用：
+快速开始示例使用 Docker 短端口语法，可能通过宿主机的所有网络接口访问。允许不可信网络访问前，应配置强 gateway 密码、带认证的反向代理、VPN 或其他可信访问边界。显式绑定 loopback 后可配合 SSH 隧道使用：
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server

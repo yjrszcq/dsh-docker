@@ -69,7 +69,7 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
 
-`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication. This is independent of any DSH auth plugin.
+`DSH_PROXY_PASSWORD` may always be empty; empty means the gateway does not request browser authentication.
 
 A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
 
@@ -139,13 +139,11 @@ When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authenticati
 
 The username and password are not trimmed, logged, or persisted by the gateway, and the `Authorization` header is removed before requests reach DSH. An active username cannot contain `:` because HTTP Basic uses it as the field separator. Browsers may retain Basic credentials for the browsing session and do not provide a reliable gateway logout operation. Use HTTPS for remote access because Basic credentials are encoded, not encrypted. TLS termination remains outside this image.
 
-You may leave `DSH_PROXY_PASSWORD` empty when using a DSH auth plugin or another access-control layer. The gateway does not install, configure, or detect third-party auth plugins.
-
 ## Security model
 
 Gateway access is full DSH access. An admitted user may be able to read or replace model credentials, execute commands, and read or write every path available to the container's `node` user—not only `/workspace`. The Host allowlist is anti-rebinding input validation, not user authentication.
 
-The quick-start examples use Docker's short port syntax and may be reachable through every host interface. Before allowing untrusted network access, use a strong gateway password, a suitable DSH auth plugin, an authenticated reverse proxy, a VPN, or another trusted access boundary. An SSH tunnel can be used with an explicitly loopback-bound deployment:
+The quick-start examples use Docker's short port syntax and may be reachable through every host interface. Before allowing untrusted network access, use a strong gateway password, an authenticated reverse proxy, a VPN, or another trusted access boundary. An SSH tunnel can be used with an explicitly loopback-bound deployment:
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
