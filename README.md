@@ -1,4 +1,4 @@
-# DSH-Docker
+# **DSH-Docker**
 
 English | [中文](README_CN.md)
 
@@ -15,9 +15,9 @@ Two image variants are published from the same DSH version and container adaptat
 | Standard | `latest` | `<version>` | DSH and the runtime utilities required for normal use |
 | Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus a general-purpose development toolset |
 
-## Quick start
+## **Quick start**
 
-### One-command deployment
+### **One-command deployment**
 
 ```bash
 docker run -d \
@@ -30,7 +30,7 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-### Docker Compose
+### **Docker Compose**
 
 Minimal `docker-compose.yaml`:
 
@@ -52,7 +52,7 @@ services:
       - ./workspace:/workspace
 ```
 
-### Usage notes
+### **Usage notes**
 
 Create the bind-mount directories before using either deployment method:
 
@@ -68,9 +68,9 @@ cp .env.example .env
 
 Open <http://127.0.0.1:3080>. DSH data is stored in `./data`; `./workspace` is mounted at `/workspace`.
 
-### Important notes
+### **Important notes**
 
-#### Permission notes
+#### **Permission notes**
 
 The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
@@ -80,7 +80,7 @@ sudo chown -R 1000:1000 data workspace
 
 For the one-command deployment, omit `--group-add dsh-sudo-true` to disable passwordless sudo. With Compose, set `DSH_SUDO_ENABLED=false`.
 
-#### Remote access
+#### **Remote access**
 
 For a LAN address or reverse-proxy domain, allow the authority used by the browser:
 
@@ -93,7 +93,7 @@ DSH_PROXY_PASSWORD=choose-a-strong-password
 
 A reverse proxy must preserve the browser-facing `Host` header. TLS certificates and termination are managed outside this image.
 
-#### Port exposure
+#### **Port exposure**
 
 The short port syntax `3080:3080` normally publishes the port on every host interface. To accept connections only from the Docker host, use `127.0.0.1:3080:3080` in Compose:
 
@@ -104,9 +104,9 @@ ports:
 
 The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an external firewall when additional network-level restriction is required. `DSH_TRUSTED_HOSTS` validates HTTP authorities; it is not a substitute for network isolation or authentication.
 
-## Configuration
+## **Configuration**
 
-### Compose-only variables
+### **Compose-only variables**
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an externa
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
 | `DSH_SUDO_ENABLED` | `true` | Add unrestricted passwordless `sudo` inside the container; `true` or `false` |
 
-### Container variables
+### **Container variables**
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -137,17 +137,17 @@ The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an externa
 
 Values must not contain a scheme, path, credentials, or subdomain wildcard. For example, `dsh.example.com`, `dsh.example.com:8443`, `192.168.1.100`, and `[fd00::1]:3080` are valid. The legacy single-value `DSH_TRUSTED_HOST` remains supported; do not set both variables at once.
 
-### Workspace behavior
+### **Workspace behavior**
 
 `DSH_DEFAULT_WORKSPACE` only changes the initial path shown when the web directory picker receives no explicit path. It is not a filesystem sandbox: users can select other paths that the container's `node` user can access. The gateway validates this variable before starting, and invalid values exit with status 64.
 
 The image makes this behavior through an exact-match compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the image build instead of silently applying the wrong edit.
 
-### Browser loopback behavior
+### **Browser loopback behavior**
 
 Official DSH also classifies the browser from the public page hostname and disables Host-backed settings on non-loopback pages. Because every browser admitted by this image's gateway receives full DSH authority, a second exact-match compiled-output patch marks that browser connection as loopback. This keeps the browser UI consistent with the loopback `Host`/`Origin` values the gateway sends upstream. The server-side privileged-method implementation remains unchanged.
 
-## How the gateway works
+## **How the gateway works**
 
 ```text
 tini
@@ -157,13 +157,13 @@ tini
 
 The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
 
-## Password access
+## **Password access**
 
 When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authentication so the browser presents its native authentication dialog. If `DSH_PROXY_USERNAME` is empty, the gateway ignores the supplied username and validates only the password. If both variables are non-empty, both values must match. Setting only `DSH_PROXY_USERNAME` does not enable authentication. Failed attempts are rate-limited.
 
 The username and password are not trimmed, logged, or persisted by the gateway, and the `Authorization` header is removed before requests reach DSH. An active username cannot contain `:` because HTTP Basic uses it as the field separator. Browsers may retain Basic credentials for the browsing session and do not provide a reliable gateway logout operation. Use HTTPS for remote access because Basic credentials are encoded, not encrypted. TLS termination remains outside this image.
 
-## Security model
+## **Security model**
 
 Gateway access is full DSH access. An admitted user may be able to read or replace model credentials, execute commands, and read or write every path available to the container's `node` user—not only `/workspace`. The Host allowlist is anti-rebinding input validation, not user authentication.
 
@@ -175,13 +175,13 @@ ssh -L 3080:127.0.0.1:3080 user@server
 
 Compose enables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=false` to disable it. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
 
-## Browser compatibility
+## **Browser compatibility**
 
 By default, the gateway injects a feature-detected `crypto.randomUUID` polyfill into HTML responses. It runs only when `randomUUID` is absent and uses `crypto.getRandomValues`; there is no `Math.random` fallback. Set `DSH_PROXY_POLYFILL=false` if all clients provide the API or a DSH update no longer needs the shim.
 
 Injected HTML uses `Cache-Control: no-cache` and drops upstream validators that no longer describe the modified body. Browsers therefore revalidate the entry document instead of retaining a stale version; unmodified static assets keep their upstream caching behavior.
 
-## Build and test
+## **Build and test**
 
 ```bash
 docker build -t deepseek-harness:local .
