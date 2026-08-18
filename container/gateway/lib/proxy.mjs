@@ -102,6 +102,7 @@ async function writeInjectedHtml(upstream, response) {
   const body = Buffer.from(injectRandomUuidPolyfill(Buffer.concat(chunks).toString('utf8')))
   const headers = proxyResponseHeaders(upstream.headers)
   delete headers.etag
+  headers['cache-control'] = 'no-store'
   headers['content-length'] = String(body.byteLength)
   response.writeHead(upstream.statusCode ?? 502, upstream.statusMessage, headers)
   response.end(body)
