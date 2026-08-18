@@ -37,8 +37,9 @@ RUN apt-get update \
     && npm install --global "pnpm@11.7.0" \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
-COPY --chmod=440 docker-sudoers /etc/sudoers.d/dsh-sudo
-RUN visudo -cf /etc/sudoers.d/dsh-sudo
+COPY docker-sudoers /etc/sudoers.d/dsh-sudo
+RUN chmod 440 /etc/sudoers.d/dsh-sudo \
+    && visudo -cf /etc/sudoers.d/dsh-sudo
 
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /usr/local/lib/node_modules/@deepseek-ai/dsh
 RUN ln -s ../lib/node_modules/@deepseek-ai/dsh/lib/bin.js /usr/local/bin/dsh
