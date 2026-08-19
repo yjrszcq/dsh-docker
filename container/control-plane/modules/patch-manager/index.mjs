@@ -41,7 +41,12 @@ export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patc
   const staging = join(versions, `.${runtimeId}.${randomUUID()}.tmp`)
   try {
     const packageRoot = join(staging, 'package')
-    await cp(resolve(pristineRoot), packageRoot, { recursive: true, errorOnExist: true, force: false })
+    await cp(resolve(pristineRoot), packageRoot, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      verbatimSymlinks: true,
+    })
     await applyPatchSet(packageRoot, patchPaths)
     const binTarget = join(packageRoot, 'lib', 'bin.js')
     const details = await lstat(binTarget)

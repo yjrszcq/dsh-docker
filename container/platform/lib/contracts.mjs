@@ -1,5 +1,5 @@
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from './validation.mjs'
-import { parseArtifactList } from '../stage0/lib/artifacts.mjs'
+import { parseArtifactList } from './artifact-contracts.mjs'
 
 function identifier(value, label) {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(value)) {

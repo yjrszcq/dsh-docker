@@ -55,7 +55,7 @@ const packaged = spawnSync(process.execPath, [
 if (packaged.status !== 0) throw new Error(packaged.stderr || 'Environment packaging failed')
 await writeFile(join(output, 'environment', 'VERSION'), `${environmentVersion}\n`)
 
-await cp(installed, join(output, 'pristine', version), { recursive: true })
+await cp(installed, join(output, 'pristine', version), { recursive: true, verbatimSymlinks: true })
 await buildRuntime({
   pristineRoot: installed,
   versionsRoot: join(output, 'runtime'),

@@ -1,4 +1,4 @@
-import { chown, cp, lstat, mkdir, readFile, readdir, readlink, symlink } from 'node:fs/promises'
+import { cp, lchown, lstat, mkdir, readFile, readdir, readlink, symlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 async function exists(path) {
@@ -8,7 +8,12 @@ async function exists(path) {
 async function seedTree(source, destination) {
   if (await exists(destination)) return false
   await mkdir(dirname(destination), { recursive: true })
-  await cp(source, destination, { recursive: true, errorOnExist: true, force: false })
+  await cp(source, destination, {
+    recursive: true,
+    errorOnExist: true,
+    force: false,
+    verbatimSymlinks: true,
+  })
   return true
 }
 
@@ -19,7 +24,7 @@ async function seedSlot(source, root, version) {
 }
 
 export async function provisionPlatformSeed(seedRoot, dataRoot) {
-  for (const name of ['bootstrap', 'environments', 'dsh/pristine', 'runtime', 'state', 'logs', 'downloads/untrusted', 'trust', 'run', 'system-plugins']) {
+  for (const name of ['bootstrap', 'environments', 'dsh/pristine', 'runtime', 'state', 'logs', 'downloads/untrusted', 'trust', 'run', 'snapshots', 'system-plugins']) {
     await mkdir(join(dataRoot, name), { recursive: true })
   }
   const environmentVersion = (await readFile(join(seedRoot, 'environment', 'VERSION'), 'utf8')).trim()
@@ -29,7 +34,7 @@ export async function provisionPlatformSeed(seedRoot, dataRoot) {
   await seedTree(join(seedRoot, 'pristine', runtimeVersion), join(dataRoot, 'dsh', 'pristine', runtimeVersion))
   await seedSlot(join(seedRoot, 'system-plugins', environmentVersion), join(dataRoot, 'system-plugins'), environmentVersion)
   if (process.getuid?.() === 0) {
-    for (const name of ['environments', 'dsh', 'runtime', 'state', 'logs', 'downloads', 'run', 'system-plugins']) {
+    for (const name of ['environments', 'dsh', 'runtime', 'state', 'logs', 'downloads', 'run', 'snapshots', 'system-plugins']) {
       await chownTree(join(dataRoot, name), 1000, 1000)
     }
   }
@@ -37,7 +42,7 @@ export async function provisionPlatformSeed(seedRoot, dataRoot) {
 }
 
 async function chownTree(path, uid, gid) {
-  await chown(path, uid, gid)
+  await lchown(path, uid, gid)
   const details = await lstat(path)
   if (!details.isDirectory() || details.isSymbolicLink()) return
   for (const name of await readdir(path)) await chownTree(join(path, name), uid, gid)

@@ -105,7 +105,13 @@ docker run --detach --name "$container" \
   --volume "$platform_volume:/data" \
   --volume "$home_volume:/home/node/.dsh" \
   "$image" >/dev/null
-docker exec "$container" sh -c 'printf platform > /data/state/smoke && printf home > /home/node/.dsh/smoke'
+attempt=0
+until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 1
+done
+docker exec --user node "$container" sh -c 'printf platform > /data/state/smoke && printf home > /home/node/.dsh/smoke'
 docker restart "$container" >/dev/null
 attempt=0
 until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
@@ -117,6 +123,13 @@ docker exec "$container" sh -c '[ "$(cat /data/state/smoke)" = platform ] && [ "
 
 docker exec "$container" dsh-platform channel experimental >/dev/null
 [ "$(docker exec "$container" dsh-platform channel)" = experimental ]
+attempt=0
+until docker exec --user node "$container" curl --fail --silent --unix-socket /data/run/bootstrap.sock \
+  http://localhost/v1/status >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 1
+done
 docker exec --user node "$container" curl --fail --silent --unix-socket /data/run/bootstrap.sock \
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \

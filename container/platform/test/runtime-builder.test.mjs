@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,6 +19,8 @@ async function pristine() {
   await mkdir(connection, { recursive: true })
   await writeFile(join(picker, 'index.js'), 'const target = resolve(path ?? home);\n')
   await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
+  await mkdir(join(root, 'node_modules/.bin'), { recursive: true })
+  await symlink('../tool/bin.js', join(root, 'node_modules/.bin/tool'))
   return root
 }
 
@@ -36,6 +38,7 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
   for (const runtime of [first, second]) {
     assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js'), 'utf8'), /DSH_DEFAULT_WORKSPACE/)
     assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'), 'utf8'), /isLoopback: true/)
+    assert.equal(await readlink(join(runtime, 'package/node_modules/.bin/tool')), '../tool/bin.js')
   }
 })
 
