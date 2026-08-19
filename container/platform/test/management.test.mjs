@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { request as httpRequest } from 'node:http'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,6 +43,22 @@ class Coordinator extends EventEmitter {
   }
 }
 
+function rawRequest(socketPath, path, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ socketPath, path, method }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        headers: response.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }))
+    })
+    request.once('error', reject)
+    request.end()
+  })
+}
+
 test('management socket exposes status, check, update, logs, and local rollback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-'))
   const coordinator = new Coordinator()
@@ -66,6 +83,35 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
     coordinator.running = false
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/rollback', { planId: 'plan-a' }), { taskId: 'rollback-task' })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management serves only the fixed persistent Update Console assets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-console-'))
+  const coordinator = new Coordinator()
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({ coordinator, logs })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    const redirect = await rawRequest(socketPath, '/_dsh_platform/ui')
+    assert.equal(redirect.status, 308)
+    assert.equal(redirect.headers.location, '/_dsh_platform/ui/')
+    const page = await rawRequest(socketPath, '/_dsh_platform/ui/')
+    assert.equal(page.status, 200)
+    assert.match(page.headers['content-type'], /^text\/html/)
+    assert.match(page.headers['content-security-policy'], /script-src 'self'/)
+    assert.match(page.body, /DSH Platform Update/)
+    const script = await rawRequest(socketPath, '/_dsh_platform/ui/app.js')
+    assert.equal(script.status, 200)
+    assert.match(script.body, /new EventSource/)
+    const head = await rawRequest(socketPath, '/_dsh_platform/ui/style.css', 'HEAD')
+    assert.equal(head.status, 200)
+    assert.equal(head.body, '')
+    assert.equal((await rawRequest(socketPath, '/_dsh_platform/ui/../server.mjs')).status, 404)
+    assert.equal((await rawRequest(socketPath, '/_dsh_platform/ui/app.js', 'POST')).status, 405)
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

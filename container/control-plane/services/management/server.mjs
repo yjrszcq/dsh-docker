@@ -1,10 +1,22 @@
 import { createServer } from 'node:http'
-import { chmod, mkdir, rm } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { chmod, mkdir, readFile, rm } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { UpdateConflictError } from '../../modules/updater/lib/coordinator.mjs'
 
 export const API_PREFIX = '/_dsh_platform/api/v1/'
+export const CONSOLE_PREFIX = '/_dsh_platform/ui/'
 const MAX_BODY_BYTES = 16 * 1024
+const CONSOLE_ASSETS = new Map([
+  ['', ['index.html', 'text/html; charset=utf-8']],
+  ['app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['style.css', ['style.css', 'text/css; charset=utf-8']],
+])
+const CONSOLE_HEADERS = Object.freeze({
+  'cache-control': 'no-store',
+  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'self'; form-action 'none'",
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+})
 
 async function jsonBody(request) {
   const chunks = []
@@ -23,6 +35,34 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
+async function sendConsoleAsset(request, response, pathname, consoleRoot) {
+  if (pathname === CONSOLE_PREFIX.slice(0, -1)) {
+    response.writeHead(308, { location: CONSOLE_PREFIX, ...CONSOLE_HEADERS })
+    response.end()
+    return true
+  }
+  if (!pathname.startsWith(CONSOLE_PREFIX)) return false
+  if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+    response.writeHead(405, { allow: 'GET, HEAD', ...CONSOLE_HEADERS })
+    response.end()
+    return true
+  }
+  const asset = CONSOLE_ASSETS.get(pathname.slice(CONSOLE_PREFIX.length))
+  if (asset === undefined) {
+    response.writeHead(404, CONSOLE_HEADERS)
+    response.end()
+    return true
+  }
+  const body = await readFile(join(consoleRoot, asset[0]))
+  response.writeHead(200, {
+    ...CONSOLE_HEADERS,
+    'content-type': asset[1],
+    'content-length': String(body.byteLength),
+  })
+  response.end(request.method === 'HEAD' ? undefined : body)
+  return true
+}
+
 function event(response, type, value) {
   response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`)
 }
@@ -38,10 +78,16 @@ function logOptions(url) {
   }
 }
 
-export function createManagementServer({ coordinator, logs, platformStatus = async () => ({}) }) {
+export function createManagementServer({
+  coordinator,
+  logs,
+  platformStatus = async () => ({}),
+  consoleRoot = join(import.meta.dirname, 'public'),
+}) {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
+      if (await sendConsoleAsset(request, response, url.pathname, consoleRoot)) return
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {

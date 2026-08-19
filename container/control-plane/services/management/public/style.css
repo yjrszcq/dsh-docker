@@ -1,0 +1,103 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f6f8;
+  color: #20252b;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input { font: inherit; }
+button { border: 1px solid #bdc5ce; border-radius: 6px; background: #fff; color: #20252b; cursor: pointer; min-height: 36px; padding: 7px 13px; }
+button:hover:not(:disabled) { border-color: #687583; background: #f7f9fa; }
+button:focus-visible, input:focus-visible, pre:focus-visible { outline: 3px solid rgba(16, 104, 76, .25); outline-offset: 2px; }
+button:disabled { cursor: default; opacity: .5; }
+button.primary { background: #10684c; border-color: #10684c; color: #fff; }
+button.primary:hover:not(:disabled) { background: #0b563e; border-color: #0b563e; }
+button.danger { background: #a03535; border-color: #a03535; color: #fff; }
+button.danger-outline { border-color: #a03535; color: #8b2929; }
+
+.topbar { align-items: center; background: #fff; border-bottom: 1px solid #d9dee4; display: flex; justify-content: space-between; min-height: 76px; padding: 12px max(20px, calc((100% - 1080px) / 2)); }
+.product { color: #10684c; font-size: 12px; font-weight: 700; margin: 0 0 2px; text-transform: uppercase; }
+h1 { font-size: 22px; letter-spacing: 0; margin: 0; }
+.connection { align-items: center; color: #59636e; display: flex; font-size: 13px; gap: 7px; }
+.connection span { background: #b37a16; border-radius: 50%; height: 8px; width: 8px; }
+.connection[data-state="online"] span { background: #16845e; }
+.connection[data-state="offline"] span { background: #b33e3e; }
+
+main { margin: 0 auto; max-width: 1080px; padding: 24px 20px 48px; }
+section { background: #fff; border-bottom: 1px solid #d9dee4; padding: 22px 0; }
+section:first-child { padding-top: 0; }
+.section-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 14px; min-height: 36px; }
+.section-heading h2 { font-size: 16px; letter-spacing: 0; margin: 0; }
+.section-heading time { color: #697480; font-size: 12px; }
+.segmented { display: inline-flex; }
+.segmented button { border-radius: 0; }
+.segmented button:first-child { border-radius: 6px 0 0 6px; }
+.segmented button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.segmented button[aria-pressed="true"] { background: #2b333b; border-color: #2b333b; color: #fff; position: relative; }
+
+.versions { border: 1px solid #d9dee4; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.versions > div { min-width: 0; padding: 15px 16px; }
+.versions > div + div { border-left: 1px solid #d9dee4; }
+.versions span, .versions strong, .versions small { display: block; overflow-wrap: anywhere; }
+.versions span, .versions small { color: #697480; font-size: 12px; }
+.versions strong { font-size: 17px; margin: 5px 0; }
+.notice, .error { border-left: 3px solid #b37a16; margin-top: 14px; padding: 9px 11px; }
+.error { border-left-color: #b33e3e; color: #8b2929; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.progress-row { align-items: center; display: grid; gap: 12px; grid-template-columns: minmax(170px, .7fr) minmax(180px, 1fr) 44px; margin-top: 18px; }
+.progress-copy { min-width: 0; }
+.progress-copy strong, .progress-copy span { display: block; overflow-wrap: anywhere; }
+.progress-copy strong { font-size: 14px; text-transform: capitalize; }
+.progress-copy span { color: #697480; font-size: 12px; margin-top: 2px; }
+.progress { background: #e3e7eb; height: 8px; overflow: hidden; }
+.progress span { background: #16845e; display: block; height: 100%; transition: width .25s ease; width: 0; }
+.progress-row output { color: #59636e; font-size: 13px; text-align: right; }
+
+.holds { border-top: 1px solid #d9dee4; margin-top: 18px; }
+.hold { align-items: center; border-bottom: 1px solid #d9dee4; display: grid; gap: 10px; grid-template-columns: minmax(160px, .5fr) 1fr auto; padding: 10px 0; }
+.hold strong, .hold span { overflow-wrap: anywhere; }
+.hold span { color: #697480; font-size: 13px; }
+.details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.details div { border-bottom: 1px solid #e4e8ec; display: grid; gap: 8px; grid-template-columns: 130px minmax(0, 1fr); padding: 9px 0; }
+.details div:nth-child(odd) { margin-right: 24px; }
+.details dt { color: #697480; }
+.details dd { margin: 0; overflow-wrap: anywhere; }
+
+.icon-button { font-weight: 700; height: 32px; min-height: 32px; padding: 0; width: 32px; }
+pre { background: #171b20; color: #dce2e8; font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.55; margin: 0; max-height: 320px; min-height: 150px; overflow: auto; padding: 14px; white-space: pre-wrap; }
+dialog { background: #fff; border: 1px solid #cdd3d9; border-radius: 8px; color: #20252b; max-width: 480px; padding: 22px; width: calc(100% - 32px); }
+dialog::backdrop { background: rgba(17, 21, 25, .58); }
+dialog h2 { font-size: 18px; margin: 0 0 10px; }
+dialog p { line-height: 1.55; }
+.confirm { align-items: flex-start; display: flex; gap: 8px; margin: 18px 0; }
+.confirm input { margin-top: 3px; }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+@media (prefers-color-scheme: dark) {
+  :root { background: #15191d; color: #e4e8ec; }
+  .topbar, section, dialog { background: #1d2227; border-color: #343b42; color: #e4e8ec; }
+  button { background: #252b31; border-color: #4a535c; color: #e4e8ec; }
+  button:hover:not(:disabled) { background: #2c333a; border-color: #75818c; }
+  .versions, .versions > div + div, .holds, .hold, .details div { border-color: #343b42; }
+  .progress { background: #343b42; }
+  .error, button.danger-outline { color: #ef9c9c; }
+}
+
+@media (max-width: 680px) {
+  .topbar { padding: 12px 16px; }
+  main { padding: 18px 16px 36px; }
+  .section-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .versions { grid-template-columns: 1fr; }
+  .versions > div + div { border-left: 0; border-top: 1px solid #d9dee4; }
+  .actions button { flex: 1 1 calc(50% - 8px); }
+  .progress-row { grid-template-columns: 1fr 44px; }
+  .progress-copy { grid-column: 1 / -1; }
+  .hold { align-items: start; grid-template-columns: 1fr auto; }
+  .hold span { grid-column: 1 / -1; grid-row: 2; }
+  .details { grid-template-columns: 1fr; }
+  .details div:nth-child(odd) { margin-right: 0; }
+}

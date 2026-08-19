@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>DSH Platform Update</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="product">DSH Docker</p>
+      <h1>平台更新</h1>
+    </div>
+    <div class="connection" id="connection" data-state="connecting">
+      <span aria-hidden="true"></span>
+      <strong>正在连接</strong>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary" aria-labelledby="versions-title">
+      <div class="section-heading">
+        <h2 id="versions-title">版本状态</h2>
+        <div class="segmented" role="group" aria-label="更新通道">
+          <button type="button" data-channel="stable">Stable</button>
+          <button type="button" data-channel="experimental">Experimental</button>
+        </div>
+      </div>
+      <div class="versions">
+        <div><span>Current</span><strong id="current-dsh">-</strong><small id="current-env">-</small></div>
+        <div><span>Latest Supported</span><strong id="supported-dsh">-</strong><small id="supported-env">-</small></div>
+        <div><span>Latest Upstream</span><strong id="upstream-dsh">-</strong><small>Official npm</small></div>
+      </div>
+      <div id="notice" class="notice" hidden></div>
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <section aria-labelledby="actions-title">
+      <div class="section-heading">
+        <h2 id="actions-title">更新操作</h2>
+        <time id="checked-at">尚未检查</time>
+      </div>
+      <div class="actions">
+        <button type="button" id="check">检查更新</button>
+        <button type="button" id="update" class="primary">更新到最新支持版本</button>
+        <button type="button" id="rollback" hidden>回滚 previous</button>
+        <button type="button" id="return-stable" class="danger-outline" hidden>立即回 Stable</button>
+      </div>
+      <div class="progress-row">
+        <div class="progress-copy"><strong id="update-status">Idle</strong><span id="update-result">-</span></div>
+        <div class="progress" role="progressbar" aria-label="更新进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="progress-bar"></span>
+        </div>
+        <output id="progress-value">0%</output>
+      </div>
+      <div id="holds" class="holds" hidden></div>
+    </section>
+
+    <section aria-labelledby="details-title">
+      <div class="section-heading"><h2 id="details-title">运行详情</h2></div>
+      <dl class="details">
+        <div><dt>Runtime</dt><dd id="runtime">-</dd></div>
+        <div><dt>观察期截止</dt><dd id="probation">-</dd></div>
+        <div><dt>回滚恢复点</dt><dd id="snapshot">-</dd></div>
+        <div><dt>信任 Keyring</dt><dd id="keyring">-</dd></div>
+      </dl>
+    </section>
+
+    <section aria-labelledby="logs-title">
+      <div class="section-heading"><h2 id="logs-title">平台日志</h2><button type="button" id="clear-logs" class="icon-button" title="清空当前显示" aria-label="清空当前显示">x</button></div>
+      <pre id="logs" tabindex="0" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <dialog id="stable-dialog" aria-labelledby="stable-dialog-title">
+    <form method="dialog">
+      <h2 id="stable-dialog-title">恢复 Stable 状态</h2>
+      <p>将恢复 <strong id="stable-snapshot">-</strong> 的数据快照。该时间之后产生的数据会丢失。</p>
+      <label class="confirm"><input type="checkbox" id="confirm-data-loss"> 我了解并确认丢弃更新后的数据</label>
+      <div class="dialog-actions">
+        <button value="cancel">取消</button>
+        <button type="button" id="confirm-stable" class="danger" disabled>确认恢复</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
