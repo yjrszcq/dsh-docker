@@ -1,0 +1,192 @@
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
+import { MANIFEST_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
+import { TrustLedger } from '../stage0/lib/ledger.mjs'
+import { document, keyPair, keyring, signature } from './helpers.mjs'
+
+function descriptor(id, content, mediaType = 'application/octet-stream') {
+  return {
+    id,
+    mediaType,
+    sha256: createHash('sha256').update(content).digest('hex'),
+    size: content.byteLength,
+    url: `https://github.com/example/releases/download/v1/${id}`,
+  }
+}
+
+function releaseTarget(generation, sequence, artifacts) {
+  return {
+    schema: 1,
+    updateApi: 1,
+    keyringGeneration: generation,
+    targetSequence: sequence,
+    issuedAt: '2026-08-19T00:00:00.000Z',
+    artifacts,
+    target: {},
+  }
+}
+
+function manifest(generation, sequence, artifacts) {
+  return {
+    schema: 1,
+    manifestType: 'environment',
+    version: '2026.08.19.1',
+    keyringGeneration: generation,
+    targetSequence: sequence,
+    issuedAt: '2026-08-19T00:00:00.000Z',
+    artifacts,
+  }
+}
+
+async function fixture(targetArtifacts) {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-object-store-'))
+  const recovery = keyPair()
+  const current = keyPair()
+  const next = keyPair()
+  const ledger = new TrustLedger(join(directory, 'trust'), recovery.publicKey)
+  const ringBytes = document(keyring(1, current, next))
+  await ledger.acceptKeyring(ringBytes, signature(ringBytes, recovery))
+  const targetBytes = document(releaseTarget(1, 1, targetArtifacts))
+  await ledger.acceptTarget(targetBytes, signature(targetBytes, current))
+  const untrustedRoot = join(directory, 'downloads', 'untrusted')
+  await mkdir(untrustedRoot, { recursive: true })
+  return {
+    current,
+    directory,
+    ledger,
+    next,
+    recovery,
+    store: new VerifiedObjectStore({ root: join(directory, 'trust'), untrustedRoot, ledger }),
+    untrustedRoot,
+  }
+}
+
+test('imports only target-authorized bytes from the untrusted directory', async () => {
+  const content = Buffer.from('verified artifact')
+  const expected = descriptor('gateway', content)
+  const { store, untrustedRoot, directory } = await fixture([expected])
+  const source = join(untrustedRoot, 'gateway.bin')
+  await writeFile(source, content)
+  const receipt = await store.importFromTarget('gateway', source)
+  assert.equal(receipt.objectSha256, expected.sha256)
+  assert.deepEqual(await readFile(receipt.path), content)
+  await assert.rejects(store.importFromTarget('missing', source), /not authorized/)
+  await assert.rejects(store.importFromTarget('gateway', join(directory, 'outside.bin')), /untrusted/)
+})
+
+test('rejects mismatched content and symbolic-link sources', async () => {
+  const expected = descriptor('gateway', Buffer.from('expected'))
+  const { store, untrustedRoot } = await fixture([expected])
+  const bad = join(untrustedRoot, 'bad.bin')
+  await writeFile(bad, 'different')
+  await assert.rejects(store.importFromTarget('gateway', bad), { code: 'TRUST_ARTIFACT_MISMATCH' })
+  const real = join(untrustedRoot, 'real.bin')
+  const link = join(untrustedRoot, 'link.bin')
+  await writeFile(real, 'expected')
+  await symlink(real, link)
+  await assert.rejects(store.importFromTarget('gateway', link), /ELOOP|symbolic/i)
+})
+
+test('verifies a signed manifest before authorizing its child artifacts', async () => {
+  const component = Buffer.from('component')
+  const manifestBytes = document(manifest(1, 1, [descriptor('component', component)]))
+  const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
+  const { current, store, untrustedRoot } = await fixture([manifestDescriptor])
+  const manifestPath = join(untrustedRoot, 'manifest.json')
+  await writeFile(manifestPath, manifestBytes)
+  const imported = await store.importFromTarget('environment-manifest', manifestPath)
+  await assert.rejects(store.importFromManifest(imported.token, 'component', manifestPath), /verified manifest/)
+  await store.acceptManifest(imported.token, signature(manifestBytes, current))
+  const componentPath = join(untrustedRoot, 'component.bin')
+  await writeFile(componentPath, component)
+  const child = await store.importFromManifest(imported.token, 'component', componentPath)
+  assert.equal(child.parentReceipt, imported.token)
+})
+
+test('revokes unactivated receipts after key rotation but retains active and previous objects', async () => {
+  const one = Buffer.from('one')
+  const two = Buffer.from('two')
+  const third = Buffer.from('three')
+  const descriptors = [descriptor('one', one), descriptor('two', two), descriptor('three', third)]
+  const { current, next, recovery, ledger, store, untrustedRoot } = await fixture(descriptors)
+  for (const [name, content] of [['one', one], ['two', two], ['three', third]]) {
+    await writeFile(join(untrustedRoot, name), content)
+  }
+  const first = await store.importFromTarget('one', join(untrustedRoot, 'one'))
+  const second = await store.importFromTarget('two', join(untrustedRoot, 'two'))
+  const unactivated = await store.importFromTarget('three', join(untrustedRoot, 'three'))
+  await store.activate([first.token])
+  await store.activate([second.token])
+
+  const future = keyPair()
+  const rotated = document(keyring(2, next, future, [current.keyId]))
+  const rotatedValue = await ledger.acceptKeyring(rotated, signature(rotated, recovery))
+  await assert.rejects(store.importFromTarget('three', join(untrustedRoot, 'three')), { code: 'TRUST_REVOKED' })
+  await assert.rejects(store.activate([unactivated.token]), { code: 'TRUST_REVOKED' })
+  const revoked = await store.reconcileRevocations(rotatedValue)
+  assert.deepEqual(revoked, [unactivated.token])
+  assert.equal((await store.readReceipt(first.token)).status, 'previous')
+  assert.equal((await store.readReceipt(second.token)).status, 'active')
+
+  await store.collectGarbage()
+  await assert.rejects(store.readReceipt(unactivated.token), /does not exist/)
+  assert.deepEqual(await readFile(store.objectPath(descriptors[0].sha256)), one)
+  assert.deepEqual(await readFile(store.objectPath(descriptors[1].sha256)), two)
+})
+
+test('activation includes manifest ancestors and rollback swaps current and previous', async () => {
+  const component = Buffer.from('component')
+  const other = Buffer.from('other')
+  const manifestBytes = document(manifest(1, 1, [descriptor('component', component)]))
+  const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
+  const { current, store, untrustedRoot } = await fixture([manifestDescriptor, descriptor('other', other)])
+  await writeFile(join(untrustedRoot, 'manifest'), manifestBytes)
+  await writeFile(join(untrustedRoot, 'component'), component)
+  await writeFile(join(untrustedRoot, 'other'), other)
+  const parent = await store.importFromTarget('environment-manifest', join(untrustedRoot, 'manifest'))
+  await store.acceptManifest(parent.token, signature(manifestBytes, current))
+  const child = await store.importFromManifest(parent.token, 'component', join(untrustedRoot, 'component'))
+  const selected = await store.activate([child.token])
+  assert.deepEqual(new Set(selected), new Set([parent.token, child.token]))
+  assert.equal((await store.readReceipt(parent.token)).status, 'active')
+  const nextReceipt = await store.importFromTarget('other', join(untrustedRoot, 'other'))
+  await store.activate([nextReceipt.token])
+  assert.equal((await store.readReceipt(parent.token)).status, 'previous')
+  await store.rollback()
+  assert.equal((await store.readReceipt(parent.token)).status, 'active')
+  assert.equal((await store.readReceipt(nextReceipt.token)).status, 'previous')
+})
+
+test('rejects staged receipts after the current Release Key advances targetSequence', async () => {
+  const content = Buffer.from('old target artifact')
+  const expected = descriptor('artifact', content)
+  const { current, ledger, store, untrustedRoot } = await fixture([expected])
+  const source = join(untrustedRoot, 'artifact')
+  await writeFile(source, content)
+  const receipt = await store.importFromTarget('artifact', source)
+  const advanced = document(releaseTarget(1, 2, [expected]))
+  await ledger.acceptTarget(advanced, signature(advanced, current))
+  await assert.rejects(store.activate([receipt.token]), { code: 'TRUST_REVOKED' })
+})
+
+test('rejects child imports through a manifest from an older targetSequence', async () => {
+  const component = Buffer.from('component')
+  const componentDescriptor = descriptor('component', component)
+  const manifestBytes = document(manifest(1, 1, [componentDescriptor]))
+  const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
+  const { current, ledger, store, untrustedRoot } = await fixture([manifestDescriptor])
+  await writeFile(join(untrustedRoot, 'manifest'), manifestBytes)
+  await writeFile(join(untrustedRoot, 'component'), component)
+  const parent = await store.importFromTarget('environment-manifest', join(untrustedRoot, 'manifest'))
+  await store.acceptManifest(parent.token, signature(manifestBytes, current))
+  const advanced = document(releaseTarget(1, 2, [manifestDescriptor]))
+  await ledger.acceptTarget(advanced, signature(advanced, current))
+  await assert.rejects(
+    store.importFromManifest(parent.token, 'component', join(untrustedRoot, 'component')),
+    { code: 'TRUST_REVOKED' },
+  )
+})
