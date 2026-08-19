@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 
@@ -31,17 +31,46 @@ async function extractPackage(archive, destination) {
   await run('tar', ['-xzf', archive, '--strip-components=1', '--no-same-owner', '--no-same-permissions', '-C', destination])
 }
 
-function validatePatch(value, pluginId) {
+function validatePackage(value, pluginId) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`System Plugin ${pluginId} package.json must be an object`)
+  }
+  const expectedName = `@dsh-docker/${pluginId}`
+  if (value.name !== expectedName) throw new Error(`System Plugin ${pluginId} package name must be ${expectedName}`)
+  if (typeof value.main !== 'string' || value.main.length === 0
+    || value.main.startsWith('/') || value.main.includes('\\') || value.main.split('/').includes('..')) {
+    throw new Error(`System Plugin ${pluginId} package main must be a safe relative path`)
+  }
+  return expectedName
+}
+
+function validatePatch(value, pluginId, packageName) {
   if (!Array.isArray(value)) throw new Error(`System Plugin ${pluginId} cordis.patch.json must be an array`)
-  for (const [index, entry] of value.entries()) {
+  return value.map((entry, index) => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error(`System Plugin ${pluginId} patch ${String(index)} must be an object`)
     }
-    if (typeof entry.id !== 'string' || !entry.id.startsWith(`dsh-docker.${pluginId}.`)) {
-      throw new Error(`System Plugin ${pluginId} patch IDs must use its dsh-docker namespace`)
+    if (Object.keys(entry).length !== 1 || !Array.isArray(entry.insert) || entry.insert.length === 0) {
+      throw new Error(`System Plugin ${pluginId} patches must contain only a non-empty insert list`)
     }
-  }
-  return value
+    for (const row of entry.insert) {
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        throw new Error(`System Plugin ${pluginId} inserted rows must be objects`)
+      }
+      if (typeof row.id !== 'string' || !row.id.startsWith(`dsh-docker.${pluginId}.`)) {
+        throw new Error(`System Plugin ${pluginId} patch IDs must use its dsh-docker namespace`)
+      }
+      if (typeof row.name !== 'string' || row.name.length === 0) {
+        throw new Error(`System Plugin ${pluginId} inserted rows must name a package`)
+      }
+      if (row.name !== packageName) {
+        throw new Error(`System Plugin ${pluginId} inserted rows must load its own package`)
+      }
+    }
+    return {
+      insert: entry.insert.map(row => ({ ...row })),
+    }
+  })
 }
 
 async function replaceLink(root, name, version) {
@@ -61,8 +90,10 @@ export async function reconcileSystemPlugins({ root, environmentVersion, plugins
     for (const plugin of plugins) {
       const packageRoot = join(staging, 'packages', plugin.id)
       await extractPackage(artifactPath(plugin), packageRoot)
+      const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+      const packageName = validatePackage(metadata, plugin.id)
       const patch = JSON.parse(await readFile(join(packageRoot, 'cordis.patch.json'), 'utf8'))
-      patches.push(...validatePatch(patch, plugin.id))
+      patches.push(...validatePatch(patch, plugin.id, packageName))
     }
     await writeFile(join(staging, 'cordis.patch.yml'), canonicalJson(patches), { flag: 'wx' })
     await rename(staging, destination)
@@ -74,4 +105,30 @@ export async function reconcileSystemPlugins({ root, environmentVersion, plugins
     await rm(staging, { recursive: true, force: true })
     throw error
   }
+}
+
+export async function linkSystemPluginScope({
+  dshHome,
+  viewRoot = '/run/dsh-platform/views/system-plugins',
+}) {
+  const modulesRoot = join(resolve(dshHome), 'profiles', 'node_modules')
+  const scopeLink = join(modulesRoot, '@dsh-docker')
+  const target = join(resolve(viewRoot), 'packages')
+  await mkdir(modulesRoot, { recursive: true })
+  const existing = await lstat(scopeLink).catch(error => error?.code === 'ENOENT' ? undefined : Promise.reject(error))
+  if (existing !== undefined) {
+    if (!existing.isSymbolicLink()) {
+      throw new Error(`System Plugin scope ${scopeLink} exists and is not a symlink`)
+    }
+    if (await readlink(scopeLink) === target) return scopeLink
+    await rm(scopeLink)
+  }
+  const temporary = join(modulesRoot, `.@dsh-docker.${randomUUID()}.tmp`)
+  try {
+    await symlink(target, temporary, 'dir')
+    await rename(temporary, scopeLink)
+  } finally {
+    await rm(temporary, { force: true })
+  }
+  return scopeLink
 }

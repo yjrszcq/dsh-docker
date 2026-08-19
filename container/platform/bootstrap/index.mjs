@@ -10,6 +10,7 @@ import { PlatformPaths } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 import { DeploymentManager } from './lib/deployments.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
+import { linkSystemPluginScope } from '../../control-plane/modules/system-plugin-manager/index.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -24,6 +25,10 @@ let imagePlan
 let planningError = null
 try {
   imagePlan = await deployments.prepareImage(imageRecords.deployment)
+  await linkSystemPluginScope({
+    dshHome: process.env.DSH_HOME ?? '/data/dsh',
+    viewRoot: join(paths.viewsRoot, 'system-plugins'),
+  })
   await deployments.publishStatus({ plan: imagePlan, currentId: imagePlan.target })
 } catch (error) {
   planningError = error

@@ -1,6 +1,10 @@
 [
   {
-    "id": "dsh-docker.update-console-entry.plugin",
-    "name": "@dsh-docker/update-console-entry"
+    "insert": [
+      {
+        "id": "dsh-docker.update-console-entry.plugin",
+        "name": "@dsh-docker/update-console-entry"
+      }
+    ]
   }
 ]
