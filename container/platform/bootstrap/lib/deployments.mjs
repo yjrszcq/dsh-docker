@@ -25,6 +25,29 @@ function sameDeployment(left, right) {
     })
 }
 
+function validateCandidate(from, candidate, experimental) {
+  if (experimental) {
+    if (candidate.authority !== 'experimental') throw new TrustError('probation candidate must use Experimental authority')
+    if (candidate.targetSequence !== from.targetSequence) throw new TrustError('Experimental candidate must retain the Stable targetSequence')
+    if (compareDshVersions(candidate.dshVersion, from.dshVersion) <= 0) {
+      throw new TrustError('Experimental candidate DSH must advance the current version')
+    }
+    if (
+      candidate.environment.sha256 !== from.environment.sha256
+      || candidate.systemPlugins.sha256 !== from.systemPlugins.sha256
+    ) throw new TrustError('Experimental candidate must retain the current Environment and System Plugins')
+    return
+  }
+  if (candidate.authority !== 'stable') throw new TrustError('managed release activation requires Stable authority')
+  if (candidate.targetSequence < from.targetSequence) throw new TrustError('Stable candidate targetSequence would roll back')
+  if (from.authority === 'stable' && candidate.targetSequence === from.targetSequence && !sameDeployment(from, candidate)) {
+    throw new TrustError('Stable candidate conflicts with current content at the same targetSequence')
+  }
+  if (from.authority === 'experimental' && compareDshVersions(candidate.dshVersion, from.dshVersion) < 0) {
+    throw new TrustError('Stable candidate has not caught up with Experimental DSH')
+  }
+}
+
 async function readOptional(path) {
   try { return await readFile(path) } catch (error) {
     if (error?.code === 'ENOENT') return undefined
@@ -396,6 +419,7 @@ export class DeploymentManager {
     const state = await this.state()
     const from = await this.record(state.current)
     if (candidate.id === from.id) return state
+    validateCandidate(from, candidate, false)
     await this.writeActivation({ phase: 'prepared', from: from.id, to: candidate.id })
     let receiptsActive = false
     try {
@@ -423,6 +447,7 @@ export class DeploymentManager {
     await this.materializeCurrent()
     const state = await this.state()
     const from = await this.record(state.current)
+    validateCandidate(from, candidate, true)
     await this.writeActivation({ phase: 'prepared', from: from.id, to: candidate.id })
     try {
       await this.select(candidate.id)
@@ -431,7 +456,6 @@ export class DeploymentManager {
       return candidate
     } catch (error) {
       await this.select(from.id).catch(() => {})
-      await healthCheck().catch(() => {})
       await this.clearActivation().catch(() => {})
       throw error
     }

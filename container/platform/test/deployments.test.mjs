@@ -95,6 +95,18 @@ async function managedRecord(
   return parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) })
 }
 
+async function experimentalRecord(context, from, suffix, dshVersion, receiptTokens = []) {
+  const built = await managedRecord(context, suffix, from.targetSequence, 'experimental', dshVersion, receiptTokens)
+  const content = {
+    ...built,
+    environmentVersion: from.environmentVersion,
+    environment: from.environment,
+    systemPlugins: from.systemPlugins,
+  }
+  delete content.id
+  return parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) })
+}
+
 test('initializes an Image Deployment through one atomic runtime view', async () => {
   const context = await fixture()
   const state = await context.manager.initialize(context.image)
@@ -321,11 +333,10 @@ test('finishes a journaled activation after receipts became active before restar
 test('keeps Experimental candidate slots uncommitted through probation and supports cancellation', async () => {
   const context = await fixture()
   await context.manager.initialize(context.image)
-  const candidate = await managedRecord(
+  const candidate = await experimentalRecord(
     context,
+    context.image,
     'probation',
-    1,
-    'experimental',
     '0.1.0-rc.2',
     ['experimental-receipt'],
   )
@@ -339,6 +350,32 @@ test('keeps Experimental candidate slots uncommitted through probation and suppo
   assert.equal(cancelled.cancelled, true)
   assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
   assert.equal(await context.manager.activation(), undefined)
+})
+
+test('rejects rollback and cross-authority candidates at the Bootstrap boundary', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const advanced = await managedRecord(context, 'advanced', 3)
+  await context.manager.activateManaged(advanced, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  const rollback = await managedRecord(context, 'rollback', 2)
+  await assert.rejects(context.manager.activateManaged(rollback, {
+    healthCheck: async () => {}, activateReceipts: async () => {},
+  }), /roll back/)
+  const wrongExperimental = await managedRecord(context, 'wrong-environment', 3, 'experimental', '0.1.0-rc.4')
+  await assert.rejects(context.manager.stageCandidate(wrongExperimental, async () => {}), /retain the current Environment/)
+})
+
+test('does not restart previous DSH before snapshot recovery after candidate health failure', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await experimentalRecord(context, context.image, 'health-failure', '0.1.0-rc.2')
+  let healthCalls = 0
+  await assert.rejects(context.manager.stageCandidate(candidate, async () => {
+    healthCalls += 1
+    throw new Error('candidate failed health')
+  }), /candidate failed health/)
+  assert.equal(healthCalls, 1)
+  assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
 })
 
 test('collects only Store assets and records outside slots, transactions, Holds, and snapshots', async () => {
