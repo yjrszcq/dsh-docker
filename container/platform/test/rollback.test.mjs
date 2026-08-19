@@ -69,11 +69,19 @@ test('rejects a valid snapshot archive bound to a different deployment', async (
 
 test('binds Stable rollback to the exact Bootstrap previous slot without a data snapshot', async () => {
   const calls = []
+  const references = {
+    environment: { sha256: 'a'.repeat(64) },
+    pristine: { sha256: 'b'.repeat(64) },
+    runtime: { sha256: 'c'.repeat(64) },
+    systemPlugins: { sha256: 'd'.repeat(64) },
+  }
   const current = {
-    id: 'deployment-record-current', dshVersion: '0.1.0-rc.8', environmentVersion: 'env-2', receiptTokens: ['stable-2'],
+    id: 'deployment-record-current', authority: 'stable', targetSequence: 2,
+    dshVersion: '0.1.0-rc.8', environmentVersion: 'env-2', receiptTokens: ['stable-2'], ...references,
   }
   const previous = {
-    id: 'deployment-record-previous', dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1', receiptTokens: ['stable-1'],
+    id: 'deployment-record-previous', authority: 'stable', targetSequence: 1,
+    dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1', receiptTokens: ['stable-1'], ...references,
   }
   const recovery = new CompleteStateRecovery({
     journal: { read: async () => undefined },
@@ -94,4 +102,23 @@ test('binds Stable rollback to the exact Bootstrap previous slot without a data 
   assert.deepEqual(calls, [])
   assert.deepEqual(await recovery.restore(plan.planId), { status: 'rolled-back', transactionId: null })
   assert.deepEqual(calls, [previous.id])
+})
+
+test('does not expose a rollback between Image and Managed Records with identical content', async () => {
+  const reference = { sha256: 'a'.repeat(64) }
+  const base = {
+    authority: 'stable', targetSequence: 1, dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1',
+    environment: reference, pristine: reference, runtime: reference, systemPlugins: reference, receiptTokens: [],
+  }
+  const recovery = new CompleteStateRecovery({
+    journal: { read: async () => undefined },
+    snapshots: {},
+    activator: {
+      rollbackDeployments: async () => ({
+        current: { ...base, id: 'deployment-record-image' },
+        previous: { ...base, id: 'deployment-record-materialized' },
+      }),
+    },
+  })
+  assert.equal(await recovery.plan(), null)
 })

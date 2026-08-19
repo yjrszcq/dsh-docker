@@ -20,6 +20,17 @@ function recordIdentity(record) {
   })
 }
 
+function sameRecordContent(left, right) {
+  return left.authority === right.authority
+    && left.targetSequence === right.targetSequence
+    && left.dshVersion === right.dshVersion
+    && left.environmentVersion === right.environmentVersion
+    && left.environment.sha256 === right.environment.sha256
+    && left.pristine.sha256 === right.pristine.sha256
+    && left.runtime.sha256 === right.runtime.sha256
+    && left.systemPlugins.sha256 === right.systemPlugins.sha256
+}
+
 function bindPlan(value) {
   return Object.freeze({
     ...value,
@@ -66,6 +77,7 @@ export class CompleteStateRecovery {
     if (this.activator.rollbackDeployments === undefined) return null
     const { current, previous } = await this.activator.rollbackDeployments()
     if (current === null || previous === null) return null
+    if (sameRecordContent(current, previous)) return null
     return bindPlan({
       transactionId: null,
       mode: 'stable',
