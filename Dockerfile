@@ -1,19 +1,20 @@
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
 
-COPY container/patches/directory-picker.mjs /tmp/patch-directory-picker.mjs
-COPY container/patches/browser-loopback.mjs /tmp/patch-browser-loopback.mjs
-
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         g++ \
         make \
         python3 \
     && npm install --global "@deepseek-ai/dsh@${DSH_VERSION}" \
-    && node /tmp/patch-directory-picker.mjs \
-    && node /tmp/patch-browser-loopback.mjs \
-    && rm /tmp/patch-directory-picker.mjs /tmp/patch-browser-loopback.mjs \
     && rm -rf /var/lib/apt/lists/* /root/.npm
+
+FROM node:24-bookworm-slim AS platform-seed
+ARG DSH_VERSION=latest
+COPY container /opt/dsh-platform-source
+COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
+RUN node /opt/dsh-platform-source/platform/tools/build-seed.mjs \
+      /opt/installed-dsh /opt/dsh-platform-seed "${DSH_VERSION}"
 
 FROM node:24-bookworm-slim AS runtime
 ARG PNPM_VERSION=11.7.0
@@ -46,16 +47,25 @@ COPY docker-sudoers /etc/sudoers.d/dsh-sudo
 RUN chmod 440 /etc/sudoers.d/dsh-sudo \
     && visudo -cf /etc/sudoers.d/dsh-sudo
 
-COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /usr/local/lib/node_modules/@deepseek-ai/dsh
-RUN ln -s ../lib/node_modules/@deepseek-ai/dsh/lib/bin.js /usr/local/bin/dsh
+COPY --from=platform-seed /opt/dsh-platform-seed /opt/dsh-platform/seed
+COPY container/platform /opt/dsh-platform/runtime
+COPY container/platform/tools/dsh-shim.sh /usr/local/bin/dsh
+RUN chmod 755 /usr/local/bin/dsh \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
+    && chmod 755 /usr/local/bin/dsh-platform
 
 ENV DSH_HOME=/home/node/.dsh \
     DSH_DEFAULT_WORKSPACE=/workspace \
     DSH_PROXY_POLYFILL=true \
-    DSH_TELEMETRY_DISABLED=true
+    DSH_TELEMETRY_DISABLED=true \
+    DSH_UPDATE_METADATA_URL=https://github.com/yjrszcq/dsh-docker/releases/latest/download/ \
+    DSH_UPDATE_CHECK_INTERVAL_SECONDS=21600 \
+    DSH_LOG_MAX_BYTES=104857600 \
+    DSH_LOG_RETENTION_DAYS=14 \
+    DSH_ACTIVATION_TIMEOUT_SECONDS=60
 
-COPY --chown=node:node container/gateway/package.json container/gateway/index.mjs /opt/dsh-gateway/
-COPY --chown=node:node container/gateway/lib /opt/dsh-gateway/lib
+COPY --chown=node:node container/gateway/package.json container/gateway/index.mjs /opt/dsh-environment/components/gateway/
+COPY --chown=node:node container/gateway/lib /opt/dsh-environment/components/gateway/lib
 
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
@@ -100,7 +110,6 @@ RUN case "$INSTALL_DEVTOOLS" in \
         *) echo "INSTALL_DEVTOOLS must be true or false" >&2; exit 64 ;; \
     esac
 
-USER node
 WORKDIR /workspace
 
 EXPOSE 3080
@@ -109,4 +118,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD /usr/bin/curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/node", "/opt/dsh-gateway/index.mjs"]
+CMD ["/usr/local/bin/node", "/opt/dsh-platform/runtime/stage0/index.mjs"]

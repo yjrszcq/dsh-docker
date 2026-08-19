@@ -26,13 +26,13 @@ test('packages the initial Environment deterministically from real resources', a
   const secondManifest = await readFile(join(second, 'environment.manifest.json'))
   assert.deepEqual(firstManifest, secondManifest)
   const manifest = parseEnvironmentManifest(firstManifest)
-  assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime', 'gateway'])
+  assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime', 'platform-management', 'gateway'])
   assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
 })
 
 test('checked-in Component manifests satisfy the public contract', async () => {
-  for (const name of ['gateway.json', 'dsh-runtime.json']) {
+  for (const name of ['gateway.json', 'dsh-runtime.json', 'platform-management.json']) {
     const bytes = await readFile(join(platformRoot, 'environment', 'components', name))
     assert.doesNotThrow(() => parseComponentManifest(bytes))
   }

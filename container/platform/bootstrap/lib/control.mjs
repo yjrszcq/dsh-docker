@@ -11,7 +11,10 @@ export function createBootstrapControl(runner) {
   return createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url ?? '/', 'http://bootstrap.internal').pathname
-      if (request.method === 'GET' && pathname === '/v1/status') send(response, 200, runner.status())
+      if (request.method === 'GET' && pathname === '/v1/status') send(response, 200, {
+        ...runner.status(),
+        bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? '1.0.0',
+      })
       else if (request.method === 'POST' && pathname === '/v1/reload') send(response, 200, await runner.reload())
       else send(response, 404, { error: 'not found' })
     } catch (error) {

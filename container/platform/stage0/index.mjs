@@ -7,6 +7,7 @@ import { VerifiedObjectStore } from './lib/artifacts.mjs'
 import { BootstrapSlots } from './lib/slots.mjs'
 import { BootstrapSupervisor } from './lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from './lib/trust-server.mjs'
+import { provisionPlatformSeed } from './lib/seed.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
@@ -20,11 +21,16 @@ const objects = new VerifiedObjectStore({
 })
 const slots = new BootstrapSlots(join(dataRoot, 'bootstrap'))
 await slots.provisionSeed(join(seedRoot, 'bootstrap', bootstrapVersion), bootstrapVersion)
+await provisionPlatformSeed(seedRoot, dataRoot)
+const seedKeyring = await readFile(join(seedRoot, 'trust', 'keyring.json'))
+const seedSignature = JSON.parse(await readFile(join(seedRoot, 'trust', 'keyring.sig.json'), 'utf8'))
+await ledger.acceptKeyring(seedKeyring, seedSignature)
 const supervisor = new BootstrapSupervisor({
   slots,
   dataRoot,
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
+  entrypoint: 'bootstrap/index.mjs',
 })
 const trustServer = createTrustServer({ ledger, objects })
 await listenUnix(trustServer, join(dataRoot, 'run', 'stage0-trust.sock'), {

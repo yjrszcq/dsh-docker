@@ -10,6 +10,13 @@
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
+      "id": "platform-management",
+      "version": "1.0.0",
+      "artifactId": "component-platform-management",
+      "source": "components/platform-management.json",
+      "mediaType": "application/vnd.dsh-platform.component.v1+json"
+    },
+    {
       "id": "gateway",
       "version": "1.0.0",
       "artifactId": "component-gateway",

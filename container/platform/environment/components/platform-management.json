@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "platform-management",
+  "version": "1.0.0",
+  "type": "service",
+  "command": {
+    "executable": "/usr/local/bin/node",
+    "args": ["/data/bootstrap/current/management/index.mjs"],
+    "timeoutSeconds": 30
+  },
+  "environment": {},
+  "lifecycle": {
+    "prepare": null,
+    "preStart": null,
+    "postStart": null,
+    "preStop": null,
+    "stop": null,
+    "postStop": null
+  },
+  "health": {
+    "type": "exec",
+    "command": {
+      "executable": "/usr/local/bin/dsh-platform",
+      "args": ["status"],
+      "timeoutSeconds": 5
+    },
+    "intervalSeconds": 1,
+    "timeoutSeconds": 30
+  },
+  "logging": { "stdout": true, "stderr": true }
+}

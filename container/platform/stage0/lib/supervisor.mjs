@@ -47,7 +47,7 @@ export class BootstrapSupervisor {
 
   async launch(version) {
     const child = this.spawnImpl(this.node, [join(this.slots.versionPath(version), this.entrypoint)], {
-      env: { ...process.env, DSH_PLATFORM_DATA: this.dataRoot },
+      env: { ...process.env, DSH_PLATFORM_DATA: this.dataRoot, DSH_BOOTSTRAP_VERSION: version },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       uid: this.uid,
       gid: this.gid,

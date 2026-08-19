@@ -1,0 +1,2 @@
+This public trust fixture is for local builds and tests only.
+Release workflows must replace it with an offline Recovery-signed seed and reject this marker.
