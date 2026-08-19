@@ -4,6 +4,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { provisionPlatformSeed } from '../stage0/lib/seed.mjs'
+import { TrustLedger } from '../stage0/lib/ledger.mjs'
+
+test('checked-in development seed is Recovery-signed and contains no private key', async () => {
+  const trust = new URL('../seed/trust/', import.meta.url)
+  const publicKey = (await readFile(new URL('recovery-root.spki.base64', trust), 'utf8')).trim()
+  const keyring = await readFile(new URL('keyring.json', trust))
+  const signature = JSON.parse(await readFile(new URL('keyring.sig.json', trust), 'utf8'))
+  const root = await mkdtemp(join(tmpdir(), 'dsh-seed-trust-'))
+  const accepted = await new TrustLedger(root, publicKey).acceptKeyring(keyring, signature)
+  assert.equal(accepted.generation, 1)
+  for (const name of ['recovery-root.spki.base64', 'keyring.json', 'keyring.sig.json', 'DEVELOPMENT_FIXTURE']) {
+    assert.doesNotMatch(await readFile(new URL(name, trust), 'utf8'), /PRIVATE KEY/)
+  }
+})
 
 test('seeds empty platform slots once and preserves later current links', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-platform-seed-'))

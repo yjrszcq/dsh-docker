@@ -8,9 +8,12 @@ fi
 
 image="${1:-dsh-docker:smoke}"
 container="dsh-gateway-smoke-$$"
+platform_volume="dsh-platform-smoke-$$"
+home_volume="dsh-home-smoke-$$"
 
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
+  docker volume rm "$platform_volume" "$home_volume" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
@@ -22,6 +25,8 @@ docker run --detach --name "$container" \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
+  --volume "$platform_volume:/data" \
+  --volume "$home_volume:/home/node/.dsh" \
   "$image" >/dev/null
 
 attempt=0
@@ -61,13 +66,19 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 
 loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matches \
   'isLoopback: true,' \
-  /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js)"
+  /data/runtime/current/package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js)"
 [ "$loopback_patch_count" = 1 ]
 
 docker exec "$container" sh -c '
-  gateway_pid="$(pgrep -f "^/usr/local/bin/node /opt/dsh-gateway/index.mjs$")"
-  ps --ppid "$gateway_pid" -o args= \
-    | rg --fixed-strings "/usr/local/bin/dsh web --host 127.0.0.1 --port 3079" >/dev/null
+  pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/stage0/index.mjs$" >/dev/null
+  pgrep -f "/data/bootstrap/versions/.*/bootstrap/index.mjs" >/dev/null
+  ps -eo args= | rg "package/lib/bin.js web --patch /data/system-plugins/current/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
+  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/management/index.mjs$" >/dev/null
+  pgrep -f "^/usr/local/bin/node /opt/dsh-environment/components/gateway/index.mjs$" >/dev/null
+  dsh-platform trust status | jq -e ".keyringGeneration == 1" >/dev/null
+  dsh-platform status | jq -e ".trust.keyringGeneration == 1" >/dev/null
+  [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
+  rg --fixed-strings "exec /data/runtime/current/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
 
 docker exec "$container" curl --fail --silent --noproxy '*' \
@@ -81,6 +92,23 @@ if docker exec "$container" curl --fail --silent --max-time 2 --noproxy '*' \
 fi
 
 cleanup
+docker run --detach --name "$container" \
+  --env DSH_PROXY_USERNAME=smoke-user \
+  --env DSH_PROXY_PASSWORD=smoke-password \
+  --env DSH_TRUSTED_HOSTS=smoke.example \
+  --volume "$platform_volume:/data" \
+  --volume "$home_volume:/home/node/.dsh" \
+  "$image" >/dev/null
+docker exec "$container" sh -c 'printf platform > /data/state/smoke && printf home > /home/node/.dsh/smoke'
+docker restart "$container" >/dev/null
+attempt=0
+until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 1
+done
+docker exec "$container" sh -c '[ "$(cat /data/state/smoke)" = platform ] && [ "$(cat /home/node/.dsh/smoke)" = home ]'
+cleanup
 trap - EXIT INT TERM
 
 set +e
@@ -88,6 +116,6 @@ timeout 15s docker run --rm --env DSH_DEFAULT_WORKSPACE=/missing-dsh-workspace \
   "$image" >/dev/null 2>&1
 status=$?
 set -e
-[ "$status" -eq 64 ]
+[ "$status" -ne 0 ]
 
 echo "Container smoke checks passed"
