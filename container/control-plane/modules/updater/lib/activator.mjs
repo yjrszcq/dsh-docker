@@ -7,6 +7,7 @@ import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
 import { artifactForReference, parseEnvironmentManifest } from '../../../../platform/lib/contracts.mjs'
 import { PlatformPaths } from '../../../../platform/lib/paths.mjs'
 import { LocalApiClient } from './client.mjs'
+import { ManagedDeploymentBuilder } from './managed-store.mjs'
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -32,14 +33,20 @@ export class PlatformActivator {
     runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform',
     bootstrap,
     stage0,
+    builder,
   }) {
     this.dataRoot = dataRoot
     this.paths = new PlatformPaths(dataRoot, runRoot)
     this.bootstrap = bootstrap ?? new LocalApiClient(this.paths.bootstrapSocket)
     this.stage0 = stage0 ?? new LocalApiClient(this.paths.trustSocket)
+    this.builder = builder ?? new ManagedDeploymentBuilder({ paths: this.paths })
     this.runtimeSlots = new RuntimeSlots(this.paths.runtimesRoot)
     this.environmentSlots = new RuntimeSlots(this.paths.environmentsRoot)
     this.systemPluginSlots = new RuntimeSlots(this.paths.systemPluginsRoot)
+  }
+
+  prepareManaged(prepared) {
+    return this.builder.buildStable(prepared)
   }
 
   async pristine(version, receipt) {

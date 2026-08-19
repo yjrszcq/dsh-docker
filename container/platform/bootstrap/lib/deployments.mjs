@@ -1,8 +1,9 @@
-import { lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { canonicalJson } from '../../lib/canonical-json.mjs'
 import {
+  deriveRecordId,
   parseDeploymentRecord,
   parseSlots,
 } from '../../lib/deployment-contracts.mjs'
@@ -29,6 +30,10 @@ async function readOptional(path) {
     if (error?.code === 'ENOENT') return undefined
     throw error
   }
+}
+
+async function exists(path) {
+  return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
 }
 
 export class DeploymentManager {
@@ -274,6 +279,65 @@ export class DeploymentManager {
         throw error
       }
       return this.commit(state.previous, state.current)
+    })
+  }
+
+  async materializeRecord(recordId) {
+    const record = await this.record(recordId)
+    const fields = {
+      environment: 'environment',
+      pristine: 'pristine',
+      runtime: 'runtime',
+      systemPlugins: 'system-plugins',
+    }
+    const references = {}
+    for (const [field, kind] of Object.entries(fields)) {
+      const reference = record[field]
+      if (reference.storage === 'store') {
+        references[field] = reference
+        continue
+      }
+      const source = await this.resolveReference(reference)
+      const id = `image-${kind}-${reference.sha256}`
+      const destination = this.storeAsset({ kind, id })
+      if (!await exists(destination)) {
+        const temporary = `${destination}.${randomUUID()}.tmp`
+        try {
+          await cp(source, temporary, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true })
+          if (await hashTree(temporary) !== reference.sha256) throw new TrustError(`materialized ${kind} differs from Image Reference`)
+          await rename(temporary, destination)
+        } finally {
+          await rm(temporary, { recursive: true, force: true })
+        }
+      } else if (await hashTree(destination) !== reference.sha256) {
+        throw new TrustError(`materialized ${kind} conflicts with Managed Store`)
+      }
+      references[field] = { storage: 'store', kind, id, sha256: reference.sha256 }
+    }
+    const content = {
+      schema: 1,
+      authority: record.authority,
+      targetSequence: record.targetSequence,
+      dshVersion: record.dshVersion,
+      environmentVersion: record.environmentVersion,
+      ...references,
+      receiptTokens: [...record.receiptTokens],
+      snapshotId: record.snapshotId,
+    }
+    return this.writeRecord({ ...content, id: deriveRecordId('deployment-record', content) })
+  }
+
+  async materializeCurrent() {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.current === null) throw new TrustError('no current Deployment exists')
+      const current = await this.record(state.current)
+      const references = [current.environment, current.pristine, current.runtime, current.systemPlugins]
+      if (references.every(reference => reference.storage === 'store')) return current
+      const materialized = await this.materializeRecord(current.id)
+      await this.select(materialized.id)
+      await this.commit(materialized.id, state.previous)
+      return materialized
     })
   }
 

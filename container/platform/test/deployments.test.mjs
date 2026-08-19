@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -148,6 +148,20 @@ test('writes immutable Deployment Record bytes', async () => {
     await readFile(context.manager.recordPath(context.image.id)),
     canonicalJson(context.image),
   )
+})
+
+test('materializes an Image Deployment as a complete Managed previous state', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const materialized = await context.manager.materializeCurrent()
+  assert.notEqual(materialized.id, context.image.id)
+  assert.equal(materialized.dshVersion, context.image.dshVersion)
+  for (const field of ['environment', 'pristine', 'runtime', 'systemPlugins']) {
+    assert.equal(materialized[field].storage, 'store')
+    const resolved = await context.manager.resolveReference(materialized[field])
+    assert.equal((await lstat(resolved)).isDirectory(), true)
+  }
+  assert.equal((await context.manager.state()).current, materialized.id)
 })
 
 test('advances to a newer image only after startup acceptance', async () => {
