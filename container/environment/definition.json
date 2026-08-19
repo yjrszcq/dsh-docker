@@ -25,9 +25,9 @@
   ],
   "systemPlugins": [
     {
-      "id": "update-ui",
-      "artifactId": "system-plugin-update-ui",
-      "source": "../system-plugins/update-ui/package",
+      "id": "update-console-entry",
+      "artifactId": "system-plugin-update-console-entry",
+      "source": "../system-plugins/update-console-entry/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
     }
   ]

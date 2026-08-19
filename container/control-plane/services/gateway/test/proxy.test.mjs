@@ -30,9 +30,9 @@ async function close(server) {
   await new Promise(resolve => server.close(resolve))
 }
 
-function request(port, path, headers = {}) {
+function request(port, path, headers = {}, method = 'GET', body) {
   return new Promise((resolve, reject) => {
-    const outgoing = httpRequest({ hostname: '127.0.0.1', port, path, headers }, (response) => {
+    const outgoing = httpRequest({ hostname: '127.0.0.1', port, path, headers, method }, (response) => {
       const chunks = []
       response.on('data', chunk => chunks.push(chunk))
       response.on('end', () => resolve({
@@ -42,7 +42,7 @@ function request(port, path, headers = {}) {
       }))
     })
     outgoing.once('error', reject)
-    outgoing.end()
+    outgoing.end(body)
   })
 }
 
@@ -131,7 +131,7 @@ test('health endpoint reports gateway readiness without touching upstream', asyn
   })
 })
 
-test('management requests use the protected local socket instead of DSH upstream', async () => {
+test('bounded management and Console requests use the protected local socket instead of DSH upstream', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-management-'))
   const socketPath = join(root, 'management.sock')
   const management = createServer((incoming, response) => {
@@ -156,8 +156,22 @@ test('management requests use the protected local socket instead of DSH upstream
     assert.equal(result.status, 202)
     assert.deepEqual(JSON.parse(result.body), { method: 'GET', path: '/_dsh_platform/api/v1/status' })
     assert.equal(upstreamRequests, 0)
-    const rollback = await request(gatewayPort, '/_dsh_platform/api/v1/rollback', { host: 'dsh.example' })
-    assert.equal(rollback.status, 404)
+    for (const [method, path] of [
+      ['GET', '/_dsh_platform/api/v1/rollback-plan'],
+      ['POST', '/_dsh_platform/api/v1/holds/retry'],
+      ['POST', '/_dsh_platform/api/v1/rollback'],
+      ['POST', '/_dsh_platform/api/v1/return-stable'],
+      ['PUT', '/_dsh_platform/api/v1/channel'],
+      ['GET', '/_dsh_platform/ui/'],
+      ['HEAD', '/_dsh_platform/ui/style.css'],
+    ]) {
+      const proxied = await request(gatewayPort, path, { host: 'dsh.example' }, method)
+      assert.equal(proxied.status, 202, `${method} ${path}`)
+      if (method !== 'HEAD') assert.equal(JSON.parse(proxied.body).path, path)
+    }
+    assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
+    assert.equal(upstreamRequests, 0)
   } finally {
     await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
   }

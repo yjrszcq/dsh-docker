@@ -1,0 +1,10 @@
+.root { align-items: center; border-bottom: 1px solid var(--border, #d8dce2); border-top: 1px solid var(--border, #d8dce2); color: var(--fg1, #202328); display: flex; justify-content: space-between; gap: 16px; max-width: 960px; padding: 18px 0; }
+.root h2 { font-size: 18px; letter-spacing: 0; margin: 0 0 4px; }
+.root p { color: var(--fg3, #66707b); margin: 0; }
+.action { background: #176b4d; border: 1px solid #176b4d; border-radius: 6px; color: #fff; display: inline-flex; flex: 0 0 auto; min-height: 36px; padding: 7px 13px; text-decoration: none; }
+.action:hover { background: #10563d; border-color: #10563d; }
+
+@media (max-width: 640px) {
+  .root { align-items: flex-start; flex-direction: column; }
+  .action { justify-content: center; width: 100%; }
+}

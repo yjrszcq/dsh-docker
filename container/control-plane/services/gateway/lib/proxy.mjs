@@ -9,9 +9,11 @@ export const INTERNAL_PORT = 3079
 export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
+export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
-  ['GET', new Set(['status', 'events', 'logs', 'logs/stream'])],
-  ['POST', new Set(['check', 'update'])],
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable'])],
+  ['PUT', new Set(['channel'])],
 ])
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
@@ -145,6 +147,11 @@ function isExternalManagementRoute(method, pathname) {
   return EXTERNAL_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(pathname.slice(MANAGEMENT_PREFIX.length)) ?? false
 }
 
+function isExternalConsoleRoute(method, pathname) {
+  return ['GET', 'HEAD'].includes(method ?? 'GET')
+    && (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX))
+}
+
 function serializeUpgradeRequest(request, headers) {
   const lines = [`${request.method ?? 'GET'} ${request.url ?? '/'} HTTP/${request.httpVersion}`]
   for (const [name, value] of Object.entries(headers)) {
@@ -212,6 +219,14 @@ export function createGatewayServer({
         return
       }
       if (options.passwordAccess.handleHttp(request, response)) return
+      if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
+        if (!isExternalConsoleRoute(request.method, pathname)) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        return
+      }
       if (pathname.startsWith(MANAGEMENT_PREFIX)) {
         if (!isExternalManagementRoute(request.method, pathname)) {
           rejectHttp(response, 404, 'not found')
