@@ -124,8 +124,8 @@ WORKDIR /workspace
 
 EXPOSE 3080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD /usr/bin/curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD /usr/bin/curl --fail --silent --show-error --noproxy '*' http://127.0.0.1:3079/ >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/usr/local/bin/node", "/opt/dsh-platform/runtime/platform/stage0/index.mjs"]

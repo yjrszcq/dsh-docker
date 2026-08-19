@@ -14,3 +14,11 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /Do not delete \/data\/dsh/)
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
 })
+
+test('Docker health reports DSH readiness instead of control-plane liveness', async () => {
+  const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
+  const healthcheck = dockerfile.split('HEALTHCHECK')[1]?.split('\n\n')[0] ?? ''
+  assert.match(healthcheck, /--start-period=60s/)
+  assert.match(healthcheck, /127\.0\.0\.1:3079\//)
+  assert.doesNotMatch(healthcheck, /_dsh_gateway\/health|stage0-trust\.sock/)
+})
