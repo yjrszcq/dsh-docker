@@ -32,7 +32,7 @@ function runCommand(spec, options) {
       env: options.environment,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    options.capture(child, options.componentId)
+    options.capture(child, options.componentId, options.logging)
     const timer = setTimeout(() => child.kill('SIGKILL'), spec.timeoutSeconds * 1000)
     child.once('error', reject)
     child.once('exit', (code, signal) => {
@@ -112,6 +112,7 @@ export class EnvironmentRunner {
       spawnImpl: this.spawnImpl,
       capture: this.capture,
       componentId: component.id,
+      logging: component.logging,
       environment: { ...process.env, ...component.environment },
     }
   }
@@ -139,7 +140,7 @@ export class EnvironmentRunner {
             env: options.environment,
             stdio: ['ignore', 'pipe', 'pipe'],
           })
-          this.capture(child, component.id)
+          this.capture(child, component.id, component.logging)
           await Promise.race([
             once(child, 'spawn'),
             once(child, 'error').then(([error]) => { throw error }),
