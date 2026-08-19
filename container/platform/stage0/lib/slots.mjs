@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readlink, rename, rm, symlink } from 'node:fs/promises'
+import { lstat, mkdir, readlink, rename, rm, symlink } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -54,10 +54,16 @@ export class BootstrapSlots {
   async provisionSeed(seedPath, version) {
     const destination = this.versionPath(version)
     await mkdir(join(this.root, 'versions'), { recursive: true })
+    const source = resolve(seedPath)
+    const sourceDetails = await lstat(source)
+    if (!sourceDetails.isDirectory() || sourceDetails.isSymbolicLink()) {
+      throw new TrustError('Bootstrap seed source must be a directory')
+    }
     try {
-      await cp(resolve(seedPath), destination, { recursive: true, errorOnExist: true, force: false })
+      await lstat(destination)
     } catch (error) {
-      if (error?.code !== 'ERR_FS_CP_EEXIST' && error?.code !== 'EEXIST') throw error
+      if (error?.code !== 'ENOENT') throw error
+      await symlink(source, destination, 'dir')
     }
     if ((await optionalLink(join(this.root, 'current'))) === undefined) {
       await replaceLink(this.root, 'current', version)

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
@@ -26,6 +26,8 @@ test('provisions a seed once and atomically tracks current and previous', async 
   await bootstrap(seeds, '2.0.0', 'next')
   const slots = new BootstrapSlots(join(root, 'data'))
   await slots.provisionSeed(join(seeds, '1.0.0'), '1.0.0')
+  assert.equal((await lstat(slots.versionPath('1.0.0'))).isSymbolicLink(), true)
+  assert.equal(await readlink(slots.versionPath('1.0.0')), join(seeds, '1.0.0'))
   await slots.provisionSeed(join(seeds, '1.0.0'), '1.0.0')
   await slots.provisionSeed(join(seeds, '2.0.0'), '2.0.0')
   await slots.promote('2.0.0')

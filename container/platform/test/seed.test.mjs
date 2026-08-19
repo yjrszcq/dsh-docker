@@ -24,7 +24,7 @@ test('checked-in development seed is Recovery-signed and contains no private key
   }
 })
 
-test('seeds empty platform slots once and preserves later current links', async () => {
+test('registers immutable image seed trees once and preserves later current links', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-platform-seed-'))
   const seed = join(root, 'seed')
   const data = join(root, 'data')
@@ -36,14 +36,52 @@ test('seeds empty platform slots once and preserves later current links', async 
   await symlink('../package/bin.js', join(seed, 'pristine', 'runtime-one', 'node_modules/.bin/tool'))
   await mkdir(join(seed, 'system-plugins', 'env-one'), { recursive: true })
   const first = await provisionPlatformSeed(seed, data)
-  assert.equal(first.seededTrees.length, 4)
+  assert.equal(first.seededLinks.length, 4)
+  for (const [entry, source] of [
+    ['environments/versions/env-one', 'environment/env-one'],
+    ['runtime/versions/runtime-one', 'runtime/runtime-one'],
+    ['dsh/pristine/runtime-one', 'pristine/runtime-one'],
+    ['system-plugins/versions/env-one', 'system-plugins/env-one'],
+  ]) {
+    assert.equal((await lstat(join(data, entry))).isSymbolicLink(), true)
+    assert.equal(await readlink(join(data, entry)), join(seed, source))
+  }
   assert.equal(await readlink(join(data, 'environments', 'current')), 'versions/env-one')
   assert.equal(await readlink(join(data, 'dsh/pristine/runtime-one/node_modules/.bin/tool')), '../package/bin.js')
   assert.equal((await lstat(join(data, 'snapshots'))).isDirectory(), true)
   await writeFile(join(data, 'state', 'sentinel'), 'keep')
   const repeated = await provisionPlatformSeed(seed, data)
-  assert.deepEqual(repeated.seededTrees, [])
+  assert.deepEqual(repeated.seededLinks, [])
   assert.equal(await readFile(join(data, 'state', 'sentinel'), 'utf8'), 'keep')
+})
+
+test('preserves an existing materialized version instead of replacing it with an image seed link', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-materialized-'))
+  const seed = join(root, 'seed')
+  const data = join(root, 'data')
+  for (const [group, version] of [['environment', 'env-one'], ['runtime', 'runtime-one']]) {
+    await mkdir(join(seed, group, version), { recursive: true })
+    await writeFile(join(seed, group, 'VERSION'), `${version}\n`)
+  }
+  await mkdir(join(seed, 'pristine/runtime-one'), { recursive: true })
+  await mkdir(join(seed, 'system-plugins/env-one'), { recursive: true })
+  await mkdir(join(data, 'runtime/versions/runtime-one'), { recursive: true })
+  await writeFile(join(data, 'runtime/versions/runtime-one/sentinel'), 'materialized')
+
+  await provisionPlatformSeed(seed, data)
+
+  assert.equal((await lstat(join(data, 'runtime/versions/runtime-one'))).isDirectory(), true)
+  assert.equal(await readFile(join(data, 'runtime/versions/runtime-one/sentinel'), 'utf8'), 'materialized')
+})
+
+test('rejects seed IDs that could escape their image roots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-invalid-seed-'))
+  const seed = join(root, 'seed')
+  await mkdir(join(seed, 'environment'), { recursive: true })
+  await mkdir(join(seed, 'runtime'), { recursive: true })
+  await writeFile(join(seed, 'environment/VERSION'), '../escape\n')
+  await writeFile(join(seed, 'runtime/VERSION'), 'runtime-one\n')
+  await assert.rejects(provisionPlatformSeed(seed, join(root, 'data')), /Environment seed ID is invalid/)
 })
 
 test('builds a self-contained Bootstrap seed and preserves npm bin links', async () => {
