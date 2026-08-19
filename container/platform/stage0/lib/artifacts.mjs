@@ -552,14 +552,16 @@ export class VerifiedObjectStore {
         if (!['staged', 'active', 'previous'].includes(receipt.status)) {
           throw new TrustError('activation references an unusable receipt')
         }
+        const officialAuthorityCurrent = currentOfficialDsh !== undefined
+          && receipt.authorityVersion === currentOfficialDsh.value.version
+          && receipt.objectSha256 === currentOfficialDsh.objectSha256
+          && receipt.signerKeyId === currentOfficialDsh.value.signerKeyId
+        const stableAuthorityCurrent = receipt.keyringGeneration === currentKeyring.generation
+          && receipt.signerKeyId === currentKeyring.current.keyId
+          && receipt.targetSequence === currentTarget.targetSequence
         const authorityCurrent = receipt.authorityType === 'official-dsh'
-          ? currentOfficialDsh !== undefined
-            && receipt.authorityVersion === currentOfficialDsh.value.version
-            && receipt.objectSha256 === currentOfficialDsh.objectSha256
-            && receipt.signerKeyId === currentOfficialDsh.value.signerKeyId
-          : receipt.keyringGeneration === currentKeyring.generation
-            && receipt.signerKeyId === currentKeyring.current.keyId
-            && receipt.targetSequence === currentTarget.targetSequence
+          ? officialAuthorityCurrent
+          : stableAuthorityCurrent
         if (
           receipt.status === 'staged'
           && !authorityCurrent

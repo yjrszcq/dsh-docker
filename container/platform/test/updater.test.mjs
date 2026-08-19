@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -146,8 +147,24 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   assert.equal(prepared.receipts.size, 6)
   assert.equal(prepared.dsh.receipt.authorityType, 'official-dsh')
   assert.equal(prepared.receiptTokens.length, 7)
+  assert.equal([...prepared.paths.values()].every(path => path.includes('/trust/objects/')), true)
   assert.equal((await ledger.currentKeyring()).value.generation, 1)
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
+})
+
+test('constructs Pristine DSH only from a receipt-backed archive', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-trusted-pristine-'))
+  const source = join(root, 'source', 'package')
+  await mkdir(source, { recursive: true })
+  await writeFile(join(source, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.8' }))
+  const trusted = join(root, 'trust', 'objects', 'trusted-object')
+  await mkdir(join(root, 'trust', 'objects'), { recursive: true })
+  const archived = spawnSync('tar', ['-czf', trusted, '-C', join(root, 'source'), 'package'], { encoding: 'utf8' })
+  assert.equal(archived.status, 0, archived.stderr)
+
+  const activator = new PlatformActivator({ dataRoot: join(root, 'data'), bootstrap: {}, stage0: {} })
+  const pristine = await activator.pristine('0.1.0-rc.8', { path: trusted })
+  assert.equal(JSON.parse(await readFile(join(pristine, 'package.json'), 'utf8')).version, '0.1.0-rc.8')
 })
 
 test('serializes one update task and persists success progress', async () => {
