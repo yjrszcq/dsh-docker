@@ -48,6 +48,7 @@ export class LocalApiClient {
   importExperimentalArtifact(candidate, sourcePath) {
     return this.request('POST', '/v1/artifacts/import-experimental', { candidate, sourcePath })
   }
+  ensureOfficialDsh(version) { return this.request('POST', '/v1/dsh/ensure', { version }) }
   acceptManifest(receipt, signatureReceipt) {
     return this.request('POST', '/v1/manifests/accept', { receipt, signatureReceipt })
   }

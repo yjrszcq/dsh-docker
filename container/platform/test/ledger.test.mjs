@@ -81,6 +81,32 @@ test('accepts only increasing Experimental DSH candidates signed by a delegated 
   await assert.rejects(ledger.acceptExperimental(first, digest, content.byteLength), { code: 'TRUST_ROLLBACK' })
 })
 
+test('records official DSH identity monotonically without choosing an update channel', async () => {
+  const { ledger, recovery } = await fixture()
+  const current = keyPair()
+  const next = keyPair()
+  const registry = registryKeyPair()
+  const ring = document(keyring(1, current, next))
+  await ledger.acceptKeyring(ring, signature(ring, recovery))
+  const stable = document(target(1, 4, experimentalPolicy(registry)))
+  await ledger.acceptTarget(stable, signature(stable, current))
+
+  const content = Buffer.from('rc8')
+  const first = registryCandidate(registry, '0.1.0-rc.8', content)
+  const digest = createHash('sha256').update(content).digest('hex')
+  await ledger.acceptOfficialDsh(first, digest, content.byteLength)
+  await ledger.acceptOfficialDsh(first, digest, content.byteLength)
+  assert.equal((await ledger.currentOfficialDsh()).value.version, first.version)
+
+  const older = registryCandidate(registry, '0.1.0-rc.6', content)
+  await assert.rejects(ledger.acceptOfficialDsh(older, digest, content.byteLength), { code: 'TRUST_ROLLBACK' })
+  const conflicting = registryCandidate(registry, first.version, Buffer.from('changed'))
+  await assert.rejects(
+    ledger.acceptOfficialDsh(conflicting, createHash('sha256').update('changed').digest('hex'), 7),
+    /different content/,
+  )
+})
+
 test('retains historical keyrings so an accepted target remains verifiable after rotation', async () => {
   const { ledger, recovery } = await fixture()
   const first = keyPair()

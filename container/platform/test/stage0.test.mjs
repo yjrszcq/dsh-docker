@@ -74,7 +74,7 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
   try {
     assert.deepEqual(await unixRequest(socketPath, 'GET', '/v1/status'), {
       status: 200,
-      body: { keyringGeneration: null, targetSequence: null, experimentalVersion: null },
+      body: { keyringGeneration: null, targetSequence: null, experimentalVersion: null, officialDshVersion: null },
     })
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/trust/reset', {})).status, 404)
     assert.equal((await readFile(socketPath).catch(error => error.code)), 'ENXIO')
@@ -101,6 +101,40 @@ test('exposes only an injected Stage-0 Bootstrap staging operation', async () =>
       receipt: 'receipt-token', version: '2.0.0',
     })).status, 202)
     assert.deepEqual(staged, { receipt: 'receipt-token', version: '2.0.0' })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('official DSH Trust API accepts only a requested version', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-official-api-'))
+  const recovery = keyPair()
+  const ledger = new TrustLedger(join(root, 'trust'), recovery.publicKey)
+  const calls = []
+  const objects = {
+    ensureOfficialDsh: async version => {
+      calls.push(version)
+      return { authorityType: 'official-dsh', authorityVersion: version }
+    },
+    reconcileRevocations: async () => [],
+    activeReceipts: async () => [],
+  }
+  const server = createTrustServer({ ledger, objects })
+  const socketPath = join(root, 'run', 'trust.sock')
+  await listenUnix(server, socketPath)
+  try {
+    const accepted = await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', { version: '0.1.0-rc.8' })
+    assert.equal(accepted.status, 200)
+    assert.deepEqual(calls, ['0.1.0-rc.8'])
+    for (const extra of [
+      { version: '0.1.0-rc.8', url: 'https://mirror.example/dsh.tgz' },
+      { version: '0.1.0-rc.8', expectedHash: '0'.repeat(64) },
+      { version: '0.1.0-rc.8', sourcePath: '/data/downloads/untrusted/dsh.tgz' },
+      { version: '0.1.0-rc.8', candidate: {} },
+    ]) {
+      assert.equal((await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', extra)).status, 400)
+    }
+    assert.deepEqual(calls, ['0.1.0-rc.8'])
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

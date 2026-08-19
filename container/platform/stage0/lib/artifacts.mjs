@@ -4,10 +4,16 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
+import { Readable } from 'node:stream'
 import { durableReplace } from '../../lib/atomic.mjs'
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { verifyRegistryCandidate } from './experimental.mjs'
+import {
+  fetchOfficialDshCandidate,
+  fetchOfficialDshTarball,
+  OFFICIAL_DSH_TARBALL_LIMIT,
+} from './official-dsh.mjs'
 import { verifyDetached } from './signature.mjs'
 
 export const MANIFEST_MEDIA_TYPE = 'application/vnd.dsh-platform.manifest.v1+json'
@@ -129,10 +135,12 @@ function validateReceipt(value) {
   const authorityType = receipt.authorityType ?? 'stable'
   const receiptFields = receipt.authorityType === undefined
     ? required
-    : [...required, 'authorityType', ...(authorityType === 'experimental' ? ['authorityVersion'] : [])]
+    : [...required, 'authorityType', ...(['experimental', 'official-dsh'].includes(authorityType) ? ['authorityVersion'] : [])]
   exactKeys(receipt, receiptFields, 'receipt')
-  if (!['stable', 'experimental'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
-  if (authorityType === 'experimental') compareDshVersions(receipt.authorityVersion, receipt.authorityVersion)
+  if (!['stable', 'experimental', 'official-dsh'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
+  if (['experimental', 'official-dsh'].includes(authorityType)) {
+    compareDshVersions(receipt.authorityVersion, receipt.authorityVersion)
+  }
   if (typeof receipt.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(receipt.token)) {
     throw new TrustError('receipt token is invalid')
   }
@@ -150,7 +158,7 @@ function validateReceipt(value) {
     ['parent SHA-256', receipt.parentSha256],
     ['signer key ID', receipt.signerKeyId],
   ]) {
-    const valid = name === 'signer key ID' && authorityType === 'experimental'
+    const valid = name === 'signer key ID' && ['experimental', 'official-dsh'].includes(authorityType)
       ? typeof digest === 'string' && /^SHA256:[A-Za-z0-9+/]{43}$/.test(digest)
       : typeof digest === 'string' && /^[a-f0-9]{64}$/.test(digest)
     if (!valid) {
@@ -173,11 +181,13 @@ function validateReceipt(value) {
 }
 
 export class VerifiedObjectStore {
-  constructor({ root, untrustedRoot, ledger, now = () => new Date() }) {
+  constructor({ root, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch, requestTimeoutMs = 30_000 }) {
     this.root = resolve(root)
     this.untrustedRoot = resolve(untrustedRoot)
     this.ledger = ledger
     this.now = now
+    this.fetchImpl = fetchImpl
+    this.requestTimeoutMs = requestTimeoutMs
     this.queue = Promise.resolve()
   }
 
@@ -411,6 +421,95 @@ export class VerifiedObjectStore {
     })
   }
 
+  ensureOfficialDsh(requestedVersion) {
+    return this.exclusive(async () => {
+      compareDshVersions(requestedVersion, requestedVersion)
+      const target = (await this.ledger.currentTarget())?.value
+      if (target === undefined || target.experimentalPolicy === null) {
+        throw new TrustError('official DSH import requires an accepted registry policy')
+      }
+      if (compareDshVersions(requestedVersion, target.desired.dsh.version) < 0) {
+        throw new TrustError('official DSH version is older than the current supported target', 'TRUST_ROLLBACK')
+      }
+      const signal = AbortSignal.timeout(this.requestTimeoutMs)
+      const candidate = await fetchOfficialDshCandidate({
+        requestedVersion,
+        policy: target.experimentalPolicy,
+        fetchImpl: this.fetchImpl,
+        now: this.now(),
+        signal,
+      })
+      if (requestedVersion === target.desired.dsh.version && candidate.dist.integrity !== target.desired.dsh.integrity) {
+        throw new TrustError('official DSH metadata does not match the supported target integrity', 'TRUST_ARTIFACT_MISMATCH')
+      }
+      const body = await fetchOfficialDshTarball({ candidate, fetchImpl: this.fetchImpl, signal })
+      await mkdir(join(this.root, 'objects'), { recursive: true })
+      const temporary = join(this.root, 'objects', `.${randomUUID()}.tmp`)
+      let destinationHandle
+      try {
+        destinationHandle = await open(temporary, 'wx', 0o400)
+        const sha256 = createHash('sha256')
+        const sha512 = createHash('sha512')
+        let size = 0
+        const meter = new Transform({
+          transform(chunk, _encoding, callback) {
+            size += chunk.byteLength
+            if (size > OFFICIAL_DSH_TARBALL_LIMIT) {
+              callback(new TrustError('official DSH tarball exceeds the download limit'))
+              return
+            }
+            sha256.update(chunk)
+            sha512.update(chunk)
+            callback(null, chunk)
+          },
+        })
+        await pipeline(Readable.fromWeb(body), meter, destinationHandle.createWriteStream())
+        destinationHandle = undefined
+        const objectSha256 = sha256.digest('hex')
+        const integrity = `sha512-${sha512.digest('base64')}`
+        if (integrity !== candidate.dist.integrity) {
+          throw new TrustError('official DSH tarball does not match signed npm integrity', 'TRUST_ARTIFACT_MISMATCH')
+        }
+        const destination = this.objectPath(objectSha256)
+        try {
+          await link(temporary, destination)
+          await rm(temporary)
+        } catch (error) {
+          if (error?.code !== 'EEXIST') throw error
+          const existing = await hashFile(destination)
+          if (existing.size !== size || existing.sha256 !== objectSha256) {
+            throw new TrustError('trusted object store contains conflicting content')
+          }
+          await rm(temporary, { force: true })
+        }
+        await this.ledger.acceptOfficialDsh(candidate, objectSha256, size)
+        const authority = `${candidate.name}@${candidate.version}:${candidate.dist.integrity}`
+        const receipt = {
+          token: receiptToken(),
+          artifactId: 'official-dsh-tarball',
+          mediaType: 'application/vnd.npm.package+gzip',
+          objectSha256,
+          size,
+          parentReceipt: null,
+          parentSha256: createHash('sha256').update(authority).digest('hex'),
+          signerKeyId: candidate.signerKeyId,
+          keyringGeneration: target.keyringGeneration,
+          targetSequence: target.targetSequence,
+          authorityType: 'official-dsh',
+          authorityVersion: candidate.version,
+          status: 'staged',
+          authoritySignature: null,
+          importedAt: this.now().toISOString(),
+        }
+        await atomicJson(this.receiptPath(receipt.token), receipt)
+        return Object.freeze({ ...receipt, path: destination })
+      } finally {
+        await destinationHandle?.close().catch(() => {})
+        await rm(temporary, { force: true }).catch(() => {})
+      }
+    })
+  }
+
   acceptManifest(token, signatureToken) {
     return this.exclusive(async () => {
       const receipt = await this.readReceipt(token)
@@ -477,6 +576,7 @@ export class VerifiedObjectStore {
       const revoked = new Set(keyring.revokedKeyIds)
       const currentTarget = (await this.ledger.currentTarget())?.value
       const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
+      const currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
       const unusable = new Set(receipts.filter(receipt => (
         receipt.status === 'revoked' || receipt.status === 'retired'
       )).map(receipt => receipt.token))
@@ -498,6 +598,12 @@ export class VerifiedObjectStore {
                 || receipt.authorityVersion !== currentExperimental.value.version
                 || receipt.objectSha256 !== currentExperimental.objectSha256
                 || receipt.signerKeyId !== currentExperimental.value.signerKeyId
+              ))
+              || (receipt.authorityType === 'official-dsh' && (
+                currentOfficialDsh === undefined
+                || receipt.authorityVersion !== currentOfficialDsh.value.version
+                || receipt.objectSha256 !== currentOfficialDsh.objectSha256
+                || receipt.signerKeyId !== currentOfficialDsh.value.signerKeyId
               ))
               || (receipt.parentReceipt !== null && unusable.has(receipt.parentReceipt))
             )
@@ -523,13 +629,19 @@ export class VerifiedObjectStore {
       const currentTarget = (await this.ledger.currentTarget())?.value
       if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
       const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
+      const currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
       const add = (token) => {
         const receipt = byToken.get(token)
         if (receipt === undefined) throw new TrustError('activation references an unknown receipt')
         if (!['staged', 'active', 'previous'].includes(receipt.status)) {
           throw new TrustError('activation references an unusable receipt')
         }
-        const authorityCurrent = receipt.authorityType === 'experimental'
+        const authorityCurrent = receipt.authorityType === 'official-dsh'
+          ? currentOfficialDsh !== undefined
+            && receipt.authorityVersion === currentOfficialDsh.value.version
+            && receipt.objectSha256 === currentOfficialDsh.objectSha256
+            && receipt.signerKeyId === currentOfficialDsh.value.signerKeyId
+          : receipt.authorityType === 'experimental'
           ? currentExperimental !== undefined
             && receipt.authorityVersion === currentExperimental.value.version
             && receipt.objectSha256 === currentExperimental.objectSha256

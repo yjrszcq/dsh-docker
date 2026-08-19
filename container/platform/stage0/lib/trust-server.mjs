@@ -31,6 +31,7 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
           keyringGeneration: keyring?.value.generation ?? null,
           targetSequence: target?.value.targetSequence ?? null,
           experimentalVersion: (await ledger.currentExperimental().catch(() => undefined))?.value.version ?? null,
+          officialDshVersion: (await ledger.currentOfficialDsh().catch(() => undefined))?.value.version ?? null,
         })
         return
       }
@@ -58,6 +59,14 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
         send(response, 200, receipt)
       } else if (url.pathname === '/v1/artifacts/import-experimental') {
         send(response, 200, await objects.importFromExperimental(body.candidate, body.sourcePath))
+      } else if (url.pathname === '/v1/dsh/ensure') {
+        if (
+          body === null || typeof body !== 'object' || Array.isArray(body)
+          || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'version')
+        ) {
+          throw new Error('official DSH import accepts only version')
+        }
+        send(response, 200, await objects.ensureOfficialDsh(body.version))
       } else if (url.pathname === '/v1/manifests/accept') {
         send(response, 200, await objects.acceptManifest(body.receipt, body.signatureReceipt))
       } else if (url.pathname === '/v1/activate') {

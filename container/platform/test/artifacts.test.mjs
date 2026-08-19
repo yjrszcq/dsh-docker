@@ -133,6 +133,68 @@ test('imports Experimental bytes only through the separate signed authority', as
   assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })
 
+test('imports official DSH from Stage-0-owned metadata and tarball requests', async () => {
+  const content = Buffer.from('official tarball')
+  const registry = registryKeyPair()
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const requests = []
+  const { ledger, untrustedRoot, directory } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    experimentalPolicy(registry),
+  )
+  const store = new VerifiedObjectStore({
+    root: join(directory, 'trust'),
+    untrustedRoot,
+    ledger,
+    fetchImpl: async (url, options) => {
+      requests.push({ url: url.href, options })
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
+      }
+      return new Response(content)
+    },
+  })
+  const receipt = await store.ensureOfficialDsh(candidate.version)
+  assert.equal(receipt.authorityType, 'official-dsh')
+  assert.equal(receipt.authorityVersion, candidate.version)
+  assert.deepEqual(await readFile(receipt.path), content)
+  assert.equal(requests.length, 2)
+  assert.equal(requests[0].url, 'https://registry.npmjs.org/%40deepseek-ai%2Fdsh')
+  assert.equal(requests[1].url, candidate.dist.tarball)
+  assert.ok(requests.every(request => request.options.redirect === 'error'))
+  await store.activate([receipt.token])
+  assert.equal((await store.readReceipt(receipt.token)).status, 'active')
+})
+
+test('official DSH import rejects redirects and mismatched bytes', async () => {
+  const content = Buffer.from('official tarball')
+  const registry = registryKeyPair()
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const { ledger, untrustedRoot, directory } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    experimentalPolicy(registry),
+  )
+  const redirected = new VerifiedObjectStore({
+    root: join(directory, 'trust'), untrustedRoot, ledger,
+    fetchImpl: async () => ({
+      ok: true, redirected: true, url: 'https://mirror.example/', headers: new Headers(), body: new Response('{}').body,
+    }),
+  })
+  await assert.rejects(redirected.ensureOfficialDsh(candidate.version), /redirected/)
+
+  let request = 0
+  const mismatched = new VerifiedObjectStore({
+    root: join(directory, 'trust'), untrustedRoot, ledger,
+    fetchImpl: async () => {
+      request += 1
+      return request === 1
+        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
+        : new Response('different bytes')
+    },
+  })
+  await assert.rejects(mismatched.ensureOfficialDsh(candidate.version), { code: 'TRUST_ARTIFACT_MISMATCH' })
+})
+
 test('revokes staged Experimental receipts after Registry delegation changes but retains active objects', async () => {
   const content = Buffer.from('experimental tarball')
   const registry = registryKeyPair()
