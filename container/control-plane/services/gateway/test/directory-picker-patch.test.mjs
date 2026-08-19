@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { patchDirectoryPicker } from '../../../patches/directory-picker.mjs'
+import { patchDirectoryPicker } from '../../../../patches/directory-picker.mjs'
 
 test('directory picker patch changes exactly one default without touching explicit paths', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-directory-patch-'))

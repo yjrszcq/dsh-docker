@@ -9,7 +9,7 @@ import { canonicalJson } from '../lib/canonical-json.mjs'
 import { BootstrapRuntime } from '../bootstrap/lib/runtime.mjs'
 import { EnvironmentRunner, loadControlPlane } from '../bootstrap/lib/lifecycle.mjs'
 import { createBootstrapControl, listenBootstrapControl } from '../bootstrap/lib/control.mjs'
-import { LocalApiClient } from '../../control-plane/updater/lib/client.mjs'
+import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 
 function command(script, args = []) {
   return { executable: process.execPath, args: [script, ...args], timeoutSeconds: 5 }

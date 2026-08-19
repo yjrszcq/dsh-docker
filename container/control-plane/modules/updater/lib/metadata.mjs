@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { parseStable } from '../../../platform/lib/contracts.mjs'
-import { compareDshVersions } from '../../../platform/lib/supported-target.mjs'
-import { parseRegistryCandidate } from '../../../platform/stage0/lib/experimental.mjs'
+import { parseStable } from '../../../../platform/lib/contracts.mjs'
+import { compareDshVersions } from '../../../../platform/lib/supported-target.mjs'
+import { parseRegistryCandidate } from '../../../../platform/stage0/lib/experimental.mjs'
 
 async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
   if (!response.ok) throw new Error(`${label} returned HTTP ${String(response.status)}`)

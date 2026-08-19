@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { UpdateJournal } from '../../control-plane/updater/lib/journal.mjs'
+import { UpdateJournal } from '../../control-plane/modules/updater/lib/journal.mjs'
 
 const transaction = {
   transactionId: 'transaction-one',

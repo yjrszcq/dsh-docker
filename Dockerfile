@@ -52,7 +52,7 @@ COPY container/platform /opt/dsh-platform/runtime/platform
 COPY container/control-plane /opt/dsh-platform/runtime/control-plane
 COPY container/platform/tools/dsh-shim.sh /usr/local/bin/dsh
 RUN chmod 755 /usr/local/bin/dsh \
-    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/control-plane/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/control-plane/services/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
     && chmod 755 /usr/local/bin/dsh-platform
 
 ENV DSH_HOME=/home/node/.dsh \

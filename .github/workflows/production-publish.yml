@@ -52,7 +52,7 @@ jobs:
       - name: Run release contract tests
         run: |
           npm test --prefix container/platform
-          npm test --prefix container/control-plane/gateway
+          npm test --prefix container/control-plane/services/gateway
           node container/test/compose-config.mjs
 
       - name: Install protected public trust bundle

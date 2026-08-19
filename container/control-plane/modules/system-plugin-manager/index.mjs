@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { canonicalJson } from '../../platform/lib/canonical-json.mjs'
+import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 
 function run(command, args) {
   return new Promise((resolveRun, reject) => {

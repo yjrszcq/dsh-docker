@@ -118,8 +118,8 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   for (const name of [
     'platform/bootstrap/index.mjs',
     'control-plane/definition.json',
-    'control-plane/gateway/index.mjs',
-    'control-plane/management/index.mjs',
+    'control-plane/services/gateway/index.mjs',
+    'control-plane/services/management/index.mjs',
   ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
 
   const stableBytes = await readFile(join(output, 'stable.json'))

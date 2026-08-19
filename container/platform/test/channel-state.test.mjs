@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { ChannelStateStore, planDesiredState } from '../../control-plane/updater/lib/channel-state.mjs'
+import { ChannelStateStore, planDesiredState } from '../../control-plane/modules/updater/lib/channel-state.mjs'
 
 const current = { dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' }
 const supported = { dsh: '0.1.0-rc.7', environment: 'env-1' }

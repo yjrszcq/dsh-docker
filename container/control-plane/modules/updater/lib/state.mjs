@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { durableReplace } from '../../../platform/lib/atomic.mjs'
+import { durableReplace } from '../../../../platform/lib/atomic.mjs'
 
 export const TERMINAL_UPDATE_STATES = new Set(['idle', 'success', 'failed'])
 

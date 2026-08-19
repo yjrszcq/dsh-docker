@@ -261,7 +261,7 @@ docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtool
 Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
-npm test --prefix container/control-plane/gateway
+npm test --prefix container/control-plane/services/gateway
 npm test --prefix container/platform
 node container/test/compose-config.mjs
 ```

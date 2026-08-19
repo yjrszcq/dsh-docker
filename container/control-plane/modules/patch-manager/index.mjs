@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { TrustError } from '../../platform/lib/validation.mjs'
+import { TrustError } from '../../../platform/lib/validation.mjs'
 
 export async function verifyNpmIntegrity(path, integrity) {
   if (typeof integrity !== 'string' || !integrity.startsWith('sha512-')) {

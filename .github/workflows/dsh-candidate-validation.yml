@@ -72,7 +72,7 @@ jobs:
 
       - name: Run static compatibility checks
         run: |
-          npm test --prefix container/control-plane/gateway
+          npm test --prefix container/control-plane/services/gateway
           npm test --prefix container/platform
           node container/test/compose-config.mjs
           sh -n container/test/container-smoke.sh

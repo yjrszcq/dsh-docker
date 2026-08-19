@@ -3,7 +3,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { buildRuntime } from '../../control-plane/patch-manager/index.mjs'
+import { buildRuntime } from '../../control-plane/modules/patch-manager/index.mjs'
 
 const [installedArg, outputArg, version = 'seed'] = process.argv.slice(2)
 if (installedArg === undefined || outputArg === undefined) {
@@ -23,10 +23,19 @@ for (const directory of ['bootstrap', 'lib']) {
   await cp(join(platformRoot, directory), join(bootstrapRoot, 'platform', directory), { recursive: true })
 }
 for (const directory of ['log-manager', 'patch-manager', 'system-plugin-manager', 'updater']) {
-  await cp(join(containerRoot, 'control-plane', directory), join(bootstrapRoot, 'control-plane', directory), { recursive: true })
+  await cp(
+    join(containerRoot, 'control-plane', 'modules', directory),
+    join(bootstrapRoot, 'control-plane', 'modules', directory),
+    { recursive: true },
+  )
 }
-await cp(join(containerRoot, 'control-plane', 'management'), join(bootstrapRoot, 'control-plane', 'management'), { recursive: true })
-await cp(join(containerRoot, 'control-plane', 'gateway'), join(bootstrapRoot, 'control-plane', 'gateway'), { recursive: true })
+for (const directory of ['management', 'gateway']) {
+  await cp(
+    join(containerRoot, 'control-plane', 'services', directory),
+    join(bootstrapRoot, 'control-plane', 'services', directory),
+    { recursive: true },
+  )
+}
 await cp(join(containerRoot, 'control-plane', 'definition.json'), join(bootstrapRoot, 'control-plane', 'definition.json'))
 await writeFile(join(output, 'bootstrap', 'VERSION'), `${bootstrapVersion}\n`)
 

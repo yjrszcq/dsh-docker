@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { buildRuntime, RuntimeSlots } from '../../patch-manager/index.mjs'
 import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
-import { artifactForReference, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
+import { artifactForReference, parseEnvironmentManifest } from '../../../../platform/lib/contracts.mjs'
 import { LocalApiClient } from './client.mjs'
 
 function run(command, args) {

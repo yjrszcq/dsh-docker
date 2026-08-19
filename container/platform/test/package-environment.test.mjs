@@ -50,10 +50,10 @@ test('can emit flat Artifact URLs for GitHub Release assets', async () => {
 
 test('checked-in Component manifests satisfy the public contract', async () => {
   for (const path of [
-    join(containerRoot, 'control-plane', 'gateway', 'component.json'),
+    join(containerRoot, 'control-plane', 'services', 'gateway', 'component.json'),
     join(containerRoot, 'environment', 'dsh-runtime', 'component.json'),
-    join(containerRoot, 'control-plane', 'management', 'component.json'),
-    join(containerRoot, 'control-plane', 'updater', 'recovery.component.json'),
+    join(containerRoot, 'control-plane', 'services', 'management', 'component.json'),
+    join(containerRoot, 'control-plane', 'modules', 'updater', 'recovery.component.json'),
   ]) {
     const bytes = await readFile(path)
     const component = parseComponentManifest(bytes)

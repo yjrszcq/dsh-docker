@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, symlink, writeFile } 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { PersistentStateSnapshots } from '../../control-plane/updater/lib/snapshots.mjs'
+import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
 
 async function fixture(options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-snapshots-'))

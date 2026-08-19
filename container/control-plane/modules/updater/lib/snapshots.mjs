@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
-import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, TrustError } from '../../../platform/lib/validation.mjs'
+import { canonicalJson } from '../../../../platform/lib/canonical-json.mjs'
+import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, TrustError } from '../../../../platform/lib/validation.mjs'
 
 function validId(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) {
