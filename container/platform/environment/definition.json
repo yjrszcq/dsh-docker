@@ -40,5 +40,13 @@
       "mediaType": "text/javascript"
     }
   ],
-  "systemPlugins": []
+  "systemPlugins": [
+    {
+      "id": "update-ui",
+      "version": "1.0.0",
+      "artifactId": "system-plugin-update-ui",
+      "source": "../update-ui/package",
+      "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
+    }
+  ]
 }

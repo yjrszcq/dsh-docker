@@ -2,8 +2,9 @@
 
 import { createHash } from 'node:crypto'
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
 
@@ -51,16 +52,29 @@ for (const group of groups) {
   references[group] = []
   for (const item of definition[group]) {
     const source = resolve(definitionRoot, item.source)
-    const bytes = await readFile(source)
+    const name = item.artifactId
+    const destination = join(staging, 'artifacts', name)
+    let bytes
+    if (group === 'systemPlugins') {
+      await new Promise((resolveArchive, reject) => {
+        const child = spawn('tar', [
+          '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
+          '-czf', destination, '-C', dirname(source), basename(source),
+        ])
+        child.once('error', reject)
+        child.once('exit', code => code === 0 ? resolveArchive() : reject(new Error(`tar exited with ${String(code)}`)))
+      })
+      bytes = await readFile(destination)
+    } else {
+      bytes = await readFile(source)
+    }
     if (group === 'components') {
       const component = parseComponentManifest(bytes)
       if (component.id !== item.id || component.version !== item.version) {
         throw new Error(`component ${item.id} metadata differs from its manifest`)
       }
     }
-    const name = item.artifactId
-    const destination = join(staging, 'artifacts', name)
-    await cp(source, destination, { errorOnExist: true, force: false })
+    if (group !== 'systemPlugins') await cp(source, destination, { errorOnExist: true, force: false })
     artifacts.push({
       id: item.artifactId,
       mediaType: item.mediaType,

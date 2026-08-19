@@ -28,6 +28,7 @@ test('packages the initial Environment deterministically from real resources', a
   const manifest = parseEnvironmentManifest(firstManifest)
   assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime', 'platform-management', 'gateway'])
   assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
+  assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['update-ui'])
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
 })
 
