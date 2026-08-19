@@ -7,6 +7,16 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseOfficialDshPolicy, parseStable } from '../lib/contracts.mjs'
+import {
+  deriveImageBuildId,
+  deriveRecordId,
+  parseArtifactReference,
+  parseBootstrapRecord,
+  parseDeploymentRecord,
+  parseImageInventory,
+  parseSlots,
+  recordsFromImageInventory,
+} from '../lib/deployment-contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { document, officialDshPolicy, registryKeyPair, target } from './helpers.mjs'
 
@@ -32,6 +42,79 @@ const lifecycle = {
 test('canonical JSON recursively orders keys and rejects unsafe numbers', () => {
   assert.equal(canonicalJson({ z: 1, a: { y: 2, x: 3 } }).toString(), '{"a":{"x":3,"y":2},"z":1}\n')
   assert.throws(() => canonicalJson({ value: 1.5 }))
+})
+
+function imageInventory(overrides = {}) {
+  const content = {
+    schema: 1,
+    authority: 'stable',
+    platformRevision: 'fixture-revision',
+    targetSequence: 10,
+    bootstrapApi: 1,
+    updateApi: 1,
+    bootstrap: { version: '1.0.0', id: 'bootstrap-fixture', sha256: '1'.repeat(64) },
+    deployment: {
+      id: 'deployment-fixture',
+      dshVersion: '0.1.0-rc.10',
+      environmentVersion: '2026.08.19.1',
+      environment: { id: 'environment-fixture', sha256: '2'.repeat(64) },
+      pristine: { id: 'pristine-fixture', sha256: '3'.repeat(64) },
+      runtime: { id: 'runtime-fixture', sha256: '4'.repeat(64) },
+      systemPlugins: { id: 'system-plugins-fixture', sha256: '5'.repeat(64) },
+    },
+    ...overrides,
+  }
+  return { ...content, imageBuildId: deriveImageBuildId(content) }
+}
+
+test('parses content-bound image inventory and derives immutable image Records', () => {
+  const inventory = parseImageInventory(document(imageInventory()))
+  const records = recordsFromImageInventory(inventory)
+  assert.match(inventory.imageBuildId, /^sha256:[a-f0-9]{64}$/)
+  assert.equal(records.bootstrap.version, '1.0.0')
+  assert.equal(records.deployment.runtime.imageBuildId, inventory.imageBuildId)
+  assert.equal(records.deployment.targetSequence, 10)
+  assert.doesNotThrow(() => parseBootstrapRecord(records.bootstrap))
+  assert.doesNotThrow(() => parseDeploymentRecord(records.deployment))
+
+  const changed = imageInventory({ platformRevision: 'different-revision' })
+  assert.notEqual(changed.imageBuildId, inventory.imageBuildId)
+  assert.throws(() => parseImageInventory(document({ ...imageInventory(), targetSequence: 11 })), /imageBuildId/)
+})
+
+test('restricts inventory authority and Artifact References without accepting paths', () => {
+  const development = imageInventory({ authority: 'development', targetSequence: 0 })
+  development.imageBuildId = deriveImageBuildId(Object.fromEntries(Object.entries(development).filter(([key]) => key !== 'imageBuildId')))
+  assert.equal(parseImageInventory(document(development)).targetSequence, 0)
+  assert.throws(() => parseImageInventory(document(imageInventory({ authority: 'development' }))), /targetSequence 0/)
+  assert.throws(() => parseArtifactReference({
+    storage: 'store', kind: 'runtime', id: '../escape', sha256: 'a'.repeat(64),
+  }), /invalid/)
+  assert.throws(() => parseArtifactReference({
+    storage: 'store', kind: 'runtime', id: 'runtime-one', sha256: 'a'.repeat(64), path: '/tmp/runtime',
+  }), /fields/)
+  assert.throws(() => parseArtifactReference({
+    storage: 'image', imageBuildId: `sha256:${'b'.repeat(64)}`, kind: 'unknown', id: 'one', sha256: 'a'.repeat(64),
+  }), /kind/)
+})
+
+test('rejects mutated Records and invalid atomic slot generations', () => {
+  const { bootstrap, deployment } = recordsFromImageInventory(parseImageInventory(document(imageInventory())))
+  assert.throws(() => parseDeploymentRecord({ ...deployment, dshVersion: 'changed' }), /canonical content/)
+  assert.throws(() => parseBootstrapRecord({ ...bootstrap, artifact: { ...bootstrap.artifact, id: 'changed' } }), /canonical content/)
+  assert.deepEqual(parseSlots({
+    schema: 1, generation: 2, current: deployment.id, previous: null,
+  }, 'deployment-record'), {
+    schema: 1, generation: 2, current: deployment.id, previous: null,
+  })
+  assert.throws(() => parseSlots({
+    schema: 1, generation: 0, current: deployment.id, previous: null,
+  }, 'deployment-record'), /positive/)
+  assert.throws(() => parseSlots({
+    schema: 1, generation: 1, current: deployment.id, previous: deployment.id,
+  }, 'deployment-record'), /must differ/)
+  const content = { schema: 1, authority: 'development' }
+  assert.equal(deriveRecordId('fixture', content), deriveRecordId('fixture', { authority: 'development', schema: 1 }))
 })
 
 test('parses the exact stable desired state and rejects missing referenced Artifacts', () => {
