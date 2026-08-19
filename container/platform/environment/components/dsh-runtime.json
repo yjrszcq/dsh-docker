@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "dsh-runtime",
+  "version": "1.0.0",
+  "type": "service",
+  "command": {
+    "executable": "/data/runtime/current/bin/dsh",
+    "args": ["web", "--host", "127.0.0.1", "--port", "3079"],
+    "timeoutSeconds": 30
+  },
+  "environment": {},
+  "lifecycle": {
+    "prepare": null,
+    "preStart": null,
+    "postStart": null,
+    "preStop": null,
+    "stop": null,
+    "postStop": null
+  },
+  "health": {
+    "type": "http",
+    "host": "127.0.0.1",
+    "port": 3079,
+    "path": "/",
+    "intervalSeconds": 1,
+    "timeoutSeconds": 30
+  },
+  "logging": {
+    "stdout": true,
+    "stderr": true
+  }
+}

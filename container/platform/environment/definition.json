@@ -1,0 +1,37 @@
+{
+  "version": "2026.08.19.1-dev",
+  "bootstrapApi": 1,
+  "components": [
+    {
+      "id": "gateway",
+      "version": "1.0.0",
+      "artifactId": "component-gateway",
+      "source": "components/gateway.json",
+      "mediaType": "application/vnd.dsh-platform.component.v1+json"
+    },
+    {
+      "id": "dsh-runtime",
+      "version": "1.0.0",
+      "artifactId": "component-dsh-runtime",
+      "source": "components/dsh-runtime.json",
+      "mediaType": "application/vnd.dsh-platform.component.v1+json"
+    }
+  ],
+  "patches": [
+    {
+      "id": "directory-picker",
+      "version": "r1",
+      "artifactId": "patch-directory-picker",
+      "source": "../../patches/directory-picker.mjs",
+      "mediaType": "text/javascript"
+    },
+    {
+      "id": "browser-loopback",
+      "version": "r1",
+      "artifactId": "patch-browser-loopback",
+      "source": "../../patches/browser-loopback.mjs",
+      "mediaType": "text/javascript"
+    }
+  ],
+  "systemPlugins": []
+}
