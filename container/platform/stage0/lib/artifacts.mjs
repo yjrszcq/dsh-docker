@@ -59,11 +59,13 @@ export function parseArtifactList(value, label) {
 
 export function parseReleaseManifest(bytes) {
   const object = parseJsonDocument(bytes, 'release manifest')
-  exactKeys(
-    object,
-    ['artifacts', 'issuedAt', 'keyringGeneration', 'manifestType', 'schema', 'targetSequence', 'version'],
-    'release manifest',
-  )
+  const common = ['artifacts', 'issuedAt', 'keyringGeneration', 'manifestType', 'schema', 'targetSequence', 'version']
+  const specific = object.manifestType === 'bootstrap'
+    ? ['bootstrapApi', 'entrypoint']
+    : object.manifestType === 'environment'
+      ? ['bootstrapApi', 'components', 'patches', 'systemPlugins']
+      : []
+  exactKeys(object, [...common, ...specific], 'release manifest')
   if (object.schema !== 1) throw new TrustError('release manifest schema must be 1')
   if (typeof object.manifestType !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(object.manifestType)) {
     throw new TrustError('release manifest manifestType is invalid')

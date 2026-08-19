@@ -19,6 +19,7 @@ function descriptor(id, content, mediaType = 'application/octet-stream') {
 }
 
 function releaseTarget(generation, sequence, artifacts) {
+  const selected = artifacts[0]
   return {
     schema: 1,
     updateApi: 1,
@@ -26,7 +27,15 @@ function releaseTarget(generation, sequence, artifacts) {
     targetSequence: sequence,
     issuedAt: '2026-08-19T00:00:00.000Z',
     artifacts,
-    target: {},
+    desired: {
+      bootstrap: { version: '1.0.0', manifestArtifactId: selected.id },
+      environment: { version: '2026.08.19.1', manifestArtifactId: selected.id },
+      dsh: {
+        version: '0.1.0-rc.7',
+        tarballArtifactId: selected.id,
+        integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
+      },
+    },
   }
 }
 
@@ -39,6 +48,10 @@ function manifest(generation, sequence, artifacts) {
     targetSequence: sequence,
     issuedAt: '2026-08-19T00:00:00.000Z',
     artifacts,
+    bootstrapApi: 1,
+    components: [],
+    patches: [],
+    systemPlugins: [],
   }
 }
 

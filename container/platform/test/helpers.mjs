@@ -39,12 +39,29 @@ export function keyring(generation, current, next, revokedKeyIds = []) {
 }
 
 export function target(generation, sequence) {
+  const emptyHash = '0'.repeat(64)
+  const artifacts = ['bootstrap-manifest', 'environment-manifest', 'dsh-tarball'].map(id => ({
+    id,
+    mediaType: 'application/octet-stream',
+    sha256: emptyHash,
+    size: 0,
+    url: `https://example.com/${id}`,
+  }))
   return {
     schema: 1,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
     issuedAt: new Date(Date.UTC(2026, 7, 19, 1, 0, sequence)).toISOString(),
-    target: {},
+    artifacts,
+    desired: {
+      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest' },
+      environment: { version: '2026.08.19.1', manifestArtifactId: 'environment-manifest' },
+      dsh: {
+        version: '0.1.0-rc.7',
+        tarballArtifactId: 'dsh-tarball',
+        integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
+      },
+    },
   }
 }

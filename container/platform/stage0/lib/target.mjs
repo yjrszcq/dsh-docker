@@ -1,17 +1,9 @@
-import { isoTimestamp, parseJsonDocument, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
+import { TrustError } from '../../lib/validation.mjs'
+import { parseStable } from '../../lib/contracts.mjs'
 import { verifyDetached } from './signature.mjs'
 
 export function parseReleaseTarget(bytes) {
-  const object = parseJsonDocument(bytes, 'release target')
-  if (object.schema !== 1) throw new TrustError('release target schema must be 1')
-  if (object.updateApi !== 1) throw new TrustError('release target updateApi must be 1')
-  const keyringGeneration = positiveSafeInteger(
-    object.keyringGeneration,
-    'release target keyringGeneration',
-  )
-  const targetSequence = positiveSafeInteger(object.targetSequence, 'release target targetSequence')
-  isoTimestamp(object.issuedAt, 'release target issuedAt')
-  return Object.freeze({ document: object, keyringGeneration, targetSequence })
+  return parseStable(bytes)
 }
 
 export function verifyReleaseTarget(bytes, signature, keyring) {
