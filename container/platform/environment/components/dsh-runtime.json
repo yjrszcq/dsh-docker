@@ -5,7 +5,7 @@
   "type": "service",
   "command": {
     "executable": "/data/runtime/current/bin/dsh",
-    "args": ["web", "--host", "127.0.0.1", "--port", "3079"],
+    "args": ["web", "--patch", "/data/system-plugins/current/cordis.patch.yml", "--host", "127.0.0.1", "--port", "3079"],
     "timeoutSeconds": 30
   },
   "environment": {},
