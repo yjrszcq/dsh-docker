@@ -167,6 +167,22 @@ test('official DSH import rejects redirects and mismatched bytes', async () => {
   })
   await assert.rejects(redirected.ensureOfficialDsh(candidate.version), /redirected/)
 
+  let redirectedRequest = 0
+  const tarballRedirected = new VerifiedObjectStore({
+    root: join(directory, 'trust'), untrustedRoot, ledger,
+    fetchImpl: async () => {
+      redirectedRequest += 1
+      if (redirectedRequest === 1) {
+        return new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
+      }
+      return {
+        ok: true, redirected: true, url: 'https://cdn.example/dsh.tgz',
+        headers: new Headers(), body: new Response(content).body,
+      }
+    },
+  })
+  await assert.rejects(tarballRedirected.ensureOfficialDsh(candidate.version), /redirected/)
+
   let request = 0
   const mismatched = new VerifiedObjectStore({
     root: join(directory, 'trust'), untrustedRoot, ledger,
