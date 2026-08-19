@@ -243,7 +243,7 @@ export class VerifiedObjectStore {
     let destinationHandle
     try {
       if (!(await sourceHandle.stat()).isFile()) throw new TrustError('artifact source must be a regular file')
-      destinationHandle = await open(temporary, 'wx', 0o400)
+      destinationHandle = await open(temporary, 'wx', 0o444)
       const hash = createHash('sha256')
       let size = 0
       const meter = new Transform({
@@ -322,7 +322,7 @@ export class VerifiedObjectStore {
       const temporary = join(this.objectRoot, `.${randomUUID()}.tmp`)
       let destinationHandle
       try {
-        destinationHandle = await open(temporary, 'wx', 0o400)
+        destinationHandle = await open(temporary, 'wx', 0o444)
         const sha256 = createHash('sha256')
         const sha512 = createHash('sha512')
         let size = 0

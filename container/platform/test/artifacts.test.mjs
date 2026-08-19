@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -98,6 +98,7 @@ test('imports only target-authorized bytes from the untrusted directory', async 
   const receipt = await store.importFromTarget('gateway', source)
   assert.equal(receipt.objectSha256, expected.sha256)
   assert.deepEqual(await readFile(receipt.path), content)
+  assert.equal((await stat(receipt.path)).mode & 0o777, 0o444)
   await assert.rejects(store.importFromTarget('missing', source), /not authorized/)
   await assert.rejects(store.importFromTarget('gateway', join(directory, 'outside.bin')), /untrusted/)
 })

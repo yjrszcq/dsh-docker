@@ -14,14 +14,29 @@ test('builds a complete content-addressed Managed Deployment from verified input
   const paths = new PlatformPaths(join(root, 'data'), join(root, 'run'))
   await preparePersistentLayout(paths)
 
+  const dependencyRoot = join(root, 'dependency', 'package')
+  await mkdir(join(dependencyRoot, 'lib'), { recursive: true })
+  await writeFile(join(dependencyRoot, 'package.json'), JSON.stringify({ name: 'fixture-dependency', version: '1.0.0' }))
+  await writeFile(join(dependencyRoot, 'lib', 'index.js'), 'export const installed = true\n')
+  const dependencyArchive = join(root, 'fixture-dependency.tgz')
+  const packedDependency = spawnSync('tar', ['-czf', dependencyArchive, '-C', join(root, 'dependency'), 'package'], { encoding: 'utf8' })
+  assert.equal(packedDependency.status, 0, packedDependency.stderr)
+
   const packageRoot = join(root, 'source', 'package')
   await mkdir(join(packageRoot, 'lib'), { recursive: true })
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.8' }))
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+    name: '@deepseek-ai/dsh',
+    version: '0.1.0-rc.8',
+    dependencies: { 'fixture-dependency': `file:${dependencyArchive}` },
+  }))
   await writeFile(join(packageRoot, 'lib', 'bin.js'), '#!/usr/bin/env node\n')
   const archive = join(root, 'dsh.tgz')
   const packed = spawnSync('tar', ['-czf', archive, '-C', join(root, 'source'), 'package'], { encoding: 'utf8' })
   assert.equal(packed.status, 0, packed.stderr)
-  const objectSha256 = createHash('sha256').update(await readFile(archive)).digest('hex')
+  const archiveBytes = await readFile(archive)
+  const objectSha256 = createHash('sha256').update(archiveBytes).digest('hex')
+  const trustedObjectPath = join(paths.objectsRoot, objectSha256)
+  await writeFile(trustedObjectPath, archiveBytes)
 
   const manifestPath = join(root, 'environment.manifest.json')
   const manifest = {
@@ -48,7 +63,7 @@ test('builds a complete content-addressed Managed Deployment from verified input
       manifestReceipt: { objectSha256: createHash('sha256').update(await readFile(manifestPath)).digest('hex') },
     },
     paths: new Map([['environment-manifest', manifestPath]]),
-    dsh: { version: '0.1.0-rc.8', receipt: { path: archive, objectSha256 } },
+    dsh: { version: '0.1.0-rc.8', receipt: { path: trustedObjectPath, objectSha256 } },
     receiptTokens: ['stable-receipt', 'dsh-receipt'],
   }
 
@@ -75,6 +90,10 @@ test('builds a complete content-addressed Managed Deployment from verified input
     assert.equal((await lstat(join(storeRoot, reference.id))).isDirectory(), true)
   }
   assert.equal(await readFile(join(first.assets.runtime.path, 'package', 'package.json'), 'utf8'), await readFile(join(packageRoot, 'package.json'), 'utf8'))
+  assert.equal(
+    await readFile(join(first.assets.pristine.path, 'node_modules', 'fixture-dependency', 'lib', 'index.js'), 'utf8'),
+    'export const installed = true\n',
+  )
   assert.equal((await readFile(join(first.assets.systemPlugins.path, 'cordis.patch.yml'), 'utf8')).trim(), '[]')
 
   const repeated = await builder.buildStable(prepared)

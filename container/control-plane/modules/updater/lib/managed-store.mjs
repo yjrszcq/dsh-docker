@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { buildRuntime } from '../../patch-manager/index.mjs'
 import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
@@ -56,26 +56,35 @@ export class ManagedDeploymentBuilder {
   }
 
   async pristine(version, receipt) {
-    const id = `pristine-${receipt.objectSha256}`
+    const id = `pristine-npm-${receipt.objectSha256}`
     const destination = join(this.paths.pristineRoot, id)
     if (await exists(destination)) {
       const sha256 = await verifyDirectory(destination)
       return Object.freeze({ id, sha256, path: destination })
     }
+    const installRoot = join(this.paths.pristineRoot, `.install.${randomUUID()}.tmp`)
     const staging = join(this.paths.pristineRoot, `.${id}.${randomUUID()}.tmp`)
-    await mkdir(staging, { recursive: false })
+    await mkdir(installRoot, { recursive: false })
     try {
       const entries = (await run('tar', ['-tzf', receipt.path])).split('\n').filter(Boolean)
       if (!entries.includes('package/package.json') || entries.some(entry => (
         entry.startsWith('/') || !entry.startsWith('package/') || entry.split('/').includes('..')
       ))) throw new Error('official DSH archive contains an unsafe path')
-      await run('tar', ['-xzf', receipt.path, '--strip-components=1', '--no-same-owner', '--no-same-permissions', '-C', staging])
+      const archivePath = join(installRoot, 'official-dsh.tgz')
+      await symlink(receipt.path, archivePath, 'file')
+      await run('npm', [
+        'install', '--global', '--prefix', installRoot, '--omit=dev', '--ignore-scripts',
+        '--no-audit', '--no-fund', '--cache', join(installRoot, 'npm-cache'), archivePath,
+      ])
+      const installed = join(installRoot, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+      await rename(installed, staging)
       const metadata = JSON.parse(await readFile(join(staging, 'package.json'), 'utf8'))
       if (metadata.name !== '@deepseek-ai/dsh' || metadata.version !== version) {
         throw new Error('official DSH package metadata differs from its requested version')
       }
       return await publish(staging, this.paths.pristineRoot, id)
     } finally {
+      await rm(installRoot, { recursive: true, force: true })
       await rm(staging, { recursive: true, force: true })
     }
   }
