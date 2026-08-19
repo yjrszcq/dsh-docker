@@ -16,7 +16,13 @@ export function createBootstrapControl(runner) {
         bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? '1.0.0',
       })
       else if (request.method === 'POST' && pathname === '/v1/reload') send(response, 200, await runner.reload())
-      else send(response, 404, { error: 'not found' })
+      else if (request.method === 'GET' && pathname === '/v1/health') send(response, 200, await runner.health())
+      else {
+        const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume)$/.exec(pathname)
+        if (request.method === 'POST' && operation !== null) {
+          send(response, 200, await runner[operation[2]](operation[1]))
+        } else send(response, 404, { error: 'not found' })
+      }
     } catch (error) {
       send(response, 500, { error: error instanceof Error ? error.message : 'Bootstrap operation failed' })
     }

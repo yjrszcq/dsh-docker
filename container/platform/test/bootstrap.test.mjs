@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { EnvironmentRunner } from '../bootstrap/lib/lifecycle.mjs'
+import { createBootstrapControl, listenBootstrapControl } from '../bootstrap/lib/control.mjs'
+import { LocalApiClient } from '../updater/lib/client.mjs'
 
 function command(script, args = []) {
   return { executable: process.execPath, args: [script, ...args], timeoutSeconds: 5 }
@@ -125,4 +127,49 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   const error = await runner.fatal
   assert.match(error.message, /service exited unexpectedly.*code=7/)
   await runner.stop()
+})
+
+test('suspends and resumes one service while keeping other Environment components running', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-suspend-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([
+      component('dsh-runtime', service, 'service'),
+      component('platform-management', service, 'service'),
+    ]),
+    capture: () => {},
+  })
+  await runner.start()
+  await runner.suspend('dsh-runtime')
+  assert.deepEqual(runner.status().components.map(value => value.id), ['platform-management'])
+  assert.equal((await runner.health()).healthy, false)
+  await runner.resume('dsh-runtime')
+  assert.deepEqual(runner.status().components.map(value => value.id), ['dsh-runtime', 'platform-management'])
+  assert.equal((await runner.health()).healthy, true)
+  await runner.stop()
+})
+
+test('Bootstrap control socket exposes component suspension, resumption, and health', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-control-'))
+  const calls = []
+  const runner = {
+    status: () => ({ components: [] }),
+    reload: async () => ({}),
+    health: async () => ({ healthy: true, components: [] }),
+    suspend: async id => { calls.push(['suspend', id]); return {} },
+    resume: async id => { calls.push(['resume', id]); return {} },
+  }
+  const server = createBootstrapControl(runner)
+  const socket = join(root, 'run', 'bootstrap.sock')
+  await listenBootstrapControl(server, socket)
+  const client = new LocalApiClient(socket)
+  try {
+    assert.equal((await client.request('GET', '/v1/health')).healthy, true)
+    await client.request('POST', '/v1/components/dsh-runtime/suspend')
+    await client.request('POST', '/v1/components/dsh-runtime/resume')
+    assert.deepEqual(calls, [['suspend', 'dsh-runtime'], ['resume', 'dsh-runtime']])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
 })
