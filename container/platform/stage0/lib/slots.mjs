@@ -1,6 +1,7 @@
 import { cp, lstat, mkdir, readlink, rename, rm, symlink } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { TrustError } from '../../lib/validation.mjs'
 
 function validVersion(version) {
@@ -25,6 +26,20 @@ async function replaceLink(root, name, version) {
   const temporary = join(root, `.${name}.${randomUUID()}.tmp`)
   await symlink(join('versions', validVersion(version)), temporary)
   await rename(temporary, join(root, name))
+}
+
+function tar(args, capture = false) {
+  return new Promise((resolveTar, reject) => {
+    const child = spawn('tar', args, { stdio: ['ignore', capture ? 'pipe' : 'ignore', 'pipe'] })
+    const stdout = []
+    const stderr = []
+    child.stdout?.on('data', chunk => stdout.push(chunk))
+    child.stderr.on('data', chunk => stderr.push(chunk))
+    child.once('error', reject)
+    child.once('exit', code => code === 0
+      ? resolveTar(Buffer.concat(stdout).toString('utf8'))
+      : reject(new Error(`Bootstrap archive failed: ${Buffer.concat(stderr).toString('utf8')}`)))
+  })
 }
 
 export class BootstrapSlots {
@@ -78,5 +93,28 @@ export class BootstrapSlots {
     const state = await this.state()
     if (state.current === version || state.previous === version) throw new TrustError('cannot discard an active Bootstrap')
     await rm(this.versionPath(version), { recursive: true, force: true })
+  }
+
+  async installArchive(archive, version) {
+    const destination = this.versionPath(version)
+    if (await lstat(destination).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))) return destination
+    const temporary = `${destination}.${randomUUID()}.tmp`
+    await mkdir(temporary, { recursive: true })
+    try {
+      const allowed = new Set(['bootstrap', 'lib', 'logging', 'management', 'runtime', 'updater'])
+      const entries = (await tar(['-tzf', archive], true)).split('\n').filter(Boolean)
+      if (entries.length === 0 || entries.some(name => (
+        name.startsWith('/')
+        || name.split('/').includes('..')
+        || !allowed.has(name.split('/')[0])
+      ))) throw new TrustError('Bootstrap archive contains an unsafe path')
+      await tar(['-xzf', archive, '--no-same-owner', '--no-same-permissions', '-C', temporary])
+      await lstat(join(temporary, 'bootstrap', 'index.mjs'))
+      await rename(temporary, destination)
+      return destination
+    } catch (error) {
+      await rm(temporary, { recursive: true, force: true })
+      throw error
+    }
   }
 }

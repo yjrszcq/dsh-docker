@@ -24,7 +24,7 @@ const metadata = new MetadataClient({
   trust,
 })
 const preparer = new TargetPreparer({ untrustedRoot: join(dataRoot, 'downloads', 'untrusted'), trust })
-const activator = new PlatformActivator({ dataRoot })
+const activator = new PlatformActivator({ dataRoot, stage0: trust })
 const coordinator = new UpdateCoordinator({
   metadata,
   preparer,
@@ -43,6 +43,12 @@ const scheduler = new UpdateScheduler({
   intervalSeconds: Number(process.env.DSH_UPDATE_CHECK_INTERVAL_SECONDS ?? 21600),
 })
 scheduler.start()
+const persisted = await coordinator.state.read()
+if (!['idle', 'success', 'failed'].includes(persisted.status)) {
+  setImmediate(() => {
+    try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
+  })
+}
 
 const stop = () => {
   scheduler.stop()

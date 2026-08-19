@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { BootstrapSlots } from '../stage0/lib/slots.mjs'
 import { BootstrapSupervisor } from '../stage0/lib/supervisor.mjs'
@@ -80,4 +81,43 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
+})
+
+test('exposes only an injected Stage-0 Bootstrap staging operation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-stage-bootstrap-api-'))
+  const recovery = keyPair()
+  const ledger = new TrustLedger(join(root, 'trust'), recovery.publicKey)
+  const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot: join(root, 'downloads'), ledger })
+  let staged
+  const server = createTrustServer({
+    ledger,
+    objects,
+    stageBootstrap: async (receipt, version) => { staged = { receipt, version } },
+  })
+  const socketPath = join(root, 'run', 'trust.sock')
+  await listenUnix(server, socketPath)
+  try {
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/bootstrap/stage', {
+      receipt: 'receipt-token', version: '2.0.0',
+    })).status, 202)
+    assert.deepEqual(staged, { receipt: 'receipt-token', version: '2.0.0' })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('Bootstrap archive installation rejects traversal before extraction', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-archive-'))
+  const source = join(root, 'source')
+  await mkdir(join(source, 'bootstrap'), { recursive: true })
+  await writeFile(join(source, 'bootstrap', 'index.mjs'), 'process.exit(0)')
+  const valid = join(root, 'valid.tgz')
+  assert.equal(spawnSync('tar', ['-czf', valid, '-C', source, 'bootstrap']).status, 0)
+  const slots = new BootstrapSlots(join(root, 'slots'))
+  await slots.installArchive(valid, '2.0.0')
+  assert.match(await readFile(join(slots.versionPath('2.0.0'), 'bootstrap', 'index.mjs'), 'utf8'), /exit/)
+
+  const unsafe = join(root, 'unsafe.tgz')
+  assert.equal(spawnSync('tar', ['-czf', unsafe, '--transform=s,^,../,', '-C', source, 'bootstrap']).status, 0)
+  await assert.rejects(slots.installArchive(unsafe, '3.0.0'), /unsafe path/)
 })

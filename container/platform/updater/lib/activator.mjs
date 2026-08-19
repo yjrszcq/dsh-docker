@@ -21,9 +21,14 @@ async function exists(path) {
 }
 
 export class PlatformActivator {
-  constructor({ dataRoot, bootstrap = new LocalApiClient(join(dataRoot, 'run', 'bootstrap.sock')) }) {
+  constructor({
+    dataRoot,
+    bootstrap = new LocalApiClient(join(dataRoot, 'run', 'bootstrap.sock')),
+    stage0 = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock')),
+  }) {
     this.dataRoot = dataRoot
     this.bootstrap = bootstrap
+    this.stage0 = stage0
     this.runtimeSlots = new RuntimeSlots(join(dataRoot, 'runtime'))
     this.environmentSlots = new RuntimeSlots(join(dataRoot, 'environments'))
   }
@@ -69,7 +74,11 @@ export class PlatformActivator {
     const bootstrapStatus = await this.bootstrap.status()
     const desiredBootstrap = prepared.stable.desired.bootstrap.version
     if (bootstrapStatus.bootstrapVersion !== undefined && bootstrapStatus.bootstrapVersion !== desiredBootstrap) {
-      throw new Error('Bootstrap update requires Stage-0 continuation')
+      const artifacts = prepared.bootstrap.manifest.artifacts
+      if (artifacts.length !== 1) throw new Error('Bootstrap manifest must contain exactly one package')
+      const receipt = prepared.receipts.get(artifacts[0].id)
+      await this.stage0.stageBootstrap(receipt.token, desiredBootstrap)
+      await new Promise(() => {})
     }
     const runtimeId = `${prepared.stable.desired.dsh.version}-${String(prepared.stable.targetSequence)}`
     if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {

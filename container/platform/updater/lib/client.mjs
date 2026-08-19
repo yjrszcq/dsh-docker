@@ -48,4 +48,7 @@ export class LocalApiClient {
     return this.request('POST', '/v1/manifests/accept', { receipt, signatureReceipt })
   }
   activate(receipts) { return this.request('POST', '/v1/activate', { receipts }) }
+  stageBootstrap(receipt, version) {
+    return this.request('POST', '/v1/bootstrap/stage', { receipt, version })
+  }
 }

@@ -461,6 +461,29 @@ export class VerifiedObjectStore {
     })
   }
 
+  bootstrapPackage(token, version) {
+    return this.exclusive(async () => {
+      const receipt = await this.readReceipt(token)
+      if (receipt.status !== 'staged' || receipt.parentReceipt === null) {
+        throw new TrustError('Bootstrap package must be a staged manifest child')
+      }
+      const parent = await this.readReceipt(receipt.parentReceipt)
+      if (parent.authoritySignature === null) throw new TrustError('Bootstrap package parent is not verified')
+      const manifest = parseReleaseManifest(await readFile(this.objectPath(parent.objectSha256)))
+      if (manifest.document.manifestType !== 'bootstrap' || manifest.document.version !== version) {
+        throw new TrustError('Bootstrap package does not belong to the requested version')
+      }
+      if (manifest.artifacts.length !== 1 || manifest.artifacts[0].id !== receipt.artifactId) {
+        throw new TrustError('Bootstrap manifest must authorize exactly one package')
+      }
+      const target = await this.ledger.currentTarget()
+      if (target?.value.document.desired?.bootstrap?.manifestArtifactId !== parent.artifactId) {
+        throw new TrustError('Bootstrap manifest is not the current desired Bootstrap')
+      }
+      return Object.freeze({ path: this.objectPath(receipt.objectSha256), receipt, manifest })
+    })
+  }
+
   collectGarbage() {
     return this.exclusive(async () => {
       const receipts = await this.allReceipts()

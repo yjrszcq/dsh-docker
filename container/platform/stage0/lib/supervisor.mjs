@@ -43,6 +43,7 @@ export class BootstrapSupervisor {
     this.uid = uid
     this.gid = gid
     this.child = undefined
+    this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
   async launch(version) {
@@ -64,6 +65,11 @@ export class BootstrapSupervisor {
     })
     try {
       await Promise.race([ready, timeout(this.readyTimeoutMs, 'Bootstrap readiness timed out')])
+      child.once('exit', (code, signal) => {
+        if (this.child === child) this.resolveFatal(new Error(
+          `Bootstrap exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
+        ))
+      })
       return child
     } catch (error) {
       await terminateChild(child)
@@ -89,13 +95,15 @@ export class BootstrapSupervisor {
   }
 
   async restart() {
-    if (this.child !== undefined) await terminateChild(this.child)
+    const child = this.child
     this.child = undefined
+    if (child !== undefined) await terminateChild(child)
     return this.startWithRollback()
   }
 
   async stop() {
-    if (this.child !== undefined) await terminateChild(this.child)
+    const child = this.child
     this.child = undefined
+    if (child !== undefined) await terminateChild(child)
   }
 }

@@ -139,7 +139,7 @@ jobs:
             "$KEYRING_GENERATION" "$TARGET_SEQUENCE" "$ARTIFACT_BASE_URL"
           cp /tmp/platform-environment/environment.manifest.json /tmp/platform-release/environment.manifest.json
           cp /tmp/platform-environment/artifacts/* /tmp/platform-release/
-          node container/platform/tools/sign.mjs /tmp/dsh-release-private.pem \
+          node container/platform/tools/sign.mjs sign /tmp/dsh-release-private.pem \
             /tmp/platform-release/environment.manifest.json /tmp/platform-release/environment.manifest.sig.json
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
             -czf /tmp/platform-release/bootstrap.tgz -C container/platform bootstrap lib logging management runtime updater
@@ -161,7 +161,7 @@ jobs:
           }
           await writeFile('/tmp/platform-release/bootstrap.manifest.json', `${JSON.stringify(manifest)}\n`)
           NODE
-          node container/platform/tools/sign.mjs /tmp/dsh-release-private.pem \
+          node container/platform/tools/sign.mjs sign /tmp/dsh-release-private.pem \
             /tmp/platform-release/bootstrap.manifest.json /tmp/platform-release/bootstrap.manifest.sig.json
           export DSH_VERSION="${{ steps.dsh-version.outputs.version }}"
           node --input-type=module <<'NODE'

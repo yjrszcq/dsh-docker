@@ -32,13 +32,22 @@ const supervisor = new BootstrapSupervisor({
   gid: process.getgid?.() === 0 ? 1000 : undefined,
   entrypoint: 'bootstrap/index.mjs',
 })
-const trustServer = createTrustServer({ ledger, objects })
+const trustServer = createTrustServer({
+  ledger,
+  objects,
+  stageBootstrap: async (receipt, version) => {
+    const packageObject = await objects.bootstrapPackage(receipt, version)
+    await slots.installArchive(packageObject.path, version)
+    await slots.promote(version)
+    setImmediate(() => { void supervisor.restart().catch(error => console.error(error)) })
+  },
+})
 await listenUnix(trustServer, join(dataRoot, 'run', 'stage0-trust.sock'), {
   mode: process.getuid?.() === 0 ? 0o660 : 0o600,
   uid: process.getuid?.() === 0 ? 0 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
 })
-const child = await supervisor.startWithRollback()
+await supervisor.startWithRollback()
 let resolveSignal
 const signal = new Promise(resolve => { resolveSignal = resolve })
 const onSignal = () => resolveSignal({ type: 'signal' })
@@ -46,12 +55,10 @@ process.once('SIGINT', onSignal)
 process.once('SIGTERM', onSignal)
 const outcome = await Promise.race([
   signal,
-  new Promise(resolve => child.once('exit', (code, childSignal) => (
-    resolve({ type: 'exit', code, signal: childSignal })
-  ))),
+  supervisor.fatal.then(error => ({ type: 'exit', error })),
 ])
 trustServer.close()
 await supervisor.stop()
 if (outcome.type === 'exit') {
-  throw new Error(`Bootstrap exited unexpectedly (code=${String(outcome.code)}, signal=${String(outcome.signal)})`)
+  throw outcome.error
 }
