@@ -32,7 +32,7 @@ jobs:
 
       - name: Verify gateway and Compose configuration
         run: |
-          npm test --prefix container/components/gateway
+          npm test --prefix container/control-plane/gateway
           npm test --prefix container/platform
           node container/test/compose-config.mjs
           sh -n container/test/container-smoke.sh
@@ -74,7 +74,7 @@ jobs:
           if [ "$requested" = supported ]; then
             version="$(jq -er '.latestSupportedDsh' release/supported-target.json)"
             node container/platform/tools/supported-target.mjs validate \
-              release/supported-target.json container/platform/environment/definition.json >/dev/null
+              release/supported-target.json container/environment/definition.json >/dev/null
           else
             version="$(npm view "@deepseek-ai/dsh@${requested}" version)"
           fi

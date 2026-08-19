@@ -16,7 +16,7 @@ env:
   CANDIDATE_BRANCH: automation/dsh-upstream-candidate
   DSH_PACKAGE: "@deepseek-ai/dsh"
   SUPPORTED_TARGET: release/supported-target.json
-  ENVIRONMENT_DEFINITION: container/platform/environment/definition.json
+  ENVIRONMENT_DEFINITION: container/environment/definition.json
 
 jobs:
   discover:

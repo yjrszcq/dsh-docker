@@ -261,7 +261,7 @@ docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtool
 使用 Node.js 24 和 Docker Compose 运行本地检查：
 
 ```bash
-npm test --prefix container/components/gateway
+npm test --prefix container/control-plane/gateway
 npm test --prefix container/platform
 node container/test/compose-config.mjs
 ```

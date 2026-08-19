@@ -3,7 +3,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { buildRuntime } from '../../components/patch-manager/index.mjs'
+import { buildRuntime } from '../../control-plane/patch-manager/index.mjs'
 
 const [installedArg, outputArg, version = 'seed'] = process.argv.slice(2)
 if (installedArg === undefined || outputArg === undefined) {
@@ -19,15 +19,16 @@ await mkdir(output, { recursive: true })
 
 const bootstrapVersion = '1.0.0'
 const bootstrapRoot = join(output, 'bootstrap', bootstrapVersion)
-for (const directory of ['bootstrap', 'lib', 'management']) {
+for (const directory of ['bootstrap', 'lib']) {
   await cp(join(platformRoot, directory), join(bootstrapRoot, 'platform', directory), { recursive: true })
 }
 for (const directory of ['log-manager', 'patch-manager', 'system-plugin-manager', 'updater']) {
-  await cp(join(containerRoot, 'components', directory), join(bootstrapRoot, 'components', directory), { recursive: true })
+  await cp(join(containerRoot, 'control-plane', directory), join(bootstrapRoot, 'control-plane', directory), { recursive: true })
 }
+await cp(join(containerRoot, 'control-plane', 'management'), join(bootstrapRoot, 'control-plane', 'management'), { recursive: true })
 await writeFile(join(output, 'bootstrap', 'VERSION'), `${bootstrapVersion}\n`)
 
-const environmentDefinition = join(platformRoot, 'environment', 'definition.json')
+const environmentDefinition = join(containerRoot, 'environment', 'definition.json')
 const environmentVersion = JSON.parse(await readFile(environmentDefinition, 'utf8')).version
 const environmentOutput = join(output, 'environment', environmentVersion)
 const packaged = spawnSync(process.execPath, [

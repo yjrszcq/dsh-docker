@@ -1,7 +1,7 @@
 import { access, rm } from 'node:fs/promises'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { LocalApiClient } from '../../components/updater/lib/client.mjs'
+import { LocalApiClient } from '../updater/lib/client.mjs'
 
 const API_PREFIX = '/_dsh_platform/api/v1'
 

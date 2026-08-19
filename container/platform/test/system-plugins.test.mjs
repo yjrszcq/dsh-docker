@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
-import { reconcileSystemPlugins } from '../../components/system-plugin-manager/index.mjs'
+import { reconcileSystemPlugins } from '../../control-plane/system-plugin-manager/index.mjs'
 
 async function archive(root, id, patch) {
   const source = join(root, `source-${id}`, 'package')

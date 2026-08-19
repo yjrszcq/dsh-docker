@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import { chmod, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { UpdateConflictError } from '../../components/updater/lib/coordinator.mjs'
+import { UpdateConflictError } from '../updater/lib/coordinator.mjs'
 
 export const API_PREFIX = '/_dsh_platform/api/v1/'
 const MAX_BODY_BYTES = 16 * 1024

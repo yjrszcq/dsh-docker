@@ -3,7 +3,7 @@
 import { join } from 'node:path'
 import { EnvironmentRunner } from './lib/lifecycle.mjs'
 import { createBootstrapControl, listenBootstrapControl } from './lib/control.mjs'
-import { JsonlLogManager } from '../../components/log-manager/index.mjs'
+import { JsonlLogManager } from '../../control-plane/log-manager/index.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const logs = new JsonlLogManager({

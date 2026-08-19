@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
-import { JsonlLogManager } from '../../components/log-manager/index.mjs'
+import { JsonlLogManager } from '../../control-plane/log-manager/index.mjs'
 
 test('writes source-separated JSONL and queries bounded chronological entries', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-logs-'))

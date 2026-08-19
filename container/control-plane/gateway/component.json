@@ -4,7 +4,7 @@
   "type": "service",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/opt/dsh-platform/runtime/components/gateway/index.mjs"],
+    "args": ["/opt/dsh-platform/runtime/control-plane/gateway/index.mjs"],
     "timeoutSeconds": 30
   },
   "environment": {},

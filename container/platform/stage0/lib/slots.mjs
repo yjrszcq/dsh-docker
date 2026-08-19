@@ -101,7 +101,7 @@ export class BootstrapSlots {
     const temporary = `${destination}.${randomUUID()}.tmp`
     await mkdir(temporary, { recursive: true })
     try {
-      const allowed = new Set(['platform', 'components'])
+      const allowed = new Set(['platform', 'control-plane'])
       const entries = (await tar(['-tzf', archive], true)).split('\n').filter(Boolean)
       if (entries.length === 0 || entries.some(name => (
         name.startsWith('/')

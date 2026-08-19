@@ -145,8 +145,9 @@ try {
   run('tar', [
     '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
     '-czf', bootstrapPath, '-C', containerRoot,
-    'platform/bootstrap', 'platform/lib', 'platform/management',
-    'components/log-manager', 'components/patch-manager', 'components/system-plugin-manager', 'components/updater',
+    'platform/bootstrap', 'platform/lib',
+    'control-plane/log-manager', 'control-plane/management', 'control-plane/patch-manager',
+    'control-plane/system-plugin-manager', 'control-plane/updater',
   ], 'Bootstrap packaging')
   const bootstrapManifest = canonicalJson({
     schema: 1,

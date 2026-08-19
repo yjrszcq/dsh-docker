@@ -45,7 +45,7 @@ jobs:
         id: candidate
         run: |
           result="$(node container/platform/tools/supported-target.mjs validate \
-            release/supported-target.json container/platform/environment/definition.json)"
+            release/supported-target.json container/environment/definition.json)"
           version="$(jq -er '.target.latestSupportedDsh' <<<"$result")"
           environment="$(jq -er '.target.environment' <<<"$result")"
           registry_version="$(npm view "@deepseek-ai/dsh@${version}" version --json | jq -er 'if type == "string" then . else error("expected one version") end')"
@@ -72,7 +72,7 @@ jobs:
 
       - name: Run static compatibility checks
         run: |
-          npm test --prefix container/components/gateway
+          npm test --prefix container/control-plane/gateway
           npm test --prefix container/platform
           node container/test/compose-config.mjs
           sh -n container/test/container-smoke.sh

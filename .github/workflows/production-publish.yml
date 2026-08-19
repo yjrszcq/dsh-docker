@@ -43,7 +43,7 @@ jobs:
         id: target
         run: |
           result="$(node container/platform/tools/supported-target.mjs validate \
-            release/supported-target.json container/platform/environment/definition.json)"
+            release/supported-target.json container/environment/definition.json)"
           dsh_version="$(jq -er '.target.latestSupportedDsh' <<<"$result")"
           environment_version="$(jq -er '.target.environment' <<<"$result")"
           printf 'dsh_version=%s\n' "$dsh_version" >> "$GITHUB_OUTPUT"
@@ -52,7 +52,7 @@ jobs:
       - name: Run release contract tests
         run: |
           npm test --prefix container/platform
-          npm test --prefix container/components/gateway
+          npm test --prefix container/control-plane/gateway
           node container/test/compose-config.mjs
 
       - name: Install protected public trust bundle
@@ -127,7 +127,7 @@ jobs:
           export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
           node container/platform/tools/prepare-release.mjs \
             release/supported-target.json \
-            container/platform/environment/definition.json \
+            container/environment/definition.json \
             release/experimental-policy.json \
             "$RUNNER_TEMP/production-trust" \
             "$private_key" \

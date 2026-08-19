@@ -97,7 +97,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
-    new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, '-', '1', 'https://release.example/platform-1/', output,
   ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
@@ -127,7 +127,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
-    new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, output, '1',
     'https://release.example/platform-1-repeat/', rollbackOutput,
@@ -156,7 +156,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
-    new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, futureRelease, '2',
     'https://release.example/platform-2/', join(root, 'generation-rollback-release'),
@@ -174,7 +174,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
-    new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     conflictingTrust, current.privatePath, tarball, output, '2',
     'https://release.example/platform-conflict/', join(root, 'conflicting-release'),

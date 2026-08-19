@@ -3,7 +3,7 @@
 .checkpoint-karpathy
 .env
 temp
-container/components/gateway/test
+container/control-plane/gateway/test
 container/test
 workspace
 README.md

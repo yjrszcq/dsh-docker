@@ -49,10 +49,10 @@ RUN chmod 440 /etc/sudoers.d/dsh-sudo \
 
 COPY --from=platform-seed /opt/dsh-platform-seed /opt/dsh-platform/seed
 COPY container/platform /opt/dsh-platform/runtime/platform
-COPY container/components /opt/dsh-platform/runtime/components
+COPY container/control-plane /opt/dsh-platform/runtime/control-plane
 COPY container/platform/tools/dsh-shim.sh /usr/local/bin/dsh
 RUN chmod 755 /usr/local/bin/dsh \
-    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/platform/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/control-plane/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
     && chmod 755 /usr/local/bin/dsh-platform
 
 ENV DSH_HOME=/home/node/.dsh \

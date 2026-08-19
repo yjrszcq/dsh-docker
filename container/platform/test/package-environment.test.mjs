@@ -9,7 +9,7 @@ import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contrac
 
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const containerRoot = dirname(platformRoot)
-const definition = join(platformRoot, 'environment', 'definition.json')
+const definition = join(containerRoot, 'environment', 'definition.json')
 const tool = join(platformRoot, 'tools', 'package-environment.mjs')
 
 async function build() {
@@ -52,10 +52,10 @@ test('can emit flat Artifact URLs for GitHub Release assets', async () => {
 
 test('checked-in Component manifests satisfy the public contract', async () => {
   for (const path of [
-    join(containerRoot, 'components', 'gateway', 'component.json'),
-    join(containerRoot, 'components', 'dsh-runtime', 'component.json'),
-    join(platformRoot, 'management', 'component.json'),
-    join(containerRoot, 'components', 'updater', 'recovery.component.json'),
+    join(containerRoot, 'control-plane', 'gateway', 'component.json'),
+    join(containerRoot, 'environment', 'dsh-runtime', 'component.json'),
+    join(containerRoot, 'control-plane', 'management', 'component.json'),
+    join(containerRoot, 'control-plane', 'updater', 'recovery.component.json'),
   ]) {
     const bytes = await readFile(path)
     const component = parseComponentManifest(bytes)

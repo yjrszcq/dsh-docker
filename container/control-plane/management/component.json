@@ -4,7 +4,7 @@
   "type": "service",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/data/bootstrap/current/platform/management/index.mjs"],
+    "args": ["/data/bootstrap/current/control-plane/management/index.mjs"],
     "timeoutSeconds": 30
   },
   "environment": {},
