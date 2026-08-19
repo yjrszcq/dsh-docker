@@ -1,0 +1,187 @@
+# DSH-Docker Complete Guide
+
+English | [中文](README_CN.md) | [Quick start](../README.md)
+
+This guide documents configuration, platform behavior, online updates, trust, release automation, and development workflows. For ordinary deployment, start with the root [README](../README.md).
+
+## Configuration
+
+### Compose Variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DSH_IMAGE_TAG` | `latest` | Image tag |
+| `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
+| `DSH_PORT` | `3080` | Published host port |
+| `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
+| `DSH_SUDO_ENABLED` | `true` | Add unrestricted passwordless sudo; `true` or `false` |
+
+### Container Variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DSH_HOME` | `/home/node/.dsh` | DSH configuration and data directory |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an accessible absolute directory |
+| `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
+| `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
+| `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
+| `DSH_PROXY_PASSWORD` | Empty | Optional gateway password; empty disables authentication |
+| `DSH_PROXY_POLYFILL` | `true` | Inject the guarded `crypto.randomUUID` compatibility shim |
+| `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | Background check interval; checks do not download or activate |
+| `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
+| `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
+| `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | Update activation health deadline |
+| `DSH_EXPERIMENTAL_PROBATION_SECONDS` | `120` | Experimental Runtime observation period before commit |
+
+`DSH_TRUSTED_HOSTS` accepts:
+
+- Empty: loopback Hosts only.
+- One value: loopback plus that host; a value without a port matches any port.
+- Comma-separated values: every listed authority.
+- `*`: any Host. Origin, Fetch Metadata, and optional password checks remain enabled.
+
+Values must not contain a scheme, path, credentials, or subdomain wildcard. Valid examples include `dsh.example.com`, `dsh.example.com:8443`, `192.168.1.100`, and `[fd00::1]:3080`. The legacy `DSH_TRUSTED_HOST` remains supported; do not set both names.
+
+### Workspace Behavior
+
+`DSH_DEFAULT_WORKSPACE` changes only the initial directory-picker path. It is not a filesystem sandbox: users can select other paths accessible to the container's `node` user. DSH validates access while its Environment component starts.
+
+The image implements this with an exact-match compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the build instead of modifying an unintended location.
+
+## Platform Architecture
+
+```text
+tini
+  └─ Stage-0
+       └─ Bootstrap
+            ├─ Control Plane
+            │    ├─ management + Update Console  Unix socket
+            │    └─ gateway                      0.0.0.0:3080
+            └─ Environment
+                 └─ dsh-runtime                  127.0.0.1:3079
+```
+
+Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
+
+The source tree follows the same boundary:
+
+- `container/platform/`: Stage-0, Bootstrap, shared contracts, and release tools.
+- `container/control-plane/services/`: persistent Gateway and Management processes.
+- `container/control-plane/hooks/`: supervised one-shot recovery work.
+- `container/control-plane/modules/`: updater, logging, patch, and System Plugin logic.
+- `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,system-plugins}`.
+
+## Gateway
+
+The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/ui/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values.
+
+Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
+
+### Password Access
+
+When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge. If `DSH_PROXY_USERNAME` is empty, Gateway ignores the submitted username and validates only the password. If both are set, both must match. A username cannot contain `:`.
+
+Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
+
+### Browser Compatibility
+
+Gateway injects a feature-detected `crypto.randomUUID` polyfill into HTML by default. It runs only when needed, uses `crypto.getRandomValues`, and never falls back to `Math.random`. Set `DSH_PROXY_POLYFILL=false` when clients or a future DSH version no longer need it.
+
+Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validators. Unmodified assets retain upstream caching behavior.
+
+## Online Updates
+
+Platform state lives in `/data`; DSH settings, sessions, credentials, and third-party plugins remain in `/home/node/.dsh`. Keep both volumes.
+
+Management checks every six hours with jitter but does not automatically download or activate. The DSH settings entry opens the persistent Console at `/_dsh_platform/ui/`, which remains available while DSH is suspended, replaced, health-checked, or rolled back.
+
+```bash
+docker exec deepseek-harness dsh-platform status
+docker exec deepseek-harness dsh-platform check
+docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform channel experimental
+docker exec deepseek-harness dsh-platform retry
+docker exec deepseek-harness dsh-platform logs --source updater
+docker exec deepseek-harness dsh-platform rollback
+docker exec -it deepseek-harness dsh-platform return-stable
+```
+
+Changing channels modifies only local desired state. Stable converges to the signed supported DSH and Environment. Experimental first converges the official Environment, then offers the newest verified upstream DSH. When current DSH is ahead of Latest Supported, the complete combination is frozen until Stable catches up.
+
+Candidate build failures create a version Hold; incompatible Runtime/Environment combinations create a combination Hold. `retry` clears the one active Hold or Blocked combination.
+
+Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` and creates a verified tar snapshot of `/home/node/.dsh`. It then switches Runtime, checks health, and observes the candidate during probation. Failure or interruption restores Runtime, Environment, System Plugins, receipts, and the snapshot before DSH restarts.
+
+`rollback` restores the retained previous complete state. Interactive `return-stable` is available only with a verified pre-Experimental recovery point and may discard data written after the displayed snapshot time.
+
+## Trust and Recovery
+
+Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Downloads stay in `/data/downloads/untrusted` until Stage-0 verifies their authority and imports them into the trusted object store.
+
+Bootstrap and Updater cannot add a root key, modify keyrings, submit arbitrary expected hashes, or mint receipts. They consume only Stage-0 verification results.
+
+Stable metadata delegates the official npm Registry origin, exact `@deepseek-ai/dsh` package name, and accepted Registry signing keys. Experimental mode queries npm directly. Stage-0 verifies the Registry signature over `name@version:integrity`, canonical tarball URL, version advancement, and downloaded integrity before issuing an Experimental receipt. There is no per-version Experimental GitHub publication.
+
+`dsh` is a dynamic shim which always executes the current verified Runtime. `dsh-platform trust status` reports accepted trust state. `dsh-platform trust reset` is console-only: stop Stage-0, mount the platform-data Volume into a one-shot container with `dsh-platform` as its entrypoint, run `trust reset` from an interactive TTY, and enter the exact confirmation. This clears accepted state but does not replace the image Recovery Root.
+
+For routine Release Key rotation or compromise, use the offline Recovery private key to sign generation+1: promote the old next key to current, revoke the old current key, and add a new next key. Revocations are cumulative. Only Recovery Root compromise or cryptographic migration requires a new image or explicit trust reset.
+
+Recovery private material must never enter GitHub secrets. CI receives only a signed public keyring bundle and the protected current Release private key.
+
+## Security Model
+
+Gateway access is full DSH access. An admitted user may read or replace model credentials, execute commands, and access every path available to the container's `node` user, not only `/workspace`. The Host allowlist mitigates DNS rebinding; it is not user authentication.
+
+Before exposing the service to untrusted networks, use a strong Gateway password, authenticated reverse proxy, VPN, or another trusted boundary. An SSH tunnel can be combined with loopback-only publication:
+
+```bash
+ssh -L 3080:127.0.0.1:3080 user@server
+```
+
+Compose enables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=false` to disable it. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
+
+## Release Automation
+
+`DSH Upstream Update` runs daily and on demand. It compares npm `latest` with [`release/supported-target.json`](../release/supported-target.json), keeps the current Environment, and creates or updates a candidate PR for promotion to Latest Supported. Candidate CI verifies npm integrity, applies the current Environment, runs both project suites, and executes standard and devtools container smoke tests. These jobs have no Release or Recovery credentials; merge remains the publication gate.
+
+`Publish Latest Supported DSH` runs after a Supported Target change on `main` or by approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main` with:
+
+- `DSH_RECOVERY_ROOT_PUBLIC_KEY`
+- `DSH_KEYRING_JSON_BASE64`
+- `DSH_KEYRING_SIGNATURE_BASE64`
+- `DSH_RELEASE_PRIVATE_KEY`
+
+The workflow resumes `targetSequence`, creates a draft, uploads all immutable Artifacts, then publishes it as Latest. The Recovery private key has no workflow input.
+
+`Publish Docker Image` is protected by a separate `production-image` Environment. It uses the three public trust-bundle secrets and `DOCKER_TOKEN`; it has no Release private key or GitHub Release write permission. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow.
+
+## Build and Test
+
+Build the standard image:
+
+```bash
+docker build -t deepseek-harness:local .
+```
+
+Build a specific official package or the devtools variant:
+
+```bash
+docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
+docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
+```
+
+Local builds use a marked, non-production trust fixture. Release workflows reject that marker and require an offline Recovery-signed public trust bundle.
+
+Run local checks with Node.js 24 and Docker Compose:
+
+```bash
+npm test --prefix container/control-plane/services/gateway
+npm test --prefix container/platform
+node container/test/compose-config.mjs
+```
+
+With Docker available, `container/test/container-smoke.sh [image]` checks managed processes, trust, password flow, persistent Console access, and the loopback-only DSH listener. `container/test/devtools-smoke.sh <image>` checks the devtools variant.
+
+The standard image includes Node.js 24, `pnpm`, Python 3 with `venv`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo. Devtools additionally includes build tools, Bash completion, network diagnostics, archive and file utilities, Vim, `pkg-config`, and pinned uv.
+
+Devtools uses uv instead of a shared pre-created Python environment. Use `uv run --with requests script.py`, or `uv sync` and `uv run` in projects. Bare `pip` and `pip3` commands are intentionally absent; `python3 -m venv` remains available. Additional Python versions require an explicit `uv python install <version>`.
