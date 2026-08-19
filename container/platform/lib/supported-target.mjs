@@ -78,7 +78,6 @@ export function validateSupportedTarget(targetBytes, environmentDefinitionBytes)
 }
 
 export function advanceSupportedDsh(target, upstreamVersion) {
-  parseSemver(upstreamVersion, 'upstream DSH version')
   const comparison = compareDshVersions(upstreamVersion, target.latestSupportedDsh)
   if (comparison < 0) throw new TrustError('upstream DSH version would roll back Latest Supported')
   if (comparison === 0) return Object.freeze({ changed: false, target })

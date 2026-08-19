@@ -58,4 +58,7 @@ test('CLI validates and atomically updates the candidate target', async () => {
   const rollback = spawnSync(process.execPath, [tool, 'advance', targetPath, definitionPath, '0.1.0-rc.7'], { encoding: 'utf8' })
   assert.notEqual(rollback.status, 0)
   assert.equal(JSON.parse(await readFile(targetPath, 'utf8')).latestSupportedDsh, '0.1.0-rc.8')
+
+  const extraArgument = spawnSync(process.execPath, [tool, 'validate', targetPath, definitionPath, 'ignored'], { encoding: 'utf8' })
+  assert.equal(extraArgument.status, 64)
 })

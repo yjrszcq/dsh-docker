@@ -5,13 +5,11 @@ import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { validateSupportedTarget, advanceSupportedDsh } from '../lib/supported-target.mjs'
 
-const [command, targetArg, definitionArg, upstreamVersion] = process.argv.slice(2)
-if (!['validate', 'advance'].includes(command) || targetArg === undefined || definitionArg === undefined) {
+const args = process.argv.slice(2)
+const [command, targetArg, definitionArg, upstreamVersion] = args
+const expectedArguments = command === 'validate' ? 3 : command === 'advance' ? 4 : -1
+if (args.length !== expectedArguments) {
   console.error('usage: supported-target.mjs <validate|advance> <supported-target.json> <environment-definition.json> [upstream-version]')
-  process.exit(64)
-}
-if (command === 'advance' && upstreamVersion === undefined) {
-  console.error('advance requires an upstream version')
   process.exit(64)
 }
 
