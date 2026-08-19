@@ -133,6 +133,33 @@ test('imports Experimental bytes only through the separate signed authority', as
   assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })
 
+test('revokes staged Experimental receipts after Registry delegation changes but retains active objects', async () => {
+  const content = Buffer.from('experimental tarball')
+  const registry = registryKeyPair()
+  const replacement = registryKeyPair()
+  const { current, ledger, store, untrustedRoot } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    experimentalPolicy(registry),
+  )
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const source = join(untrustedRoot, 'experimental-policy-change.tgz')
+  await writeFile(source, content)
+  const active = await store.importFromExperimental(candidate, source)
+  await store.activate([active.token])
+  const staged = await store.importFromExperimental(candidate, source)
+
+  const advanced = document(releaseTarget(
+    1,
+    2,
+    [descriptor('stable-only', Buffer.alloc(0))],
+    experimentalPolicy(replacement),
+  ))
+  await ledger.acceptTarget(advanced, signature(advanced, current))
+  await store.reconcileRevocations((await ledger.currentKeyring()).value)
+  assert.equal((await store.readReceipt(active.token)).status, 'active')
+  assert.equal((await store.readReceipt(staged.token)).status, 'revoked')
+})
+
 test('rejects mismatched content and symbolic-link sources', async () => {
   const expected = descriptor('gateway', Buffer.from('expected'))
   const { store, untrustedRoot } = await fixture([expected])

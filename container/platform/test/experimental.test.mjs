@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { parseExperimentalPolicy } from '../lib/contracts.mjs'
 import { verifyRegistryCandidate } from '../stage0/lib/experimental.mjs'
+import { experimentalPolicy, registryCandidate, registryKeyPair } from './helpers.mjs'
 
 const candidate = {
   schema: 1,
@@ -45,4 +46,14 @@ test('rejects Stable versions and noncanonical npm tarball origins', async () =>
     ...candidate,
     dist: { ...candidate.dist, tarball: 'https://mirror.example/dsh.tgz' },
   }, { desired: { dsh: { version: '0.1.0-rc.6' } }, experimentalPolicy: policy }), /canonical/)
+})
+
+test('rejects candidates after a delegated npm Registry key expires', () => {
+  const registry = registryKeyPair()
+  const policy = parseExperimentalPolicy(experimentalPolicy(registry, '2026-08-18T00:00:00.000Z'))
+  assert.throws(() => verifyRegistryCandidate(
+    registryCandidate(registry),
+    { desired: { dsh: { version: '0.1.0-rc.7' } }, experimentalPolicy: policy },
+    new Date('2026-08-19T00:00:00.000Z'),
+  ), { code: 'TRUST_UNKNOWN_KEY' })
 })
