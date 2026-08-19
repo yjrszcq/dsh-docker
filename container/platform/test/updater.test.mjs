@@ -467,3 +467,24 @@ test('records candidate and combination Holds without holding snapshot failures'
   await assert.rejects(snapshot.coordinator.startExperimental().completion, /disk full/)
   assert.equal((await snapshotState.read()).holds.length, 0)
 })
+
+test('allows Stable return only to a recovery point no newer than signed Stable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-return-stable-'))
+  let restored = false
+  const recovery = {
+    plan: async () => ({ planId: 'plan-a', previous: { dsh: '0.1.0-rc.8' } }),
+    restore: async () => { restored = true; return { status: 'rolled-back' } },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: { desired: { dsh: { version: '0.1.0-rc.7' } } } }) },
+    preparer: {}, activator: {}, completeRecovery: recovery,
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+  })
+  await assert.rejects(coordinator.startCompleteRollback('plan-a', {
+    requireConfirmation: true, confirmDataLoss: true,
+  }).completion, /no verified/)
+  assert.equal(restored, false)
+  coordinator.metadata.check = async () => ({ value: { desired: { dsh: { version: '0.1.0-rc.8' } } } })
+  await coordinator.startCompleteRollback('plan-a', { requireConfirmation: true, confirmDataLoss: true }).completion
+  assert.equal(restored, true)
+})

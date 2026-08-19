@@ -52,7 +52,6 @@ const server = createManagementServer({
   coordinator,
   logs,
   platformStatus: async () => ({ trust: await trust.status() }),
-  rollback: () => activator.rollback(),
 })
 await listenManagement(server, join(dataRoot, 'run', 'management.sock'))
 const scheduler = new UpdateScheduler({

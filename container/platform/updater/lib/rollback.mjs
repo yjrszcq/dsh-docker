@@ -35,6 +35,7 @@ export class CompleteStateRecovery {
     ) throw new TrustError('rollback snapshot does not describe the previous deployment')
     const value = {
       transactionId: transaction.transactionId,
+      mode: transaction.mode,
       current: deploymentIdentity(current),
       previous: deploymentIdentity(transaction.from),
       snapshot: {

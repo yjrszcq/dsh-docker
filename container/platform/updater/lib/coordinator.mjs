@@ -39,6 +39,27 @@ export class UpdateCoordinator extends EventEmitter {
     if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
     await this.transition('checking', { error: null })
     try {
+      if (this.channelState !== undefined) {
+        const plan = await this.desiredState()
+        const rollbackPlan = await this.rollbackPlan()
+        await this.transition('idle', {
+          available: {
+            targetSequence: plan.target.targetSequence,
+            bootstrap: plan.target.desired.bootstrap.version,
+            environment: plan.target.desired.environment.version,
+            dsh: plan.target.desired.dsh.version,
+          },
+          supported: plan.supported,
+          upstream: plan.upstream === null ? null : { version: plan.upstream.version },
+          current: { dsh: plan.current.dsh, environment: plan.current.environment, runtime: plan.current.runtime },
+          aheadOfStable: plan.aheadOfStable,
+          experimentalBlocked: plan.experimentalBlocked,
+          holds: plan.holds,
+          rollbackPlan,
+          checkedAt: this.now().toISOString(),
+        })
+        return { value: plan.target }
+      }
       const target = await this.metadata.check()
       await this.transition('idle', {
         available: {
@@ -80,6 +101,18 @@ export class UpdateCoordinator extends EventEmitter {
     return { taskId, completion: this.task }
   }
 
+  async setChannel(updateChannel) {
+    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+    if (this.channelState === undefined) throw new Error('update channels are not configured')
+    return this.channelState.setChannel(updateChannel)
+  }
+
+  async retryHold(id) {
+    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+    if (this.channelState === undefined) throw new Error('update channels are not configured')
+    return this.channelState.retry(id)
+  }
+
   rollbackPlan() {
     if (this.completeRecovery === undefined) return Promise.resolve(null)
     return this.completeRecovery.plan()
@@ -96,6 +129,14 @@ export class UpdateCoordinator extends EventEmitter {
   async runCompleteRollback(taskId, planId, options) {
     try {
       await this.transition('restoring-data', { taskId, progress: 20, error: null })
+      if (options.requireConfirmation) {
+        const [plan, target] = await Promise.all([this.completeRecovery.plan(), this.metadata.check()])
+        if (
+          plan === null
+          || plan.planId !== planId
+          || compareDshVersions(plan.previous.dsh, target.value.desired.dsh.version) > 0
+        ) throw new Error('no verified pre-Experimental Stable recovery point is available')
+      }
       const result = await this.completeRecovery.restore(planId, options)
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
@@ -116,7 +157,31 @@ export class UpdateCoordinator extends EventEmitter {
       && compareDshVersions(current.dsh, supported.dsh) <= 0
       && current.environment === supported.environment
     ) upstream = await this.npm.latest(stable)
-    return planDesiredState({ local, current, supported, upstream })
+    return Object.freeze({ ...planDesiredState({ local, current, supported, upstream }), target: stable })
+  }
+
+  async publicStatus() {
+    const [update, local, current, rollbackPlan, journal] = await Promise.all([
+      this.state.read(),
+      this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
+      this.activator.currentDeployment().catch(() => null),
+      this.rollbackPlan().catch(() => null),
+      this.journal?.read().catch(() => undefined),
+    ])
+    const returnStableAvailable = rollbackPlan !== null && update.supported !== undefined
+      && compareDshVersions(rollbackPlan.previous.dsh, update.supported.dsh) <= 0
+    return Object.freeze({
+      update,
+      updateChannel: local.updateChannel,
+      current: current === null ? null : { dsh: current.dsh, environment: current.environment, runtime: current.runtime },
+      supported: update.supported ?? null,
+      upstream: update.upstream ?? null,
+      aheadOfStable: update.aheadOfStable ?? false,
+      experimentalBlocked: local.experimentalBlocked,
+      holds: local.holds,
+      probation: journal?.phase === 'probation' ? { until: journal.probationUntil } : null,
+      rollbackPlan: rollbackPlan === null ? null : { ...rollbackPlan, returnStableAvailable },
+    })
   }
 
   async runReconcile(taskId) {

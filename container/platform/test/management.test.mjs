@@ -18,6 +18,10 @@ class Coordinator extends EventEmitter {
     this.state = { read: async () => this.value }
   }
 
+  async publicStatus() {
+    return { update: this.value, updateChannel: 'experimental', holds: [], experimentalBlocked: null, rollbackPlan: { planId: 'plan-a' } }
+  }
+
   async check() {
     return { value: { targetSequence: 2, desired: { dsh: { version: 'rc.8' } } } }
   }
@@ -27,6 +31,15 @@ class Coordinator extends EventEmitter {
     this.running = true
     return { taskId: 'task-one', completion: new Promise(() => {}) }
   }
+
+  startReconcile() { return this.start() }
+  rollbackPlan() { return Promise.resolve({ planId: 'plan-a' }) }
+  setChannel(channel) { return Promise.resolve({ updateChannel: channel, holds: [], experimentalBlocked: null }) }
+  retryHold(id) { return Promise.resolve({ retried: id }) }
+  startCompleteRollback(planId) {
+    assert.equal(planId, 'plan-a')
+    return { taskId: 'rollback-task', completion: Promise.resolve() }
+  }
 }
 
 test('management socket exposes status, check, update, logs, and local rollback', async () => {
@@ -34,12 +47,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
   const coordinator = new Coordinator()
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   await logs.append('gateway', 'stdout', 'ready')
-  let rolledBack = false
   const server = createManagementServer({
     coordinator,
     logs,
     platformStatus: async () => ({ environment: 'one' }),
-    rollback: async () => { rolledBack = true },
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -50,8 +61,11 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/update'), { taskId: 'task-one' })
     await assert.rejects(client.request('POST', '/_dsh_platform/api/v1/update'), error => error.statusCode === 409)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/logs?source=gateway')).entries[0].message, 'ready')
-    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/rollback')).status, 'rolled-back')
-    assert.equal(rolledBack, true)
+    assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/channel', { channel: 'experimental' })).updateChannel, 'experimental')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/holds/retry', { id: 'hold-a' })).retried, 'hold-a')
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
+    coordinator.running = false
+    assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/rollback', { planId: 'plan-a' }), { taskId: 'rollback-task' })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
@@ -64,14 +78,30 @@ test('CLI parser keeps rollback local and update wait behavior explicit', async 
   const calls = []
   const output = []
   const management = {
-    request: async (method, path) => {
-      calls.push({ method, path })
-      return path.endsWith('/rollback') ? { status: 'rolled-back' } : {}
+    request: async (method, path, body) => {
+      calls.push({ method, path, body })
+      if (path.endsWith('/rollback-plan')) return { plan: { planId: 'plan-a' } }
+      return path.endsWith('/rollback') ? { taskId: 'rollback-task' } : {}
     },
   }
   assert.equal(await runCli({ argv: ['rollback'], management, write: line => output.push(line) }), 0)
-  assert.deepEqual(calls, [{ method: 'POST', path: '/_dsh_platform/api/v1/rollback' }])
-  assert.match(output[0], /rolled-back/)
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/_dsh_platform/api/v1/rollback-plan', body: undefined },
+    { method: 'POST', path: '/_dsh_platform/api/v1/rollback', body: { planId: 'plan-a' } },
+  ])
+  assert.match(output[0], /rollback-task/)
+})
+
+test('CLI parses channel controls and refuses noninteractive Stable return', async () => {
+  assert.deepEqual(parseCli(['channel', 'experimental']), { command: 'channel', channel: 'experimental' })
+  assert.deepEqual(parseCli(['retry']), { command: 'retry' })
+  assert.deepEqual(parseCli(['return-stable']), { command: 'return-stable' })
+  const management = {
+    request: async () => ({ plan: { planId: 'plan-a', snapshot: { createdAt: '2026-08-19T00:00:00.000Z' } } }),
+  }
+  await assert.rejects(runCli({
+    argv: ['return-stable'], management, input: { isTTY: false }, output: { isTTY: false }, write: () => {},
+  }), /interactive/)
 })
 
 test('trust reset refuses non-root and non-interactive callers before mutation', async () => {

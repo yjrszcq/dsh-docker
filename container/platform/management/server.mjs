@@ -4,6 +4,19 @@ import { dirname } from 'node:path'
 import { UpdateConflictError } from '../updater/lib/coordinator.mjs'
 
 export const API_PREFIX = '/_dsh_platform/api/v1/'
+const MAX_BODY_BYTES = 16 * 1024
+
+async function jsonBody(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.byteLength
+    if (size > MAX_BODY_BYTES) throw new Error('request body is too large')
+    chunks.push(chunk)
+  }
+  if (size === 0) return {}
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
 
 function send(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
@@ -25,14 +38,14 @@ function logOptions(url) {
   }
 }
 
-export function createManagementServer({ coordinator, logs, platformStatus = async () => ({}), rollback }) {
+export function createManagementServer({ coordinator, logs, platformStatus = async () => ({}) }) {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {
-        send(response, 200, { ...(await platformStatus()), update: await coordinator.state.read() })
+        send(response, 200, { ...(await platformStatus()), ...(await coordinator.publicStatus()) })
       } else if (request.method === 'POST' && route === 'check') {
         const target = await coordinator.check()
         send(response, 200, {
@@ -40,17 +53,31 @@ export function createManagementServer({ coordinator, logs, platformStatus = asy
           desired: target.value.desired,
         })
       } else if (request.method === 'POST' && route === 'update') {
-        const task = coordinator.start()
+        const task = coordinator.startReconcile()
         void task.completion
           .catch(error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }))
           .catch(() => {})
         await logs.audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
-      } else if (request.method === 'POST' && route === 'rollback') {
-        if (rollback === undefined) return send(response, 501, { error: 'rollback is unavailable' })
-        await rollback()
-        await logs.audit('rollback.completed')
-        send(response, 200, { status: 'rolled-back' })
+      } else if (request.method === 'PUT' && route === 'channel') {
+        const body = await jsonBody(request)
+        send(response, 200, await coordinator.setChannel(body.channel))
+      } else if (request.method === 'POST' && route === 'holds/retry') {
+        const body = await jsonBody(request)
+        send(response, 200, await coordinator.retryHold(body.id))
+      } else if (request.method === 'GET' && route === 'rollback-plan') {
+        send(response, 200, { plan: await coordinator.rollbackPlan() })
+      } else if (request.method === 'POST' && ['rollback', 'return-stable'].includes(route)) {
+        const body = await jsonBody(request)
+        const task = coordinator.startCompleteRollback(body.planId, {
+          requireConfirmation: route === 'return-stable',
+          confirmDataLoss: body.confirmDataLoss,
+        })
+        void task.completion
+          .then(() => logs.audit(`${route}.completed`, { taskId: task.taskId }))
+          .catch(error => logs.audit(`${route}.failed`, { error: error.message, taskId: task.taskId }))
+          .catch(() => {})
+        send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && route === 'events') {
         response.writeHead(200, {
           'content-type': 'text/event-stream',
