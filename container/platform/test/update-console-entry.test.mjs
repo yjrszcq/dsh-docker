@@ -34,12 +34,17 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.doesNotMatch(source, /打开更新控制台|href:/)
   assert.match(source, /fetch\(`/)
   assert.match(source, /new EventSource/)
+  assert.doesNotMatch(source, /logs\/stream|运行详情|平台日志/)
   for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
   assert.doesNotMatch(source, /trust\/reset/)
   assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
+  assert.doesNotMatch(source, /display\(update\.status\)/)
+  for (const status of ['idle', 'checking', 'planning', 'downloading', 'validating', 'switching', 'probation', 'success', 'failed']) {
+    assert.match(source, new RegExp(`${status.replace('-', '\\-')}: ['"]status`))
+  }
 })
 
 test('Update Console follows DSH settings tokens and responsive layout', async () => {

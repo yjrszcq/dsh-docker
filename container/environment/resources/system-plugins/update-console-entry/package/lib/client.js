@@ -3,6 +3,21 @@ import css from './style.module.css'
 
 const API = '/_dsh_platform/api/v1'
 const TERMINAL = new Set(['idle', 'success', 'failed'])
+const STATUS_LABELS = Object.freeze({
+  idle: 'statusIdle',
+  checking: 'statusChecking',
+  planning: 'statusPlanning',
+  'checking-upstream': 'statusCheckingUpstream',
+  downloading: 'statusDownloading',
+  validating: 'statusValidating',
+  'building-candidate': 'statusBuildingCandidate',
+  'snapshotting-data': 'statusSnapshottingData',
+  switching: 'statusSwitching',
+  probation: 'statusProbation',
+  'restoring-data': 'statusRestoringData',
+  success: 'statusSuccess',
+  failed: 'statusFailed',
+})
 const h = React.createElement
 
 export const inject = ['slots', 'locale']
@@ -35,18 +50,11 @@ function VersionCell({ label, version, detail }) {
     h('span', { className: css.detail }, display(detail)))
 }
 
-function DetailRow({ label, value }) {
-  return h('div', { className: css.detailRow },
-    h('dt', null, label),
-    h('dd', null, display(value)))
-}
-
 function UpdateConsoleEntry({ t }) {
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
-  const [logs, setLogs] = useState([])
   const [confirmStable, setConfirmStable] = useState(false)
   const [dataLossAccepted, setDataLossAccepted] = useState(false)
   const loading = useRef(false)
@@ -88,27 +96,23 @@ function UpdateConsoleEntry({ t }) {
     stateEvents.onopen = () => setConnection('online')
     stateEvents.onerror = () => setConnection('connecting')
 
-    const logEvents = new EventSource(`${API}/logs/stream?source=audit&source=updater&limit=100`)
-    logEvents.addEventListener('log', event => {
-      try {
-        const entry = JSON.parse(event.data)
-        const line = `${display(entry.timestamp)} ${display(entry.source)} ${display(entry.message)}`
-        setLogs(previous => [...previous.slice(-199), line])
-      } catch {
-        // A malformed log entry must not disconnect the update controls.
-      }
-    })
     const timer = window.setInterval(() => { void refresh() }, 15_000)
     return () => {
       window.clearInterval(timer)
       stateEvents.close()
-      logEvents.close()
     }
   }, [refresh])
 
   const update = status?.update ?? {}
   const rollbackPlan = status?.rollbackPlan
   const busy = acting || !TERMINAL.has(update.status ?? 'idle')
+  const updateActive = !TERMINAL.has(update.status ?? 'idle')
+  const updateStatus = STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
+  const updateStatusClass = update.status === 'failed'
+    ? css.statusFailed
+    : update.status === 'success'
+      ? css.statusSuccess
+      : updateActive ? css.statusActive : ''
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
   const holds = [...new Map([
     ...(status?.holds ?? []),
@@ -160,22 +164,24 @@ function UpdateConsoleEntry({ t }) {
       error ? h('p', { className: css.error, role: 'alert' }, error) : null),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-actions-title' },
-      h('div', { className: css.sectionHeading },
+      h('div', { className: `${css.sectionHeading} ${css.actionHeading}` },
         h('div', null,
           h('h3', { id: 'platform-actions-title' }, t('actions')),
-          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt)}` : t('notChecked')))),
-      h('div', { className: css.actions },
-        h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('check', { method: 'POST' }) } }, t('check')),
-        h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
-        rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
-        rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null),
-      h('div', { className: css.progressRow },
-        h('div', { className: css.progressCopy },
-          h('strong', null, display(update.status)),
-          h('span', null, display(update.error ?? update.outcome))),
-        h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
-          h('span', { style: { width: `${String(progress)}%` } })),
-        h('output', null, `${String(progress)}%`)),
+          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt)}` : t('notChecked'))),
+        h('div', { className: css.actions },
+          h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('check', { method: 'POST' }) } }, t('check')),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
+          rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
+          rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null)),
+      h('div', { className: css.updateState, 'aria-live': 'polite' },
+        h('div', { className: css.statusLine },
+          h('span', { className: `${css.statusLabel} ${updateStatusClass}` },
+            h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
+            t(updateStatus)),
+          updateActive ? h('output', null, `${String(progress)}%`) : null),
+        update.error || update.outcome ? h('p', null, display(update.error ?? update.outcome)) : null,
+        updateActive ? h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
+          h('span', { style: { width: `${String(progress)}%` } })) : null),
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
@@ -190,21 +196,7 @@ function UpdateConsoleEntry({ t }) {
           h('span', null, t('confirmDataLoss'))),
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => { setConfirmStable(false); setDataLossAccepted(false) } }, t('cancel')),
-          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null),
-
-    h('details', { className: css.disclosure },
-      h('summary', null, t('details')),
-      h('dl', { className: css.details },
-        h(DetailRow, { label: 'Runtime', value: status?.current?.runtime }),
-        h(DetailRow, { label: t('probation'), value: localTime(status?.probation?.until) }),
-        h(DetailRow, { label: t('snapshot'), value: localTime(rollbackPlan?.snapshot?.createdAt) }),
-        h(DetailRow, { label: 'Keyring', value: status?.trust?.keyringGeneration }))),
-
-    h('details', { className: css.disclosure },
-      h('summary', null, t('logs')),
-      h('div', { className: css.logActions },
-        h('button', { type: 'button', className: css.smallButton, disabled: logs.length === 0, onClick: () => setLogs([]) }, t('clear'))),
-      h('pre', { className: css.logs, tabIndex: 0, 'aria-live': 'polite' }, logs.length > 0 ? logs.join('\n') : t('noLogs'))))
+          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null))
 }
 
 export function apply(ctx) {
@@ -214,7 +206,7 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '正式环境保持不变，实验通道仅跟进上游 DSH。',
       stable: 'Stable', experimental: 'Experimental', current: '当前版本', supported: '正式支持', upstream: '上游版本', officialNpm: '官方 npm',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚 previous', returnStable: '立即回 Stable', retry: '重试', progress: '更新进度',
-      details: '运行详情', probation: '观察期截止', snapshot: '回滚恢复点', logs: '平台日志', clear: '清空', noLogs: '暂无日志',
+      statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
       aheadOfStable: '当前版本领先正式支持版本，已冻结完整运行组合。', experimentalBlocked: '实验 DSH 与正式 Environment 组合不可用。',
       returnStableTitle: '恢复 Stable 状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -224,7 +216,7 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'The production Environment stays fixed; Experimental follows upstream DSH only.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      details: 'Runtime details', probation: 'Probation ends', snapshot: 'Rollback snapshot', logs: 'Platform logs', clear: 'Clear', noLogs: 'No logs yet',
+      statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',

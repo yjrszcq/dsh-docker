@@ -135,6 +135,7 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -199,26 +200,24 @@
 .dangerButton:focus-visible,
 .dangerFilledButton:focus-visible,
 .smallButton:focus-visible,
-.segmented button:focus-visible,
-.disclosure summary:focus-visible {
+.segmented button:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 2px;
 }
 
-.progressRow {
-  display: grid;
-  grid-template-columns: minmax(120px, .7fr) minmax(140px, 1fr) 42px;
-  align-items: center;
-  gap: 10px;
-}
-
-.progressCopy { min-width: 0; }
-.progressCopy strong, .progressCopy span { display: block; overflow-wrap: anywhere; }
-.progressCopy strong { font-size: 13px; line-height: 20px; }
-.progressCopy span { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.actionHeading { align-items: center; }
+.updateState { display: flex; flex-direction: column; gap: 6px; }
+.statusLine { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.statusLine output { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.statusLabel { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+.statusDot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--dsw-alias-border-l2); }
+.statusActive .statusDot { background: var(--dsw-alias-brand-primary); }
+.statusSuccess .statusDot { background: var(--dsw-alias-state-success-primary); }
+.statusFailed { color: var(--dsw-alias-state-error-primary); }
+.statusFailed .statusDot { background: var(--dsw-alias-state-error-primary); }
+.updateState > p { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
 .progress { height: 6px; overflow: hidden; border-radius: 3px; background: var(--dsw-alias-border-l2); }
 .progress span { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); transition: width .2s ease; }
-.progressRow output { font-size: 12px; text-align: right; color: var(--dsw-alias-label-secondary); }
 
 .holds { display: flex; flex-direction: column; border-top: 1px solid var(--dsw-alias-border-l2); }
 .hold { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
@@ -239,30 +238,6 @@
 .confirmation input { margin: 3px 0 0; accent-color: var(--dsw-alias-brand-primary); }
 .confirmActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
-.disclosure { padding-bottom: 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-.disclosure summary { cursor: pointer; font-size: 14px; line-height: 22px; font-weight: 500; }
-.details { margin: 12px 0 0; }
-.detailRow { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--dsw-alias-border-l3); font-size: 13px; line-height: 20px; }
-.detailRow dt { color: var(--dsw-alias-label-tertiary); }
-.detailRow dd { margin: 0; overflow-wrap: anywhere; }
-.logActions { display: flex; justify-content: flex-end; margin: 8px 0; }
-.logs {
-  box-sizing: border-box;
-  min-height: 120px;
-  max-height: 260px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  line-height: 18px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 640px) {
   .root { gap: 16px; }
   .heading, .sectionHeading { flex-direction: column; gap: 10px; }
@@ -271,9 +246,6 @@
   .segmented { width: 100%; }
   .segmented button { flex: 1; }
   .actions > button { flex: 1 1 calc(50% - 8px); }
-  .progressRow { grid-template-columns: 1fr 42px; }
-  .progressCopy { grid-column: 1 / -1; }
-  .detailRow { grid-template-columns: 1fr; gap: 2px; }
 }
 
 @media (max-width: 480px) {

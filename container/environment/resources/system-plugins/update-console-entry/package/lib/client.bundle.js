@@ -1,12 +1,12 @@
 window.__ModuleLoader__.load({ id: "@dsh-docker/update-console-entry", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
-const css = Object.freeze({"actions":"dshPlatform_actions","caption":"dshPlatform_caption","confirmActions":"dshPlatform_confirmActions","confirmation":"dshPlatform_confirmation","connection":"dshPlatform_connection","dangerButton":"dshPlatform_dangerButton","dangerFilledButton":"dshPlatform_dangerFilledButton","detail":"dshPlatform_detail","detailRow":"dshPlatform_detailRow","details":"dshPlatform_details","disclosure":"dshPlatform_disclosure","error":"dshPlatform_error","experimentalVersions":"dshPlatform_experimentalVersions","heading":"dshPlatform_heading","hold":"dshPlatform_hold","holds":"dshPlatform_holds","intro":"dshPlatform_intro","logActions":"dshPlatform_logActions","logs":"dshPlatform_logs","notice":"dshPlatform_notice","offline":"dshPlatform_offline","online":"dshPlatform_online","primaryButton":"dshPlatform_primaryButton","progress":"dshPlatform_progress","progressCopy":"dshPlatform_progressCopy","progressRow":"dshPlatform_progressRow","root":"dshPlatform_root","secondaryButton":"dshPlatform_secondaryButton","section":"dshPlatform_section","sectionHeading":"dshPlatform_sectionHeading","segmented":"dshPlatform_segmented","smallButton":"dshPlatform_smallButton","title":"dshPlatform_title","version":"dshPlatform_version","versionCell":"dshPlatform_versionCell","versions":"dshPlatform_versions"});
+const css = Object.freeze({"actionHeading":"dshPlatform_actionHeading","actions":"dshPlatform_actions","caption":"dshPlatform_caption","confirmActions":"dshPlatform_confirmActions","confirmation":"dshPlatform_confirmation","connection":"dshPlatform_connection","dangerButton":"dshPlatform_dangerButton","dangerFilledButton":"dshPlatform_dangerFilledButton","detail":"dshPlatform_detail","error":"dshPlatform_error","experimentalVersions":"dshPlatform_experimentalVersions","heading":"dshPlatform_heading","hold":"dshPlatform_hold","holds":"dshPlatform_holds","intro":"dshPlatform_intro","notice":"dshPlatform_notice","offline":"dshPlatform_offline","online":"dshPlatform_online","primaryButton":"dshPlatform_primaryButton","progress":"dshPlatform_progress","root":"dshPlatform_root","secondaryButton":"dshPlatform_secondaryButton","section":"dshPlatform_section","sectionHeading":"dshPlatform_sectionHeading","segmented":"dshPlatform_segmented","smallButton":"dshPlatform_smallButton","statusActive":"dshPlatform_statusActive","statusDot":"dshPlatform_statusDot","statusFailed":"dshPlatform_statusFailed","statusLabel":"dshPlatform_statusLabel","statusLine":"dshPlatform_statusLine","statusSuccess":"dshPlatform_statusSuccess","title":"dshPlatform_title","updateState":"dshPlatform_updateState","version":"dshPlatform_version","versionCell":"dshPlatform_versionCell","versions":"dshPlatform_versions"});
 const styleId = "@dsh-docker/update-console-entry/style.module.css";
 if (typeof document !== 'undefined' && ![...document.querySelectorAll('style[data-plugin-css]')].some(tag => tag.dataset.pluginCss === styleId)) {
   const tag = document.createElement('style');
   tag.dataset.plugin = "@dsh-docker/update-console-entry";
   tag.dataset.pluginCss = styleId;
-  tag.textContent = ".dshPlatform_root {\n  display: flex;\n  flex-direction: column;\n  gap: 20px;\n  width: 100%;\n  max-width: 720px;\n  color: var(--dsw-alias-label-primary);\n}\n\n.dshPlatform_heading,\n.dshPlatform_sectionHeading {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 16px;\n}\n\n.dshPlatform_title {\n  margin: 0;\n  font-size: 18px;\n  line-height: 26px;\n  font-weight: 600;\n}\n\n.dshPlatform_intro,\n.dshPlatform_sectionHeading p {\n  margin: 2px 0 0;\n  font-size: 13px;\n  line-height: 20px;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshPlatform_connection {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 9px;\n  border-radius: 12px;\n  font-size: 12px;\n  line-height: 18px;\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshPlatform_connection > span {\n  width: 7px;\n  height: 7px;\n  border-radius: 50%;\n  background: var(--dsw-alias-state-warn-label);\n}\n\n.dshPlatform_connection.dshPlatform_online > span { background: var(--dsw-alias-state-success-primary); }\n.dshPlatform_connection.dshPlatform_offline > span { background: var(--dsw-alias-state-error-primary); }\n\n.dshPlatform_section {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  padding-bottom: 20px;\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n\n.dshPlatform_sectionHeading h3 {\n  margin: 0;\n  font-size: 16px;\n  line-height: 24px;\n  font-weight: 500;\n}\n\n.dshPlatform_segmented {\n  flex: none;\n  display: inline-flex;\n  padding: 2px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n}\n\n.dshPlatform_segmented button {\n  box-sizing: border-box;\n  height: 28px;\n  padding: 0 10px;\n  border: none;\n  border-radius: 6px;\n  background: transparent;\n  color: var(--dsw-alias-label-secondary);\n  font: inherit;\n  font-size: 12px;\n  cursor: pointer;\n}\n\n.dshPlatform_segmented button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }\n.dshPlatform_segmented button[aria-pressed='true'] {\n  background: var(--dsw-specific-sidebar-nav-item-active);\n  color: var(--dsw-alias-label-primary);\n  font-weight: 500;\n}\n\n.dshPlatform_versions {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  overflow: hidden;\n}\n\n.dshPlatform_experimentalVersions { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n\n.dshPlatform_versionCell {\n  min-width: 0;\n  padding: 12px 14px;\n}\n\n.dshPlatform_versionCell + .dshPlatform_versionCell { border-left: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_caption, .dshPlatform_version, .dshPlatform_detail { display: block; overflow-wrap: anywhere; }\n.dshPlatform_caption, .dshPlatform_detail { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }\n.dshPlatform_version { margin: 3px 0; font-size: 15px; line-height: 22px; font-weight: 600; }\n\n.dshPlatform_notice,\n.dshPlatform_error {\n  margin: 0;\n  padding: 8px 10px;\n  border-left: 3px solid var(--dsw-alias-state-warn-label);\n  font-size: 12px;\n  line-height: 18px;\n  color: var(--dsw-alias-state-warn-label);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshPlatform_error {\n  border-left-color: var(--dsw-alias-state-error-primary);\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshPlatform_actions {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 8px;\n}\n\n.dshPlatform_primaryButton,\n.dshPlatform_secondaryButton,\n.dshPlatform_dangerButton,\n.dshPlatform_dangerFilledButton,\n.dshPlatform_smallButton {\n  box-sizing: border-box;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  height: 36px;\n  padding: 0 14px;\n  border: none;\n  border-radius: 18px;\n  font: inherit;\n  font-size: 14px;\n  line-height: 22px;\n  cursor: pointer;\n}\n\n.dshPlatform_primaryButton {\n  background: var(--dsw-alias-button-primary-fill);\n  color: var(--dsw-alias-label-primary-foreground);\n}\n.dshPlatform_primaryButton:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }\n\n.dshPlatform_secondaryButton,\n.dshPlatform_smallButton {\n  border: 1px solid var(--dsw-alias-border-l2);\n  background: transparent;\n  color: var(--dsw-alias-label-primary);\n}\n.dshPlatform_secondaryButton:hover:not(:disabled),\n.dshPlatform_smallButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }\n\n.dshPlatform_dangerButton {\n  background: transparent;\n  color: var(--dsw-alias-state-error-primary);\n}\n.dshPlatform_dangerButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); }\n.dshPlatform_dangerFilledButton { background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-foreground); }\n\n.dshPlatform_smallButton {\n  height: 28px;\n  padding: 0 10px;\n  border-radius: 14px;\n  font-size: 12px;\n  line-height: 18px;\n}\n\n.dshPlatform_primaryButton:disabled,\n.dshPlatform_secondaryButton:disabled,\n.dshPlatform_dangerButton:disabled,\n.dshPlatform_dangerFilledButton:disabled,\n.dshPlatform_smallButton:disabled,\n.dshPlatform_segmented button:disabled { opacity: .4; cursor: default; }\n\n.dshPlatform_primaryButton:focus-visible,\n.dshPlatform_secondaryButton:focus-visible,\n.dshPlatform_dangerButton:focus-visible,\n.dshPlatform_dangerFilledButton:focus-visible,\n.dshPlatform_smallButton:focus-visible,\n.dshPlatform_segmented button:focus-visible,\n.dshPlatform_disclosure summary:focus-visible {\n  outline: 2px solid var(--dsw-alias-brand-primary);\n  outline-offset: 2px;\n}\n\n.dshPlatform_progressRow {\n  display: grid;\n  grid-template-columns: minmax(120px, .7fr) minmax(140px, 1fr) 42px;\n  align-items: center;\n  gap: 10px;\n}\n\n.dshPlatform_progressCopy { min-width: 0; }\n.dshPlatform_progressCopy strong, .dshPlatform_progressCopy span { display: block; overflow-wrap: anywhere; }\n.dshPlatform_progressCopy strong { font-size: 13px; line-height: 20px; }\n.dshPlatform_progressCopy span { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }\n.dshPlatform_progress { height: 6px; overflow: hidden; border-radius: 3px; background: var(--dsw-alias-border-l2); }\n.dshPlatform_progress span { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); transition: width .2s ease; }\n.dshPlatform_progressRow output { font-size: 12px; text-align: right; color: var(--dsw-alias-label-secondary); }\n\n.dshPlatform_holds { display: flex; flex-direction: column; border-top: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_hold { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_hold div { min-width: 0; }\n.dshPlatform_hold strong, .dshPlatform_hold span { display: block; overflow-wrap: anywhere; }\n.dshPlatform_hold strong { font-size: 13px; line-height: 20px; }\n.dshPlatform_hold span { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }\n\n.dshPlatform_confirmation {\n  padding: 14px;\n  border: 1px solid var(--dsw-alias-state-error-primary);\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-module-platform);\n}\n.dshPlatform_confirmation h4 { margin: 0; font-size: 14px; line-height: 22px; }\n.dshPlatform_confirmation p { margin: 4px 0 12px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }\n.dshPlatform_confirmation label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; }\n.dshPlatform_confirmation input { margin: 3px 0 0; accent-color: var(--dsw-alias-brand-primary); }\n.dshPlatform_confirmActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }\n\n.dshPlatform_disclosure { padding-bottom: 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_disclosure summary { cursor: pointer; font-size: 14px; line-height: 22px; font-weight: 500; }\n.dshPlatform_details { margin: 12px 0 0; }\n.dshPlatform_detailRow { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--dsw-alias-border-l3); font-size: 13px; line-height: 20px; }\n.dshPlatform_detailRow dt { color: var(--dsw-alias-label-tertiary); }\n.dshPlatform_detailRow dd { margin: 0; overflow-wrap: anywhere; }\n.dshPlatform_logActions { display: flex; justify-content: flex-end; margin: 8px 0; }\n.dshPlatform_logs {\n  box-sizing: border-box;\n  min-height: 120px;\n  max-height: 260px;\n  margin: 0;\n  padding: 12px;\n  overflow: auto;\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-layer-1);\n  color: var(--dsw-alias-label-secondary);\n  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);\n  font-size: 11px;\n  line-height: 18px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n\n@media (max-width: 640px) {\n  .dshPlatform_root { gap: 16px; }\n  .dshPlatform_heading, .dshPlatform_sectionHeading { flex-direction: column; gap: 10px; }\n  .dshPlatform_versions { grid-template-columns: 1fr; }\n  .dshPlatform_versionCell + .dshPlatform_versionCell { border-left: 0; border-top: 1px solid var(--dsw-alias-border-l2); }\n  .dshPlatform_segmented { width: 100%; }\n  .dshPlatform_segmented button { flex: 1; }\n  .dshPlatform_actions > button { flex: 1 1 calc(50% - 8px); }\n  .dshPlatform_progressRow { grid-template-columns: 1fr 42px; }\n  .dshPlatform_progressCopy { grid-column: 1 / -1; }\n  .dshPlatform_detailRow { grid-template-columns: 1fr; gap: 2px; }\n}\n\n@media (max-width: 480px) {\n  [role='dialog']:has(.dshPlatform_root) > nav { display: none; }\n  [role='dialog']:has(.dshPlatform_root) > div { min-width: 0; }\n  .dshPlatform_actions > button { flex-basis: 100%; }\n}\n";
+  tag.textContent = ".dshPlatform_root {\n  display: flex;\n  flex-direction: column;\n  gap: 20px;\n  width: 100%;\n  max-width: 720px;\n  color: var(--dsw-alias-label-primary);\n}\n\n.dshPlatform_heading,\n.dshPlatform_sectionHeading {\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 16px;\n}\n\n.dshPlatform_title {\n  margin: 0;\n  font-size: 18px;\n  line-height: 26px;\n  font-weight: 600;\n}\n\n.dshPlatform_intro,\n.dshPlatform_sectionHeading p {\n  margin: 2px 0 0;\n  font-size: 13px;\n  line-height: 20px;\n  color: var(--dsw-alias-label-tertiary);\n}\n\n.dshPlatform_connection {\n  flex: none;\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 9px;\n  border-radius: 12px;\n  font-size: 12px;\n  line-height: 18px;\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshPlatform_connection > span {\n  width: 7px;\n  height: 7px;\n  border-radius: 50%;\n  background: var(--dsw-alias-state-warn-label);\n}\n\n.dshPlatform_connection.dshPlatform_online > span { background: var(--dsw-alias-state-success-primary); }\n.dshPlatform_connection.dshPlatform_offline > span { background: var(--dsw-alias-state-error-primary); }\n\n.dshPlatform_section {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  padding-bottom: 20px;\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n\n.dshPlatform_sectionHeading h3 {\n  margin: 0;\n  font-size: 16px;\n  line-height: 24px;\n  font-weight: 500;\n}\n\n.dshPlatform_segmented {\n  flex: none;\n  display: inline-flex;\n  padding: 2px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n}\n\n.dshPlatform_segmented button {\n  box-sizing: border-box;\n  height: 28px;\n  padding: 0 10px;\n  border: none;\n  border-radius: 6px;\n  background: transparent;\n  color: var(--dsw-alias-label-secondary);\n  font: inherit;\n  font-size: 12px;\n  cursor: pointer;\n}\n\n.dshPlatform_segmented button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }\n.dshPlatform_segmented button[aria-pressed='true'] {\n  background: var(--dsw-specific-sidebar-nav-item-active);\n  color: var(--dsw-alias-label-primary);\n  font-weight: 500;\n}\n\n.dshPlatform_versions {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  overflow: hidden;\n}\n\n.dshPlatform_experimentalVersions { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n\n.dshPlatform_versionCell {\n  min-width: 0;\n  padding: 12px 14px;\n}\n\n.dshPlatform_versionCell + .dshPlatform_versionCell { border-left: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_caption, .dshPlatform_version, .dshPlatform_detail { display: block; overflow-wrap: anywhere; }\n.dshPlatform_caption, .dshPlatform_detail { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }\n.dshPlatform_version { margin: 3px 0; font-size: 15px; line-height: 22px; font-weight: 600; }\n\n.dshPlatform_notice,\n.dshPlatform_error {\n  margin: 0;\n  padding: 8px 10px;\n  border-left: 3px solid var(--dsw-alias-state-warn-label);\n  font-size: 12px;\n  line-height: 18px;\n  color: var(--dsw-alias-state-warn-label);\n  background: var(--dsw-alias-bg-module-platform);\n}\n\n.dshPlatform_error {\n  border-left-color: var(--dsw-alias-state-error-primary);\n  color: var(--dsw-alias-state-error-primary);\n}\n\n.dshPlatform_actions {\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 8px;\n}\n\n.dshPlatform_primaryButton,\n.dshPlatform_secondaryButton,\n.dshPlatform_dangerButton,\n.dshPlatform_dangerFilledButton,\n.dshPlatform_smallButton {\n  box-sizing: border-box;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  height: 36px;\n  padding: 0 14px;\n  border: none;\n  border-radius: 18px;\n  font: inherit;\n  font-size: 14px;\n  line-height: 22px;\n  cursor: pointer;\n}\n\n.dshPlatform_primaryButton {\n  background: var(--dsw-alias-button-primary-fill);\n  color: var(--dsw-alias-label-primary-foreground);\n}\n.dshPlatform_primaryButton:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }\n\n.dshPlatform_secondaryButton,\n.dshPlatform_smallButton {\n  border: 1px solid var(--dsw-alias-border-l2);\n  background: transparent;\n  color: var(--dsw-alias-label-primary);\n}\n.dshPlatform_secondaryButton:hover:not(:disabled),\n.dshPlatform_smallButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }\n\n.dshPlatform_dangerButton {\n  background: transparent;\n  color: var(--dsw-alias-state-error-primary);\n}\n.dshPlatform_dangerButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); }\n.dshPlatform_dangerFilledButton { background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-foreground); }\n\n.dshPlatform_smallButton {\n  height: 28px;\n  padding: 0 10px;\n  border-radius: 14px;\n  font-size: 12px;\n  line-height: 18px;\n}\n\n.dshPlatform_primaryButton:disabled,\n.dshPlatform_secondaryButton:disabled,\n.dshPlatform_dangerButton:disabled,\n.dshPlatform_dangerFilledButton:disabled,\n.dshPlatform_smallButton:disabled,\n.dshPlatform_segmented button:disabled { opacity: .4; cursor: default; }\n\n.dshPlatform_primaryButton:focus-visible,\n.dshPlatform_secondaryButton:focus-visible,\n.dshPlatform_dangerButton:focus-visible,\n.dshPlatform_dangerFilledButton:focus-visible,\n.dshPlatform_smallButton:focus-visible,\n.dshPlatform_segmented button:focus-visible {\n  outline: 2px solid var(--dsw-alias-brand-primary);\n  outline-offset: 2px;\n}\n\n.dshPlatform_actionHeading { align-items: center; }\n.dshPlatform_updateState { display: flex; flex-direction: column; gap: 6px; }\n.dshPlatform_statusLine { display: flex; align-items: center; justify-content: space-between; gap: 12px; }\n.dshPlatform_statusLine output { font-size: 12px; color: var(--dsw-alias-label-secondary); }\n.dshPlatform_statusLabel { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }\n.dshPlatform_statusDot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--dsw-alias-border-l2); }\n.dshPlatform_statusActive .dshPlatform_statusDot { background: var(--dsw-alias-brand-primary); }\n.dshPlatform_statusSuccess .dshPlatform_statusDot { background: var(--dsw-alias-state-success-primary); }\n.dshPlatform_statusFailed { color: var(--dsw-alias-state-error-primary); }\n.dshPlatform_statusFailed .dshPlatform_statusDot { background: var(--dsw-alias-state-error-primary); }\n.dshPlatform_updateState > p { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }\n.dshPlatform_progress { height: 6px; overflow: hidden; border-radius: 3px; background: var(--dsw-alias-border-l2); }\n.dshPlatform_progress span { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); transition: width .2s ease; }\n\n.dshPlatform_holds { display: flex; flex-direction: column; border-top: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_hold { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }\n.dshPlatform_hold div { min-width: 0; }\n.dshPlatform_hold strong, .dshPlatform_hold span { display: block; overflow-wrap: anywhere; }\n.dshPlatform_hold strong { font-size: 13px; line-height: 20px; }\n.dshPlatform_hold span { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }\n\n.dshPlatform_confirmation {\n  padding: 14px;\n  border: 1px solid var(--dsw-alias-state-error-primary);\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-module-platform);\n}\n.dshPlatform_confirmation h4 { margin: 0; font-size: 14px; line-height: 22px; }\n.dshPlatform_confirmation p { margin: 4px 0 12px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }\n.dshPlatform_confirmation label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; }\n.dshPlatform_confirmation input { margin: 3px 0 0; accent-color: var(--dsw-alias-brand-primary); }\n.dshPlatform_confirmActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }\n\n@media (max-width: 640px) {\n  .dshPlatform_root { gap: 16px; }\n  .dshPlatform_heading, .dshPlatform_sectionHeading { flex-direction: column; gap: 10px; }\n  .dshPlatform_versions { grid-template-columns: 1fr; }\n  .dshPlatform_versionCell + .dshPlatform_versionCell { border-left: 0; border-top: 1px solid var(--dsw-alias-border-l2); }\n  .dshPlatform_segmented { width: 100%; }\n  .dshPlatform_segmented button { flex: 1; }\n  .dshPlatform_actions > button { flex: 1 1 calc(50% - 8px); }\n}\n\n@media (max-width: 480px) {\n  [role='dialog']:has(.dshPlatform_root) > nav { display: none; }\n  [role='dialog']:has(.dshPlatform_root) > div { min-width: 0; }\n  .dshPlatform_actions > button { flex-basis: 100%; }\n}\n";
   document.head.appendChild(tag);
 }
 const React = require('react')
@@ -14,6 +14,21 @@ const { useCallback, useEffect, useRef, useState } = React
 
 const API = '/_dsh_platform/api/v1'
 const TERMINAL = new Set(['idle', 'success', 'failed'])
+const STATUS_LABELS = Object.freeze({
+  idle: 'statusIdle',
+  checking: 'statusChecking',
+  planning: 'statusPlanning',
+  'checking-upstream': 'statusCheckingUpstream',
+  downloading: 'statusDownloading',
+  validating: 'statusValidating',
+  'building-candidate': 'statusBuildingCandidate',
+  'snapshotting-data': 'statusSnapshottingData',
+  switching: 'statusSwitching',
+  probation: 'statusProbation',
+  'restoring-data': 'statusRestoringData',
+  success: 'statusSuccess',
+  failed: 'statusFailed',
+})
 const h = React.createElement
 
 const inject = ['slots', 'locale']
@@ -46,18 +61,11 @@ function VersionCell({ label, version, detail }) {
     h('span', { className: css.detail }, display(detail)))
 }
 
-function DetailRow({ label, value }) {
-  return h('div', { className: css.detailRow },
-    h('dt', null, label),
-    h('dd', null, display(value)))
-}
-
 function UpdateConsoleEntry({ t }) {
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
-  const [logs, setLogs] = useState([])
   const [confirmStable, setConfirmStable] = useState(false)
   const [dataLossAccepted, setDataLossAccepted] = useState(false)
   const loading = useRef(false)
@@ -99,27 +107,23 @@ function UpdateConsoleEntry({ t }) {
     stateEvents.onopen = () => setConnection('online')
     stateEvents.onerror = () => setConnection('connecting')
 
-    const logEvents = new EventSource(`${API}/logs/stream?source=audit&source=updater&limit=100`)
-    logEvents.addEventListener('log', event => {
-      try {
-        const entry = JSON.parse(event.data)
-        const line = `${display(entry.timestamp)} ${display(entry.source)} ${display(entry.message)}`
-        setLogs(previous => [...previous.slice(-199), line])
-      } catch {
-        // A malformed log entry must not disconnect the update controls.
-      }
-    })
     const timer = window.setInterval(() => { void refresh() }, 15_000)
     return () => {
       window.clearInterval(timer)
       stateEvents.close()
-      logEvents.close()
     }
   }, [refresh])
 
   const update = status?.update ?? {}
   const rollbackPlan = status?.rollbackPlan
   const busy = acting || !TERMINAL.has(update.status ?? 'idle')
+  const updateActive = !TERMINAL.has(update.status ?? 'idle')
+  const updateStatus = STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
+  const updateStatusClass = update.status === 'failed'
+    ? css.statusFailed
+    : update.status === 'success'
+      ? css.statusSuccess
+      : updateActive ? css.statusActive : ''
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
   const holds = [...new Map([
     ...(status?.holds ?? []),
@@ -171,22 +175,24 @@ function UpdateConsoleEntry({ t }) {
       error ? h('p', { className: css.error, role: 'alert' }, error) : null),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-actions-title' },
-      h('div', { className: css.sectionHeading },
+      h('div', { className: `${css.sectionHeading} ${css.actionHeading}` },
         h('div', null,
           h('h3', { id: 'platform-actions-title' }, t('actions')),
-          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt)}` : t('notChecked')))),
-      h('div', { className: css.actions },
-        h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('check', { method: 'POST' }) } }, t('check')),
-        h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
-        rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
-        rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null),
-      h('div', { className: css.progressRow },
-        h('div', { className: css.progressCopy },
-          h('strong', null, display(update.status)),
-          h('span', null, display(update.error ?? update.outcome))),
-        h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
-          h('span', { style: { width: `${String(progress)}%` } })),
-        h('output', null, `${String(progress)}%`)),
+          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt)}` : t('notChecked'))),
+        h('div', { className: css.actions },
+          h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('check', { method: 'POST' }) } }, t('check')),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
+          rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
+          rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null)),
+      h('div', { className: css.updateState, 'aria-live': 'polite' },
+        h('div', { className: css.statusLine },
+          h('span', { className: `${css.statusLabel} ${updateStatusClass}` },
+            h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
+            t(updateStatus)),
+          updateActive ? h('output', null, `${String(progress)}%`) : null),
+        update.error || update.outcome ? h('p', null, display(update.error ?? update.outcome)) : null,
+        updateActive ? h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
+          h('span', { style: { width: `${String(progress)}%` } })) : null),
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
@@ -201,21 +207,7 @@ function UpdateConsoleEntry({ t }) {
           h('span', null, t('confirmDataLoss'))),
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => { setConfirmStable(false); setDataLossAccepted(false) } }, t('cancel')),
-          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null),
-
-    h('details', { className: css.disclosure },
-      h('summary', null, t('details')),
-      h('dl', { className: css.details },
-        h(DetailRow, { label: 'Runtime', value: status?.current?.runtime }),
-        h(DetailRow, { label: t('probation'), value: localTime(status?.probation?.until) }),
-        h(DetailRow, { label: t('snapshot'), value: localTime(rollbackPlan?.snapshot?.createdAt) }),
-        h(DetailRow, { label: 'Keyring', value: status?.trust?.keyringGeneration }))),
-
-    h('details', { className: css.disclosure },
-      h('summary', null, t('logs')),
-      h('div', { className: css.logActions },
-        h('button', { type: 'button', className: css.smallButton, disabled: logs.length === 0, onClick: () => setLogs([]) }, t('clear'))),
-      h('pre', { className: css.logs, tabIndex: 0, 'aria-live': 'polite' }, logs.length > 0 ? logs.join('\n') : t('noLogs'))))
+          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null))
 }
 
 function apply(ctx) {
@@ -225,7 +217,7 @@ function apply(ctx) {
       channel: '更新通道', channelDetail: '正式环境保持不变，实验通道仅跟进上游 DSH。',
       stable: 'Stable', experimental: 'Experimental', current: '当前版本', supported: '正式支持', upstream: '上游版本', officialNpm: '官方 npm',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚 previous', returnStable: '立即回 Stable', retry: '重试', progress: '更新进度',
-      details: '运行详情', probation: '观察期截止', snapshot: '回滚恢复点', logs: '平台日志', clear: '清空', noLogs: '暂无日志',
+      statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
       aheadOfStable: '当前版本领先正式支持版本，已冻结完整运行组合。', experimentalBlocked: '实验 DSH 与正式 Environment 组合不可用。',
       returnStableTitle: '恢复 Stable 状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -235,7 +227,7 @@ function apply(ctx) {
       channel: 'Update channel', channelDetail: 'The production Environment stays fixed; Experimental follows upstream DSH only.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      details: 'Runtime details', probation: 'Probation ends', snapshot: 'Rollback snapshot', logs: 'Platform logs', clear: 'Clear', noLogs: 'No logs yet',
+      statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
