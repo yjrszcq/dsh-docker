@@ -134,7 +134,7 @@ export async function runCli({
     if (!parsed.wait) return 0
     for (;;) {
       const value = await management.request('GET', `${API_PREFIX}/status`)
-      if (['success', 'failed'].includes(value.update.status)) {
+      if (value.update.taskId === started.taskId && ['success', 'failed'].includes(value.update.status)) {
         write(JSON.stringify(value.update, null, 2))
         return value.update.status === 'success' ? 0 : 1
       }

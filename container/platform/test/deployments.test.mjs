@@ -293,6 +293,44 @@ test('activates receipts and commits one complete Managed Deployment transaction
   assert.equal(await context.manager.activation(), undefined)
 })
 
+test('rolls back only the exact previous Deployment with receipts and health checks', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await managedRecord(context, 'rollback-target', 2, 'stable', '0.1.0-rc.2', ['candidate-receipt'])
+  const active = []
+  await context.manager.activateManaged(candidate, {
+    healthCheck: async () => {},
+    activateReceipts: async tokens => active.push([...tokens]),
+  })
+  const before = await context.manager.state()
+  const previous = await context.manager.record(before.previous)
+  let healthChecks = 0
+  const rolledBack = await context.manager.rollback({
+    healthCheck: async () => { healthChecks += 1 },
+    activateReceipts: async tokens => active.push([...tokens]),
+  })
+  assert.equal(rolledBack.current, previous.id)
+  assert.equal(rolledBack.previous, candidate.id)
+  assert.deepEqual(active.at(-1), previous.receiptTokens)
+  assert.equal(healthChecks, 1)
+  assert.equal(await context.manager.activation(), undefined)
+  const status = await context.manager.publishStatus()
+  assert.equal(status.current.recordId, previous.id)
+})
+
+test('reports an image behind a newly activated Managed Deployment immediately', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await managedRecord(context, 'status-ahead', 2, 'stable', '0.1.0-rc.2')
+  await context.manager.activateManaged(candidate, {
+    healthCheck: async () => {},
+    activateReceipts: async () => {},
+  })
+  const status = await context.manager.publishStatus()
+  assert.equal(status.current.recordId, candidate.id)
+  assert.equal(status.imageBehindCurrent, true)
+})
+
 test('restores the materialized previous Deployment when receipt activation fails', async () => {
   const context = await fixture()
   await context.manager.initialize(context.image)

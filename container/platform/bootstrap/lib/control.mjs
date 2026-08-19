@@ -44,12 +44,17 @@ export function createBootstrapControl(runner, { deployments, trust } = {}) {
         const state = await deployments.state()
         if (state.previous === null) throw new Error('no previous Deployment exists')
         if (body.recordId !== undefined && body.recordId !== state.previous) throw new Error('requested Deployment is not previous')
-        const record = await deployments.record(state.previous)
-        const slots = await deployments.activateManaged(record, {
+        const slots = await deployments.rollback({
           healthCheck: () => runner.reload(),
           activateReceipts: tokens => trust.activate(tokens),
         })
         send(response, 200, { slots })
+      } else if (request.method === 'GET' && pathname === '/v1/deployments/rollback-plan' && deployments !== undefined) {
+        const state = await deployments.state()
+        send(response, 200, {
+          current: state.current === null ? null : await deployments.record(state.current),
+          previous: state.previous === null ? null : await deployments.record(state.previous),
+        })
       } else if (request.method === 'POST' && pathname === '/v1/deployments/candidate' && deployments !== undefined) {
         const body = await jsonBody(request)
         const record = await deployments.stageCandidate(body.record, () => runner.reload())

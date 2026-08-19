@@ -66,3 +66,32 @@ test('rejects a valid snapshot archive bound to a different deployment', async (
   value.snapshots.inspect = async id => ({ ...await inspect(id), environmentVersion: 'other-env' })
   await assert.rejects(value.recovery.plan(), /does not describe/)
 })
+
+test('binds Stable rollback to the exact Bootstrap previous slot without a data snapshot', async () => {
+  const calls = []
+  const current = {
+    id: 'deployment-record-current', dshVersion: '0.1.0-rc.8', environmentVersion: 'env-2', receiptTokens: ['stable-2'],
+  }
+  const previous = {
+    id: 'deployment-record-previous', dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1', receiptTokens: ['stable-1'],
+  }
+  const recovery = new CompleteStateRecovery({
+    journal: { read: async () => undefined },
+    snapshots: {},
+    activator: {
+      rollbackDeployments: async () => ({ current, previous }),
+      rollback: async recordId => calls.push(recordId),
+    },
+  })
+  const plan = await recovery.plan()
+  assert.equal(plan.mode, 'stable')
+  assert.equal(plan.snapshot, null)
+  assert.equal(plan.previous.runtime, previous.id)
+  await assert.rejects(recovery.restore(plan.planId, {
+    requireConfirmation: true,
+    confirmDataLoss: true,
+  }), /snapshot/)
+  assert.deepEqual(calls, [])
+  assert.deepEqual(await recovery.restore(plan.planId), { status: 'rolled-back', transactionId: null })
+  assert.deepEqual(calls, [previous.id])
+})

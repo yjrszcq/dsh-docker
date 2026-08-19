@@ -168,7 +168,7 @@ export class UpdateCoordinator extends EventEmitter {
       this.rollbackPlan().catch(() => null),
       this.journal?.read().catch(() => undefined),
     ])
-    const returnStableAvailable = rollbackPlan !== null && update.supported?.dsh !== undefined
+    const returnStableAvailable = rollbackPlan !== null && rollbackPlan.snapshot !== null && update.supported?.dsh !== undefined
       && compareDshVersions(rollbackPlan.previous.dsh, update.supported.dsh) <= 0
     return Object.freeze({
       update,

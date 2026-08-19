@@ -151,6 +151,31 @@ test('CLI parser keeps rollback local and update wait behavior explicit', async 
   assert.match(output[0], /rollback-task/)
 })
 
+test('update wait ignores a terminal state from an older task', async () => {
+  const output = []
+  const statuses = [
+    { update: { taskId: 'old-task', status: 'failed' } },
+    { update: { taskId: 'new-task', status: 'planning' } },
+    { update: { taskId: 'new-task', status: 'success' } },
+  ]
+  const management = {
+    request: async (method, path) => {
+      if (method === 'POST' && path.endsWith('/update')) return { taskId: 'new-task' }
+      return statuses.shift()
+    },
+  }
+  let waits = 0
+  const exitCode = await runCli({
+    argv: ['update', '--wait'],
+    management,
+    write: line => output.push(line),
+    delay: async () => { waits += 1 },
+  })
+  assert.equal(exitCode, 0)
+  assert.equal(waits, 2)
+  assert.match(output.at(-1), /new-task/)
+})
+
 test('CLI parses channel controls and refuses noninteractive Stable return', async () => {
   assert.deepEqual(parseCli(['channel', 'experimental']), { command: 'channel', channel: 'experimental' })
   assert.deepEqual(parseCli(['retry']), { command: 'retry' })

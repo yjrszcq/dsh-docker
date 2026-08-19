@@ -290,19 +290,32 @@ export class DeploymentManager {
     })
   }
 
-  async rollback(healthCheck) {
+  async rollback({ healthCheck, activateReceipts }) {
     return this.exclusive(async () => {
       const state = await this.state()
       if (state.previous === null) throw new TrustError('no previous Deployment exists')
-      await this.select(state.previous)
+      const from = await this.record(state.current)
+      const previous = await this.record(state.previous)
+      await this.writeActivation({ phase: 'prepared', from: from.id, to: previous.id })
+      let receiptsActive = false
       try {
+        await this.select(previous.id)
         await healthCheck()
+        await this.writeActivation({ phase: 'healthy', from: from.id, to: previous.id })
+        await activateReceipts(previous.receiptTokens)
+        receiptsActive = true
+        await this.writeActivation({ phase: 'receipts-active', from: from.id, to: previous.id })
+        const committed = await this.commit(previous.id, from.id)
+        await this.clearActivation()
+        await this.publishStatus()
+        return committed
       } catch (error) {
-        await this.select(state.current)
+        if (receiptsActive) await activateReceipts(from.receiptTokens).catch(() => {})
+        await this.select(from.id)
         await healthCheck().catch(() => {})
+        await this.clearActivation().catch(() => {})
         throw error
       }
-      return this.commit(state.previous, state.current)
     })
   }
 
@@ -530,7 +543,8 @@ export class DeploymentManager {
         environment: this.inventory.deployment.environmentVersion,
       }),
       current,
-      imageBehindCurrent: plan?.imageBehindCurrent ?? false,
+      imageBehindCurrent: plan?.imageBehindCurrent
+        ?? (current !== null && current.targetSequence > this.inventory.targetSequence),
       recoveryMode,
     })
     return writeDeploymentStatus(this.paths.deploymentStatusPath, value)

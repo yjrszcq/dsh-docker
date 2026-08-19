@@ -11,6 +11,22 @@ function deploymentIdentity(deployment) {
   }
 }
 
+function recordIdentity(record) {
+  return deploymentIdentity({
+    dsh: record.dshVersion,
+    environment: record.environmentVersion,
+    runtime: record.id,
+    receiptTokens: record.receiptTokens,
+  })
+}
+
+function bindPlan(value) {
+  return Object.freeze({
+    ...value,
+    planId: createHash('sha256').update(canonicalJson(value)).digest('hex'),
+  })
+}
+
 export class CompleteStateRecovery {
   constructor({ journal, snapshots, activator }) {
     this.journal = journal
@@ -20,34 +36,42 @@ export class CompleteStateRecovery {
 
   async plan() {
     const transaction = await this.journal.read()
-    if (transaction?.phase !== 'committed' || transaction.snapshotId === null) return null
-    const current = await this.activator.currentDeployment()
-    if (
-      current.dsh !== transaction.to.dsh
-      || current.environment !== transaction.to.environment
-      || current.runtime !== transaction.to.runtime
-    ) return null
-    const snapshot = await this.snapshots.inspect(transaction.snapshotId)
-    if (
-      snapshot.runtimeId !== transaction.from.runtime
-      || snapshot.environmentVersion !== transaction.from.environment
-      || snapshot.dshVersion !== transaction.from.dsh
-    ) throw new TrustError('rollback snapshot does not describe the previous deployment')
-    const value = {
-      transactionId: transaction.transactionId,
-      mode: transaction.mode,
-      current: deploymentIdentity(current),
-      previous: deploymentIdentity(transaction.from),
-      snapshot: {
-        id: snapshot.id,
-        createdAt: snapshot.createdAt,
-        sha256: snapshot.archiveSha256,
-        size: snapshot.archiveSize,
-      },
+    if (transaction?.phase === 'committed' && transaction.snapshotId !== null) {
+      const current = await this.activator.currentDeployment()
+      if (
+        current.dsh === transaction.to.dsh
+        && current.environment === transaction.to.environment
+        && current.runtime === transaction.to.runtime
+      ) {
+        const snapshot = await this.snapshots.inspect(transaction.snapshotId)
+        if (
+          snapshot.runtimeId !== transaction.from.runtime
+          || snapshot.environmentVersion !== transaction.from.environment
+          || snapshot.dshVersion !== transaction.from.dsh
+        ) throw new TrustError('rollback snapshot does not describe the previous deployment')
+        return bindPlan({
+          transactionId: transaction.transactionId,
+          mode: transaction.mode,
+          current: deploymentIdentity(current),
+          previous: deploymentIdentity(transaction.from),
+          snapshot: {
+            id: snapshot.id,
+            createdAt: snapshot.createdAt,
+            sha256: snapshot.archiveSha256,
+            size: snapshot.archiveSize,
+          },
+        })
+      }
     }
-    return Object.freeze({
-      ...value,
-      planId: createHash('sha256').update(canonicalJson(value)).digest('hex'),
+    if (this.activator.rollbackDeployments === undefined) return null
+    const { current, previous } = await this.activator.rollbackDeployments()
+    if (current === null || previous === null) return null
+    return bindPlan({
+      transactionId: null,
+      mode: 'stable',
+      current: recordIdentity(current),
+      previous: recordIdentity(previous),
+      snapshot: null,
     })
   }
 
@@ -57,6 +81,13 @@ export class CompleteStateRecovery {
     }
     const plan = await this.plan()
     if (plan === null || plan.planId !== planId) throw new TrustError('rollback plan is stale or unavailable')
+    if (requireConfirmation && plan.snapshot === null) {
+      throw new TrustError('return to Stable requires a verified data snapshot')
+    }
+    if (plan.snapshot === null) {
+      await this.activator.rollback(plan.previous.runtime)
+      return Object.freeze({ status: 'rolled-back', transactionId: null })
+    }
     let transaction = await this.journal.transition('restoring-data', { error: 'manual complete-state rollback' })
     await this.activator.suspendDsh()
     try {

@@ -109,8 +109,12 @@ export class PlatformActivator {
     return managed.record
   }
 
-  async rollback() {
-    return this.bootstrap.request('POST', '/v1/deployments/rollback')
+  async rollback(recordId) {
+    return this.bootstrap.request('POST', '/v1/deployments/rollback', recordId === undefined ? {} : { recordId })
+  }
+
+  rollbackDeployments() {
+    return this.bootstrap.request('GET', '/v1/deployments/rollback-plan')
   }
 
   async currentDeployment() {
