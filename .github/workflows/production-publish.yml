@@ -1,0 +1,181 @@
+name: Publish Latest Supported DSH
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - release/supported-target.json
+  workflow_dispatch:
+
+concurrency:
+  group: production-supported-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Sign and publish Supported Target
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-release
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.publish.outputs.tag }}
+      sequence: ${{ steps.sequence.outputs.sequence }}
+      dsh_version: ${{ steps.target.outputs.dsh_version }}
+      environment_version: ${{ steps.target.outputs.environment_version }}
+    steps:
+      - name: Checkout protected branch
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify merged Supported Target
+        id: target
+        run: |
+          result="$(node container/platform/tools/supported-target.mjs validate \
+            release/supported-target.json container/platform/environment/definition.json)"
+          dsh_version="$(jq -er '.target.latestSupportedDsh' <<<"$result")"
+          environment_version="$(jq -er '.target.environment' <<<"$result")"
+          printf 'dsh_version=%s\n' "$dsh_version" >> "$GITHUB_OUTPUT"
+          printf 'environment_version=%s\n' "$environment_version" >> "$GITHUB_OUTPUT"
+
+      - name: Run release contract tests
+        run: |
+          npm test --prefix container/platform
+          npm test --prefix container/gateway
+          node container/test/compose-config.mjs
+
+      - name: Install protected public trust bundle
+        env:
+          RECOVERY_ROOT_PUBLIC_KEY: ${{ secrets.DSH_RECOVERY_ROOT_PUBLIC_KEY }}
+          KEYRING_JSON_BASE64: ${{ secrets.DSH_KEYRING_JSON_BASE64 }}
+          KEYRING_SIGNATURE_BASE64: ${{ secrets.DSH_KEYRING_SIGNATURE_BASE64 }}
+        run: |
+          test -n "$RECOVERY_ROOT_PUBLIC_KEY"
+          test -n "$KEYRING_JSON_BASE64"
+          test -n "$KEYRING_SIGNATURE_BASE64"
+          mkdir -p "$RUNNER_TEMP/production-trust"
+          printf '%s\n' "$RECOVERY_ROOT_PUBLIC_KEY" > "$RUNNER_TEMP/production-trust/recovery-root.spki.base64"
+          printf '%s' "$KEYRING_JSON_BASE64" | base64 --decode > "$RUNNER_TEMP/production-trust/keyring.json"
+          printf '%s' "$KEYRING_SIGNATURE_BASE64" | base64 --decode > "$RUNNER_TEMP/production-trust/keyring.sig.json"
+
+      - name: Resolve next monotonic target sequence
+        id: sequence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=-
+          if latest_tag="$(gh release view --json tagName --jq .tagName 2>/dev/null)"; then
+            mkdir -p "$RUNNER_TEMP/previous-platform-release"
+            gh release download "$latest_tag" \
+              --pattern stable.json \
+              --dir "$RUNNER_TEMP/previous-platform-release"
+            previous="$RUNNER_TEMP/previous-platform-release/stable.json"
+          fi
+          sequence="$(PREVIOUS_STABLE="$previous" node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises'
+          import { parseStable } from './container/platform/lib/contracts.mjs'
+          if (process.env.PREVIOUS_STABLE === '-') process.stdout.write('1')
+          else {
+            const previous = parseStable(await readFile(process.env.PREVIOUS_STABLE))
+            if (previous.targetSequence === Number.MAX_SAFE_INTEGER) throw new Error('target sequence is exhausted')
+            process.stdout.write(String(previous.targetSequence + 1))
+          }
+          NODE
+          )"
+          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
+          printf 'previous=%s\n' "$previous" >> "$GITHUB_OUTPUT"
+          printf 'Next target sequence: %s\n' "$sequence" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download reviewed DSH npm Artifact
+        env:
+          DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/platform-release-input"
+          npm pack "@deepseek-ai/dsh@${DSH_VERSION}" \
+            --pack-destination "$RUNNER_TEMP/platform-release-input" >/dev/null
+          tarball="$(find "$RUNNER_TEMP/platform-release-input" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          printf 'DSH_TARBALL=%s\n' "$tarball" >> "$GITHUB_ENV"
+
+      - name: Prepare signed immutable release
+        env:
+          RELEASE_PRIVATE_KEY: ${{ secrets.DSH_RELEASE_PRIVATE_KEY }}
+          TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
+          PREVIOUS_STABLE: ${{ steps.sequence.outputs.previous }}
+        run: |
+          test -n "$RELEASE_PRIVATE_KEY"
+          umask 077
+          private_key="$RUNNER_TEMP/current-release-private.pem"
+          trap 'rm -f "$private_key"' EXIT
+          printf '%s\n' "$RELEASE_PRIVATE_KEY" > "$private_key"
+          tag="platform-${TARGET_SEQUENCE}"
+          artifact_base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/"
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          node container/platform/tools/prepare-release.mjs \
+            release/supported-target.json \
+            container/platform/environment/definition.json \
+            "$RUNNER_TEMP/production-trust" \
+            "$private_key" \
+            "$DSH_TARBALL" \
+            "$PREVIOUS_STABLE" \
+            "$TARGET_SEQUENCE" \
+            "$artifact_base_url" \
+            "$RUNNER_TEMP/platform-release"
+          rm -f "$private_key"
+          trap - EXIT
+
+      - name: Publish release atomically
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
+          DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
+          ENVIRONMENT_VERSION: ${{ steps.target.outputs.environment_version }}
+        run: |
+          tag="platform-${TARGET_SEQUENCE}"
+          notes="$RUNNER_TEMP/platform-release-notes.md"
+          {
+            printf 'Latest Supported DSH: `%s`\n\n' "$DSH_VERSION"
+            printf 'Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
+            printf 'Target sequence: `%s`\n' "$TARGET_SEQUENCE"
+          } > "$notes"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "DSH Platform ${TARGET_SEQUENCE}" \
+              --notes-file "$notes"
+          fi
+          gh release upload "$tag" "$RUNNER_TEMP/platform-release"/* --clobber
+          gh release edit "$tag" \
+            --draft=false \
+            --latest \
+            --title "DSH Platform ${TARGET_SEQUENCE}" \
+            --notes-file "$notes"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          printf 'Published `%s` as the Latest Supported metadata release.\n' "$tag" >> "$GITHUB_STEP_SUMMARY"
+
+  notify-published:
+    name: Notify production publication
+    needs: publish
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    with:
+      title: DSH Latest Supported published
+      message: >-
+        DSH ${{ needs.publish.outputs.dsh_version }} with Environment
+        ${{ needs.publish.outputs.environment_version }} is now available as
+        ${{ needs.publish.outputs.tag }} (sequence ${{ needs.publish.outputs.sequence }}).
+      priority: 7
+    secrets:
+      gotify_url: ${{ secrets.GOTIFY_URL }}
+      gotify_token: ${{ secrets.GOTIFY_TOKEN }}

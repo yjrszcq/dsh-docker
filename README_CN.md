@@ -190,6 +190,21 @@ docker exec deepseek-harness dsh-platform rollback
 
 日常轮换或 Release Key 泄露时，使用离线 Recovery Key 签署 generation+1：将原 next 提升为 current、吊销旧 current，并放入新的 next。吊销集合只能累积。只有 Recovery Root 本身失陷或密码学算法迁移时，才需要换镜像或显式 trust reset。Recovery 私钥绝不能进入 GitHub secrets；CI 只接收已签好的公开 keyring bundle 和受保护的 current Release 私钥。
 
+## **发布自动化**
+
+`DSH Upstream Update` 每日及手动检查 npm `latest`，与 [`release/supported-target.json`](release/supported-target.json) 比较，在保持当前 Environment 不变的前提下创建或更新一个候选 PR。候选 CI 会验证 npm integrity，在镜像构建中应用当前 Environment，运行两套项目测试，并执行标准版与 devtools 容器 smoke。相关 job 不拥有 Docker、Release 或 Recovery 凭据；人工 Merge 始终是发布闸门。
+
+`Publish Latest Supported DSH` 只在 `main` 的 Supported Target 变更后运行，也可通过明确审批的手动任务触发。需要创建一个仅允许 `main` 部署的受保护 GitHub Environment：`production-release`，并配置：
+
+- `DSH_RECOVERY_ROOT_PUBLIC_KEY`
+- `DSH_KEYRING_JSON_BASE64`
+- `DSH_KEYRING_SIGNATURE_BASE64`
+- `DSH_RELEASE_PRIVATE_KEY`
+
+该工作流从当前 Latest Release 接续 `targetSequence`，先创建 draft 并上传全部不可变 Artifact，全部完成后才将其发布为 Latest。Recovery 私钥没有任何工作流输入，始终离线保存。
+
+`Publish Docker Image` 是独立的手动工作流，由仅允许 `main` 的 `production-image` Environment 保护。它使用上述三个公开 trust bundle secret 和 `DOCKER_TOKEN`，不拥有 Release 私钥或 GitHub Release 写权限；默认 `supported` 输入构建已审核的 DSH 版本。仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给 `yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1` 发送通知。
+
 ## **密码访问**
 
 `DSH_PROXY_PASSWORD` 非空时，gateway 使用 HTTP Basic 认证，由浏览器显示原生认证对话框。`DSH_PROXY_USERNAME` 为空时，gateway 忽略浏览器提交的用户名，只验证密码；两者均非空时，用户名和密码都必须匹配。单独设置 `DSH_PROXY_USERNAME` 不会启用认证。失败尝试受到频率限制。

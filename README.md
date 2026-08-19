@@ -190,6 +190,21 @@ docker exec deepseek-harness dsh-platform rollback
 
 For routine Release Key rotation or compromise, use the offline Recovery key to sign generation+1: promote the old `next` key to `current`, revoke the old current key, and install a new next key. Revocations are cumulative. Only Recovery Root compromise or a cryptographic algorithm migration requires a new image or explicit trust reset. Recovery private material must never be stored in GitHub secrets; CI receives only the signed public keyring bundle and the protected current Release private key.
 
+## **Release automation**
+
+`DSH Upstream Update` runs daily and on demand. It compares npm `latest` with [`release/supported-target.json`](release/supported-target.json), preserves the current Environment, and creates or updates one candidate PR. Candidate CI verifies npm integrity, applies the current Environment during the image build, runs both project suites, and executes the standard and devtools container smoke tests. These jobs have no Docker, Release, or Recovery credentials; a human merge remains the publication gate.
+
+`Publish Latest Supported DSH` runs only from `main` after the Supported Target changes, or by an explicitly approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main`, with:
+
+- `DSH_RECOVERY_ROOT_PUBLIC_KEY`
+- `DSH_KEYRING_JSON_BASE64`
+- `DSH_KEYRING_SIGNATURE_BASE64`
+- `DSH_RELEASE_PRIVATE_KEY`
+
+The workflow resumes `targetSequence` from the current Latest Release, prepares a draft with immutable Artifacts, uploads every asset, and only then publishes it as Latest. The Recovery private key has no workflow input and stays offline.
+
+`Publish Docker Image` is a separate manual workflow protected by a `production-image` Environment restricted to `main`. It uses the three public trust-bundle secrets above plus `DOCKER_TOKEN`; it has no Release private key or GitHub Release write permission. Its default `supported` input builds the reviewed DSH version. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to `yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1` for notifications.
+
 ## **Password access**
 
 When `DSH_PROXY_PASSWORD` is non-empty, the gateway uses HTTP Basic authentication so the browser presents its native authentication dialog. If `DSH_PROXY_USERNAME` is empty, the gateway ignores the supplied username and validates only the password. If both variables are non-empty, both values must match. Setting only `DSH_PROXY_USERNAME` does not enable authentication. Failed attempts are rate-limited.

@@ -1,12 +1,12 @@
-name: Build and Push Docker Image
+name: Publish Docker Image
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: DeepSeek Harness npm version (latest resolves automatically)
+        description: DeepSeek Harness npm version (supported reads the reviewed target)
         required: true
-        default: latest
+        default: supported
         type: string
 
 env:
@@ -15,9 +15,11 @@ env:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production-image
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -68,8 +70,14 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          requested="${REQUESTED_VERSION:-latest}"
-          version="$(npm view "@deepseek-ai/dsh@${requested}" version)"
+          requested="${REQUESTED_VERSION:-supported}"
+          if [ "$requested" = supported ]; then
+            version="$(jq -er '.latestSupportedDsh' release/supported-target.json)"
+            node container/platform/tools/supported-target.mjs validate \
+              release/supported-target.json container/platform/environment/definition.json >/dev/null
+          else
+            version="$(npm view "@deepseek-ai/dsh@${requested}" version)"
+          fi
 
           if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
             echo "Unable to resolve '$requested' to one valid image tag" >&2
@@ -120,81 +128,6 @@ jobs:
       - name: Run devtools smoke checks
         run: container/test/devtools-smoke.sh "dsh-gateway-devtools-smoke:${{ github.run_id }}"
 
-      - name: Build signed platform release metadata
-        env:
-          RELEASE_PRIVATE_KEY: ${{ secrets.DSH_RELEASE_PRIVATE_KEY }}
-        run: |
-          test -n "$RELEASE_PRIVATE_KEY"
-          umask 077
-          printf '%s\n' "$RELEASE_PRIVATE_KEY" > /tmp/dsh-release-private.pem
-          mkdir -p /tmp/platform-release
-          npm pack "@deepseek-ai/dsh@${{ steps.dsh-version.outputs.version }}" --pack-destination /tmp/platform-release
-          DSH_TARBALL="$(find /tmp/platform-release -maxdepth 1 -name '*.tgz' -print -quit)"
-          KEYRING_GENERATION="$(jq -r .generation container/platform/seed/trust/keyring.json)"
-          CURRENT_KEY_ID="$(jq -r .current.keyId container/platform/seed/trust/keyring.json)"
-          TARGET_SEQUENCE="${{ github.run_number }}"
-          ARTIFACT_BASE_URL="https://github.com/${{ github.repository }}/releases/download/dsh-${{ steps.dsh-version.outputs.version }}/"
-          node container/platform/tools/package-environment.mjs \
-            container/platform/environment/definition.json /tmp/platform-environment \
-            "$KEYRING_GENERATION" "$TARGET_SEQUENCE" "$ARTIFACT_BASE_URL"
-          cp /tmp/platform-environment/environment.manifest.json /tmp/platform-release/environment.manifest.json
-          cp /tmp/platform-environment/artifacts/* /tmp/platform-release/
-          node container/platform/tools/sign.mjs sign /tmp/dsh-release-private.pem \
-            /tmp/platform-release/environment.manifest.json /tmp/platform-release/environment.manifest.sig.json
-          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-            -czf /tmp/platform-release/bootstrap.tgz -C container/platform bootstrap lib logging management runtime updater
-          export DSH_TARBALL KEYRING_GENERATION CURRENT_KEY_ID TARGET_SEQUENCE ARTIFACT_BASE_URL
-          node --input-type=module <<'NODE'
-          import { createHash } from 'node:crypto'
-          import { readFile, writeFile } from 'node:fs/promises'
-          import { basename } from 'node:path'
-          const descriptor = async (id, path, mediaType) => {
-            const bytes = await readFile(path)
-            return { id, mediaType, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, url: new URL(basename(path), process.env.ARTIFACT_BASE_URL).href }
-          }
-          const bootstrap = '/tmp/platform-release/bootstrap.tgz'
-          const manifest = {
-            schema: 1, manifestType: 'bootstrap', version: '1.0.0',
-            keyringGeneration: Number(process.env.KEYRING_GENERATION), targetSequence: Number(process.env.TARGET_SEQUENCE),
-            issuedAt: new Date().toISOString(), artifacts: [await descriptor('bootstrap-package', bootstrap, 'application/gzip')],
-            bootstrapApi: 1, entrypoint: '/bootstrap/index.mjs',
-          }
-          await writeFile('/tmp/platform-release/bootstrap.manifest.json', `${JSON.stringify(manifest)}\n`)
-          NODE
-          node container/platform/tools/sign.mjs sign /tmp/dsh-release-private.pem \
-            /tmp/platform-release/bootstrap.manifest.json /tmp/platform-release/bootstrap.manifest.sig.json
-          export DSH_VERSION="${{ steps.dsh-version.outputs.version }}"
-          node --input-type=module <<'NODE'
-          import { createHash } from 'node:crypto'
-          import { readFile, writeFile } from 'node:fs/promises'
-          const dsh = await readFile(process.env.DSH_TARBALL)
-          const environment = JSON.parse(await readFile('/tmp/platform-release/environment.manifest.json', 'utf8'))
-          const config = {
-            currentKeyId: process.env.CURRENT_KEY_ID,
-            keyringGeneration: Number(process.env.KEYRING_GENERATION),
-            targetSequence: Number(process.env.TARGET_SEQUENCE),
-            artifactBaseUrl: process.env.ARTIFACT_BASE_URL,
-            artifacts: [
-              ['environment-manifest', '/tmp/platform-release/environment.manifest.json', 'application/vnd.dsh-platform.manifest.v1+json'],
-              ['environment-signature', '/tmp/platform-release/environment.manifest.sig.json', 'application/vnd.dsh-platform.signature.v1+json'],
-              ['bootstrap-manifest', '/tmp/platform-release/bootstrap.manifest.json', 'application/vnd.dsh-platform.manifest.v1+json'],
-              ['bootstrap-signature', '/tmp/platform-release/bootstrap.manifest.sig.json', 'application/vnd.dsh-platform.signature.v1+json'],
-              ['dsh-tarball', process.env.DSH_TARBALL, 'application/vnd.npm.package+gzip'],
-            ].map(([id, path, mediaType]) => ({ id, path, mediaType })),
-            desired: {
-              bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
-              environment: { version: environment.version, manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
-              dsh: { version: process.env.DSH_VERSION, tarballArtifactId: 'dsh-tarball', integrity: `sha512-${createHash('sha512').update(dsh).digest('base64')}` },
-            },
-          }
-          await writeFile('/tmp/platform-release/release-config.json', JSON.stringify(config))
-          NODE
-          node container/platform/tools/build-release.mjs /tmp/platform-release/release-config.json \
-            /tmp/dsh-release-private.pem /tmp/platform-metadata
-          cp /tmp/platform-metadata/* /tmp/platform-release/
-          cp container/platform/seed/trust/keyring.json container/platform/seed/trust/keyring.sig.json /tmp/platform-release/
-          rm -f /tmp/dsh-release-private.pem
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -241,12 +174,3 @@ jobs:
           docker buildx imagetools create \
             --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest" \
             "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.dsh-version.outputs.version }}"
-
-      - name: Publish signed platform release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "dsh-${{ steps.dsh-version.outputs.version }}" \
-            --title "DSH ${{ steps.dsh-version.outputs.version }}" \
-            --notes "Signed DSH platform release." \
-            /tmp/platform-release/*

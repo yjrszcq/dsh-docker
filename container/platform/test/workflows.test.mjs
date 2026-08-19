@@ -4,6 +4,8 @@ import test from 'node:test'
 
 const workflowUrl = new URL('../../../.github/workflows/dsh-upstream-update.yml', import.meta.url)
 const validationUrl = new URL('../../../.github/workflows/dsh-candidate-validation.yml', import.meta.url)
+const productionUrl = new URL('../../../.github/workflows/production-publish.yml', import.meta.url)
+const dockerUrl = new URL('../../../.github/workflows/docker.yaml', import.meta.url)
 
 test('upstream workflow discovers candidates without production credentials', async () => {
   const workflow = await readFile(workflowUrl, 'utf8')
@@ -51,4 +53,29 @@ test('discovery run reports candidate status and distinct validation notificatio
   assert.match(workflow, /DSH candidate Runtime/)
   assert.match(workflow, /notify-validation-passed:/)
   assert.match(workflow, /notify-validation-failed:/)
+})
+
+test('production publication is protected, monotonic, and exclusively owns Release signing', async () => {
+  const workflow = await readFile(productionUrl, 'utf8')
+  assert.match(workflow, /branches:\n      - main/)
+  assert.match(workflow, /release\/supported-target\.json/)
+  assert.match(workflow, /environment: production-release/)
+  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/)
+  assert.match(workflow, /DSH_RELEASE_PRIVATE_KEY/)
+  assert.match(workflow, /prepare-release\.mjs/)
+  assert.match(workflow, /parseStable/)
+  assert.match(workflow, /previous\.targetSequence \+ 1/)
+  assert.match(workflow, /--draft/)
+  assert.match(workflow, /--draft=false/)
+  assert.match(workflow, /--latest/)
+  assert.doesNotMatch(workflow, /RECOVERY_PRIVATE|secrets: inherit/)
+})
+
+test('Docker publication has no signing key or metadata release authority', async () => {
+  const workflow = await readFile(dockerUrl, 'utf8')
+  assert.match(workflow, /environment: production-image/)
+  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/)
+  assert.match(workflow, /permissions:\n      contents: read/)
+  assert.match(workflow, /latestSupportedDsh/)
+  assert.doesNotMatch(workflow, /DSH_RELEASE_PRIVATE_KEY|prepare-release\.mjs|gh release/)
 })
