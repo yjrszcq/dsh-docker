@@ -57,7 +57,7 @@ await runtime.start({
   },
 })
 if (imageCandidateHealthy && imagePlan !== undefined) await deployments.acceptImage(imagePlan)
-const recoveryReason = runtime.recoveryMode ?? (planningError instanceof Error ? planningError.message : null)
+const recoveryReason = planningError instanceof Error ? planningError.message : runtime.recoveryMode
 const recoveryMode = recoveryReason === null ? null : {
   reason: recoveryReason,
   failedRecordId: imagePlan?.target ?? null,

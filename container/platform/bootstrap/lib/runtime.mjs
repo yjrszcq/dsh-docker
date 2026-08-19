@@ -11,7 +11,18 @@ export class BootstrapRuntime {
     try {
       await this.environment.start()
     } catch (error) {
-      const retry = await onEnvironmentFailure?.(error)
+      let retry
+      try {
+        retry = await onEnvironmentFailure?.(error)
+      } catch (recoveryError) {
+        const failure = new AggregateError([error, recoveryError], 'Deployment failed and its fallback could not be resolved')
+        if (allowRecovery) {
+          this.recoveryMode = failure.message
+          return this.status()
+        }
+        await this.controlPlane.stop().catch(() => {})
+        throw failure
+      }
       if (retry === true) {
         try {
           await this.environment.start()

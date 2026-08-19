@@ -294,3 +294,26 @@ test('keeps the Control Plane alive in recovery mode when no Deployment starts',
   assert.deepEqual(runtime.status().controlPlane, [{ id: 'gateway' }])
   assert.deepEqual(calls, ['control:start'])
 })
+
+test('enters recovery mode when a failed candidate fallback cannot resolve', async () => {
+  const calls = []
+  const controlPlane = {
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push('control:start') },
+    stop: async () => { calls.push('control:stop') },
+    status: () => ({ components: [{ id: 'gateway' }] }),
+  }
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    start: async () => { throw new Error('candidate unhealthy') },
+    stop: async () => {},
+    status: () => ({ environmentVersion: null, components: [] }),
+  }
+  const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
+  await runtime.start({
+    allowRecovery: true,
+    onEnvironmentFailure: async () => { throw new Error('previous image is unavailable') },
+  })
+  assert.equal(runtime.status().recoveryMode, 'Deployment failed and its fallback could not be resolved')
+  assert.deepEqual(calls, ['control:start'])
+})
