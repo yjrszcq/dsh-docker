@@ -41,8 +41,14 @@ export class LocalApiClient {
   acceptTarget(document, signature) {
     return this.request('POST', '/v1/target', { document: document.toString('base64'), signature })
   }
+  acceptExperimental(document, signature) {
+    return this.request('POST', '/v1/experimental', { document: document.toString('base64'), signature })
+  }
   importArtifact(artifactId, sourcePath, parentReceipt = null) {
     return this.request('POST', '/v1/artifacts/import', { artifactId, sourcePath, parentReceipt })
+  }
+  importExperimentalArtifact(artifactId, sourcePath) {
+    return this.request('POST', '/v1/artifacts/import-experimental', { artifactId, sourcePath })
   }
   acceptManifest(receipt, signatureReceipt) {
     return this.request('POST', '/v1/manifests/accept', { receipt, signatureReceipt })

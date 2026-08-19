@@ -124,7 +124,9 @@ function validateReceipt(value) {
     'objectSha256', 'parentReceipt', 'parentSha256', 'signerKeyId', 'size', 'status',
     'targetSequence', 'token',
   ]
-  exactKeys(receipt, required, 'receipt')
+  const authorityType = receipt.authorityType ?? 'stable'
+  exactKeys(receipt, receipt.authorityType === undefined ? required : [...required, 'authorityType'], 'receipt')
+  if (!['stable', 'experimental'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
   if (typeof receipt.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(receipt.token)) {
     throw new TrustError('receipt token is invalid')
   }
@@ -158,7 +160,7 @@ function validateReceipt(value) {
     receipt.authoritySignature !== null
     && (typeof receipt.authoritySignature !== 'object' || Array.isArray(receipt.authoritySignature))
   ) throw new TrustError('receipt authority signature is invalid')
-  return receipt
+  return Object.assign(receipt, { authorityType })
 }
 
 export class VerifiedObjectStore {
@@ -208,6 +210,21 @@ export class VerifiedObjectStore {
       parentSha256: createHash('sha256').update(target.bytes).digest('hex'),
       signerKeyId: target.value.keyId,
       targetSequence: target.value.targetSequence,
+      authorityType: 'stable',
+    }
+  }
+
+  async authorityFromExperimental(artifactId) {
+    const target = await this.ledger.currentExperimental()
+    if (target === undefined) throw new TrustError('no accepted experimental target exists')
+    return {
+      descriptor: descriptorById(target.value.artifacts, artifactId),
+      keyringGeneration: target.value.keyringGeneration,
+      parentReceipt: null,
+      parentSha256: createHash('sha256').update(target.bytes).digest('hex'),
+      signerKeyId: target.value.keyId,
+      targetSequence: target.value.experimentalSequence,
+      authorityType: 'experimental',
     }
   }
 
@@ -233,6 +250,7 @@ export class VerifiedObjectStore {
       parentSha256: parent.objectSha256,
       signerKeyId,
       targetSequence: manifest.targetSequence,
+      authorityType: 'stable',
     }
   }
 
@@ -250,15 +268,27 @@ export class VerifiedObjectStore {
     ))
   }
 
+  importFromExperimental(artifactId, sourcePath) {
+    return this.exclusive(async () => this.importAuthorized(
+      await this.authorityFromExperimental(artifactId),
+      sourcePath,
+    ))
+  }
+
   async importAuthorized(authority, sourcePath) {
     const currentKeyring = (await this.ledger.currentKeyring())?.value
-    const currentTarget = (await this.ledger.currentTarget())?.value
+    const currentTarget = authority.authorityType === 'experimental'
+      ? (await this.ledger.currentExperimental())?.value
+      : (await this.ledger.currentTarget())?.value
+    const currentSequence = authority.authorityType === 'experimental'
+      ? currentTarget?.experimentalSequence
+      : currentTarget?.targetSequence
     if (
       currentKeyring === undefined
       || currentTarget === undefined
       || authority.keyringGeneration !== currentKeyring.generation
       || authority.signerKeyId !== currentKeyring.current.keyId
-      || authority.targetSequence !== currentTarget.targetSequence
+      || authority.targetSequence !== currentSequence
     ) throw new TrustError('artifact authority is no longer current', 'TRUST_REVOKED')
     const source = resolve(sourcePath)
     if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
@@ -309,6 +339,7 @@ export class VerifiedObjectStore {
         signerKeyId: authority.signerKeyId,
         keyringGeneration: authority.keyringGeneration,
         targetSequence: authority.targetSequence,
+        authorityType: authority.authorityType,
         status: 'staged',
         authoritySignature: null,
         importedAt: this.now().toISOString(),
@@ -381,6 +412,7 @@ export class VerifiedObjectStore {
       const receipts = await this.allReceipts()
       const revoked = new Set(keyring.revokedKeyIds)
       const currentTarget = (await this.ledger.currentTarget())?.value
+      const currentExperimental = (await this.ledger.currentExperimental().catch(() => undefined))?.value
       const unusable = new Set(receipts.filter(receipt => (
         receipt.status === 'revoked' || receipt.status === 'retired'
       )).map(receipt => receipt.token))
@@ -392,9 +424,16 @@ export class VerifiedObjectStore {
             receipt.status === 'staged'
             && (
               revoked.has(receipt.signerKeyId)
-              || currentTarget === undefined
-              || receipt.keyringGeneration !== currentTarget.keyringGeneration
-              || receipt.targetSequence !== currentTarget.targetSequence
+              || (receipt.authorityType === 'stable' && (
+                currentTarget === undefined
+                || receipt.keyringGeneration !== currentTarget.keyringGeneration
+                || receipt.targetSequence !== currentTarget.targetSequence
+              ))
+              || (receipt.authorityType === 'experimental' && (
+                currentExperimental === undefined
+                || receipt.keyringGeneration !== currentExperimental.keyringGeneration
+                || receipt.targetSequence !== currentExperimental.experimentalSequence
+              ))
               || (receipt.parentReceipt !== null && unusable.has(receipt.parentReceipt))
             )
           ) {
@@ -418,18 +457,22 @@ export class VerifiedObjectStore {
       if (currentKeyring === undefined) throw new TrustError('activation requires a current keyring')
       const currentTarget = (await this.ledger.currentTarget())?.value
       if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
+      const currentExperimental = (await this.ledger.currentExperimental().catch(() => undefined))?.value
       const add = (token) => {
         const receipt = byToken.get(token)
         if (receipt === undefined) throw new TrustError('activation references an unknown receipt')
         if (!['staged', 'active', 'previous'].includes(receipt.status)) {
           throw new TrustError('activation references an unusable receipt')
         }
+        const authoritySequence = receipt.authorityType === 'experimental'
+          ? currentExperimental?.experimentalSequence
+          : currentTarget.targetSequence
         if (
           receipt.status === 'staged'
           && (
             receipt.keyringGeneration !== currentKeyring.generation
             || receipt.signerKeyId !== currentKeyring.current.keyId
-            || receipt.targetSequence !== currentTarget.targetSequence
+            || receipt.targetSequence !== authoritySequence
           )
         ) throw new TrustError('activation references a revoked receipt', 'TRUST_REVOKED')
         if (selected.has(token)) return

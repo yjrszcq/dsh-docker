@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
+import { parseExperimental } from '../../lib/contracts.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from './keyring.mjs'
 import { parseReleaseTarget, validateTargetTransition, verifyReleaseTarget } from './target.mjs'
+import { validateExperimentalTransition, verifyExperimentalTarget } from './experimental.mjs'
 
 async function readOptional(path) {
   try {
@@ -63,6 +65,10 @@ export class TrustLedger {
 
   targetPath(name) {
     return join(this.root, 'target', name)
+  }
+
+  experimentalPath(name) {
+    return join(this.root, 'experimental', name)
   }
 
   async currentKeyring() {
@@ -139,6 +145,41 @@ export class TrustLedger {
     if (current !== undefined) validateTargetTransition(current.bytes, current.value, bytes, next)
     if (current?.bytes.equals(bytes)) return current.value
     await durableReplace(this.targetPath('current.record.json'), signedRecord(bytes, signature))
+    return next
+  }
+
+  async currentExperimental(keyring = undefined, stable = undefined) {
+    const recordBytes = await readOptional(this.experimentalPath('current.record.json'))
+    if (recordBytes === undefined) return undefined
+    const { document, signature } = parseSignedRecord(recordBytes, 'experimental target')
+    const currentStable = stable ?? (await this.currentTarget())?.value
+    if (currentStable === undefined) throw new TrustError('experimental target requires an accepted stable target')
+    const parsed = parseExperimental(document)
+    const trustedKeyring = keyring?.generation === parsed.keyringGeneration
+      ? keyring
+      : (await this.keyringGeneration(parsed.keyringGeneration)).value
+    return {
+      bytes: document,
+      signature,
+      value: verifyExperimentalTarget(document, signature, trustedKeyring, currentStable),
+    }
+  }
+
+  acceptExperimental(bytes, signature) {
+    return this.exclusive(() => this.acceptExperimentalUnlocked(bytes, signature))
+  }
+
+  async acceptExperimentalUnlocked(bytes, signature) {
+    const keyring = (await this.currentKeyring())?.value
+    const stable = (await this.currentTarget(keyring))?.value
+    if (keyring === undefined || stable === undefined) {
+      throw new TrustError('keyring and stable target must be accepted before an experimental target')
+    }
+    const next = verifyExperimentalTarget(bytes, signature, keyring, stable)
+    const current = await this.currentExperimental(keyring, stable)
+    if (current !== undefined) validateExperimentalTransition(current.bytes, current.value, bytes, next)
+    if (current?.bytes.equals(bytes)) return current.value
+    await durableReplace(this.experimentalPath('current.record.json'), signedRecord(bytes, signature))
     return next
   }
 }

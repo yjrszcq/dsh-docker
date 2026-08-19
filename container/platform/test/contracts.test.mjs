@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
+import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseExperimental, parseStable } from '../lib/contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
-import { document, target } from './helpers.mjs'
+import { document, experimentalTarget, target } from './helpers.mjs'
 
 const common = manifestType => ({
   schema: 1,
@@ -41,6 +41,16 @@ test('parses the exact stable desired state and rejects missing referenced Artif
   invalid.desired.bootstrap.manifestArtifactId = 'missing'
   assert.throws(() => parseStable(document(invalid)), /missing/)
   assert.throws(() => parseStable(document({ ...target(1, 1), unknown: true })), /fields/)
+})
+
+test('parses an exact Experimental DSH target and rejects broader authority', () => {
+  const parsed = parseExperimental(document(experimentalTarget(1, 1)))
+  assert.equal(parsed.desired.dsh.packageName, '@deepseek-ai/dsh')
+  assert.equal(parsed.experimentalSequence, 1)
+  assert.throws(() => parseExperimental(document({ ...experimentalTarget(1, 1), environment: 'untrusted' })), /fields/)
+  const wrongPackage = experimentalTarget(1, 1)
+  wrongPackage.desired.dsh.packageName = '@example/dsh'
+  assert.throws(() => parseExperimental(document(wrongPackage)), /packageName/)
 })
 
 test('parses bootstrap and environment manifests with ordered references', () => {

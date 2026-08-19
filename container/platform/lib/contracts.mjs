@@ -41,6 +41,23 @@ function dshReference(value) {
   })
 }
 
+function experimentalDshReference(value) {
+  const object = plainObject(value, 'experimental.desired.dsh')
+  exactKeys(object, ['integrity', 'packageName', 'tarballArtifactId', 'version'], 'experimental.desired.dsh')
+  if (object.packageName !== '@deepseek-ai/dsh') {
+    throw new TrustError('experimental.desired.dsh.packageName must be @deepseek-ai/dsh')
+  }
+  if (typeof object.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(object.integrity)) {
+    throw new TrustError('experimental.desired.dsh.integrity must be npm SHA-512 integrity')
+  }
+  return Object.freeze({
+    packageName: object.packageName,
+    version: version(object.version, 'experimental.desired.dsh.version'),
+    tarballArtifactId: identifier(object.tarballArtifactId, 'experimental.desired.dsh.tarballArtifactId'),
+    integrity: object.integrity,
+  })
+}
+
 export function parseStable(bytes) {
   const object = parseJsonDocument(bytes, 'stable')
   exactKeys(
@@ -75,6 +92,32 @@ export function parseStable(bytes) {
     issuedAt: isoTimestamp(object.issuedAt, 'stable.issuedAt'),
     artifacts,
     desired: parsedDesired,
+  })
+}
+
+export function parseExperimental(bytes) {
+  const object = parseJsonDocument(bytes, 'experimental')
+  exactKeys(
+    object,
+    ['artifacts', 'desired', 'experimentalSequence', 'issuedAt', 'keyringGeneration', 'schema', 'updateApi'],
+    'experimental',
+  )
+  if (object.schema !== 1) throw new TrustError('experimental.schema must be 1')
+  if (object.updateApi !== 1) throw new TrustError('experimental.updateApi must be 1')
+  const desired = plainObject(object.desired, 'experimental.desired')
+  exactKeys(desired, ['dsh'], 'experimental.desired')
+  const dsh = experimentalDshReference(desired.dsh)
+  const artifacts = parseArtifactList(object.artifacts, 'experimental.artifacts')
+  if (artifacts.length !== 1 || artifacts[0].id !== dsh.tarballArtifactId) {
+    throw new TrustError('experimental must authorize exactly its DSH tarball Artifact')
+  }
+  return Object.freeze({
+    document: object,
+    keyringGeneration: positiveSafeInteger(object.keyringGeneration, 'experimental.keyringGeneration'),
+    experimentalSequence: positiveSafeInteger(object.experimentalSequence, 'experimental.experimentalSequence'),
+    issuedAt: isoTimestamp(object.issuedAt, 'experimental.issuedAt'),
+    artifacts,
+    desired: Object.freeze({ dsh }),
   })
 }
 

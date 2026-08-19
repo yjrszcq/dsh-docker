@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, keyPair, keyring, signature, target } from './helpers.mjs'
+import { document, experimentalTarget, keyPair, keyring, signature, target } from './helpers.mjs'
 
 async function fixture() {
   const recovery = keyPair()
@@ -54,6 +54,28 @@ test('requires an accepted keyring before accepting a target', async () => {
   const release = keyPair()
   const bytes = document(target(1, 1))
   await assert.rejects(ledger.acceptTarget(bytes, signature(bytes, release)), /keyring/)
+})
+
+test('keeps Experimental sequence independent and requires a newer DSH signed by current Release Key', async () => {
+  const { ledger, recovery } = await fixture()
+  const current = keyPair()
+  const next = keyPair()
+  const ring = document(keyring(1, current, next))
+  await ledger.acceptKeyring(ring, signature(ring, recovery))
+  const stable = document(target(1, 4))
+  await ledger.acceptTarget(stable, signature(stable, current))
+
+  const first = document(experimentalTarget(1, 1))
+  await assert.rejects(ledger.acceptExperimental(first, signature(first, next)), { code: 'TRUST_UNKNOWN_KEY' })
+  await ledger.acceptExperimental(first, signature(first, current))
+  await ledger.acceptExperimental(first, signature(first, current))
+  assert.equal((await ledger.currentExperimental()).value.experimentalSequence, 1)
+
+  const sameVersion = document(experimentalTarget(1, 2, '0.1.0-rc.7'))
+  await assert.rejects(ledger.acceptExperimental(sameVersion, signature(sameVersion, current)), /newer/)
+  const second = document(experimentalTarget(1, 2, '0.1.0-rc.9'))
+  await ledger.acceptExperimental(second, signature(second, current))
+  await assert.rejects(ledger.acceptExperimental(first, signature(first, current)), { code: 'TRUST_ROLLBACK' })
 })
 
 test('retains historical keyrings so an accepted target remains verifiable after rotation', async () => {

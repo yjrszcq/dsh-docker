@@ -65,3 +65,29 @@ export function target(generation, sequence) {
     },
   }
 }
+
+export function experimentalTarget(generation, sequence, version = '0.1.0-rc.8', content = Buffer.alloc(0)) {
+  const artifact = {
+    id: 'experimental-dsh-tarball',
+    mediaType: 'application/vnd.npm.package+gzip',
+    sha256: createHash('sha256').update(content).digest('hex'),
+    size: content.byteLength,
+    url: `https://example.com/experimental-${String(sequence)}.tgz`,
+  }
+  return {
+    schema: 1,
+    updateApi: 1,
+    keyringGeneration: generation,
+    experimentalSequence: sequence,
+    issuedAt: new Date(Date.UTC(2026, 7, 19, 2, 0, sequence)).toISOString(),
+    artifacts: [artifact],
+    desired: {
+      dsh: {
+        packageName: '@deepseek-ai/dsh',
+        version,
+        tarballArtifactId: artifact.id,
+        integrity: `sha512-${createHash('sha512').update(content).digest('base64')}`,
+      },
+    },
+  }
+}

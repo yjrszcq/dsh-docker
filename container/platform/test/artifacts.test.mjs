@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MANIFEST_MEDIA_TYPE, SIGNATURE_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, keyPair, keyring, signature } from './helpers.mjs'
+import { document, experimentalTarget, keyPair, keyring, signature } from './helpers.mjs'
 
 function descriptor(id, content, mediaType = 'application/octet-stream') {
   return {
@@ -100,6 +100,33 @@ test('imports only target-authorized bytes from the untrusted directory', async 
   assert.deepEqual(await readFile(receipt.path), content)
   await assert.rejects(store.importFromTarget('missing', source), /not authorized/)
   await assert.rejects(store.importFromTarget('gateway', join(directory, 'outside.bin')), /untrusted/)
+})
+
+test('treats receipts written before authority typing as Stable receipts', async () => {
+  const content = Buffer.from('legacy stable artifact')
+  const { store, untrustedRoot } = await fixture([descriptor('legacy', content)])
+  const source = join(untrustedRoot, 'legacy')
+  await writeFile(source, content)
+  const receipt = await store.importFromTarget('legacy', source)
+  const persisted = JSON.parse(await readFile(store.receiptPath(receipt.token), 'utf8'))
+  delete persisted.authorityType
+  await writeFile(store.receiptPath(receipt.token), `${JSON.stringify(persisted)}\n`)
+  assert.equal((await store.readReceipt(receipt.token)).authorityType, 'stable')
+})
+
+test('imports Experimental bytes only through the separate signed authority', async () => {
+  const content = Buffer.from('experimental tarball')
+  const { current, ledger, store, untrustedRoot } = await fixture([descriptor('stable-only', Buffer.alloc(0))])
+  const experimental = document(experimentalTarget(1, 1, '0.1.0-rc.8', content))
+  await ledger.acceptExperimental(experimental, signature(experimental, current))
+  const source = join(untrustedRoot, 'experimental.tgz')
+  await writeFile(source, content)
+  await assert.rejects(store.importFromTarget('experimental-dsh-tarball', source), /not authorized/)
+  const receipt = await store.importFromExperimental('experimental-dsh-tarball', source)
+  assert.equal(receipt.authorityType, 'experimental')
+  assert.equal(receipt.targetSequence, 1)
+  await store.activate([receipt.token])
+  assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })
 
 test('rejects mismatched content and symbolic-link sources', async () => {
