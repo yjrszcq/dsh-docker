@@ -150,10 +150,12 @@ function UpdateConsoleEntry({ t }) {
             disabled: busy,
             onClick: () => { void act('channel', { method: 'PUT', body: { channel } }) },
           }, channel === 'stable' ? 'Stable' : 'Experimental')))),
-      h('div', { className: css.versions },
+      h('div', { className: `${css.versions} ${status?.updateChannel === 'experimental' ? css.experimentalVersions : ''}` },
         h(VersionCell, { label: t('current'), version: status?.current?.dsh, detail: status?.current?.environment }),
         h(VersionCell, { label: t('supported'), version: status?.supported?.dsh, detail: status?.supported?.environment }),
-        h(VersionCell, { label: t('upstream'), version: status?.upstream?.version, detail: t('officialNpm') })),
+        status?.updateChannel === 'experimental'
+          ? h(VersionCell, { label: t('upstream'), version: status?.upstream?.version, detail: t('officialNpm') })
+          : null),
       notices.length > 0 ? h('p', { className: css.notice }, notices.join(' ')) : null,
       error ? h('p', { className: css.error, role: 'alert' }, error) : null),
 

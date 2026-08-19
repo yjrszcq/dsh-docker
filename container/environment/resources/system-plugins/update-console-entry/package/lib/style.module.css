@@ -98,11 +98,13 @@
 
 .versions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   overflow: hidden;
 }
+
+.experimentalVersions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .versionCell {
   min-width: 0;

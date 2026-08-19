@@ -39,6 +39,7 @@ test('Update Console is embedded in the official settings.section slot', async (
   }
   assert.match(source, /confirmDataLoss: true/)
   assert.doesNotMatch(source, /trust\/reset/)
+  assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
 })
 
 test('Update Console follows DSH settings tokens and responsive layout', async () => {
@@ -47,5 +48,7 @@ test('Update Console follows DSH settings tokens and responsive layout', async (
   assert.match(style, /--dsw-alias-button-primary-fill/)
   assert.match(style, /--dsw-alias-border-l2/)
   assert.match(style, /@media \(max-width: 640px\)/)
+  assert.match(style, /\.versions \{[\s\S]*grid-template-columns: repeat\(2,/)
+  assert.match(style, /\.experimentalVersions \{ grid-template-columns: repeat\(3,/)
   assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b/i)
 })
