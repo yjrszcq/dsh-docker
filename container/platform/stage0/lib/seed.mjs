@@ -6,7 +6,7 @@ async function exists(path) {
 }
 
 async function seedTree(source, destination) {
-  if (await exists(destination)) return false
+  if (await exists(destination)) return undefined
   await mkdir(dirname(destination), { recursive: true })
   await cp(source, destination, {
     recursive: true,
@@ -14,13 +14,14 @@ async function seedTree(source, destination) {
     force: false,
     verbatimSymlinks: true,
   })
-  return true
+  return destination
 }
 
 async function seedSlot(source, root, version) {
-  await seedTree(source, join(root, 'versions', version))
+  const seeded = await seedTree(source, join(root, 'versions', version))
   await mkdir(root, { recursive: true })
   if (!await exists(join(root, 'current'))) await symlink(join('versions', version), join(root, 'current'))
+  return seeded
 }
 
 export async function provisionPlatformSeed(seedRoot, dataRoot) {
@@ -29,16 +30,24 @@ export async function provisionPlatformSeed(seedRoot, dataRoot) {
   }
   const environmentVersion = (await readFile(join(seedRoot, 'environment', 'VERSION'), 'utf8')).trim()
   const runtimeVersion = (await readFile(join(seedRoot, 'runtime', 'VERSION'), 'utf8')).trim()
-  await seedSlot(join(seedRoot, 'environment', environmentVersion), join(dataRoot, 'environments'), environmentVersion)
-  await seedSlot(join(seedRoot, 'runtime', runtimeVersion), join(dataRoot, 'runtime'), runtimeVersion)
-  await seedTree(join(seedRoot, 'pristine', runtimeVersion), join(dataRoot, 'dsh', 'pristine', runtimeVersion))
-  await seedSlot(join(seedRoot, 'system-plugins', environmentVersion), join(dataRoot, 'system-plugins'), environmentVersion)
+  const seededTrees = (await Promise.all([
+    seedSlot(join(seedRoot, 'environment', environmentVersion), join(dataRoot, 'environments'), environmentVersion),
+    seedSlot(join(seedRoot, 'runtime', runtimeVersion), join(dataRoot, 'runtime'), runtimeVersion),
+    seedTree(join(seedRoot, 'pristine', runtimeVersion), join(dataRoot, 'dsh', 'pristine', runtimeVersion)),
+    seedSlot(join(seedRoot, 'system-plugins', environmentVersion), join(dataRoot, 'system-plugins'), environmentVersion),
+  ])).filter(Boolean)
   if (process.getuid?.() === 0) {
-    for (const name of ['environments', 'dsh', 'runtime', 'state', 'logs', 'downloads', 'run', 'snapshots', 'system-plugins']) {
-      await chownTree(join(dataRoot, name), 1000, 1000)
-    }
+    const writableRoots = [
+      'environments', 'environments/versions', 'dsh', 'dsh/pristine',
+      'runtime', 'runtime/versions', 'state', 'logs', 'downloads', 'downloads/untrusted',
+      'run', 'snapshots', 'system-plugins', 'system-plugins/versions',
+    ]
+    await Promise.all([
+      ...writableRoots.map(name => lchown(join(dataRoot, name), 1000, 1000)),
+      ...seededTrees.map(path => chownTree(path, 1000, 1000)),
+    ])
   }
-  return Object.freeze({ environmentVersion, runtimeVersion })
+  return Object.freeze({ environmentVersion, runtimeVersion, seededTrees: Object.freeze(seededTrees) })
 }
 
 async function chownTree(path, uid, gid) {
