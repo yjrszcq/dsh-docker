@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto'
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
@@ -58,7 +58,7 @@ for (const group of groups) {
         throw new Error(`component ${item.id} metadata differs from its manifest`)
       }
     }
-    const name = `${item.artifactId}-${basename(source)}`
+    const name = item.artifactId
     const destination = join(staging, 'artifacts', name)
     await cp(source, destination, { errorOnExist: true, force: false })
     artifacts.push({

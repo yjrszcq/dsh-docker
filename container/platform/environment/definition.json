@@ -3,17 +3,17 @@
   "bootstrapApi": 1,
   "components": [
     {
-      "id": "gateway",
-      "version": "1.0.0",
-      "artifactId": "component-gateway",
-      "source": "components/gateway.json",
-      "mediaType": "application/vnd.dsh-platform.component.v1+json"
-    },
-    {
       "id": "dsh-runtime",
       "version": "1.0.0",
       "artifactId": "component-dsh-runtime",
       "source": "components/dsh-runtime.json",
+      "mediaType": "application/vnd.dsh-platform.component.v1+json"
+    },
+    {
+      "id": "gateway",
+      "version": "1.0.0",
+      "artifactId": "component-gateway",
+      "source": "components/gateway.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     }
   ],
