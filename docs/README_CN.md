@@ -20,7 +20,8 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DSH_HOME` | `/home/node/.dsh` | DSH 配置和数据目录 |
+| `DSH_PLATFORM_DATA` | `/data/platform` | 平台版本、信任状态、快照和日志目录 |
+| `DSH_HOME` | `/data/dsh` | DSH 配置和数据目录 |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径；必须是可访问的绝对目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；`true` 或 `false` |
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
@@ -91,7 +92,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 ## 在线更新
 
-平台状态位于 `/data`；DSH 设置、会话、凭据和第三方插件仍位于 `/home/node/.dsh`。两个 Volume 都必须保留。
+`/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
 Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置入口打开常驻 Console `/_dsh_platform/ui/`；DSH 暂停、替换、健康检查或回滚时，该页面仍然可用。
 
@@ -110,13 +111,13 @@ docker exec -it deepseek-harness dsh-platform return-stable
 
 候选构建失败会创建版本 Hold；不兼容的 Runtime/Environment 组合会创建组合 Hold。`retry` 清除当前唯一的 Hold 或 Blocked 组合。
 
-Experimental Runtime 接触真实数据前，Updater 停止 `dsh-runtime`，并为 `/home/node/.dsh` 创建经过校验的 tar 快照。之后才切换 Runtime、执行健康检查并观察候选版本。失败或中断时，会在 DSH 重启前恢复 Runtime、Environment、System Plugin、receipt 和快照。
+Experimental Runtime 接触真实数据前，Updater 停止 `dsh-runtime`，并为 `/data/dsh` 创建经过校验的 tar 快照。之后才切换 Runtime、执行健康检查并观察候选版本。失败或中断时，会在 DSH 重启前恢复 Runtime、Environment、System Plugin、receipt 和快照。
 
 `rollback` 恢复保留的 previous 完整状态。交互式 `return-stable` 只在存在已验证的实验前恢复点时开放，并可能丢弃所显示快照时间之后写入的数据。
 
 ## 信任与恢复
 
-Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/downloads/untrusted`，直到 Stage-0 按签名描述验证并导入可信对象库；Runtime 构建后续使用的每条路径都来自 receipt，不再读取 untrusted 下载文件。
+Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/platform/downloads/untrusted`，直到 Stage-0 按签名描述验证并导入可信对象库；Runtime 构建后续使用的每条路径都来自 receipt，不再读取 untrusted 下载文件。
 
 Bootstrap 和 Updater 不能添加根公钥、修改 keyring、提交任意 expected hash 或自行签发 receipt；它们只消费 Stage-0 验证结果。
 

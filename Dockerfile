@@ -55,7 +55,8 @@ RUN chmod 755 /usr/local/bin/dsh \
     && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/control-plane/services/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
     && chmod 755 /usr/local/bin/dsh-platform
 
-ENV DSH_HOME=/home/node/.dsh \
+ENV DSH_PLATFORM_DATA=/data/platform \
+    DSH_HOME=/data/dsh \
     DSH_DEFAULT_WORKSPACE=/workspace \
     DSH_PROXY_POLYFILL=true \
     DSH_TELEMETRY_DISABLED=true \
@@ -66,8 +67,8 @@ ENV DSH_HOME=/home/node/.dsh \
     DSH_ACTIVATION_TIMEOUT_SECONDS=60 \
     DSH_EXPERIMENTAL_PROBATION_SECONDS=120
 
-RUN mkdir -p /home/node/.dsh /workspace \
-    && chown -R node:node /home/node/.dsh /workspace
+RUN mkdir -p /data/platform /data/dsh /workspace \
+    && chown -R node:node /data/dsh /workspace
 
 ARG INSTALL_DEVTOOLS=false
 ARG UV_VERSION=0.11.32

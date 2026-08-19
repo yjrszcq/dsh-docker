@@ -6,12 +6,12 @@ import { UpdateJournal } from '../../modules/updater/lib/journal.mjs'
 import { recoverInterruptedUpdate } from '../../modules/updater/lib/recovery.mjs'
 import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mjs'
 
-const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
+const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 await recoverInterruptedUpdate({
   journal: new UpdateJournal(join(dataRoot, 'state', 'update-transaction.json')),
   snapshots: new PersistentStateSnapshots({
     root: join(dataRoot, 'snapshots'),
-    sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
+    sourceRoot: process.env.DSH_HOME ?? '/data/dsh',
   }),
   activator: new PlatformActivator({ dataRoot }),
   resume: false,

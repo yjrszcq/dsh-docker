@@ -16,7 +16,7 @@ import { reconcileRecoveredState } from '../../modules/updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
 
-const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
+const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
 const logs = new JsonlLogManager({
   root: join(dataRoot, 'logs'),
@@ -33,7 +33,7 @@ const activator = new PlatformActivator({ dataRoot, stage0: trust })
 const journal = new UpdateJournal(join(dataRoot, 'state', 'update-transaction.json'))
 const snapshots = new PersistentStateSnapshots({
   root: join(dataRoot, 'snapshots'),
-  sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
+  sourceRoot: process.env.DSH_HOME ?? '/data/dsh',
 })
 const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
 const coordinator = new UpdateCoordinator({

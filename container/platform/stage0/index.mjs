@@ -9,7 +9,7 @@ import { BootstrapSupervisor } from './lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from './lib/trust-server.mjs'
 import { provisionPlatformSeed } from './lib/seed.mjs'
 
-const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
+const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const bootstrapVersion = (await readFile(join(seedRoot, 'bootstrap', 'VERSION'), 'utf8')).trim()
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()

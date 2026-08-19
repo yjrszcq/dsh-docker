@@ -83,7 +83,7 @@ test('parses service, oneshot, and hook component lifecycle declarations', () =>
     id: 'gateway',
     type: 'service',
     command: { executable: '/usr/local/bin/node', args: ['/opt/gateway/index.mjs'], timeoutSeconds: 30 },
-    environment: { PLATFORM_SOCKET: '/data/run/platform.sock' },
+    environment: { PLATFORM_SOCKET: '/data/platform/run/platform.sock' },
     lifecycle,
     health: { type: 'http', host: '127.0.0.1', port: 3080, path: '/health', intervalSeconds: 1, timeoutSeconds: 5 },
     logging: { stdout: true, stderr: true },

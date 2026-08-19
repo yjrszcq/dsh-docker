@@ -8,7 +8,8 @@ services:
     group_add:
       - "dsh-sudo-${DSH_SUDO_ENABLED:-true}"
     environment:
-      DSH_HOME: /home/node/.dsh
+      DSH_PLATFORM_DATA: /data/platform
+      DSH_HOME: /data/dsh
       DSH_DEFAULT_WORKSPACE: "${DSH_DEFAULT_WORKSPACE:-/workspace}"
       DSH_PROXY_USERNAME: "${DSH_PROXY_USERNAME:-}"
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
@@ -22,8 +23,8 @@ services:
       DSH_ACTIVATION_TIMEOUT_SECONDS: "${DSH_ACTIVATION_TIMEOUT_SECONDS:-60}"
       DSH_EXPERIMENTAL_PROBATION_SECONDS: "${DSH_EXPERIMENTAL_PROBATION_SECONDS:-120}"
     volumes:
-      - dsh-data:/home/node/.dsh
-      - dsh-platform-data:/data
+      - dsh-data:/data/dsh
+      - dsh-platform-data:/data/platform
       - ${DSH_WORKSPACE:-./workspace}:/workspace
 
 volumes:

@@ -42,7 +42,7 @@ export function parseCli(argv) {
 }
 
 export async function resetTrust({
-  dataRoot = '/data',
+  dataRoot = '/data/platform',
   input = stdin,
   output = stdout,
   getuid = () => process.getuid?.(),
@@ -70,8 +70,8 @@ function queryString(options) {
 
 export async function runCli({
   argv = process.argv.slice(2),
-  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/data/run/management.sock'),
-  trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/data/run/stage0-trust.sock'),
+  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/data/platform/run/management.sock'),
+  trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/data/platform/run/stage0-trust.sock'),
   reset = resetTrust,
   write = value => process.stdout.write(`${value}\n`),
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),

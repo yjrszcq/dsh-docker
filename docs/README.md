@@ -20,7 +20,8 @@ This guide documents configuration, platform behavior, online updates, trust, re
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_HOME` | `/home/node/.dsh` | DSH configuration and data directory |
+| `DSH_PLATFORM_DATA` | `/data/platform` | Platform versions, trust state, snapshots, and logs |
+| `DSH_HOME` | `/data/dsh` | DSH configuration and data directory |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an accessible absolute directory |
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
@@ -91,7 +92,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 ## Online Updates
 
-Platform state lives in `/data`; DSH settings, sessions, credentials, and third-party plugins remain in `/home/node/.dsh`. Keep both volumes.
+`/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
 Management checks every six hours with jitter but does not automatically download or activate. The DSH settings entry opens the persistent Console at `/_dsh_platform/ui/`, which remains available while DSH is suspended, replaced, health-checked, or rolled back.
 
@@ -110,13 +111,13 @@ Changing channels modifies only local desired state. Stable converges to the sig
 
 Candidate build failures create a version Hold; incompatible Runtime/Environment combinations create a combination Hold. `retry` clears the one active Hold or Blocked combination.
 
-Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` and creates a verified tar snapshot of `/home/node/.dsh`. It then switches Runtime, checks health, and observes the candidate during probation. Failure or interruption restores Runtime, Environment, System Plugins, receipts, and the snapshot before DSH restarts.
+Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` and creates a verified tar snapshot of `/data/dsh`. It then switches Runtime, checks health, and observes the candidate during probation. Failure or interruption restores Runtime, Environment, System Plugins, receipts, and the snapshot before DSH restarts.
 
 `rollback` restores the retained previous complete state. Interactive `return-stable` is available only with a verified pre-Experimental recovery point and may discard data written after the displayed snapshot time.
 
 ## Trust and Recovery
 
-Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/downloads/untrusted` until Stage-0 matches them to signed descriptors and imports them into the trusted object store. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
+Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/platform/downloads/untrusted` until Stage-0 matches them to signed descriptors and imports them into the trusted object store. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
 
 Bootstrap and Updater cannot add a root key, modify keyrings, submit arbitrary expected hashes, or mint receipts. They consume only Stage-0 verification results.
 

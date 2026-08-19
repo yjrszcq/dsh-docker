@@ -25,8 +25,8 @@ docker run --detach --name "$container" \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
-  --volume "$platform_volume:/data" \
-  --volume "$home_volume:/home/node/.dsh" \
+  --volume "$platform_volume:/data/platform" \
+  --volume "$home_volume:/data/dsh" \
   "$image" >/dev/null
 
 attempt=0
@@ -72,19 +72,19 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 
 loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matches \
   'isLoopback: true,' \
-  /data/runtime/current/package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js)"
+  /data/platform/runtime/current/package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js)"
 [ "$loopback_patch_count" = 1 ]
 
 docker exec "$container" sh -c '
   pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$" >/dev/null
-  pgrep -f "/data/bootstrap/versions/.*/platform/bootstrap/index.mjs" >/dev/null
-  ps -eo args= | rg "package/lib/bin.js web --patch /data/system-plugins/current/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
-  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/control-plane/services/management/index.mjs$" >/dev/null
-  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/control-plane/services/gateway/index.mjs$" >/dev/null
+  pgrep -f "/data/platform/bootstrap/versions/.*/platform/bootstrap/index.mjs" >/dev/null
+  ps -eo args= | rg "package/lib/bin.js web --patch /data/platform/system-plugins/current/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
+  pgrep -f "^/usr/local/bin/node /data/platform/bootstrap/current/control-plane/services/management/index.mjs$" >/dev/null
+  pgrep -f "^/usr/local/bin/node /data/platform/bootstrap/current/control-plane/services/gateway/index.mjs$" >/dev/null
   dsh-platform trust status | jq -e ".keyringGeneration == 1" >/dev/null
   dsh-platform status | jq -e ".trust.keyringGeneration == 1" >/dev/null
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
-  rg --fixed-strings "exec /data/runtime/current/bin/dsh" /usr/local/bin/dsh >/dev/null
+  rg --fixed-strings "exec /data/platform/runtime/current/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
 
 docker exec "$container" curl --fail --silent --noproxy '*' \
@@ -102,8 +102,8 @@ docker run --detach --name "$container" \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
-  --volume "$platform_volume:/data" \
-  --volume "$home_volume:/home/node/.dsh" \
+  --volume "$platform_volume:/data/platform" \
+  --volume "$home_volume:/data/dsh" \
   "$image" >/dev/null
 attempt=0
 until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
@@ -111,7 +111,7 @@ until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
   [ "$attempt" -lt 60 ] || exit 1
   sleep 1
 done
-docker exec --user node "$container" sh -c 'printf platform > /data/state/smoke && printf home > /home/node/.dsh/smoke'
+docker exec --user node "$container" sh -c 'printf platform > /data/platform/state/smoke && printf home > /data/dsh/smoke'
 docker restart "$container" >/dev/null
 attempt=0
 until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
@@ -119,18 +119,18 @@ until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
   [ "$attempt" -lt 60 ] || exit 1
   sleep 1
 done
-docker exec "$container" sh -c '[ "$(cat /data/state/smoke)" = platform ] && [ "$(cat /home/node/.dsh/smoke)" = home ]'
+docker exec "$container" sh -c '[ "$(cat /data/platform/state/smoke)" = platform ] && [ "$(cat /data/dsh/smoke)" = home ]'
 
 docker exec "$container" dsh-platform channel experimental >/dev/null
 [ "$(docker exec "$container" dsh-platform channel)" = experimental ]
 attempt=0
-until docker exec --user node "$container" curl --fail --silent --unix-socket /data/run/bootstrap.sock \
+until docker exec --user node "$container" curl --fail --silent --unix-socket /data/platform/run/bootstrap.sock \
   http://localhost/v1/status >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 60 ] || exit 1
   sleep 1
 done
-docker exec --user node "$container" curl --fail --silent --unix-socket /data/run/bootstrap.sock \
+docker exec --user node "$container" curl --fail --silent --unix-socket /data/platform/run/bootstrap.sock \
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
@@ -140,18 +140,18 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'
 import { readFile, readlink } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { LocalApiClient } from '/data/bootstrap/current/control-plane/modules/updater/lib/client.mjs'
-import { UpdateJournal } from '/data/bootstrap/current/control-plane/modules/updater/lib/journal.mjs'
-import { PersistentStateSnapshots } from '/data/bootstrap/current/control-plane/modules/updater/lib/snapshots.mjs'
+import { LocalApiClient } from '/data/platform/bootstrap/current/control-plane/modules/updater/lib/client.mjs'
+import { UpdateJournal } from '/data/platform/bootstrap/current/control-plane/modules/updater/lib/journal.mjs'
+import { PersistentStateSnapshots } from '/data/platform/bootstrap/current/control-plane/modules/updater/lib/snapshots.mjs'
 
-const runtime = basename(await readlink('/data/runtime/current'))
-const environment = basename(await readlink('/data/environments/current'))
-const metadata = JSON.parse(await readFile(`/data/runtime/versions/${runtime}/package/package.json`, 'utf8'))
-const trust = new LocalApiClient('/data/run/stage0-trust.sock')
+const runtime = basename(await readlink('/data/platform/runtime/current'))
+const environment = basename(await readlink('/data/platform/environments/current'))
+const metadata = JSON.parse(await readFile(`/data/platform/runtime/versions/${runtime}/package/package.json`, 'utf8'))
+const trust = new LocalApiClient('/data/platform/run/stage0-trust.sock')
 const receiptTokens = (await trust.activeReceipts()).receipts.map(receipt => receipt.token).sort()
-const snapshots = new PersistentStateSnapshots({ root: '/data/snapshots', sourceRoot: '/home/node/.dsh' })
+const snapshots = new PersistentStateSnapshots({ root: '/data/platform/snapshots', sourceRoot: '/data/dsh' })
 await snapshots.create({ id: 'smoke-recovery', runtimeId: runtime, environmentVersion: environment, dshVersion: metadata.version })
-const journal = new UpdateJournal('/data/state/update-transaction.json')
+const journal = new UpdateJournal('/data/platform/state/update-transaction.json')
 await journal.begin({
   transactionId: 'smoke-recovery', mode: 'experimental',
   from: { dsh: metadata.version, environment, runtime, dataSnapshot: null, receiptTokens },
@@ -163,7 +163,7 @@ await journal.transition('snapshot-created', { snapshotId: 'smoke-recovery' })
 await journal.transition('switched')
 await journal.transition('probation', { probationUntil: '2099-01-01T00:00:00.000Z' })
 NODE
-docker exec --user node "$container" sh -c 'printf changed-after-snapshot > /home/node/.dsh/smoke'
+docker exec --user node "$container" sh -c 'printf changed-after-snapshot > /data/dsh/smoke'
 docker restart "$container" >/dev/null
 attempt=0
 until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
@@ -172,8 +172,8 @@ until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
   sleep 1
 done
 docker exec "$container" sh -c '
-  [ "$(cat /home/node/.dsh/smoke)" = home ]
-  [ "$(jq -r .phase /data/state/update-transaction.json)" = rolled-back ]
+  [ "$(cat /data/dsh/smoke)" = home ]
+  [ "$(jq -r .phase /data/platform/state/update-transaction.json)" = rolled-back ]
   [ "$(dsh-platform channel)" = experimental ]
 '
 cleanup

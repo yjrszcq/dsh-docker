@@ -6,7 +6,7 @@ import { BootstrapRuntime } from './lib/runtime.mjs'
 import { createBootstrapControl, listenBootstrapControl } from './lib/control.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 
-const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
+const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const logs = new JsonlLogManager({
   root: join(dataRoot, 'logs'),
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),

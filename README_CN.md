@@ -27,8 +27,8 @@ docker run -d \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
-  -v dsh-platform-data:/data \
-  -v "$(pwd)/data:/home/node/.dsh" \
+  -v dsh-platform-data:/data/platform \
+  -v "$(pwd)/data:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
@@ -48,8 +48,8 @@ docker compose up -d
 
 | 路径 | 用途 |
 | --- | --- |
-| `/data` | 平台版本、可信对象、更新状态、快照和日志 |
-| `/home/node/.dsh` | DSH 设置、会话、凭据和第三方插件 |
+| `/data/platform` | 平台版本、可信对象、更新状态、快照和日志 |
+| `/data/dsh` | DSH 设置、会话、凭据和第三方插件 |
 | `/workspace` | 默认工作目录 |
 
 容器工作负载使用 UID/GID `1000:1000`。bind mount 无法访问时执行：

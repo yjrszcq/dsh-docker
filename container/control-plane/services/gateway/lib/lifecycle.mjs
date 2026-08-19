@@ -24,7 +24,7 @@ export async function runGateway(config, {
   gatewayFactory = createGatewayServer,
   externalHost = EXTERNAL_HOST,
   externalPort = EXTERNAL_PORT,
-  managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/data/run/management.sock',
+  managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/data/platform/run/management.sock',
 } = {}) {
   const server = gatewayFactory({
     password: config.password,

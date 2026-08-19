@@ -4,7 +4,7 @@
   "type": "oneshot",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/data/bootstrap/current/control-plane/hooks/recovery/index.mjs"],
+    "args": ["/data/platform/bootstrap/current/control-plane/hooks/recovery/index.mjs"],
     "timeoutSeconds": 120
   },
   "environment": {},

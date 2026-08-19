@@ -4,7 +4,10 @@
 .env
 temp
 data
-container/control-plane/gateway/test
+container/**/test
+container/**/test/**
+container/**/tests
+container/**/tests/**
 container/test
 workspace
 README.md

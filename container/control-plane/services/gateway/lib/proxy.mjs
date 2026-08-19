@@ -190,7 +190,7 @@ export function createGatewayServer({
   polyfill = true,
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
-  managementSocketPath = '/data/run/management.sock',
+  managementSocketPath = '/data/platform/run/management.sock',
   isReady = () => true,
   password = '',
   username = '',

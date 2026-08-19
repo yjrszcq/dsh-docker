@@ -27,7 +27,7 @@ function parseManifest(bytes) {
   ], 'snapshot manifest')
   if (value.schema !== 1) throw new TrustError('snapshot manifest schema must be 1')
   validId(value.id)
-  if (value.source !== '/home/node/.dsh') throw new TrustError('snapshot source is invalid')
+  if (value.source !== '/data/dsh') throw new TrustError('snapshot source is invalid')
   if (typeof value.archiveSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.archiveSha256)) {
     throw new TrustError('snapshot archive SHA-256 is invalid')
   }
@@ -76,7 +76,7 @@ async function syncDirectory(path) {
 }
 
 export class PersistentStateSnapshots {
-  constructor({ root, sourceRoot = '/home/node/.dsh', now = () => new Date(), runImpl = run }) {
+  constructor({ root, sourceRoot = '/data/dsh', now = () => new Date(), runImpl = run }) {
     this.root = resolve(root)
     this.sourceRoot = resolve(sourceRoot)
     this.now = now
@@ -110,7 +110,7 @@ export class PersistentStateSnapshots {
         schema: 1,
         id,
         createdAt: this.now().toISOString(),
-        source: '/home/node/.dsh',
+        source: '/data/dsh',
         runtimeId: version(runtimeId, 'snapshot runtime ID'),
         environmentVersion: version(environmentVersion, 'snapshot Environment version'),
         dshVersion: version(dshVersion, 'snapshot DSH version'),

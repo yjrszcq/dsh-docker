@@ -129,13 +129,13 @@ test('official DSH Trust API accepts only a requested version', async () => {
     for (const extra of [
       { version: '0.1.0-rc.8', url: 'https://mirror.example/dsh.tgz' },
       { version: '0.1.0-rc.8', expectedHash: '0'.repeat(64) },
-      { version: '0.1.0-rc.8', sourcePath: '/data/downloads/untrusted/dsh.tgz' },
+      { version: '0.1.0-rc.8', sourcePath: '/data/platform/downloads/untrusted/dsh.tgz' },
       { version: '0.1.0-rc.8', candidate: {} },
     ]) {
       assert.equal((await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', extra)).status, 400)
     }
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/artifacts/import-experimental', {
-      candidate: {}, sourcePath: '/data/downloads/untrusted/dsh.tgz',
+      candidate: {}, sourcePath: '/data/platform/downloads/untrusted/dsh.tgz',
     })).status, 404)
     assert.deepEqual(calls, ['0.1.0-rc.8'])
   } finally {

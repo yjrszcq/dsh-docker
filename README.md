@@ -27,8 +27,8 @@ docker run -d \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
-  -v dsh-platform-data:/data \
-  -v "$(pwd)/data:/home/node/.dsh" \
+  -v dsh-platform-data:/data/platform \
+  -v "$(pwd)/data:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
@@ -48,8 +48,8 @@ Keep both persistent locations:
 
 | Path | Purpose |
 | --- | --- |
-| `/data` | Platform versions, trusted objects, update state, snapshots, and logs |
-| `/home/node/.dsh` | DSH settings, sessions, credentials, and third-party plugins |
+| `/data/platform` | Platform versions, trusted objects, update state, snapshots, and logs |
+| `/data/dsh` | DSH settings, sessions, credentials, and third-party plugins |
 | `/workspace` | Default working directory |
 
 Container workloads run as UID/GID `1000:1000`. If a bind mount is inaccessible:
