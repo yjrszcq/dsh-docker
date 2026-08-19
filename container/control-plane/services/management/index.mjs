@@ -26,6 +26,7 @@ const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
+  output: { stdout: process.stdout, stderr: process.stderr },
 })
 logs.on('error', error => console.error(error))
 const metadata = new MetadataClient({

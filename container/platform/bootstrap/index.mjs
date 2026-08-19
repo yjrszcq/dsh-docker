@@ -38,9 +38,15 @@ const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
+  output: { stdout: process.stdout, stderr: process.stderr },
 })
 logs.on('error', error => console.error(error))
-const capture = (child, source, declaration) => logs.capture(child, source, declaration)
+const capture = (child, source, declaration) => logs.capture(
+  child,
+  source,
+  declaration,
+  { acceptForwarded: source === 'management' },
+)
 const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
@@ -73,6 +79,7 @@ const recoveryMode = recoveryReason === null ? null : {
   failedRecordId: imagePlan?.target ?? null,
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
+await logs.append('bootstrap', 'platform', 'platform ready', { recoveryMode: recoveryMode !== null })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 process.on('message', message => {
   if (message?.type !== 'recover-image-baseline' || typeof message.requestId !== 'string') return

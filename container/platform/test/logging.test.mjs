@@ -46,3 +46,69 @@ test('prunes expired logs and captures complete child output lines', async () =>
   await logs.queue
   assert.deepEqual((await logs.query({ sources: ['component'] })).map(entry => entry.message), ['one', 'two'])
 })
+
+test('mirrors new entries to the matching container output without replaying history', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-output-'))
+  const stdout = []
+  const stderr = []
+  const logs = new JsonlLogManager({
+    root,
+    now: () => new Date('2026-08-19T00:00:00.000Z'),
+    output: {
+      stdout: { write: value => stdout.push(value) },
+      stderr: { write: value => stderr.push(value) },
+    },
+  })
+  await logs.append('gateway', 'stdout', 'ready')
+  await logs.append('dsh-runtime', 'stderr', 'failed')
+  assert.deepEqual(stdout.map(line => JSON.parse(line)), [{
+    timestamp: '2026-08-19T00:00:00.000Z', source: 'gateway', stream: 'stdout', message: 'ready',
+    platformLog: 'dsh-platform-log-v1',
+  }])
+  assert.deepEqual(stderr.map(line => JSON.parse(line)), [{
+    timestamp: '2026-08-19T00:00:00.000Z', source: 'dsh-runtime', stream: 'stderr', message: 'failed',
+    platformLog: 'dsh-platform-log-v1',
+  }])
+
+  const secondOutput = []
+  const restarted = new JsonlLogManager({
+    root,
+    output: { stdout: { write: value => secondOutput.push(value) }, stderr: { write: value => secondOutput.push(value) } },
+  })
+  assert.equal((await restarted.query()).length, 2)
+  assert.deepEqual(secondOutput, [])
+})
+
+test('passes a child platform envelope through without persisting it twice', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-forwarded-'))
+  const stdout = []
+  const stderr = []
+  const logs = new JsonlLogManager({
+    root,
+    output: {
+      stdout: { write: value => stdout.push(value) },
+      stderr: { write: value => stderr.push(value) },
+    },
+  })
+  const child = new EventEmitter()
+  child.stdout = new PassThrough()
+  child.stderr = new PassThrough()
+  logs.capture(child, 'management', { stdout: true, stderr: true }, { acceptForwarded: true })
+  const audit = JSON.stringify({
+    timestamp: '2026-08-19T00:00:00.000Z', source: 'audit', stream: 'audit', message: 'update.started',
+    platformLog: 'dsh-platform-log-v1', taskId: 'task-one',
+  })
+  child.stdout.end(`${audit}\nplain output\n`)
+  child.stderr.end('plain error\n')
+  await new Promise(resolve => setImmediate(resolve))
+  await logs.queue
+
+  assert.equal(stdout[0], `${audit}\n`)
+  assert.equal(JSON.parse(stdout[1]).source, 'management')
+  assert.equal(JSON.parse(stderr[0]).stream, 'stderr')
+  assert.deepEqual(
+    (await logs.query({ sources: ['management'] })).map(entry => [entry.stream, entry.message]),
+    [['stdout', 'plain output'], ['stderr', 'plain error']],
+  )
+  assert.deepEqual(await logs.query({ sources: ['audit'] }), [])
+})

@@ -128,6 +128,8 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置入口打开常驻 Console `/_dsh_platform/ui/`；DSH 暂停、替换、健康检查或回滚时，该页面仍然可用。
 
+平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
+
 ```bash
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check

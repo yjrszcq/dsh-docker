@@ -48,6 +48,8 @@ docker run --detach --name "$container" \
   "$image" >/dev/null
 
 startup_one="$(wait_platform_ready)"
+docker logs "$container" 2>&1 \
+  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform ready"' >/dev/null
 
 docker exec "$container" sh -c '
   command -v python3 >/dev/null

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 const SOURCE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_ENTRY_BYTES = 64 * 1024
+const CONSOLE_MARKER = 'dsh-platform-log-v1'
 
 function validateSource(source) {
   if (typeof source !== 'string' || !SOURCE_PATTERN.test(source)) throw new Error('log source is invalid')
@@ -15,6 +16,18 @@ function parseLine(line) {
   try { return JSON.parse(line) } catch { return undefined }
 }
 
+function parseForwardedLine(line) {
+  const entry = parseLine(line)
+  if (
+    entry?.platformLog !== CONSOLE_MARKER
+    || typeof entry.timestamp !== 'string'
+    || typeof entry.message !== 'string'
+    || !['stdout', 'stderr', 'audit', 'platform'].includes(entry.stream)
+  ) return undefined
+  try { validateSource(entry.source) } catch { return undefined }
+  return entry
+}
+
 export class JsonlLogManager extends EventEmitter {
   constructor({
     root,
@@ -22,6 +35,7 @@ export class JsonlLogManager extends EventEmitter {
     retentionDays = 14,
     rotateBytes = 10 * 1024 * 1024,
     now = () => new Date(),
+    output,
   }) {
     super()
     if (!Number.isSafeInteger(maxBytes) || maxBytes < MAX_ENTRY_BYTES) throw new Error('log maxBytes is invalid')
@@ -32,7 +46,18 @@ export class JsonlLogManager extends EventEmitter {
     this.retentionMs = retentionDays * 86_400_000
     this.rotateBytes = rotateBytes
     this.now = now
+    this.output = output
     this.queue = Promise.resolve()
+  }
+
+  writeOutput(stream, line) {
+    const destination = stream === 'stderr' ? this.output?.stderr : this.output?.stdout
+    destination?.write(`${line}\n`)
+  }
+
+  mirror(entry) {
+    if (this.output === undefined) return
+    this.writeOutput(entry.stream, JSON.stringify({ ...entry, platformLog: CONSOLE_MARKER }))
   }
 
   serialized(operation) {
@@ -61,6 +86,7 @@ export class JsonlLogManager extends EventEmitter {
       }
       await appendFile(path, line, { mode: 0o600 })
       this.emit('entry', Object.freeze(entry))
+      this.mirror(entry)
       await this.pruneUnlocked()
       return Object.freeze(entry)
     })
@@ -120,7 +146,7 @@ export class JsonlLogManager extends EventEmitter {
     return Object.freeze(entries.slice(-limit).map(Object.freeze))
   }
 
-  capture(child, source, declaration = { stdout: true, stderr: true }) {
+  capture(child, source, declaration = { stdout: true, stderr: true }, { acceptForwarded = false } = {}) {
     for (const streamName of ['stdout', 'stderr']) {
       if (!declaration[streamName]) continue
       const stream = child[streamName]
@@ -131,7 +157,12 @@ export class JsonlLogManager extends EventEmitter {
         pending += String(chunk)
         const lines = pending.split('\n')
         pending = lines.pop()
-        for (const line of lines) void this.append(source, streamName, line).catch(error => this.emit('error', error))
+        for (const line of lines) {
+          const forwarded = acceptForwarded && this.output !== undefined ? parseForwardedLine(line) : undefined
+          if (forwarded === undefined) {
+            void this.append(source, streamName, line).catch(error => this.emit('error', error))
+          } else this.writeOutput(forwarded.stream, line)
+        }
       })
       stream.once('end', () => {
         if (pending !== '') void this.append(source, streamName, pending).catch(error => this.emit('error', error))

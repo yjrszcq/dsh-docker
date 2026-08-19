@@ -128,6 +128,8 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 Management checks every six hours with jitter but does not automatically download or activate. The DSH settings entry opens the persistent Console at `/_dsh_platform/ui/`, which remains available while DSH is suspended, replaced, health-checked, or rolled back.
 
+New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
+
 ```bash
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
