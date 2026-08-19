@@ -123,7 +123,13 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
 
   await execute(process.execPath, [fileURLToPath(new URL('../tools/build-seed.mjs', import.meta.url)), installed, output])
   const contracts = await import(pathToFileURL(join(output, 'bootstrap/1.0.0/platform/lib/contracts.mjs')).href)
+  const { parseImageInventory } = await import('../lib/deployment-contracts.mjs')
   assert.equal(typeof contracts.parseStable, 'function')
+  const inventory = parseImageInventory(await readFile(join(output, 'inventory.json')))
+  assert.equal(inventory.authority, 'development')
+  assert.equal(inventory.targetSequence, 0)
+  assert.equal(inventory.bootstrap.version, '1.0.0')
+  assert.equal(inventory.deployment.dshVersion, '0.1.0-rc.fixture')
   assert.equal(await readlink(join(output, 'pristine/0.1.0-rc.fixture/node_modules/.bin/tool')), '../tool/bin.js')
   assert.equal(await readlink(join(output, 'runtime/0.1.0-rc.fixture/package/node_modules/.bin/tool')), '../tool/bin.js')
 })

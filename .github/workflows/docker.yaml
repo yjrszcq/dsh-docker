@@ -2,12 +2,6 @@ name: Publish Docker Image
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: DeepSeek Harness npm version (supported reads the reviewed target)
-        required: true
-        default: supported
-        type: string
 
 env:
   IMAGE_OWNER: szcq
@@ -38,54 +32,43 @@ jobs:
           sh -n container/test/container-smoke.sh
           sh -n container/test/devtools-smoke.sh
 
-      - name: Install production public trust seed
+      - name: Download and verify latest signed Supported Release
+        id: signed-release
         env:
+          GH_TOKEN: ${{ github.token }}
           RECOVERY_ROOT_PUBLIC_KEY: ${{ secrets.DSH_RECOVERY_ROOT_PUBLIC_KEY }}
-          KEYRING_JSON_BASE64: ${{ secrets.DSH_KEYRING_JSON_BASE64 }}
-          KEYRING_SIGNATURE_BASE64: ${{ secrets.DSH_KEYRING_SIGNATURE_BASE64 }}
         run: |
           test -n "$RECOVERY_ROOT_PUBLIC_KEY"
-          test -n "$KEYRING_JSON_BASE64"
-          test -n "$KEYRING_SIGNATURE_BASE64"
-          printf '%s\n' "$RECOVERY_ROOT_PUBLIC_KEY" > container/platform/seed/trust/recovery-root.spki.base64
-          printf '%s' "$KEYRING_JSON_BASE64" | base64 --decode > container/platform/seed/trust/keyring.json
-          printf '%s' "$KEYRING_SIGNATURE_BASE64" | base64 --decode > container/platform/seed/trust/keyring.sig.json
+          image_input=container/platform/image-input
+          release_dir="$image_input/release"
+          mkdir -p "$release_dir"
+          tag="$(gh release view --json tagName --jq .tagName)"
+          gh release download "$tag" --dir "$release_dir"
+          printf '%s\n' "$RECOVERY_ROOT_PUBLIC_KEY" > "$image_input/recovery-root.spki.base64"
+          cp release/supported-target.json "$image_input/supported-target.json"
+          cp container/environment/definition.json "$image_input/environment-definition.json"
+          version="$(jq -er '.latestSupportedDsh' release/supported-target.json)"
+          npm pack "@deepseek-ai/dsh@${version}" --pack-destination "$RUNNER_TEMP" >/dev/null
+          tarball="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          cp "$tarball" "$image_input/dsh.tgz"
+          verified="$(node container/platform/tools/verify-image-release.mjs \
+            "$release_dir" \
+            "$image_input/recovery-root.spki.base64" \
+            "$image_input/dsh.tgz" \
+            "$image_input/supported-target.json" \
+            "$image_input/environment-definition.json")"
+          test "$(jq -er .dshVersion <<<"$verified")" = "$version"
+          test "$tag" = "platform-$(jq -er .targetSequence <<<"$verified")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'sequence=%s\n' "$(jq -er .targetSequence <<<"$verified")" >> "$GITHUB_OUTPUT"
+          cp "$image_input/recovery-root.spki.base64" container/platform/seed/trust/recovery-root.spki.base64
+          cp "$release_dir/keyring.json" container/platform/seed/trust/keyring.json
+          cp "$release_dir/keyring.sig.json" container/platform/seed/trust/keyring.sig.json
           rm container/platform/seed/trust/DEVELOPMENT_FIXTURE
           test ! -e container/platform/seed/trust/DEVELOPMENT_FIXTURE
-
-      - name: Verify production trust seed
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFile } from 'node:fs/promises'
-          import { verifyRecoveryKeyring } from './container/platform/stage0/lib/keyring.mjs'
-          const root = 'container/platform/seed/trust'
-          const key = (await readFile(`${root}/recovery-root.spki.base64`, 'utf8')).trim()
-          const ring = await readFile(`${root}/keyring.json`)
-          const signature = JSON.parse(await readFile(`${root}/keyring.sig.json`, 'utf8'))
-          verifyRecoveryKeyring(ring, signature, key)
-          NODE
-
-      - name: Resolve DeepSeek Harness version
-        id: dsh-version
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
-        run: |
-          requested="${REQUESTED_VERSION:-supported}"
-          if [ "$requested" = supported ]; then
-            version="$(jq -er '.latestSupportedDsh' release/supported-target.json)"
-            node container/platform/tools/supported-target.mjs validate \
-              release/supported-target.json container/environment/definition.json >/dev/null
-          else
-            version="$(npm view "@deepseek-ai/dsh@${requested}" version)"
-          fi
-
-          if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "Unable to resolve '$requested' to one valid image tag" >&2
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building @deepseek-ai/dsh $version" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Building signed Supported DSH %s (sequence %s).\n' \
+            "$version" "$(jq -er .targetSequence <<<"$verified")" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -102,7 +85,8 @@ jobs:
           load: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+            DSH_VERSION=${{ steps.signed-release.outputs.version }}
+            PLATFORM_REVISION=${{ github.sha }}
           tags: dsh-gateway-smoke:${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -119,7 +103,8 @@ jobs:
           load: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+            DSH_VERSION=${{ steps.signed-release.outputs.version }}
+            PLATFORM_REVISION=${{ github.sha }}
             INSTALL_DEVTOOLS=true
           tags: dsh-gateway-devtools-smoke:${{ github.run_id }}
           cache-from: type=gha
@@ -134,7 +119,7 @@ jobs:
           username: ${{ env.IMAGE_OWNER }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push ${{ env.IMAGE_NAME }} devtools ${{ steps.dsh-version.outputs.version }}
+      - name: Build and push ${{ env.IMAGE_NAME }} devtools ${{ steps.signed-release.outputs.version }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -143,13 +128,14 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
+            DSH_VERSION=${{ steps.signed-release.outputs.version }}
+            PLATFORM_REVISION=${{ github.sha }}
             INSTALL_DEVTOOLS=true
-          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}-devtools
+          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.signed-release.outputs.version }}-devtools
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.dsh-version.outputs.version }}
+      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.signed-release.outputs.version }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -158,8 +144,9 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.dsh-version.outputs.version }}
-          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.dsh-version.outputs.version }}
+            DSH_VERSION=${{ steps.signed-release.outputs.version }}
+            PLATFORM_REVISION=${{ github.sha }}
+          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.signed-release.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -167,10 +154,10 @@ jobs:
         run: |
           docker buildx imagetools create \
             --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest-devtools" \
-            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.dsh-version.outputs.version }}-devtools"
+            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.signed-release.outputs.version }}-devtools"
 
       - name: Publish latest tag
         run: |
           docker buildx imagetools create \
             --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest" \
-            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.dsh-version.outputs.version }}"
+            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.signed-release.outputs.version }}"

@@ -8,6 +8,7 @@ import test from 'node:test'
 import { verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
 import { parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
+import { verifyImageRelease } from '../tools/verify-image-release.mjs'
 
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
@@ -99,7 +100,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
-    trust, current.privatePath, tarball, '-', '1', 'https://release.example/platform-1/', output,
+    trust, current.privatePath, tarball, '-', '1', 'https://release.example/releases/download/platform-1/', output,
   ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
   assert.equal(result.status, 0, result.stderr)
 
@@ -133,6 +134,16 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+
+  const verifiedImage = await verifyImageRelease({
+    releaseRoot: output,
+    recoveryPublicKeyPath: join(trust, 'recovery-root.spki.base64'),
+    dshTarballPath: tarball,
+    supportedTargetPath: new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    environmentDefinitionPath: new URL('../../environment/definition.json', import.meta.url).pathname,
+  })
+  assert.equal(verifiedImage.stable.targetSequence, 1)
+  assert.equal(verifiedImage.environment.manifest.version, '2026.08.19.1')
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)

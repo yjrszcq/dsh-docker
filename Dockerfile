@@ -1,19 +1,30 @@
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
+COPY container/platform/image-input /opt/dsh-platform-image-input
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         g++ \
         make \
         python3 \
-    && npm install --global "@deepseek-ai/dsh@${DSH_VERSION}" \
+    && if [ -f /opt/dsh-platform-image-input/dsh.tgz ]; then \
+         npm install --global /opt/dsh-platform-image-input/dsh.tgz; \
+       else \
+         npm install --global "@deepseek-ai/dsh@${DSH_VERSION}"; \
+       fi \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim AS platform-seed
+ARG PLATFORM_REVISION=development
 COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
-RUN node /opt/dsh-platform-source/platform/tools/build-seed.mjs \
-      /opt/installed-dsh /opt/dsh-platform-seed
+RUN if [ -f /opt/dsh-platform-source/platform/image-input/release/stable.json ]; then \
+      image_input=/opt/dsh-platform-source/platform/image-input; \
+    else \
+      image_input=-; \
+    fi \
+    && node /opt/dsh-platform-source/platform/tools/build-seed.mjs \
+      /opt/installed-dsh /opt/dsh-platform-seed "$image_input" "$PLATFORM_REVISION"
 
 FROM node:24-bookworm-slim AS runtime
 ARG PNPM_VERSION=11.7.0
