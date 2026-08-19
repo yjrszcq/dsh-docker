@@ -1,0 +1,117 @@
+name: DSH Candidate Validation
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Candidate commit to validate
+        required: true
+        type: string
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - release/supported-target.json
+      - container/**
+      - Dockerfile
+      - docker-compose.yaml
+      - .github/workflows/dsh-candidate-validation.yml
+
+concurrency:
+  group: dsh-candidate-${{ inputs.ref || github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build candidate with current Environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Resolve and verify candidate
+        id: candidate
+        run: |
+          result="$(node container/platform/tools/supported-target.mjs validate \
+            release/supported-target.json container/platform/environment/definition.json)"
+          version="$(jq -er '.target.latestSupportedDsh' <<<"$result")"
+          environment="$(jq -er '.target.environment' <<<"$result")"
+          registry_version="$(npm view "@deepseek-ai/dsh@${version}" version --json | jq -er 'if type == "string" then . else error("expected one version") end')"
+          test "$registry_version" = "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'environment=%s\n' "$environment" >> "$GITHUB_OUTPUT"
+          {
+            printf '### Candidate Runtime\n\n'
+            printf -- '- DSH: `%s`\n' "$version"
+            printf -- '- Environment: `%s`\n' "$environment"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify upstream npm Artifact integrity
+        env:
+          DSH_VERSION: ${{ steps.candidate.outputs.version }}
+        run: |
+          mkdir "$RUNNER_TEMP/dsh-package"
+          expected="$(npm view "@deepseek-ai/dsh@${DSH_VERSION}" dist.integrity --json | jq -er 'if type == "string" and startswith("sha512-") then . else error("missing SHA-512 integrity") end')"
+          npm pack "@deepseek-ai/dsh@${DSH_VERSION}" --pack-destination "$RUNNER_TEMP/dsh-package" >/dev/null
+          tarball="$(find "$RUNNER_TEMP/dsh-package" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w 0)"
+          test "$actual" = "$expected"
+
+      - name: Run static compatibility checks
+        run: |
+          npm test --prefix container/gateway
+          npm test --prefix container/platform
+          node container/test/compose-config.mjs
+          sh -n container/test/container-smoke.sh
+          sh -n container/test/devtools-smoke.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build candidate smoke image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          platforms: linux/amd64
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.candidate.outputs.version }}
+          tags: dsh-candidate:${{ github.run_id }}
+          cache-from: type=gha,scope=dsh-candidate
+          cache-to: type=gha,mode=max,scope=dsh-candidate
+
+      - name: Run candidate container smoke checks
+        run: container/test/container-smoke.sh "dsh-candidate:${{ github.run_id }}"
+
+      - name: Build candidate devtools image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          platforms: linux/amd64
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.candidate.outputs.version }}
+            INSTALL_DEVTOOLS=true
+          tags: dsh-candidate-devtools:${{ github.run_id }}
+          cache-from: type=gha,scope=dsh-candidate-devtools
+          cache-to: type=gha,mode=max,scope=dsh-candidate-devtools
+
+      - name: Run candidate devtools smoke checks
+        run: container/test/devtools-smoke.sh "dsh-candidate-devtools:${{ github.run_id }}"
