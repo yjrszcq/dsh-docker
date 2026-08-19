@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { join } from 'node:path'
+import { replaceRuntimeView } from '../../lib/paths.mjs'
 
 function timeout(milliseconds, message) {
   return new Promise((_, reject) => {
@@ -28,6 +29,7 @@ export class BootstrapSupervisor {
     slots,
     dataRoot,
     runRoot = '/run/dsh-platform',
+    paths,
     node = process.execPath,
     entrypoint = 'index.mjs',
     readyTimeoutMs = 30_000,
@@ -38,6 +40,7 @@ export class BootstrapSupervisor {
     this.slots = slots
     this.dataRoot = dataRoot
     this.runRoot = runRoot
+    this.paths = paths
     this.node = node
     this.entrypoint = entrypoint
     this.readyTimeoutMs = readyTimeoutMs
@@ -48,13 +51,15 @@ export class BootstrapSupervisor {
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
-  async launch(version) {
-    const child = this.spawnImpl(this.node, [join(this.slots.versionPath(version), this.entrypoint)], {
+  async launch(recordId) {
+    const resolved = await this.slots.resolveRecord(recordId)
+    if (this.paths !== undefined) await replaceRuntimeView(this.paths, 'bootstrap', resolved.path)
+    const child = this.spawnImpl(this.node, [join(resolved.path, this.entrypoint)], {
       env: {
         ...process.env,
         DSH_PLATFORM_DATA: this.dataRoot,
         DSH_PLATFORM_RUN: this.runRoot,
-        DSH_BOOTSTRAP_VERSION: version,
+        DSH_BOOTSTRAP_VERSION: resolved.record.version,
       },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       uid: this.uid,
@@ -87,11 +92,11 @@ export class BootstrapSupervisor {
 
   async startWithRollback() {
     const state = await this.slots.state()
-    if (state.current === undefined) throw new Error('no current Bootstrap is installed')
+    if (state.current === null) throw new Error('no current Bootstrap is installed')
     try {
       return await this.launch(state.current)
     } catch (candidateError) {
-      if (state.previous === undefined) throw candidateError
+      if (state.previous === null) throw candidateError
       await this.slots.rollback()
       try {
         return await this.launch(state.previous)

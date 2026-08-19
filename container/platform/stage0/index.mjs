@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TrustLedger } from './lib/ledger.mjs'
 import { VerifiedObjectStore } from './lib/artifacts.mjs'
-import { BootstrapSlots } from './lib/slots.mjs'
+import { BootstrapManager } from './lib/slots.mjs'
 import { BootstrapSupervisor } from './lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from './lib/trust-server.mjs'
 import { provisionPlatformSeed } from './lib/seed.mjs'
@@ -14,12 +14,14 @@ import {
   replaceRuntimeView,
   resetRuntimeLayout,
 } from '../lib/paths.mjs'
+import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 const paths = new PlatformPaths(dataRoot, runRoot)
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
-const bootstrapVersion = (await readFile(join(seedRoot, 'bootstrap', 'VERSION'), 'utf8')).trim()
+const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
+const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
 await preparePersistentLayout(paths)
 await resetRuntimeLayout(paths)
@@ -30,11 +32,17 @@ const objects = new VerifiedObjectStore({
   untrustedRoot: paths.downloadsRoot,
   ledger,
 })
-const slots = new BootstrapSlots(paths.bootstrapStateRoot)
-await slots.provisionSeed(join(seedRoot, 'bootstrap', bootstrapVersion), bootstrapVersion)
 await provisionPlatformSeed(seedRoot, paths)
+const slots = new BootstrapManager({
+  stateRoot: paths.bootstrapStateRoot,
+  storeRoot: paths.bootstrapStoreRoot,
+  seedRoot,
+  inventory,
+})
+await slots.reconcileImage(imageRecords.bootstrap)
+const currentBootstrap = await slots.current()
 await Promise.all([
-  replaceRuntimeView(paths, 'bootstrap', join(paths.bootstrapStateRoot, 'current')),
+  replaceRuntimeView(paths, 'bootstrap', currentBootstrap.path),
   replaceRuntimeView(paths, 'environment', join(paths.environmentsRoot, 'current')),
   replaceRuntimeView(paths, 'runtime', join(paths.runtimesRoot, 'current')),
   replaceRuntimeView(paths, 'system-plugins', join(paths.systemPluginsRoot, 'current')),
@@ -46,6 +54,7 @@ const supervisor = new BootstrapSupervisor({
   slots,
   dataRoot,
   runRoot,
+  paths,
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
   entrypoint: 'platform/bootstrap/index.mjs',
@@ -55,8 +64,11 @@ const trustServer = createTrustServer({
   objects,
   stageBootstrap: async (receipt, version) => {
     const packageObject = await objects.bootstrapPackage(receipt, version)
-    await slots.installArchive(packageObject.path, version)
-    await slots.promote(version)
+    const record = await slots.installArchive(packageObject.path, {
+      version,
+      targetSequence: packageObject.receipt.targetSequence,
+    })
+    await slots.promote(record.id)
     setImmediate(() => { void supervisor.restart().catch(error => console.error(error)) })
   },
 })

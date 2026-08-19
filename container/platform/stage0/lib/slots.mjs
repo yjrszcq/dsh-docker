@@ -1,31 +1,18 @@
-import { lstat, mkdir, readlink, rename, rm, stat, symlink } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { canonicalJson } from '../../lib/canonical-json.mjs'
+import { deriveRecordId, parseBootstrapRecord, parseSlots } from '../../lib/deployment-contracts.mjs'
+import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
+import { hashTree } from '../../lib/tree-hash.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 
-function validVersion(version) {
-  if (typeof version !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(version)) {
-    throw new TrustError('Bootstrap version is invalid')
-  }
-  return version
-}
-
-async function optionalLink(path) {
-  try {
-    const details = await lstat(path)
-    if (!details.isSymbolicLink()) throw new TrustError(`${path} must be a symbolic link`)
-    return basename(await readlink(path))
-  } catch (error) {
+async function readOptional(path) {
+  try { return await readFile(path) } catch (error) {
     if (error?.code === 'ENOENT') return undefined
     throw error
   }
-}
-
-async function replaceLink(root, name, version) {
-  const temporary = join(root, `.${name}.${randomUUID()}.tmp`)
-  await symlink(join('versions', validVersion(version)), temporary)
-  await rename(temporary, join(root, name))
 }
 
 function tar(args, capture = false) {
@@ -42,98 +29,156 @@ function tar(args, capture = false) {
   })
 }
 
-export class BootstrapSlots {
-  constructor(root) {
-    this.root = resolve(root)
+function recordDocument(content) {
+  return parseBootstrapRecord({ ...content, id: deriveRecordId('bootstrap-record', content) })
+}
+
+export class BootstrapManager {
+  constructor({ stateRoot, storeRoot, seedRoot, inventory }) {
+    this.stateRoot = resolve(stateRoot)
+    this.storeRoot = resolve(storeRoot)
+    this.seedRoot = resolve(seedRoot)
+    this.inventory = inventory
+    this.recordsRoot = join(this.stateRoot, 'records')
+    this.slotsPath = join(this.stateRoot, 'slots.json')
+    this.queue = Promise.resolve()
   }
 
-  versionPath(version) {
-    return join(this.root, 'versions', validVersion(version))
+  exclusive(operation) {
+    const result = this.queue.then(operation, operation)
+    this.queue = result.then(() => undefined, () => undefined)
+    return result
   }
 
-  async provisionSeed(seedPath, version) {
-    const destination = this.versionPath(version)
-    await mkdir(join(this.root, 'versions'), { recursive: true })
-    const source = resolve(seedPath)
-    const sourceDetails = await lstat(source)
-    if (!sourceDetails.isDirectory() || sourceDetails.isSymbolicLink()) {
-      throw new TrustError('Bootstrap seed source must be a directory')
-    }
-    try {
-      const details = await lstat(destination)
-      if (details.isSymbolicLink()) {
-        const resolved = await stat(destination).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
-        if (!resolved) {
-          const temporary = `${destination}.${randomUUID()}.tmp`
-          await symlink(source, temporary, 'dir')
-          await rename(temporary, destination)
-        }
-      }
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error
-      await symlink(source, destination, 'dir')
-    }
-    const currentPath = join(this.root, 'current')
-    const current = await optionalLink(currentPath)
-    const currentResolves = current === undefined
-      ? false
-      : await stat(currentPath).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
-    if (!currentResolves) {
-      await replaceLink(this.root, 'current', version)
-    }
-    return destination
+  recordPath(id) {
+    return join(this.recordsRoot, `${id}.json`)
+  }
+
+  async writeRecord(value) {
+    const record = parseBootstrapRecord(value)
+    const bytes = canonicalJson(record)
+    const path = this.recordPath(record.id)
+    const existing = await readOptional(path)
+    if (existing === undefined) await durableCreate(path, bytes)
+    else if (!existing.equals(bytes)) throw new TrustError('Bootstrap Record ID identifies conflicting content')
+    return record
+  }
+
+  async record(id) {
+    const bytes = await readOptional(this.recordPath(id))
+    if (bytes === undefined) throw new TrustError(`Bootstrap Record ${id} does not exist`)
+    return parseBootstrapRecord(bytes)
   }
 
   async state() {
-    return Object.freeze({
-      current: await optionalLink(join(this.root, 'current')),
-      previous: await optionalLink(join(this.root, 'previous')),
+    const bytes = await readOptional(this.slotsPath)
+    if (bytes === undefined) return Object.freeze({ generation: 0, current: null, previous: null })
+    return parseSlots(bytes, 'bootstrap-record', 'Bootstrap slots')
+  }
+
+  async commit(current, previous) {
+    const state = await this.state()
+    if (current === previous) previous = null
+    const slots = parseSlots({
+      schema: 1,
+      generation: state.generation + 1,
+      current,
+      previous,
+    }, 'bootstrap-record', 'Bootstrap slots')
+    await durableReplace(this.slotsPath, canonicalJson(slots))
+    return slots
+  }
+
+  async reconcileImage(record) {
+    return this.exclusive(async () => {
+      const image = await this.writeRecord(record)
+      const state = await this.state()
+      if (state.current === null) return this.commit(image.id, null)
+      const current = await this.record(state.current)
+      if (current.targetSequence > image.targetSequence) return state
+      if (current.targetSequence < image.targetSequence) return this.commit(image.id, state.current)
+      if (current.version !== image.version || current.artifact.sha256 !== image.artifact.sha256) {
+        throw new TrustError('Bootstrap image conflicts with current content at the same targetSequence')
+      }
+      if (current.id === image.id) return state
+      return this.commit(image.id, state.current)
     })
   }
 
-  async promote(version) {
-    const state = await this.state()
-    if (state.current === version) return state
-    await lstat(this.versionPath(version))
-    if (state.current !== undefined) await replaceLink(this.root, 'previous', state.current)
-    await replaceLink(this.root, 'current', version)
-    return this.state()
+  async promote(recordId) {
+    return this.exclusive(async () => {
+      await this.record(recordId)
+      const state = await this.state()
+      if (state.current === recordId) return state
+      return this.commit(recordId, state.current)
+    })
   }
 
   async rollback() {
-    const state = await this.state()
-    if (state.previous === undefined) throw new TrustError('no previous Bootstrap exists')
-    await replaceLink(this.root, 'current', state.previous)
-    if (state.current !== undefined) await replaceLink(this.root, 'previous', state.current)
-    return this.state()
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.previous === null) throw new TrustError('no previous Bootstrap exists')
+      await this.record(state.previous)
+      return this.commit(state.previous, state.current)
+    })
   }
 
-  async discard(version) {
-    const state = await this.state()
-    if (state.current === version || state.previous === version) throw new TrustError('cannot discard an active Bootstrap')
-    await rm(this.versionPath(version), { recursive: true, force: true })
+  async resolveRecord(recordId) {
+    const record = await this.record(recordId)
+    const reference = record.artifact
+    let path
+    if (reference.storage === 'image') {
+      if (reference.imageBuildId !== this.inventory.imageBuildId) {
+        throw new TrustError('Bootstrap Image Reference belongs to a different image')
+      }
+      if (reference.id !== this.inventory.bootstrap.id || reference.sha256 !== this.inventory.bootstrap.sha256) {
+        throw new TrustError('Bootstrap Image Reference is absent from inventory')
+      }
+      path = join(this.seedRoot, 'bootstrap', reference.id)
+    } else {
+      path = join(this.storeRoot, reference.id)
+    }
+    const details = await lstat(path)
+    if (!details.isDirectory() || details.isSymbolicLink()) throw new TrustError('resolved Bootstrap must be an immutable directory')
+    if (await hashTree(path) !== reference.sha256) throw new TrustError('resolved Bootstrap content hash differs from its Record')
+    return Object.freeze({ record, path })
   }
 
-  async installArchive(archive, version) {
-    const destination = this.versionPath(version)
-    if (await lstat(destination).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))) return destination
-    const temporary = `${destination}.${randomUUID()}.tmp`
+  async current() {
+    const state = await this.state()
+    if (state.current === null) throw new TrustError('no current Bootstrap exists')
+    return this.resolveRecord(state.current)
+  }
+
+  async installArchive(archive, { version, targetSequence }) {
+    const temporary = join(this.storeRoot, `.${randomUUID()}.tmp`)
     await mkdir(temporary, { recursive: true })
     try {
       const allowed = new Set(['platform', 'control-plane'])
       const entries = (await tar(['-tzf', archive], true)).split('\n').filter(Boolean)
       if (entries.length === 0 || entries.some(name => (
-        name.startsWith('/')
-        || name.split('/').includes('..')
-        || !allowed.has(name.split('/')[0])
+        name.startsWith('/') || name.split('/').includes('..') || !allowed.has(name.split('/')[0])
       ))) throw new TrustError('Bootstrap archive contains an unsafe path')
       await tar(['-xzf', archive, '--no-same-owner', '--no-same-permissions', '-C', temporary])
       await lstat(join(temporary, 'platform', 'bootstrap', 'index.mjs'))
-      await rename(temporary, destination)
-      return destination
-    } catch (error) {
+      const sha256 = await hashTree(temporary)
+      const artifactId = `bootstrap-${sha256}`
+      const destination = join(this.storeRoot, artifactId)
+      try {
+        await rename(temporary, destination)
+      } catch (error) {
+        if (error?.code !== 'EEXIST' && error?.code !== 'ENOTEMPTY') throw error
+        if (await hashTree(destination) !== sha256) throw new TrustError('Bootstrap Store contains conflicting content')
+      }
+      return this.writeRecord(recordDocument({
+        schema: 1,
+        version,
+        bootstrapApi: 1,
+        targetSequence,
+        artifact: { storage: 'store', kind: 'bootstrap', id: artifactId, sha256 },
+      }))
+    } finally {
       await rm(temporary, { recursive: true, force: true })
-      throw error
     }
   }
 }

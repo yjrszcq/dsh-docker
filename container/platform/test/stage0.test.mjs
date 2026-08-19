@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict'
-import { lstat, mkdtemp, mkdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
-import { BootstrapSlots } from '../stage0/lib/slots.mjs'
+import { BootstrapManager } from '../stage0/lib/slots.mjs'
 import { BootstrapSupervisor } from '../stage0/lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { keyPair } from './helpers.mjs'
+import {
+  deriveImageBuildId,
+  deriveRecordId,
+  parseImageInventory,
+  recordsFromImageInventory,
+} from '../lib/deployment-contracts.mjs'
+import { hashTree } from '../lib/tree-hash.mjs'
 
 async function bootstrap(root, version, behavior) {
   const directory = join(root, version)
@@ -19,51 +26,148 @@ async function bootstrap(root, version, behavior) {
   return directory
 }
 
-test('provisions a seed once and atomically tracks current and previous', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-slots-'))
-  const seeds = join(root, 'seeds')
-  await bootstrap(seeds, '1.0.0', 'seed')
-  await bootstrap(seeds, '2.0.0', 'next')
-  const slots = new BootstrapSlots(join(root, 'data'))
-  await slots.provisionSeed(join(seeds, '1.0.0'), '1.0.0')
-  assert.equal((await lstat(slots.versionPath('1.0.0'))).isSymbolicLink(), true)
-  assert.equal(await readlink(slots.versionPath('1.0.0')), join(seeds, '1.0.0'))
-  await slots.provisionSeed(join(seeds, '1.0.0'), '1.0.0')
-  await slots.provisionSeed(join(seeds, '2.0.0'), '2.0.0')
-  await slots.promote('2.0.0')
-  assert.deepEqual(await slots.state(), { current: '2.0.0', previous: '1.0.0' })
-  await slots.rollback()
-  assert.deepEqual(await slots.state(), { current: '1.0.0', previous: '2.0.0' })
+async function imageBootstrap(root, version, sequence, behavior = 'seed', revision = `revision-${String(sequence)}`) {
+  const seedRoot = join(root, `seed-${revision}`)
+  const bootstrapRoot = await bootstrap(join(seedRoot, 'bootstrap'), version, behavior)
+  const bootstrapSha256 = await hashTree(bootstrapRoot)
+  const content = {
+    schema: 1,
+    authority: 'stable',
+    platformRevision: revision,
+    targetSequence: sequence,
+    bootstrapApi: 1,
+    updateApi: 1,
+    bootstrap: { version, id: version, sha256: bootstrapSha256 },
+    deployment: {
+      id: `deployment-${String(sequence)}`,
+      dshVersion: `0.1.0-rc.${String(sequence)}`,
+      environmentVersion: '2026.08.19.1',
+      environment: { id: 'environment', sha256: '1'.repeat(64) },
+      pristine: { id: 'pristine', sha256: '2'.repeat(64) },
+      runtime: { id: 'runtime', sha256: '3'.repeat(64) },
+      systemPlugins: { id: 'system-plugins', sha256: '4'.repeat(64) },
+    },
+  }
+  const inventory = parseImageInventory({ ...content, imageBuildId: deriveImageBuildId(content) })
+  return { seedRoot, inventory, record: recordsFromImageInventory(inventory).bootstrap }
+}
+
+function bootstrapManager(root, image) {
+  return new BootstrapManager({
+    stateRoot: join(root, 'state'),
+    storeRoot: join(root, 'store'),
+    seedRoot: image.seedRoot,
+    inventory: image.inventory,
+  })
+}
+
+async function storeBootstrap(manager, version, sequence, behavior) {
+  const id = `bootstrap-${version}`
+  const path = await bootstrap(manager.storeRoot, id, behavior)
+  const sha256 = await hashTree(path)
+  const content = {
+    schema: 1,
+    version,
+    bootstrapApi: 1,
+    targetSequence: sequence,
+    artifact: { storage: 'store', kind: 'bootstrap', id, sha256 },
+  }
+  return manager.writeRecord({ ...content, id: deriveRecordId('bootstrap-record', content) })
+}
+
+test('tracks immutable Bootstrap Records in one generation-based slots file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-records-'))
+  const image = await imageBootstrap(root, '1.0.0', 1)
+  const manager = bootstrapManager(root, image)
+  await manager.reconcileImage(image.record)
+  const managed = await storeBootstrap(manager, '2.0.0', 2, 'next')
+  await manager.promote(managed.id)
+  let state = await manager.state()
+  assert.equal(state.current, managed.id)
+  assert.equal(state.previous, image.record.id)
+  assert.equal(state.generation, 2)
+  await manager.rollback()
+  state = await manager.state()
+  assert.equal(state.current, image.record.id)
+  assert.equal(state.previous, managed.id)
+  assert.equal(state.generation, 3)
 })
 
-test('repairs a Bootstrap seed link which points into a replaced image', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-replaced-image-'))
-  const seeds = join(root, 'seeds')
-  await bootstrap(seeds, '2.0.0', 'next')
-  const slots = new BootstrapSlots(join(root, 'data'))
-  await mkdir(join(root, 'data/versions'), { recursive: true })
-  await symlink('/missing-old-image/bootstrap', slots.versionPath('1.0.0'))
-  await symlink('versions/1.0.0', join(root, 'data/current'))
+test('advances to a newer image without reinterpreting an old Image Reference', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-forward-'))
+  const first = await imageBootstrap(root, '1.0.0', 1)
+  const initial = bootstrapManager(root, first)
+  await initial.reconcileImage(first.record)
+  const second = await imageBootstrap(root, '1.0.0', 2, 'new-seed')
+  const upgraded = bootstrapManager(root, second)
+  await upgraded.reconcileImage(second.record)
+  const state = await upgraded.state()
+  assert.equal(state.current, second.record.id)
+  assert.equal(state.previous, first.record.id)
+  await assert.rejects(upgraded.resolveRecord(first.record.id), /different image/)
+})
 
-  await slots.provisionSeed(join(seeds, '2.0.0'), '2.0.0')
+test('rejects same-sequence Bootstrap content conflicts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-conflict-'))
+  const first = await imageBootstrap(root, '1.0.0', 1, 'one', 'revision-one')
+  await bootstrapManager(root, first).reconcileImage(first.record)
+  const conflicting = await imageBootstrap(root, '1.0.0', 1, 'two', 'revision-two')
+  await assert.rejects(bootstrapManager(root, conflicting).reconcileImage(conflicting.record), /conflicts/)
+})
 
-  assert.equal(await readlink(slots.versionPath('2.0.0')), join(seeds, '2.0.0'))
-  assert.deepEqual(await slots.state(), { current: '2.0.0', previous: undefined })
+test('preserves a higher Managed Bootstrap when the image is behind', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-behind-'))
+  const first = await imageBootstrap(root, '1.0.0', 1)
+  const initial = bootstrapManager(root, first)
+  await initial.reconcileImage(first.record)
+  const managed = await storeBootstrap(initial, '3.0.0', 3, 'managed')
+  await initial.promote(managed.id)
+
+  const second = await imageBootstrap(root, '2.0.0', 2)
+  const restarted = bootstrapManager(root, second)
+  const state = await restarted.reconcileImage(second.record)
+  assert.equal(state.current, managed.id)
+  assert.equal((await restarted.current()).record.version, '3.0.0')
+})
+
+test('prefers the current image when Store and Image content match at one sequence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-preferred-'))
+  const image = await imageBootstrap(root, '1.0.0', 1)
+  const manager = bootstrapManager(root, image)
+  await manager.reconcileImage(image.record)
+  const storeId = 'bootstrap-identical'
+  await cp(
+    join(image.seedRoot, 'bootstrap', '1.0.0'),
+    join(manager.storeRoot, storeId),
+    { recursive: true },
+  )
+  const content = {
+    schema: 1,
+    version: '1.0.0',
+    bootstrapApi: 1,
+    targetSequence: 1,
+    artifact: { storage: 'store', kind: 'bootstrap', id: storeId, sha256: image.inventory.bootstrap.sha256 },
+  }
+  const managed = await manager.writeRecord({ ...content, id: deriveRecordId('bootstrap-record', content) })
+  await manager.promote(managed.id)
+  const state = await manager.reconcileImage(image.record)
+  assert.equal(state.current, image.record.id)
+  assert.equal(state.previous, managed.id)
 })
 
 test('rolls back when the current Bootstrap exits before readiness', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-supervisor-'))
-  const seeds = join(root, 'seeds')
-  await bootstrap(seeds, '1.0.0', 'process.send({ type: "ready", bootstrapApi: 1 }); setInterval(() => {}, 1000)')
-  await bootstrap(seeds, '2.0.0', 'process.exit(2)')
-  const slots = new BootstrapSlots(join(root, 'data'))
-  await slots.provisionSeed(join(seeds, '1.0.0'), '1.0.0')
-  await slots.provisionSeed(join(seeds, '2.0.0'), '2.0.0')
-  await slots.promote('2.0.0')
+  const image = await imageBootstrap(root, '1.0.0', 1, 'process.send({ type: "ready", bootstrapApi: 1 }); setInterval(() => {}, 1000)')
+  const slots = bootstrapManager(root, image)
+  await slots.reconcileImage(image.record)
+  const candidate = await storeBootstrap(slots, '2.0.0', 2, 'process.exit(2)')
+  await slots.promote(candidate.id)
   const supervisor = new BootstrapSupervisor({ slots, dataRoot: root, readyTimeoutMs: 1_000 })
   const child = await supervisor.startWithRollback()
   assert.equal(child.exitCode, null)
-  assert.deepEqual(await slots.state(), { current: '1.0.0', previous: '2.0.0' })
+  const state = await slots.state()
+  assert.equal(state.current, image.record.id)
+  assert.equal(state.previous, candidate.id)
   await supervisor.stop()
 })
 
@@ -162,16 +266,19 @@ test('official DSH Trust API accepts only a requested version', async () => {
 
 test('Bootstrap archive installation rejects traversal before extraction', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-archive-'))
+  const image = await imageBootstrap(root, '1.0.0', 1)
+  const slots = bootstrapManager(root, image)
+  await slots.reconcileImage(image.record)
   const source = join(root, 'source')
   await mkdir(join(source, 'platform', 'bootstrap'), { recursive: true })
   await writeFile(join(source, 'platform', 'bootstrap', 'index.mjs'), 'process.exit(0)')
   const valid = join(root, 'valid.tgz')
   assert.equal(spawnSync('tar', ['-czf', valid, '-C', source, 'platform']).status, 0)
-  const slots = new BootstrapSlots(join(root, 'slots'))
-  await slots.installArchive(valid, '2.0.0')
-  assert.match(await readFile(join(slots.versionPath('2.0.0'), 'platform', 'bootstrap', 'index.mjs'), 'utf8'), /exit/)
+  const installed = await slots.installArchive(valid, { version: '2.0.0', targetSequence: 2 })
+  const resolved = await slots.resolveRecord(installed.id)
+  assert.match(await readFile(join(resolved.path, 'platform', 'bootstrap', 'index.mjs'), 'utf8'), /exit/)
 
   const unsafe = join(root, 'unsafe.tgz')
   assert.equal(spawnSync('tar', ['-czf', unsafe, '--transform=s,^,../,', '-C', source, 'platform']).status, 0)
-  await assert.rejects(slots.installArchive(unsafe, '3.0.0'), /unsafe path/)
+  await assert.rejects(slots.installArchive(unsafe, { version: '3.0.0', targetSequence: 3 }), /unsafe path/)
 })
