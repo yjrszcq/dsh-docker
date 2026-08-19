@@ -4,8 +4,13 @@ import { dirname } from 'node:path'
 
 async function body(request) {
   const chunks = []
-  for await (const chunk of request) chunks.push(chunk)
-  return chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.byteLength
+    if (size > 16 * 1024) throw new Error('recovery request body is too large')
+    chunks.push(chunk)
+  }
+  return size === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
 function send(response, status, value) {

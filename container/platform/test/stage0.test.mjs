@@ -187,6 +187,22 @@ test('rolls back when the current Bootstrap exits before readiness', async () =>
   await supervisor.stop()
 })
 
+test('rejects an in-flight recovery request when Bootstrap exits', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-recovery-exit-'))
+  const behavior = `
+    process.send({ type: 'ready', bootstrapApi: 1 })
+    process.on('message', () => process.exit(7))
+    setInterval(() => {}, 1000)
+  `
+  const image = await imageBootstrap(root, '1.0.0', 1, behavior)
+  const slots = bootstrapManager(root, image)
+  await slots.reconcileImage(image.record)
+  const supervisor = new BootstrapSupervisor({ slots, dataRoot: root, readyTimeoutMs: 1_000 })
+  await supervisor.startWithRollback()
+  await assert.rejects(supervisor.recoverImageBaseline(), /Bootstrap exited unexpectedly/)
+  assert.equal(supervisor.requests.size, 0)
+})
+
 function unixRequest(socketPath, method, path, body) {
   return new Promise((resolve, reject) => {
     const requestBody = body === undefined ? undefined : Buffer.from(JSON.stringify(body))
@@ -219,6 +235,9 @@ test('root-only recovery server requires the exact current imageBuildId', async 
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/recover-image-baseline', {
       confirm: image.inventory.imageBuildId,
     })).status, 200)
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/recover-image-baseline', {
+      confirm: 'x'.repeat(17 * 1024),
+    })).status, 400)
     assert.equal(recoveries, 1)
   } finally {
     await new Promise(resolve => server.close(resolve))

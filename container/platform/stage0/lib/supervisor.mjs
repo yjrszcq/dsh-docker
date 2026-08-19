@@ -55,6 +55,11 @@ export class BootstrapSupervisor {
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
+  rejectRequests(error) {
+    for (const pending of this.requests.values()) pending.reject(error)
+    this.requests.clear()
+  }
+
   async launch(recordId) {
     const resolved = await this.slots.resolveRecord(recordId)
     if (this.paths !== undefined) await replaceRuntimeView(this.paths, 'bootstrap', resolved.path)
@@ -91,9 +96,11 @@ export class BootstrapSupervisor {
     try {
       await Promise.race([ready, timeout(this.readyTimeoutMs, 'Bootstrap readiness timed out')])
       child.once('exit', (code, signal) => {
-        if (this.child === child) this.resolveFatal(new Error(
-          `Bootstrap exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
-        ))
+        if (this.child === child) {
+          const error = new Error(`Bootstrap exited unexpectedly (code=${String(code)}, signal=${String(signal)})`)
+          this.rejectRequests(error)
+          this.resolveFatal(error)
+        }
       })
       return child
     } catch (error) {
@@ -122,6 +129,7 @@ export class BootstrapSupervisor {
   async restart() {
     const child = this.child
     this.child = undefined
+    this.rejectRequests(new Error('Bootstrap restarted during recovery'))
     if (child !== undefined) await terminateChild(child)
     return this.startWithRollback()
   }
@@ -129,6 +137,7 @@ export class BootstrapSupervisor {
   async stop() {
     const child = this.child
     this.child = undefined
+    this.rejectRequests(new Error('Bootstrap stopped during recovery'))
     if (child !== undefined) await terminateChild(child)
   }
 

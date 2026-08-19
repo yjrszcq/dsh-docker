@@ -94,10 +94,14 @@ docker exec "$container" sh -c '
   dsh-platform status | jq -e ".trust.keyringGeneration == 1 and .platformLayout == 1 and .current.source == \"image\"" >/dev/null
   [ "$(stat -c %a /run/dsh-platform/recovery.sock)" = 600 ]
   [ "$(stat -c %U /run/dsh-platform/recovery.sock)" = root ]
-  ! su node -s /bin/sh -c "curl --silent --unix-socket /run/dsh-platform/recovery.sock http://localhost/v1/status" >/dev/null 2>&1
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
   rg --fixed-strings "exec /run/dsh-platform/views/runtime/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
+if docker exec --user node "$container" curl --silent --unix-socket /run/dsh-platform/recovery.sock \
+  http://localhost/v1/status >/dev/null 2>&1; then
+  echo "node user unexpectedly accessed the Stage-0 recovery socket" >&2
+  exit 1
+fi
 
 docker exec "$container" curl --fail --silent --noproxy '*' \
   http://127.0.0.1:3079/ >/dev/null
