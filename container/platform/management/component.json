@@ -1,7 +1,6 @@
 {
   "schema": 1,
   "id": "platform-management",
-  "version": "1.0.0",
   "type": "service",
   "command": {
     "executable": "/usr/local/bin/node",

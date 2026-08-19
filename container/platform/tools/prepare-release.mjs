@@ -151,7 +151,7 @@ try {
   const bootstrapManifest = canonicalJson({
     schema: 1,
     manifestType: 'bootstrap',
-    version: '1.1.0',
+    version: '1.0.0',
     keyringGeneration: keyring.generation,
     targetSequence,
     issuedAt,
@@ -179,7 +179,7 @@ try {
       ['dsh-tarball', dshDestination, 'application/vnd.npm.package+gzip'],
     ].map(([id, path, mediaType]) => ({ id, path, mediaType })),
     desired: {
-      bootstrap: { version: '1.1.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
+      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
       environment: { version: target.environment, manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: { version: target.latestSupportedDsh, tarballArtifactId: 'dsh-tarball', integrity: dshIntegrity },
     },

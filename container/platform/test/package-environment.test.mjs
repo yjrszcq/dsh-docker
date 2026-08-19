@@ -32,6 +32,9 @@ test('packages the initial Environment deterministically from real resources', a
   ])
   assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
   assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['update-ui'])
+  for (const reference of [...manifest.components, ...manifest.patches, ...manifest.systemPlugins]) {
+    assert.deepEqual(Object.keys(reference).sort(), ['id', 'sha256'])
+  }
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
 })
 
@@ -55,7 +58,8 @@ test('checked-in Component manifests satisfy the public contract', async () => {
     join(containerRoot, 'components', 'updater', 'recovery.component.json'),
   ]) {
     const bytes = await readFile(path)
-    assert.doesNotThrow(() => parseComponentManifest(bytes))
+    const component = parseComponentManifest(bytes)
+    assert.equal(Object.hasOwn(component, 'version'), false)
   }
 })
 

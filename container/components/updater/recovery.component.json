@@ -1,7 +1,6 @@
 {
   "schema": 1,
   "id": "platform-recovery",
-  "version": "1.0.0",
   "type": "oneshot",
   "command": {
     "executable": "/usr/local/bin/node",

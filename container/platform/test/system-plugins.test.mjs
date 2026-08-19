@@ -29,15 +29,15 @@ test('reconciles only declared System Plugins into a separate immutable overlay'
   await writeFile(join(userHome, 'profiles/web/package.json'), '{"dependencies":{"third-party":"1.0.0"}}\n')
   const first = await archive(root, 'update-ui', [{ id: 'dsh-docker.update-ui.host', name: './plugin.mjs' }])
   const second = await archive(root, 'diagnostics', [{ id: 'dsh-docker.diagnostics.host', name: './plugin.mjs' }])
-  const artifacts = new Map([['plugin-update-ui', first], ['plugin-diagnostics', second]])
+  const artifacts = new Map([['update-ui', first], ['diagnostics', second]])
   await reconcileSystemPlugins({
     root: join(root, 'managed'),
     environmentVersion: '2026.08.19.1',
     plugins: [
-      { id: 'update-ui', version: '1.0.0', artifactId: 'plugin-update-ui' },
-      { id: 'diagnostics', version: '1.0.0', artifactId: 'plugin-diagnostics' },
+      { id: 'update-ui', sha256: '1'.repeat(64) },
+      { id: 'diagnostics', sha256: '2'.repeat(64) },
     ],
-    artifactPath: id => artifacts.get(id),
+    artifactPath: reference => artifacts.get(reference.id),
   })
   const overlay = JSON.parse(await readFile(join(root, 'managed/current/cordis.patch.yml'), 'utf8'))
   assert.deepEqual(overlay.map(entry => entry.id), ['dsh-docker.update-ui.host', 'dsh-docker.diagnostics.host'])
@@ -51,7 +51,7 @@ test('rejects a System Plugin which claims another namespace', async () => {
   await assert.rejects(reconcileSystemPlugins({
     root: join(root, 'managed'),
     environmentVersion: 'invalid',
-    plugins: [{ id: 'update-ui', version: '1.0.0', artifactId: 'plugin' }],
+    plugins: [{ id: 'update-ui', sha256: '1'.repeat(64) }],
     artifactPath: () => artifact,
   }), /namespace/)
 })

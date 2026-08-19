@@ -167,7 +167,7 @@ export function parseComponentManifest(bytes) {
   const object = parseJsonDocument(bytes, 'component')
   exactKeys(
     object,
-    ['command', 'environment', 'health', 'id', 'lifecycle', 'logging', 'schema', 'type', 'version'],
+    ['command', 'environment', 'health', 'id', 'lifecycle', 'logging', 'schema', 'type'],
     'component',
   )
   if (object.schema !== 1) throw new TrustError('component.schema must be 1')
@@ -183,7 +183,6 @@ export function parseComponentManifest(bytes) {
   return Object.freeze({
     schema: object.schema,
     id: identifier(object.id, 'component.id'),
-    version: version(object.version, 'component.version'),
     type: object.type,
     command: command(object.command, 'component.command'),
     environment: stringMap(object.environment, 'component.environment'),
@@ -196,15 +195,20 @@ export function parseComponentManifest(bytes) {
   })
 }
 
-function orderedReferences(value, label) {
+function orderedReferences(value, artifacts, label) {
   if (!Array.isArray(value)) throw new TrustError(`${label} must be an array`)
   const result = value.map((entry, index) => {
     const object = plainObject(entry, `${label}[${String(index)}]`)
-    exactKeys(object, ['artifactId', 'id', 'version'], `${label}[${String(index)}]`)
+    exactKeys(object, ['id', 'sha256'], `${label}[${String(index)}]`)
+    if (typeof object.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(object.sha256)) {
+      throw new TrustError(`${label}[${String(index)}].sha256 must be a SHA-256 hex digest`)
+    }
+    if (!artifacts.some(artifact => artifact.sha256 === object.sha256)) {
+      throw new TrustError(`${label}[${String(index)}] references a missing Artifact hash`)
+    }
     return Object.freeze({
       id: identifier(object.id, `${label}[${String(index)}].id`),
-      version: version(object.version, `${label}[${String(index)}].version`),
-      artifactId: identifier(object.artifactId, `${label}[${String(index)}].artifactId`),
+      sha256: object.sha256,
     })
   })
   if (new Set(result.map(item => item.id)).size !== result.length) throw new TrustError(`${label} IDs must be unique`)
@@ -232,10 +236,16 @@ export function parseEnvironmentManifest(bytes) {
   return Object.freeze({
     ...manifest.common,
     bootstrapApi: 1,
-    components: orderedReferences(manifest.object.components, 'environment components'),
-    patches: orderedReferences(manifest.object.patches, 'environment patches'),
-    systemPlugins: orderedReferences(manifest.object.systemPlugins, 'environment systemPlugins'),
+    components: orderedReferences(manifest.object.components, manifest.common.artifacts, 'environment components'),
+    patches: orderedReferences(manifest.object.patches, manifest.common.artifacts, 'environment patches'),
+    systemPlugins: orderedReferences(manifest.object.systemPlugins, manifest.common.artifacts, 'environment systemPlugins'),
   })
+}
+
+export function artifactForReference(manifest, reference) {
+  const artifact = manifest.artifacts.find(candidate => candidate.sha256 === reference.sha256)
+  if (artifact === undefined) throw new TrustError(`resource ${JSON.stringify(reference.id)} references a missing Artifact hash`)
+  return artifact
 }
 
 function parseCommonManifest(bytes, expectedType) {

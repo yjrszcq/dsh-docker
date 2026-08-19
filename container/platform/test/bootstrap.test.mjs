@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -25,10 +26,20 @@ async function environment(components) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-environment-runner-'))
   await mkdir(join(root, 'artifacts'))
   const references = []
+  const artifacts = []
   for (const component of components) {
     const artifactId = `component-${component.id}`
-    await writeFile(join(root, 'artifacts', artifactId), canonicalJson(component))
-    references.push({ id: component.id, version: component.version, artifactId })
+    const bytes = canonicalJson(component)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    await writeFile(join(root, 'artifacts', artifactId), bytes)
+    references.push({ id: component.id, sha256 })
+    artifacts.push({
+      id: artifactId,
+      mediaType: 'application/vnd.dsh-platform.component.v1+json',
+      sha256,
+      size: bytes.byteLength,
+      url: `https://release.example/${artifactId}`,
+    })
   }
   await writeFile(join(root, 'environment.manifest.json'), canonicalJson({
     schema: 1,
@@ -37,7 +48,7 @@ async function environment(components) {
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-19T00:00:00.000Z',
-    artifacts: [],
+    artifacts,
     bootstrapApi: 1,
     components: references,
     patches: [],
@@ -50,7 +61,6 @@ function component(id, script, type = 'oneshot', lifecycle = emptyLifecycle) {
   return {
     schema: 1,
     id,
-    version: '1.0.0',
     type,
     command: command(script),
     environment: {},

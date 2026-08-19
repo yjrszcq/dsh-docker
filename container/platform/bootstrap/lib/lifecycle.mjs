@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { request } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { parseComponentManifest, parseEnvironmentManifest } from '../../lib/contracts.mjs'
+import { artifactForReference, parseComponentManifest, parseEnvironmentManifest } from '../../lib/contracts.mjs'
 
 function delay(milliseconds) {
   return new Promise(resolveDelay => {
@@ -80,8 +80,9 @@ export async function loadEnvironment(root) {
   const manifest = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
   const components = []
   for (const reference of manifest.components) {
-    const component = parseComponentManifest(await readFile(join(environmentRoot, 'artifacts', reference.artifactId)))
-    if (component.id !== reference.id || component.version !== reference.version) {
+    const artifact = artifactForReference(manifest, reference)
+    const component = parseComponentManifest(await readFile(join(environmentRoot, 'artifacts', artifact.id)))
+    if (component.id !== reference.id) {
       throw new Error(`component ${reference.id} differs from the Environment manifest`)
     }
     components.push(component)

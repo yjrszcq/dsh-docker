@@ -1,7 +1,6 @@
 {
   "schema": 1,
   "id": "dsh-runtime",
-  "version": "1.0.0",
   "type": "service",
   "command": {
     "executable": "/data/runtime/current/bin/dsh",

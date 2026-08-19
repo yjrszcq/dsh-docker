@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { buildRuntime, RuntimeSlots } from '../../patch-manager/index.mjs'
 import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
-import { parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
+import { artifactForReference, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
 import { LocalApiClient } from './client.mjs'
 
 function run(command, args) {
@@ -93,7 +93,9 @@ export class PlatformActivator {
         pristineRoot,
         versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
         runtimeId,
-        patchPaths: prepared.environment.manifest.patches.map(item => prepared.paths.get(item.artifactId)),
+        patchPaths: prepared.environment.manifest.patches.map(item => (
+          prepared.paths.get(artifactForReference(prepared.environment.manifest, item).id)
+        )),
       })
     }
     const environmentVersion = await this.stageEnvironment(prepared)
@@ -101,7 +103,7 @@ export class PlatformActivator {
       root: join(this.dataRoot, 'system-plugins'),
       environmentVersion,
       plugins: prepared.environment.manifest.systemPlugins,
-      artifactPath: id => prepared.paths.get(id),
+      artifactPath: reference => prepared.paths.get(artifactForReference(prepared.environment.manifest, reference).id),
     })
     await this.runtimeSlots.promote(runtimeId)
     await this.environmentSlots.promote(environmentVersion)
@@ -173,7 +175,9 @@ export class PlatformActivator {
         pristineRoot: join(root, 'package'),
         versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
         runtimeId,
-        patchPaths: environment.patches.map(item => join(environmentRoot, 'artifacts', item.artifactId)),
+        patchPaths: environment.patches.map(item => (
+          join(environmentRoot, 'artifacts', artifactForReference(environment, item).id)
+        )),
       })
     }
     return Object.freeze({ runtimeId, environmentVersion: environment.version, dshVersion: version })

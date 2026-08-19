@@ -78,19 +78,20 @@ for (const group of groups) {
     }
     if (group === 'components') {
       const component = parseComponentManifest(bytes)
-      if (component.id !== item.id || component.version !== item.version) {
+      if (component.id !== item.id) {
         throw new Error(`component ${item.id} metadata differs from its manifest`)
       }
     }
     if (group !== 'systemPlugins') await cp(source, destination, { errorOnExist: true, force: false })
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
     artifacts.push({
       id: item.artifactId,
       mediaType: item.mediaType,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sha256,
       size: bytes.byteLength,
       url: new URL(layoutArg === 'flat' ? name : `artifacts/${name}`, baseUrl).href,
     })
-    references[group].push({ id: item.id, version: item.version, artifactId: item.artifactId })
+    references[group].push({ id: item.id, sha256 })
   }
 }
 

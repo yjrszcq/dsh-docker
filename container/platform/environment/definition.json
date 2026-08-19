@@ -1,31 +1,27 @@
 {
-  "version": "2026.08.19.4-dev",
+  "version": "2026.08.19.1",
   "bootstrapApi": 1,
   "components": [
     {
       "id": "platform-recovery",
-      "version": "1.0.0",
       "artifactId": "component-platform-recovery",
       "source": "../../components/updater/recovery.component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "dsh-runtime",
-      "version": "1.0.0",
       "artifactId": "component-dsh-runtime",
       "source": "../../components/dsh-runtime/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "platform-management",
-      "version": "1.0.0",
       "artifactId": "component-platform-management",
       "source": "../management/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "gateway",
-      "version": "1.0.0",
       "artifactId": "component-gateway",
       "source": "../../components/gateway/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
@@ -34,14 +30,12 @@
   "patches": [
     {
       "id": "directory-picker",
-      "version": "r1",
       "artifactId": "patch-directory-picker",
       "source": "../../patches/directory-picker.mjs",
       "mediaType": "text/javascript"
     },
     {
       "id": "browser-loopback",
-      "version": "r1",
       "artifactId": "patch-browser-loopback",
       "source": "../../patches/browser-loopback.mjs",
       "mediaType": "text/javascript"
@@ -50,7 +44,6 @@
   "systemPlugins": [
     {
       "id": "update-ui",
-      "version": "1.1.0",
       "artifactId": "system-plugin-update-ui",
       "source": "../../system-plugins/update-ui/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"

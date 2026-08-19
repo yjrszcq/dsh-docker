@@ -60,7 +60,7 @@ export async function reconcileSystemPlugins({ root, environmentVersion, plugins
   try {
     for (const plugin of plugins) {
       const packageRoot = join(staging, 'packages', plugin.id)
-      await extractPackage(artifactPath(plugin.artifactId), packageRoot)
+      await extractPackage(artifactPath(plugin), packageRoot)
       const patch = JSON.parse(await readFile(join(packageRoot, 'cordis.patch.json'), 'utf8'))
       patches.push(...validatePatch(patch, plugin.id))
     }

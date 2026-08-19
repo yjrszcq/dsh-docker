@@ -55,12 +55,24 @@ test('parses a Release-delegated npm Experimental policy while retaining Stable 
 test('parses bootstrap and environment manifests with ordered references', () => {
   const bootstrap = { ...common('bootstrap'), bootstrapApi: 1, entrypoint: '/opt/bootstrap/index.mjs' }
   assert.equal(parseBootstrapManifest(document(bootstrap)).entrypoint, bootstrap.entrypoint)
+  const hashes = {
+    component: '1'.repeat(64),
+    patch: '2'.repeat(64),
+    plugin: '3'.repeat(64),
+  }
   const environment = {
     ...common('environment'),
+    artifacts: Object.entries(hashes).map(([id, sha256]) => ({
+      id,
+      mediaType: 'application/octet-stream',
+      sha256,
+      size: 1,
+      url: `https://release.example/${id}`,
+    })),
     bootstrapApi: 1,
-    components: [{ id: 'gateway', version: '1.0.0', artifactId: 'gateway-component' }],
-    patches: [{ id: 'directory-picker', version: 'r1', artifactId: 'directory-picker-patch' }],
-    systemPlugins: [{ id: 'update-ui', version: '1.0.0', artifactId: 'update-ui-plugin' }],
+    components: [{ id: 'gateway', sha256: hashes.component }],
+    patches: [{ id: 'directory-picker', sha256: hashes.patch }],
+    systemPlugins: [{ id: 'update-ui', sha256: hashes.plugin }],
   }
   assert.equal(parseEnvironmentManifest(document(environment)).components[0].id, 'gateway')
   assert.throws(() => parseEnvironmentManifest(document({ ...environment, components: [...environment.components, environment.components[0]] })), /unique/)
@@ -70,7 +82,6 @@ test('parses service, oneshot, and hook component lifecycle declarations', () =>
   const value = {
     schema: 1,
     id: 'gateway',
-    version: '1.0.0',
     type: 'service',
     command: { executable: '/usr/local/bin/node', args: ['/opt/gateway/index.mjs'], timeoutSeconds: 30 },
     environment: { PLATFORM_SOCKET: '/data/run/platform.sock' },
@@ -79,6 +90,7 @@ test('parses service, oneshot, and hook component lifecycle declarations', () =>
     logging: { stdout: true, stderr: true },
   }
   assert.equal(parseComponentManifest(document(value)).type, 'service')
+  assert.throws(() => parseComponentManifest(document({ ...value, version: '1.0.0' })), /fields/)
   assert.throws(() => parseComponentManifest(document({ ...value, type: 'unknown' })), /type/)
   assert.throws(() => parseComponentManifest(document({ ...value, command: { ...value.command, executable: 'node' } })), /absolute/)
 })

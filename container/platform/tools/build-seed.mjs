@@ -17,7 +17,7 @@ const containerRoot = resolve(platformRoot, '..')
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 
-const bootstrapVersion = '1.1.0'
+const bootstrapVersion = '1.0.0'
 const bootstrapRoot = join(output, 'bootstrap', bootstrapVersion)
 for (const directory of ['bootstrap', 'lib', 'management']) {
   await cp(join(platformRoot, directory), join(bootstrapRoot, 'platform', directory), { recursive: true })
