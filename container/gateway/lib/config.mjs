@@ -1,6 +1,3 @@
-import { constants } from 'node:fs'
-import { access, stat } from 'node:fs/promises'
-import { isAbsolute } from 'node:path'
 import { UsageError } from './errors.mjs'
 
 export function parseBoolean(name, value, fallback) {
@@ -70,21 +67,7 @@ export function parseTrustedHosts(environment = process.env) {
   return Object.freeze({ wildcard: false, authorities: Object.freeze([...unique.values()]) })
 }
 
-export async function validateWorkspace(path) {
-  if (!isAbsolute(path)) throw new UsageError('DSH_DEFAULT_WORKSPACE must be an absolute path')
-  try {
-    const details = await stat(path)
-    if (!details.isDirectory()) throw new UsageError('DSH_DEFAULT_WORKSPACE must name a directory')
-    await access(path, constants.R_OK | constants.X_OK)
-  } catch (error) {
-    if (error instanceof UsageError) throw error
-    throw new UsageError(`DSH_DEFAULT_WORKSPACE is not an accessible directory: ${path}`)
-  }
-  return path
-}
-
 export async function loadConfig(environment = process.env) {
-  const workspace = await validateWorkspace(environment.DSH_DEFAULT_WORKSPACE ?? '/workspace')
   const username = environment.DSH_PROXY_USERNAME ?? ''
   const password = environment.DSH_PROXY_PASSWORD ?? ''
   if (password !== '' && username.includes(':')) {
@@ -95,11 +78,5 @@ export async function loadConfig(environment = process.env) {
     password,
     username,
     polyfill: parseBoolean('DSH_PROXY_POLYFILL', environment.DSH_PROXY_POLYFILL, true),
-    telemetryDisabled: parseBoolean(
-      'DSH_TELEMETRY_DISABLED',
-      environment.DSH_TELEMETRY_DISABLED,
-      true,
-    ),
-    workspace,
   })
 }

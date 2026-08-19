@@ -41,7 +41,9 @@ export function createManagementServer({ coordinator, logs, platformStatus = asy
         })
       } else if (request.method === 'POST' && route === 'update') {
         const task = coordinator.start()
-        task.completion.catch(error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }))
+        void task.completion
+          .catch(error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }))
+          .catch(() => {})
         await logs.audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'POST' && route === 'rollback') {

@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 import {
   loadConfig,
   parseBoolean,
   parseTrustedAuthority,
   parseTrustedHosts,
-  validateWorkspace,
 } from '../lib/config.mjs'
 import { UsageError } from '../lib/errors.mjs'
 
@@ -73,28 +69,19 @@ test('parseTrustedHosts rejects ambiguous configuration', () => {
   assert.throws(() => parseTrustedHosts({ DSH_TRUSTED_HOSTS: '*,a.example' }), UsageError)
 })
 
-test('validateWorkspace accepts directories and rejects invalid targets', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-gateway-test-'))
-  const file = join(directory, 'file')
-  await writeFile(file, 'x')
-  try {
-    assert.equal(await validateWorkspace(directory), directory)
-    const config = await loadConfig({
-      DSH_DEFAULT_WORKSPACE: directory,
-      DSH_PROXY_USERNAME: 'unused',
-      DSH_PROXY_PASSWORD: '',
-    })
-    assert.equal(config.password, '')
-    assert.equal(config.username, 'unused')
-    await assert.rejects(() => loadConfig({
-      DSH_DEFAULT_WORKSPACE: directory,
-      DSH_PROXY_USERNAME: 'invalid:name',
-      DSH_PROXY_PASSWORD: 'secret',
-    }), UsageError)
-    await assert.rejects(() => validateWorkspace('relative'), UsageError)
-    await assert.rejects(() => validateWorkspace(file), UsageError)
-    await assert.rejects(() => validateWorkspace(join(directory, 'missing')), UsageError)
-  } finally {
-    await rm(directory, { recursive: true })
-  }
+test('loadConfig owns only Gateway settings', async () => {
+  const config = await loadConfig({
+    DSH_DEFAULT_WORKSPACE: 'not-a-gateway-setting',
+    DSH_TELEMETRY_DISABLED: 'not-a-gateway-setting',
+    DSH_PROXY_USERNAME: 'unused',
+    DSH_PROXY_PASSWORD: '',
+  })
+  assert.equal(config.password, '')
+  assert.equal(config.username, 'unused')
+  assert.equal(Object.hasOwn(config, 'workspace'), false)
+  assert.equal(Object.hasOwn(config, 'telemetryDisabled'), false)
+  await assert.rejects(() => loadConfig({
+    DSH_PROXY_USERNAME: 'invalid:name',
+    DSH_PROXY_PASSWORD: 'secret',
+  }), UsageError)
 })
