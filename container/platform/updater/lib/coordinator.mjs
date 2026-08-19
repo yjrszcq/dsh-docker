@@ -149,7 +149,7 @@ export class UpdateCoordinator extends EventEmitter {
       transaction = await this.journal.transition('committed')
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Experimental update failed'
+      let message = error instanceof Error ? error.message : 'Experimental update failed'
       transaction = await this.journal?.read().catch(() => transaction)
       if (transaction !== undefined && !['committed', 'rolled-back', 'failed'].includes(transaction.phase)) {
         try {
@@ -165,9 +165,8 @@ export class UpdateCoordinator extends EventEmitter {
             await this.journal.transition('failed', { error: message })
           }
         } catch (rollbackError) {
-          await this.journal.transition('failed', {
-            error: `${message}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : 'unknown error'}`,
-          }).catch(() => {})
+          const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : 'unknown error'
+          message = `${message}; rollback failed: ${rollbackMessage}`
         }
       }
       await this.transition('failed', { taskId, error: message })

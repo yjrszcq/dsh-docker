@@ -13,7 +13,7 @@ import { TargetPreparer } from '../updater/lib/preparer.mjs'
 import { UpdateStateStore } from '../updater/lib/state.mjs'
 import { UpdateJournal } from '../updater/lib/journal.mjs'
 import { NpmRegistryClient } from '../updater/lib/metadata.mjs'
-import { recoverInterruptedUpdate } from '../updater/lib/recovery.mjs'
+import { reconcileRecoveredState, recoverInterruptedUpdate } from '../updater/lib/recovery.mjs'
 import { PlatformActivator } from '../updater/lib/activator.mjs'
 import { keyPair, keyring, signature } from './helpers.mjs'
 
@@ -278,6 +278,17 @@ test('restores exact Runtime and data when Experimental probation fails', async 
   ])
 })
 
+test('keeps restoration resumable when rollback itself is interrupted', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-rollback-interrupted-'))
+  const { coordinator } = experimentalSystem(root, {
+    activator: { health: async () => ({ healthy: false }) },
+    snapshots: { restore: async () => { throw new Error('restore interrupted') } },
+  })
+  await assert.rejects(coordinator.startExperimental().completion, /probation/)
+  assert.equal((await coordinator.journal.read()).phase, 'restoring-data')
+  assert.match((await coordinator.state.read()).error, /rollback failed: restore interrupted/)
+})
+
 test('restores an interrupted Experimental transaction before DSH starts', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-boot-recovery-'))
   const journal = new UpdateJournal(join(root, 'state', 'transaction.json'))
@@ -333,6 +344,34 @@ test('marks a pre-switch interruption failed without touching DSH during boot', 
   })
   assert.deepEqual(calls, [])
   assert.equal((await journal.read()).phase, 'failed')
+})
+
+test('reconciles a committed journal with a state write interrupted after activation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-state-recovery-'))
+  const journal = new UpdateJournal(join(root, 'state', 'transaction.json'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  await journal.begin({
+    transactionId: 'task-a', mode: 'experimental',
+    from: {
+      dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a',
+      dataSnapshot: null, receiptTokens: ['stable-receipt'],
+    },
+    to: { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-b' },
+  })
+  await journal.transition('candidate-ready', { receiptTokens: ['experimental-receipt'] })
+  await journal.transition('suspended')
+  await journal.transition('snapshot-created', { snapshotId: 'snapshot-a' })
+  await journal.transition('switched')
+  await journal.transition('probation', { probationUntil: '2026-08-19T00:02:00.000Z' })
+  await journal.transition('committed')
+  await state.write('probation', { taskId: 'task-a', progress: 85 })
+  const recovered = await reconcileRecoveredState({ journal, state })
+  assert.equal(recovered.persisted.status, 'success')
+  assert.equal(recovered.persisted.progress, 100)
+
+  await state.write('downloading', { taskId: 'stable-task', progress: 10 })
+  const unrelated = await reconcileRecoveredState({ journal, state })
+  assert.equal(unrelated.persisted.status, 'downloading')
 })
 
 test('replaces the prior Experimental authority while retaining Stable deployment receipts', async () => {

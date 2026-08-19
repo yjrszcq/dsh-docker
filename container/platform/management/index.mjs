@@ -12,6 +12,7 @@ import { UpdateStateStore } from '../updater/lib/state.mjs'
 import { PlatformActivator } from '../updater/lib/activator.mjs'
 import { UpdateJournal } from '../updater/lib/journal.mjs'
 import { PersistentStateSnapshots } from '../updater/lib/snapshots.mjs'
+import { reconcileRecoveredState } from '../updater/lib/recovery.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
@@ -53,9 +54,9 @@ const scheduler = new UpdateScheduler({
   intervalSeconds: Number(process.env.DSH_UPDATE_CHECK_INTERVAL_SECONDS ?? 21600),
 })
 scheduler.start()
-const persisted = await coordinator.state.read()
-const transaction = await journal.read()
-if (transaction === undefined && !['idle', 'success', 'failed'].includes(persisted.status)) {
+const { transaction, persisted } = await reconcileRecoveredState({ journal, state: coordinator.state })
+const journalOwnsState = transaction !== undefined && persisted.taskId === transaction.transactionId
+if (!journalOwnsState && !['idle', 'success', 'failed'].includes(persisted.status)) {
   setImmediate(() => {
     try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
   })

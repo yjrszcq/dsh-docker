@@ -19,3 +19,20 @@ export async function recoverInterruptedUpdate({ journal, snapshots, activator, 
   if (resume) await activator.resumeDsh()
   return journal.transition('rolled-back', { error: 'recovered interrupted update' })
 }
+
+export async function reconcileRecoveredState({ journal, state }) {
+  const [transaction, persisted] = await Promise.all([journal.read(), state.read()])
+  const sameTask = transaction !== undefined && persisted.taskId === transaction.transactionId
+  if (sameTask && !['idle', 'success', 'failed'].includes(persisted.status)) {
+    if (transaction.phase === 'committed') {
+      return { transaction, persisted: await state.write('success', { progress: 100, error: null }) }
+    }
+    if (['rolled-back', 'failed'].includes(transaction.phase)) {
+      return {
+        transaction,
+        persisted: await state.write('failed', { error: transaction.error ?? 'interrupted update was not committed' }),
+      }
+    }
+  }
+  return { transaction, persisted }
+}
