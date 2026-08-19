@@ -124,7 +124,8 @@ jobs:
           printf '%s\n' "$RELEASE_PRIVATE_KEY" > "$private_key"
           tag="platform-${TARGET_SEQUENCE}"
           artifact_base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/"
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          export SOURCE_DATE_EPOCH
           node container/platform/tools/prepare-release.mjs \
             release/supported-target.json \
             container/environment/definition.json \
@@ -149,6 +150,7 @@ jobs:
         run: |
           tag="platform-${TARGET_SEQUENCE}"
           notes="$RUNNER_TEMP/platform-release-notes.md"
+          # shellcheck disable=SC2016
           {
             printf 'Latest Supported DSH: `%s`\n\n' "$DSH_VERSION"
             printf 'Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
@@ -179,6 +181,7 @@ jobs:
             --title "DSH Platform ${TARGET_SEQUENCE}" \
             --notes-file "$notes"
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
           printf 'Published `%s` as the Latest Supported metadata release.\n' "$tag" >> "$GITHUB_STEP_SUMMARY"
 
   notify-published:

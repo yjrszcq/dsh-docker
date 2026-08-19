@@ -8,8 +8,8 @@ function render(overrides = {}) {
     ...process.env,
     DSH_DEFAULT_WORKSPACE: '/workspace',
     DSH_IMAGE_TAG: 'latest',
-    DSH_LISTEN_ADDRESS: '127.0.0.1',
-    DSH_PORT: '3080',
+    DSH_LISTEN_ADDRESS: '0.0.0.0',
+    DSH_PORT: '3000',
     DSH_PROXY_USERNAME: '',
     DSH_PROXY_PASSWORD: '',
     DSH_PROXY_POLYFILL: 'true',
@@ -34,8 +34,10 @@ function render(overrides = {}) {
 }
 
 const defaults = render()
-assert.equal(defaults.ports[0].host_ip, '127.0.0.1')
-assert.equal(defaults.ports[0].published, '3080')
+assert.equal(defaults.image, 'dsh-docker:test')
+assert.equal(defaults.container_name, 'dsh-test')
+assert.equal(defaults.ports[0].host_ip, '0.0.0.0')
+assert.equal(defaults.ports[0].published, '3000')
 assert.equal(defaults.environment.DSH_PROXY_USERNAME, '')
 assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
 assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')

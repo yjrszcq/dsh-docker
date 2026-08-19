@@ -83,11 +83,14 @@ jobs:
             "$SUPPORTED_TARGET" "$ENVIRONMENT_DEFINITION" "$UPSTREAM_VERSION")"
           changed="$(jq -er '.changed' <<<"$result")"
           environment="$(jq -er '.target.environment' <<<"$result")"
-          printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
-          printf 'current=%s\n' "$current" >> "$GITHUB_OUTPUT"
-          printf 'upstream=%s\n' "$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
-          printf 'environment=%s\n' "$environment" >> "$GITHUB_OUTPUT"
-          printf 'replace_closed=%s\n' "$replace_closed" >> "$GITHUB_OUTPUT"
+          {
+            printf 'changed=%s\n' "$changed"
+            printf 'current=%s\n' "$current"
+            printf 'upstream=%s\n' "$UPSTREAM_VERSION"
+            printf 'environment=%s\n' "$environment"
+            printf 'replace_closed=%s\n' "$replace_closed"
+          } >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
           {
             printf '### DSH upstream discovery\n\n'
             printf -- '- Latest Supported: `%s`\n' "$current"
@@ -115,6 +118,7 @@ jobs:
           fi
 
           body="$RUNNER_TEMP/dsh-candidate-pr.md"
+          # shellcheck disable=SC2016
           {
             printf '## DSH candidate validation\n\n'
             printf '| State | Version |\n|---|---|\n'
@@ -138,9 +142,11 @@ jobs:
               --body-file "$body"
             pr_url="$(gh pr view "$pr_number" --json url --jq .url)"
           fi
-          printf 'pull_request_url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
-          printf 'pull_request_number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
-          printf 'head_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            printf 'pull_request_url=%s\n' "$pr_url"
+            printf 'pull_request_number=%s\n' "$pr_number"
+            printf 'head_sha=%s\n' "$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
           printf 'Candidate PR: %s\n' "$pr_url" >> "$GITHUB_STEP_SUMMARY"
 
   validate-candidate:

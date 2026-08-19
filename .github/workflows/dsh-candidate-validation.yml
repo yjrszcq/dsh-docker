@@ -52,6 +52,7 @@ jobs:
           test "$registry_version" = "$version"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           printf 'environment=%s\n' "$environment" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
           {
             printf '### Candidate Runtime\n\n'
             printf -- '- DSH: `%s`\n' "$version"
