@@ -48,8 +48,13 @@ docker run --detach --name "$container" \
   "$image" >/dev/null
 
 startup_one="$(wait_platform_ready)"
-docker logs "$container" 2>&1 \
-  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform ready"' >/dev/null
+attempt=0
+until docker logs "$container" 2>&1 \
+  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform ready"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.2
+done
 
 docker exec "$container" sh -c '
   command -v python3 >/dev/null
