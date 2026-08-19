@@ -40,7 +40,7 @@ export function keyring(generation, current, next, revokedKeyIds = []) {
 
 export function target(generation, sequence) {
   const emptyHash = '0'.repeat(64)
-  const artifacts = ['bootstrap-manifest', 'environment-manifest', 'dsh-tarball'].map(id => ({
+  const artifacts = ['bootstrap-manifest', 'bootstrap-signature', 'environment-manifest', 'environment-signature', 'dsh-tarball'].map(id => ({
     id,
     mediaType: 'application/octet-stream',
     sha256: emptyHash,
@@ -55,8 +55,8 @@ export function target(generation, sequence) {
     issuedAt: new Date(Date.UTC(2026, 7, 19, 1, 0, sequence)).toISOString(),
     artifacts,
     desired: {
-      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest' },
-      environment: { version: '2026.08.19.1', manifestArtifactId: 'environment-manifest' },
+      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
+      environment: { version: '2026.08.19.1', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: {
         version: '0.1.0-rc.7',
         tarballArtifactId: 'dsh-tarball',

@@ -17,10 +17,14 @@ function version(value, label) {
 
 function exactReference(value, label) {
   const object = plainObject(value, label)
-  exactKeys(object, ['manifestArtifactId', 'version'], label)
+  exactKeys(object, ['manifestArtifactId', 'signatureArtifactId', 'version'], label)
+  const manifestArtifactId = identifier(object.manifestArtifactId, `${label}.manifestArtifactId`)
+  const signatureArtifactId = identifier(object.signatureArtifactId, `${label}.signatureArtifactId`)
+  if (manifestArtifactId === signatureArtifactId) throw new TrustError(`${label} manifest and signature Artifacts must differ`)
   return Object.freeze({
     version: version(object.version, `${label}.version`),
-    manifestArtifactId: identifier(object.manifestArtifactId, `${label}.manifestArtifactId`),
+    manifestArtifactId,
+    signatureArtifactId,
   })
 }
 
@@ -57,7 +61,9 @@ export function parseStable(bytes) {
   const artifactIds = new Set(artifacts.map(artifact => artifact.id))
   for (const artifactId of [
     parsedDesired.bootstrap.manifestArtifactId,
+    parsedDesired.bootstrap.signatureArtifactId,
     parsedDesired.environment.manifestArtifactId,
+    parsedDesired.environment.signatureArtifactId,
     parsedDesired.dsh.tarballArtifactId,
   ]) {
     if (!artifactIds.has(artifactId)) throw new TrustError(`stable desired Artifact ${JSON.stringify(artifactId)} is missing`)

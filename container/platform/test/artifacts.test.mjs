@@ -20,16 +20,20 @@ function descriptor(id, content, mediaType = 'application/octet-stream') {
 
 function releaseTarget(generation, sequence, artifacts) {
   const selected = artifacts[0]
+  const signatureArtifact = descriptor('stable-signature', Buffer.from('signature'), 'application/vnd.dsh-platform.signature.v1+json')
+  const targetArtifacts = artifacts.some(artifact => artifact.id === signatureArtifact.id)
+    ? artifacts
+    : [...artifacts, signatureArtifact]
   return {
     schema: 1,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
     issuedAt: '2026-08-19T00:00:00.000Z',
-    artifacts,
+    artifacts: targetArtifacts,
     desired: {
-      bootstrap: { version: '1.0.0', manifestArtifactId: selected.id },
-      environment: { version: '2026.08.19.1', manifestArtifactId: selected.id },
+      bootstrap: { version: '1.0.0', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
+      environment: { version: '2026.08.19.1', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
       dsh: {
         version: '0.1.0-rc.7',
         tarballArtifactId: selected.id,
