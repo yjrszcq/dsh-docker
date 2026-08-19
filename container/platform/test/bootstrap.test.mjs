@@ -273,3 +273,24 @@ test('retries a previous Deployment without restarting the Control Plane', async
     'environment:start:2',
   ])
 })
+
+test('keeps the Control Plane alive in recovery mode when no Deployment starts', async () => {
+  const calls = []
+  const controlPlane = {
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push('control:start') },
+    stop: async () => { calls.push('control:stop') },
+    status: () => ({ components: [{ id: 'gateway' }] }),
+  }
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    start: async () => { throw new Error('Runtime missing') },
+    stop: async () => {},
+    status: () => ({ environmentVersion: null, components: [] }),
+  }
+  const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
+  await runtime.start({ allowRecovery: true, onEnvironmentFailure: async () => false })
+  assert.equal(runtime.status().recoveryMode, 'Runtime missing')
+  assert.deepEqual(runtime.status().controlPlane, [{ id: 'gateway' }])
+  assert.deepEqual(calls, ['control:start'])
+})

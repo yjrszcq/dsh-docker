@@ -91,7 +91,7 @@ export function createManagementServer({
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {
-        send(response, 200, { ...(await platformStatus()), ...(await coordinator.publicStatus()) })
+        send(response, 200, { ...(await coordinator.publicStatus()), ...(await platformStatus()) })
       } else if (request.method === 'POST' && route === 'check') {
         const target = await coordinator.check()
         send(response, 200, {

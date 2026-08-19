@@ -16,6 +16,7 @@ import { reconcileRecoveredState } from '../../modules/updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
+import { readDeploymentStatus } from '../../../platform/lib/deployment-status.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -54,7 +55,10 @@ const coordinator = new UpdateCoordinator({
 const server = createManagementServer({
   coordinator,
   logs,
-  platformStatus: async () => ({ trust: await trust.status() }),
+  platformStatus: async () => ({
+    ...await readDeploymentStatus(paths.deploymentStatusPath),
+    trust: await trust.status(),
+  }),
 })
 await listenManagement(server, paths.managementSocket)
 const scheduler = new UpdateScheduler({

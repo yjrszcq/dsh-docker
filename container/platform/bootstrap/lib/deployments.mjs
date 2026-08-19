@@ -7,6 +7,7 @@ import {
   parseSlots,
 } from '../../lib/deployment-contracts.mjs'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
+import { writeDeploymentStatus } from '../../lib/deployment-status.mjs'
 import { replaceDeploymentView } from '../../lib/paths.mjs'
 import { hashTree } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
@@ -274,5 +275,38 @@ export class DeploymentManager {
       }
       return this.commit(state.previous, state.current)
     })
+  }
+
+  describe(record) {
+    const references = [record.environment, record.pristine, record.runtime, record.systemPlugins]
+    return Object.freeze({
+      recordId: record.id,
+      source: references.every(reference => reference.storage === 'image') ? 'image' : 'managed',
+      authority: record.authority,
+      targetSequence: record.targetSequence,
+      dsh: record.dshVersion,
+      environment: record.environmentVersion,
+    })
+  }
+
+  async publishStatus({ plan = null, recoveryMode = null, currentId } = {}) {
+    const state = await this.state().catch(() => ({ current: null }))
+    const selectedId = currentId === undefined ? state.current : currentId
+    const current = selectedId === null
+      ? null
+      : await this.record(selectedId).then(record => this.describe(record), () => null)
+    const value = Object.freeze({
+      platformLayout: 1,
+      imageBaseline: Object.freeze({
+        imageBuildId: this.inventory.imageBuildId,
+        targetSequence: this.inventory.targetSequence,
+        dsh: this.inventory.deployment.dshVersion,
+        environment: this.inventory.deployment.environmentVersion,
+      }),
+      current,
+      imageBehindCurrent: plan?.imageBehindCurrent ?? false,
+      recoveryMode,
+    })
+    return writeDeploymentStatus(this.paths.deploymentStatusPath, value)
   }
 }

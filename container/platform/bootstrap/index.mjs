@@ -17,7 +17,20 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
-const imagePlan = await deployments.prepareImage(imageRecords.deployment)
+let imagePlan
+let planningError = null
+try {
+  imagePlan = await deployments.prepareImage(imageRecords.deployment)
+  await deployments.publishStatus({ plan: imagePlan, currentId: imagePlan.target })
+} catch (error) {
+  planningError = error
+  await deployments.publishStatus({
+    recoveryMode: {
+      reason: error instanceof Error ? error.message : 'Deployment resolution failed',
+      failedRecordId: null,
+    },
+  })
+}
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -37,12 +50,19 @@ const environment = new EnvironmentRunner({
 const runtime = new BootstrapRuntime({ controlPlane, environment })
 let imageCandidateHealthy = true
 await runtime.start({
+  allowRecovery: true,
   onEnvironmentFailure: async () => {
     imageCandidateHealthy = false
-    return deployments.rejectImage(imagePlan)
+    return imagePlan === undefined ? false : deployments.rejectImage(imagePlan)
   },
 })
-if (imageCandidateHealthy) await deployments.acceptImage(imagePlan)
+if (imageCandidateHealthy && imagePlan !== undefined) await deployments.acceptImage(imagePlan)
+const recoveryReason = runtime.recoveryMode ?? (planningError instanceof Error ? planningError.message : null)
+const recoveryMode = recoveryReason === null ? null : {
+  reason: recoveryReason,
+  failedRecordId: imagePlan?.target ?? null,
+}
+await deployments.publishStatus({ plan: imagePlan, recoveryMode })
 const server = createBootstrapControl(runtime)
 await listenBootstrapControl(server, paths.bootstrapSocket)
 process.send?.({ type: 'ready', bootstrapApi: 1 })

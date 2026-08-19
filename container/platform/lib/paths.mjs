@@ -21,6 +21,7 @@ export class PlatformPaths {
     this.trustStateRoot = join(this.stateRoot, 'trust')
     this.bootstrapStateRoot = join(this.stateRoot, 'bootstrap')
     this.deploymentStateRoot = join(this.stateRoot, 'deployments')
+    this.deploymentStatusPath = join(this.deploymentStateRoot, 'status.json')
     this.updaterStateRoot = join(this.stateRoot, 'updater')
     this.objectsRoot = join(this.storeRoot, 'objects')
     this.bootstrapStoreRoot = join(this.storeRoot, 'bootstrap')

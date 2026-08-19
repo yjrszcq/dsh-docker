@@ -3,9 +3,10 @@ export class BootstrapRuntime {
     this.controlPlane = controlPlane
     this.environment = environment
     this.fatal = Promise.race([controlPlane.fatal, environment.fatal])
+    this.recoveryMode = null
   }
 
-  async start({ onEnvironmentFailure } = {}) {
+  async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
     await this.controlPlane.start()
     try {
       await this.environment.start()
@@ -15,9 +16,15 @@ export class BootstrapRuntime {
         try {
           await this.environment.start()
         } catch (fallbackError) {
-          await this.controlPlane.stop().catch(() => {})
-          throw new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
+          const failure = new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
+          if (allowRecovery) this.recoveryMode = failure.message
+          else {
+            await this.controlPlane.stop().catch(() => {})
+            throw failure
+          }
         }
+      } else if (allowRecovery) {
+        this.recoveryMode = error instanceof Error ? error.message : 'Deployment failed to start'
       } else {
         await this.controlPlane.stop().catch(() => {})
         throw error
@@ -43,6 +50,7 @@ export class BootstrapRuntime {
     return Object.freeze({
       ...environment,
       controlPlane: this.controlPlane.status().components,
+      recoveryMode: this.recoveryMode,
     })
   }
 }

@@ -73,7 +73,8 @@ test('management socket exposes status, check, update, logs, and local rollback'
   await listenManagement(server, socketPath)
   const client = new LocalApiClient(socketPath)
   try {
-    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).environment, 'one')
+    const status = await client.request('GET', '/_dsh_platform/api/v1/status')
+    assert.equal(status.environment, 'one')
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/check')).targetSequence, 2)
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/update'), { taskId: 'task-one' })
     await assert.rejects(client.request('POST', '/_dsh_platform/api/v1/update'), error => error.statusCode === 409)
