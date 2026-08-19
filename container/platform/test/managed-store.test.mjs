@@ -69,6 +69,7 @@ test('builds a complete content-addressed Managed Deployment from verified input
 
   const builder = new ManagedDeploymentBuilder({ paths })
   const first = await builder.buildStable(prepared)
+  assert.equal(first.assets.pristine.id, `pristine-npm-${objectSha256}`)
   assert.equal(first.record.authority, 'stable')
   assert.equal(first.record.targetSequence, 2)
   assert.equal(first.record.dshVersion, '0.1.0-rc.8')
@@ -94,6 +95,9 @@ test('builds a complete content-addressed Managed Deployment from verified input
     await readFile(join(first.assets.pristine.path, 'node_modules', 'fixture-dependency', 'lib', 'index.js'), 'utf8'),
     'export const installed = true\n',
   )
+  await assert.rejects(lstat(join(first.assets.pristine.path, 'npm-cache')), error => error?.code === 'ENOENT')
+  assert.deepEqual(await readFile(trustedObjectPath), archiveBytes)
+  assert.equal((await lstat(trustedObjectPath)).isSymbolicLink(), false)
   assert.equal((await readFile(join(first.assets.systemPlugins.path, 'cordis.patch.yml'), 'utf8')).trim(), '[]')
 
   const repeated = await builder.buildStable(prepared)
