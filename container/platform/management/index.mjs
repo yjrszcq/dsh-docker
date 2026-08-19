@@ -13,6 +13,7 @@ import { PlatformActivator } from '../updater/lib/activator.mjs'
 import { UpdateJournal } from '../updater/lib/journal.mjs'
 import { PersistentStateSnapshots } from '../updater/lib/snapshots.mjs'
 import { reconcileRecoveredState } from '../updater/lib/recovery.mjs'
+import { ChannelStateStore } from '../updater/lib/channel-state.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
@@ -41,6 +42,7 @@ const coordinator = new UpdateCoordinator({
     sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
   }),
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
+  channelState: new ChannelStateStore(join(dataRoot, 'state', 'channel.json')),
 })
 const server = createManagementServer({
   coordinator,

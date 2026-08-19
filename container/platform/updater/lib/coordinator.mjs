@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { recoverInterruptedUpdate } from './recovery.mjs'
+import { planDesiredState } from './channel-state.mjs'
+import { compareDshVersions } from '../../lib/supported-target.mjs'
 
 export class UpdateConflictError extends Error {}
 
 export class UpdateCoordinator extends EventEmitter {
   constructor({
-    metadata, preparer, activator, state, npm, journal, snapshots,
+    metadata, preparer, activator, state, npm, journal, snapshots, channelState,
     probationSeconds = 120,
     now = () => new Date(),
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
@@ -19,6 +21,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.npm = npm
     this.journal = journal
     this.snapshots = snapshots
+    this.channelState = channelState
     this.probationSeconds = probationSeconds
     this.now = now
     this.sleep = sleep
@@ -69,6 +72,37 @@ export class UpdateCoordinator extends EventEmitter {
     return { taskId, completion: this.task }
   }
 
+  startReconcile() {
+    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    this.task = this.runReconcile(taskId).finally(() => { this.task = undefined })
+    return { taskId, completion: this.task }
+  }
+
+  async desiredState() {
+    if (this.channelState === undefined) throw new Error('update channels are not configured')
+    const stable = (await this.metadata.check()).value
+    const [current, local] = await Promise.all([this.activator.currentDeployment(), this.channelState.read()])
+    const supported = { dsh: stable.desired.dsh.version, environment: stable.desired.environment.version }
+    let upstream = null
+    if (
+      local.updateChannel === 'experimental'
+      && compareDshVersions(current.dsh, supported.dsh) <= 0
+      && current.environment === supported.environment
+    ) upstream = await this.npm.latest(stable)
+    return planDesiredState({ local, current, supported, upstream })
+  }
+
+  async runReconcile(taskId) {
+    const plan = await this.desiredState()
+    if (plan.action === 'stable') return this.run(taskId)
+    if (plan.action === 'experimental') return this.runExperimental(taskId)
+    return this.transition('success', {
+      taskId, progress: 100, error: null,
+      outcome: plan.action,
+    })
+  }
+
   async run(taskId) {
     try {
       await this.transition('planning', { taskId, progress: 0, error: null })
@@ -97,10 +131,12 @@ export class UpdateCoordinator extends EventEmitter {
 
   async runExperimental(taskId) {
     let transaction
+    let candidate
+    let failureClass = 'check'
     try {
       await this.transition('checking-upstream', { taskId, progress: 0, error: null })
       const stable = (await this.metadata.check()).value
-      const candidate = await this.npm.latest(stable)
+      candidate = await this.npm.latest(stable)
       if (candidate === null) return this.transition('success', { taskId, progress: 100, error: null })
       const from = await this.activator.currentDeployment()
       const bootstrap = await this.activator.bootstrap.status()
@@ -110,6 +146,7 @@ export class UpdateCoordinator extends EventEmitter {
       ) throw new Error('Stable Environment and Bootstrap must converge before Experimental DSH')
 
       await this.transition('downloading', { taskId, progress: 10 })
+      failureClass = 'candidate'
       const prepared = await this.preparer.prepareExperimental(candidate)
       await this.transition('building-candidate', { taskId, progress: 35 })
       const built = await this.activator.prepareExperimental(prepared)
@@ -122,6 +159,7 @@ export class UpdateCoordinator extends EventEmitter {
       transaction = await this.journal.transition('candidate-ready', { receiptTokens: prepared.receiptTokens })
 
       await this.transition('snapshotting-data', { taskId, progress: 55 })
+      failureClass = 'snapshot'
       await this.activator.suspendDsh()
       transaction = await this.journal.transition('suspended')
       const snapshot = await this.snapshots.create({
@@ -134,6 +172,7 @@ export class UpdateCoordinator extends EventEmitter {
 
       await this.transition('switching', { taskId, progress: 70 })
       await this.activator.switchExperimental(built.runtimeId)
+      failureClass = 'combination'
       transaction = await this.journal.transition('switched')
       const probationUntil = new Date(this.now().valueOf() + this.probationSeconds * 1000).toISOString()
       transaction = await this.journal.transition('probation', { probationUntil })
@@ -150,6 +189,16 @@ export class UpdateCoordinator extends EventEmitter {
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'
+      if (candidate !== undefined && this.channelState !== undefined) {
+        if (failureClass === 'candidate') {
+          await this.channelState.addHold({ type: 'version', dshVersion: candidate.version, reason: message }).catch(() => {})
+        } else if (failureClass === 'combination') {
+          const environmentVersion = transaction?.to.environment
+          if (environmentVersion !== undefined) await this.channelState.addHold({
+            type: 'combination', dshVersion: candidate.version, environmentVersion, reason: message,
+          }).catch(() => {})
+        }
+      }
       transaction = await this.journal?.read().catch(() => transaction)
       if (transaction !== undefined && !['committed', 'rolled-back', 'failed'].includes(transaction.phase)) {
         try {

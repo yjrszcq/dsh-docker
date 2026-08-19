@@ -15,6 +15,7 @@ import { UpdateJournal } from '../updater/lib/journal.mjs'
 import { NpmRegistryClient } from '../updater/lib/metadata.mjs'
 import { reconcileRecoveredState, recoverInterruptedUpdate } from '../updater/lib/recovery.mjs'
 import { PlatformActivator } from '../updater/lib/activator.mjs'
+import { ChannelStateStore } from '../updater/lib/channel-state.mjs'
 import { keyPair, keyring, signature } from './helpers.mjs'
 
 function descriptor(id, bytes, mediaType = 'application/octet-stream') {
@@ -241,6 +242,7 @@ function experimentalSystem(root, overrides = {}) {
     journal: new UpdateJournal(join(root, 'state', 'transaction.json')),
     state: new UpdateStateStore(join(root, 'state', 'update.json')),
     probationSeconds: 0,
+    channelState: overrides.channelState,
   })
   return { calls, coordinator }
 }
@@ -405,4 +407,33 @@ test('reads npm latest from the official packument without trusting it locally',
     experimentalPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
   })
   assert.equal(found.version, candidate.version)
+})
+
+test('records candidate and combination Holds without holding snapshot failures', async () => {
+  const candidateRoot = await mkdtemp(join(tmpdir(), 'dsh-experimental-candidate-hold-'))
+  const candidateState = new ChannelStateStore(join(candidateRoot, 'state', 'channel.json'))
+  const candidate = experimentalSystem(candidateRoot, {
+    channelState: candidateState,
+  })
+  candidate.coordinator.preparer.prepareExperimental = async () => { throw new Error('static validation failed') }
+  await assert.rejects(candidate.coordinator.startExperimental().completion, /static validation/)
+  assert.equal((await candidateState.read()).holds[0].type, 'version')
+
+  const combinationRoot = await mkdtemp(join(tmpdir(), 'dsh-experimental-combination-hold-'))
+  const combinationState = new ChannelStateStore(join(combinationRoot, 'state', 'channel.json'))
+  const combination = experimentalSystem(combinationRoot, {
+    channelState: combinationState,
+    activator: { health: async () => ({ healthy: false }) },
+  })
+  await assert.rejects(combination.coordinator.startExperimental().completion, /probation/)
+  assert.equal((await combinationState.read()).holds[0].type, 'combination')
+
+  const snapshotRoot = await mkdtemp(join(tmpdir(), 'dsh-experimental-no-snapshot-hold-'))
+  const snapshotState = new ChannelStateStore(join(snapshotRoot, 'state', 'channel.json'))
+  const snapshot = experimentalSystem(snapshotRoot, {
+    channelState: snapshotState,
+    snapshots: { create: async () => { throw new Error('disk full') } },
+  })
+  await assert.rejects(snapshot.coordinator.startExperimental().completion, /disk full/)
+  assert.equal((await snapshotState.read()).holds.length, 0)
 })
