@@ -48,7 +48,7 @@ Keep both persistent locations:
 
 | Path | Purpose |
 | --- | --- |
-| `/data/platform` | Platform versions, trusted objects, update state, snapshots, and logs |
+| `/data/platform` | Platform state, managed rollback assets, snapshots, and logs |
 | `/data/dsh` | DSH settings, sessions, credentials, and third-party plugins |
 | `/workspace` | Default working directory |
 

@@ -20,7 +20,7 @@ This guide documents configuration, platform behavior, online updates, trust, re
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_PLATFORM_DATA` | `/data/platform` | Platform versions, trust state, snapshots, and logs |
+| `DSH_PLATFORM_DATA` | `/data/platform` | Platform state, managed assets, snapshots, and logs |
 | `DSH_HOME` | `/data/dsh` | DSH configuration and data directory |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an accessible absolute directory |
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
@@ -62,7 +62,7 @@ tini
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through version-slot links; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
+Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
 
 The source tree follows the same boundary:
 
@@ -71,6 +71,38 @@ The source tree follows the same boundary:
 - `container/control-plane/hooks/`: supervised one-shot recovery work.
 - `container/control-plane/modules/`: updater, logging, patch, and System Plugin logic.
 - `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,system-plugins}`.
+
+### Platform Data and Runtime Resolution
+
+Persistent state and assets are deliberately separate from per-start runtime views:
+
+```text
+/data/platform/
+├── state/{trust,bootstrap,deployments,updater}
+├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
+├── cache/downloads
+└── logs
+
+/run/dsh-platform/
+├── stage0-trust.sock
+├── bootstrap.sock
+├── management.sock
+├── recovery.sock
+├── deployments/
+└── views/{bootstrap,environment,runtime,system-plugins}
+```
+
+`state` is authoritative selection, trust, and transaction state. `store` contains immutable Managed assets and rollback material and is reclaimed only when no slot, transaction, Hold, receipt, or snapshot refers to it. `cache` is disposable. `/run/dsh-platform` is rebuilt on every container start and must never be backed up or mounted as persistent data. `/data/dsh` remains a separate user-data volume.
+
+Runtime, Environment, and System Plugins form one content-addressed Deployment Record. Bootstrap resolves that complete record into one candidate view, starts it, checks health, and commits the current/previous slots atomically. A partial combination is never selected after restart.
+
+The image contains an immutable Bootstrap and Deployment inventory. With no platform state, these assets run directly from the image without copying the Seed tree. A newer signed Stable image becomes the baseline only after health checks. A Managed deployment with a higher target sequence remains current and reports that the image is behind; an older image never downgrades it. Equal sequences must describe identical content, otherwise startup refuses the conflict. An Experimental DSH ahead of Stable is preserved while the platform reconciles the formal Environment according to the update state machine.
+
+Consequently, pulling a newer image still matters: when its signed target sequence is newer than the current Stable deployment, the container advances to that image baseline. When an online update is already newer, the image instead provides a verified fallback without overwriting current state.
+
+This pre-release layout is intentionally not migrated from older `/data/platform` layouts. Stage-0 refuses an old volume with an actionable error. Clear only the platform volume before starting the new image; never delete `/data/dsh` as part of that reset.
+
+For routine backups, preserve `/data/dsh` and `/data/platform/state`. To retain exact local rollback points, also preserve `/data/platform/store`, especially snapshots. Backing up both complete volumes is the simplest safe policy. `/data/platform/cache` and `/run/dsh-platform` do not need backup.
 
 ## Gateway
 
@@ -117,7 +149,7 @@ Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` an
 
 ## Trust and Recovery
 
-Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/platform/downloads/untrusted` until Stage-0 matches them to signed descriptors and imports them into the trusted object store. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
+Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/platform/cache/downloads` until Stage-0 matches them to signed descriptors and imports them into `/data/platform/store/objects`. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
 
 Bootstrap and Updater cannot add a root key, modify keyrings, submit arbitrary expected hashes, or mint receipts. They consume only Stage-0 verification results.
 
@@ -126,6 +158,14 @@ Stable metadata delegates the exact official npm Registry origin, `@deepseek-ai/
 The official DSH ledger is monotonic: same-version repair is allowed only for identical signed content, lower-version import is rejected, and rollback restores the retained previous Runtime/Environment/receipt/snapshot state without downloading an older package. A Release-key or Registry-policy change invalidates staged receipts but does not destroy already active or previous states.
 
 `dsh` is a dynamic shim which always executes the current verified Runtime. `dsh-platform trust status` reports accepted trust state. `dsh-platform trust reset` is console-only: stop Stage-0, mount the platform-data Volume into a one-shot container with `dsh-platform` as its entrypoint, run `trust reset` from an interactive TTY, and enter the exact confirmation. This clears accepted state but does not replace the image Recovery Root.
+
+If both current and previous Deployments are unusable, the Control Plane remains available in recovery mode. Restore the exact Deployment shipped by the currently running image from a root, interactive container console:
+
+```bash
+docker exec -it --user root deepseek-harness dsh-platform recover --image-baseline
+```
+
+The command displays the failed current state, image baseline, and data-compatibility warning, then requires the complete image build ID as confirmation. It is unavailable through Gateway and the Web API. Recovery health-checks the image Deployment before committing it and does not delete `/data/dsh`; operators must still judge whether existing DSH data is compatible with the older or newer image baseline.
 
 For routine Release Key rotation or compromise, use the offline Recovery private key to sign generation+1: promote the old next key to current, revoke the old current key, and add a new next key. Revocations are cumulative. Only Recovery Root compromise or cryptographic migration requires a new image or explicit trust reset.
 
@@ -166,14 +206,14 @@ Build the standard image:
 docker build -t deepseek-harness:local .
 ```
 
-Build a specific official package or the devtools variant:
+Build a specific official package for local development, or build the devtools variant:
 
 ```bash
 docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
-Local builds use a marked, non-production trust fixture. Release workflows reject that marker and require an offline Recovery-signed public trust bundle.
+An arbitrary local `DSH_VERSION` produces a development-authority inventory with target sequence 0. It cannot become a formal tag or `latest`. Release workflows build only the reviewed Supported Target from verified signed Release artifacts, reject the marked non-production trust fixture, and require an offline Recovery-signed public trust bundle.
 
 Run local checks with Node.js 24 and Docker Compose:
 

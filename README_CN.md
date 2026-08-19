@@ -48,7 +48,7 @@ docker compose up -d
 
 | 路径 | 用途 |
 | --- | --- |
-| `/data/platform` | 平台版本、可信对象、更新状态、快照和日志 |
+| `/data/platform` | 平台状态、受管理的回滚资产、快照和日志 |
 | `/data/dsh` | DSH 设置、会话、凭据和第三方插件 |
 | `/workspace` | 默认工作目录 |
 

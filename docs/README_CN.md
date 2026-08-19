@@ -20,7 +20,7 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DSH_PLATFORM_DATA` | `/data/platform` | 平台版本、信任状态、快照和日志目录 |
+| `DSH_PLATFORM_DATA` | `/data/platform` | 平台状态、受管理资产、快照和日志目录 |
 | `DSH_HOME` | `/data/dsh` | DSH 配置和数据目录 |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径；必须是可访问的绝对目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；`true` 或 `false` |
@@ -62,7 +62,7 @@ tini
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过版本槽链接直接使用镜像内的只读 seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换或暂停 DSH 不会停止 Gateway、Management 或 Update Console。
+Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换或暂停 DSH 不会停止 Gateway、Management 或 Update Console。
 
 源码目录使用同一边界：
 
@@ -71,6 +71,38 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 - `container/control-plane/hooks/`：受监督的一次性恢复任务。
 - `container/control-plane/modules/`：更新、日志、补丁和 System Plugin 逻辑。
 - `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,system-plugins}`。
+
+### 平台数据与 Runtime 解析
+
+持久化状态、受管理资产和每次启动生成的运行视图采用不同目录：
+
+```text
+/data/platform/
+├── state/{trust,bootstrap,deployments,updater}
+├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
+├── cache/downloads
+└── logs
+
+/run/dsh-platform/
+├── stage0-trust.sock
+├── bootstrap.sock
+├── management.sock
+├── recovery.sock
+├── deployments/
+└── views/{bootstrap,environment,runtime,system-plugins}
+```
+
+`state` 保存权威的选择、信任和事务状态。`store` 保存不可变的 Managed 资产与回滚材料；只有 slots、事务、Hold、receipt 和快照都不再引用时才会回收。`cache` 可以随时清理。`/run/dsh-platform` 在每次容器启动时重建，不应备份或挂载为持久数据。`/data/dsh` 始终是独立的用户数据卷。
+
+Runtime、Environment 和 System Plugins 共同组成一个内容寻址的 Deployment Record。Bootstrap 将完整 Record 解析为一个 candidate view，启动并执行健康检查，然后原子提交 current/previous slots。重启后不会选中只切换了一部分的组合。
+
+镜像内含不可变的 Bootstrap 和 Deployment inventory。平台没有状态时，Seed 资产直接从镜像运行，不复制到数据卷。较新的已签名 Stable 镜像只有通过健康检查后才成为基线。target sequence 更高的 Managed Deployment 会继续作为 current，并报告镜像落后；旧镜像不会让它降级。相同 sequence 必须描述完全相同的内容，否则启动会拒绝冲突。Experimental DSH 领先 Stable 时会被保留，平台按更新状态机协调正式 Environment。
+
+因此，拉取新镜像仍然有意义：其签名 target sequence 高于当前 Stable Deployment 时，容器会推进到新镜像基线；在线更新已经更高时，新镜像则作为经过验证的后备，不覆盖当前状态。
+
+这套预发布布局不会迁移旧版 `/data/platform` 目录。Stage-0 检测到旧卷后会给出明确错误并拒绝启动。此时只清空 platform volume，绝不能因此删除 `/data/dsh`。
+
+日常备份至少保留 `/data/dsh` 和 `/data/platform/state`。如需保留精确的本地回滚点，还要备份 `/data/platform/store`，尤其是 snapshots。最简单可靠的做法是完整备份这两个 Volume。`/data/platform/cache` 和 `/run/dsh-platform` 无需备份。
 
 ## Gateway
 
@@ -117,7 +149,7 @@ Experimental Runtime 接触真实数据前，Updater 停止 `dsh-runtime`，并�
 
 ## 信任与恢复
 
-Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/platform/downloads/untrusted`，直到 Stage-0 按签名描述验证并导入可信对象库；Runtime 构建后续使用的每条路径都来自 receipt，不再读取 untrusted 下载文件。
+Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/platform/cache/downloads`，直到 Stage-0 按签名描述验证并导入 `/data/platform/store/objects`；Runtime 构建后续使用的每条路径都来自 receipt，不再读取未验证的下载文件。
 
 Bootstrap 和 Updater 不能添加根公钥、修改 keyring、提交任意 expected hash 或自行签发 receipt；它们只消费 Stage-0 验证结果。
 
@@ -126,6 +158,14 @@ Stable 元数据委托精确的官方 npm Registry Origin、`@deepseek-ai/dsh` �
 官方 DSH ledger 保持单调：同版本 repair 只允许完全相同的签名内容，低版本普通导入会被拒绝；回滚直接恢复保留的 previous Runtime、Environment、receipt 和数据快照，不重新下载旧包。Release Key 或 Registry policy 变化会使 staged receipt 失效，但不会破坏 active/previous 状态。
 
 `dsh` 是动态 shim，始终执行 current 可信 Runtime。`dsh-platform trust status` 显示已接受的信任状态。`dsh-platform trust reset` 只能在控制台执行：停止 Stage-0，将 platform-data Volume 挂到以 `dsh-platform` 为 entrypoint 的一次性容器，通过交互式 TTY 运行 `trust reset` 并输入完整确认文本。该操作清除已接受状态，但不会替换镜像内 Recovery Root。
+
+current 和 previous Deployment 都不可用时，Control Plane 会保持恢复模式。可以在 root 交互式容器控制台恢复当前镜像精确携带的 Deployment：
+
+```bash
+docker exec -it --user root deepseek-harness dsh-platform recover --image-baseline
+```
+
+命令会显示失效的 current 状态、镜像基线和数据兼容风险，并要求输入完整 image build ID 确认。Gateway 和 Web API 不提供此操作。恢复流程先健康检查镜像 Deployment，再提交 slots，且不会删除 `/data/dsh`；运维人员仍需判断现有 DSH 数据是否兼容该镜像基线。
 
 日常 Release Key 轮换或泄露时，使用离线 Recovery 私钥签署 generation+1：将原 next 提升为 current、吊销旧 current，并加入新的 next。吊销集合只能累积。只有 Recovery Root 失陷或密码学迁移时，才需要新镜像或显式 trust reset。
 
@@ -166,14 +206,14 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 docker build -t deepseek-harness:local .
 ```
 
-构建指定官方包或开发工具版：
+为本地开发构建指定官方包，或构建开发工具版：
 
 ```bash
 docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
-本地构建使用带标记的非生产信任 fixture。发布工作流会拒绝该 marker，并要求由离线 Recovery 签署的公开 trust bundle。
+任意本地 `DSH_VERSION` 都会生成 target sequence 为 0 的 development-authority inventory，不能成为正式版本标签或 `latest`。发布工作流只使用经过验证的签名 Release Artifact 构建已审核 Supported Target，拒绝带标记的非生产信任 fixture，并要求由离线 Recovery 签署的公开 trust bundle。
 
 使用 Node.js 24 和 Docker Compose 运行本地检查：
 
