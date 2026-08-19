@@ -62,7 +62,8 @@ ENV DSH_HOME=/home/node/.dsh \
     DSH_UPDATE_CHECK_INTERVAL_SECONDS=21600 \
     DSH_LOG_MAX_BYTES=104857600 \
     DSH_LOG_RETENTION_DAYS=14 \
-    DSH_ACTIVATION_TIMEOUT_SECONDS=60
+    DSH_ACTIVATION_TIMEOUT_SECONDS=60 \
+    DSH_EXPERIMENTAL_PROBATION_SECONDS=120
 
 COPY --chown=node:node container/gateway/package.json container/gateway/index.mjs /opt/dsh-environment/components/gateway/
 COPY --chown=node:node container/gateway/lib /opt/dsh-environment/components/gateway/lib

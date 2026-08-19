@@ -108,6 +108,50 @@ until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
   sleep 1
 done
 docker exec "$container" sh -c '[ "$(cat /data/state/smoke)" = platform ] && [ "$(cat /home/node/.dsh/smoke)" = home ]'
+
+docker exec "$container" dsh-platform channel experimental >/dev/null
+[ "$(docker exec "$container" dsh-platform channel)" = experimental ]
+docker exec --user node "$container" curl --fail --silent --unix-socket /data/run/bootstrap.sock \
+  --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
+docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'
+import { readFile, readlink } from 'node:fs/promises'
+import { basename } from 'node:path'
+import { LocalApiClient } from '/data/bootstrap/current/updater/lib/client.mjs'
+import { UpdateJournal } from '/data/bootstrap/current/updater/lib/journal.mjs'
+import { PersistentStateSnapshots } from '/data/bootstrap/current/updater/lib/snapshots.mjs'
+
+const runtime = basename(await readlink('/data/runtime/current'))
+const environment = basename(await readlink('/data/environments/current'))
+const metadata = JSON.parse(await readFile(`/data/runtime/versions/${runtime}/package/package.json`, 'utf8'))
+const trust = new LocalApiClient('/data/run/stage0-trust.sock')
+const receiptTokens = (await trust.activeReceipts()).receipts.map(receipt => receipt.token).sort()
+const snapshots = new PersistentStateSnapshots({ root: '/data/snapshots', sourceRoot: '/home/node/.dsh' })
+await snapshots.create({ id: 'smoke-recovery', runtimeId: runtime, environmentVersion: environment, dshVersion: metadata.version })
+const journal = new UpdateJournal('/data/state/update-transaction.json')
+await journal.begin({
+  transactionId: 'smoke-recovery', mode: 'experimental',
+  from: { dsh: metadata.version, environment, runtime, dataSnapshot: null, receiptTokens },
+  to: { dsh: metadata.version, environment, runtime },
+})
+await journal.transition('candidate-ready', { receiptTokens })
+await journal.transition('suspended')
+await journal.transition('snapshot-created', { snapshotId: 'smoke-recovery' })
+await journal.transition('switched')
+await journal.transition('probation', { probationUntil: '2099-01-01T00:00:00.000Z' })
+NODE
+docker exec --user node "$container" sh -c 'printf changed-after-snapshot > /home/node/.dsh/smoke'
+docker restart "$container" >/dev/null
+attempt=0
+until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 1
+done
+docker exec "$container" sh -c '
+  [ "$(cat /home/node/.dsh/smoke)" = home ]
+  [ "$(jq -r .phase /data/state/update-transaction.json)" = rolled-back ]
+  [ "$(dsh-platform channel)" = experimental ]
+'
 cleanup
 trap - EXIT INT TERM
 

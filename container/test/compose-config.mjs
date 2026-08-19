@@ -42,6 +42,7 @@ assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')
 assert.equal(defaults.environment.DSH_TRUSTED_HOSTS, '')
 assert.deepEqual(defaults.group_add, ['dsh-sudo-true'])
 assert.equal(defaults.environment.DSH_UPDATE_CHECK_INTERVAL_SECONDS, '21600')
+assert.equal(defaults.environment.DSH_EXPERIMENTAL_PROBATION_SECONDS, '120')
 assert.equal(defaults.environment.DSH_LOG_MAX_BYTES, '104857600')
 assert.deepEqual(defaults.volumes.map(volume => volume.target).sort(), ['/data', '/home/node/.dsh', '/workspace'])
 
