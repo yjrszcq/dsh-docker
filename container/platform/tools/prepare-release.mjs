@@ -146,7 +146,8 @@ try {
     '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
     '-czf', bootstrapPath, '-C', containerRoot,
     'platform/bootstrap', 'platform/lib',
-    'control-plane/log-manager', 'control-plane/management', 'control-plane/patch-manager',
+    'control-plane/definition.json', 'control-plane/gateway', 'control-plane/log-manager',
+    'control-plane/management', 'control-plane/patch-manager',
     'control-plane/system-plugin-manager', 'control-plane/updater',
   ], 'Bootstrap packaging')
   const bootstrapManifest = canonicalJson({

@@ -26,6 +26,8 @@ for (const directory of ['log-manager', 'patch-manager', 'system-plugin-manager'
   await cp(join(containerRoot, 'control-plane', directory), join(bootstrapRoot, 'control-plane', directory), { recursive: true })
 }
 await cp(join(containerRoot, 'control-plane', 'management'), join(bootstrapRoot, 'control-plane', 'management'), { recursive: true })
+await cp(join(containerRoot, 'control-plane', 'gateway'), join(bootstrapRoot, 'control-plane', 'gateway'), { recursive: true })
+await cp(join(containerRoot, 'control-plane', 'definition.json'), join(bootstrapRoot, 'control-plane', 'definition.json'))
 await writeFile(join(output, 'bootstrap', 'VERSION'), `${bootstrapVersion}\n`)
 
 const environmentDefinition = join(containerRoot, 'environment', 'definition.json')

@@ -4,6 +4,7 @@ import { request } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { artifactForReference, parseComponentManifest, parseEnvironmentManifest } from '../../lib/contracts.mjs'
+import { exactKeys, parseJsonDocument, plainObject, TrustError } from '../../lib/validation.mjs'
 
 function delay(milliseconds) {
   return new Promise(resolveDelay => {
@@ -90,11 +91,48 @@ export async function loadEnvironment(root) {
   return Object.freeze({ root: environmentRoot, manifest, components: Object.freeze(components) })
 }
 
+export async function loadControlPlane(root) {
+  const controlPlaneRoot = resolve(root)
+  const definition = parseJsonDocument(await readFile(join(controlPlaneRoot, 'definition.json')), 'control plane')
+  exactKeys(definition, ['components', 'schema'], 'control plane')
+  if (definition.schema !== 1) throw new TrustError('control plane schema must be 1')
+  if (!Array.isArray(definition.components) || definition.components.length === 0) {
+    throw new TrustError('control plane components must be a non-empty array')
+  }
+  const components = []
+  const ids = new Set()
+  for (const [index, value] of definition.components.entries()) {
+    const reference = plainObject(value, `control plane components[${String(index)}]`)
+    exactKeys(reference, ['id', 'source'], `control plane components[${String(index)}]`)
+    if (typeof reference.id !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(reference.id)) {
+      throw new TrustError('control plane component ID is invalid')
+    }
+    if (ids.has(reference.id)) throw new TrustError('control plane component IDs must be unique')
+    if (typeof reference.source !== 'string' || reference.source.startsWith('/')) {
+      throw new TrustError('control plane component source is invalid')
+    }
+    const source = resolve(controlPlaneRoot, reference.source)
+    if (source === controlPlaneRoot || !source.startsWith(`${controlPlaneRoot}/`)) {
+      throw new TrustError('control plane component source escapes its root')
+    }
+    const component = parseComponentManifest(await readFile(source))
+    if (component.id !== reference.id) throw new TrustError(`control plane component ${reference.id} differs from its manifest`)
+    ids.add(reference.id)
+    components.push(component)
+  }
+  return Object.freeze({
+    root: controlPlaneRoot,
+    manifest: Object.freeze({ version: null }),
+    components: Object.freeze(components),
+  })
+}
+
 export class EnvironmentRunner {
-  constructor({ environmentRoot, spawnImpl = spawn, capture = defaultCapture }) {
+  constructor({ environmentRoot, spawnImpl = spawn, capture = defaultCapture, loader = loadEnvironment }) {
     this.environmentRoot = environmentRoot
     this.spawnImpl = spawnImpl
     this.capture = capture
+    this.loader = loader
     this.running = []
     this.environment = undefined
     this.operation = Promise.resolve()
@@ -129,7 +167,7 @@ export class EnvironmentRunner {
 
   async startUnlocked() {
     if (this.running.length > 0) throw new Error('Environment is already running')
-    this.environment = await loadEnvironment(this.environmentRoot)
+    this.environment = await this.loader(this.environmentRoot)
     try {
       for (const component of this.environment.components) await this.phase(component, 'prepare')
       for (const component of this.environment.components) {

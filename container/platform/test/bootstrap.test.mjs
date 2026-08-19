@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { EnvironmentRunner } from '../bootstrap/lib/lifecycle.mjs'
+import { BootstrapRuntime } from '../bootstrap/lib/runtime.mjs'
+import { EnvironmentRunner, loadControlPlane } from '../bootstrap/lib/lifecycle.mjs'
 import { createBootstrapControl, listenBootstrapControl } from '../bootstrap/lib/control.mjs'
 import { LocalApiClient } from '../../control-plane/updater/lib/client.mjs'
 
@@ -182,4 +184,57 @@ test('Bootstrap control socket exposes component suspension, resumption, and hea
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
+})
+
+test('loads the checked-in Control Plane independently from an Environment manifest', async () => {
+  const controlPlane = await loadControlPlane(join(
+    dirname(dirname(fileURLToPath(import.meta.url))),
+    '..',
+    'control-plane',
+  ))
+  assert.equal(controlPlane.manifest.version, null)
+  assert.deepEqual(controlPlane.components.map(component => component.id), [
+    'platform-recovery', 'platform-management', 'gateway',
+  ])
+})
+
+test('keeps the Control Plane running while Environment operations replace DSH', async () => {
+  const calls = []
+  const runner = (name, status) => ({
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push(`${name}:start`) },
+    stop: async () => { calls.push(`${name}:stop`) },
+    reload: async () => { calls.push(`${name}:reload`); return status },
+    suspend: async id => { calls.push(`${name}:suspend:${id}`); return status },
+    resume: async id => { calls.push(`${name}:resume:${id}`); return status },
+    health: async () => ({ healthy: true, components: status.components }),
+    status: () => status,
+  })
+  const controlPlane = runner('control', {
+    environmentVersion: null,
+    components: [{ id: 'gateway' }],
+  })
+  const environmentRunner = runner('environment', {
+    environmentVersion: '2026.08.19.1',
+    components: [{ id: 'dsh-runtime' }],
+  })
+  const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
+
+  await runtime.start()
+  await runtime.suspend('dsh-runtime')
+  await runtime.resume('dsh-runtime')
+  await runtime.reload()
+  assert.equal((await runtime.health()).healthy, true)
+  assert.deepEqual(runtime.status().controlPlane, [{ id: 'gateway' }])
+  await runtime.stop()
+
+  assert.deepEqual(calls, [
+    'control:start',
+    'environment:start',
+    'environment:suspend:dsh-runtime',
+    'environment:resume:dsh-runtime',
+    'environment:reload',
+    'environment:stop',
+    'control:stop',
+  ])
 })

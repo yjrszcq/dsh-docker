@@ -74,7 +74,7 @@ docker exec "$container" sh -c '
   pgrep -f "/data/bootstrap/versions/.*/platform/bootstrap/index.mjs" >/dev/null
   ps -eo args= | rg "package/lib/bin.js web --patch /data/system-plugins/current/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
   pgrep -f "^/usr/local/bin/node /data/bootstrap/current/control-plane/management/index.mjs$" >/dev/null
-  pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/control-plane/gateway/index.mjs$" >/dev/null
+  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/control-plane/gateway/index.mjs$" >/dev/null
   dsh-platform trust status | jq -e ".keyringGeneration == 1" >/dev/null
   dsh-platform status | jq -e ".trust.keyringGeneration == 1" >/dev/null
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]

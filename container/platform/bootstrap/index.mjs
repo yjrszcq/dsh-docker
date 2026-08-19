@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { join } from 'node:path'
-import { EnvironmentRunner } from './lib/lifecycle.mjs'
+import { EnvironmentRunner, loadControlPlane } from './lib/lifecycle.mjs'
+import { BootstrapRuntime } from './lib/runtime.mjs'
 import { createBootstrapControl, listenBootstrapControl } from './lib/control.mjs'
 import { JsonlLogManager } from '../../control-plane/log-manager/index.mjs'
 
@@ -12,12 +13,19 @@ const logs = new JsonlLogManager({
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
 })
 logs.on('error', error => console.error(error))
-const runner = new EnvironmentRunner({
-  environmentRoot: join(dataRoot, 'environments', 'current'),
-  capture: (child, source, declaration) => logs.capture(child, source, declaration),
+const capture = (child, source, declaration) => logs.capture(child, source, declaration)
+const controlPlane = new EnvironmentRunner({
+  environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
+  loader: loadControlPlane,
+  capture,
 })
-await runner.start()
-const server = createBootstrapControl(runner)
+const environment = new EnvironmentRunner({
+  environmentRoot: join(dataRoot, 'environments', 'current'),
+  capture,
+})
+const runtime = new BootstrapRuntime({ controlPlane, environment })
+await runtime.start()
+const server = createBootstrapControl(runtime)
 await listenBootstrapControl(server, join(dataRoot, 'run', 'bootstrap.sock'))
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 
@@ -28,8 +36,8 @@ process.once('SIGINT', onSignal)
 process.once('SIGTERM', onSignal)
 const outcome = await Promise.race([
   signal,
-  runner.fatal.then(error => ({ type: 'fatal', error })),
+  runtime.fatal.then(error => ({ type: 'fatal', error })),
 ])
 server.close()
-await runner.stop().catch(error => console.error(error))
+await runtime.stop().catch(error => console.error(error))
 if (outcome.type === 'fatal') throw outcome.error

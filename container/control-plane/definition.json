@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "id": "platform-recovery",
+      "source": "updater/recovery.component.json"
+    },
+    {
+      "id": "platform-management",
+      "source": "management/component.json"
+    },
+    {
+      "id": "gateway",
+      "source": "gateway/component.json"
+    }
+  ]
+}

@@ -3,27 +3,9 @@
   "bootstrapApi": 1,
   "components": [
     {
-      "id": "platform-recovery",
-      "artifactId": "component-platform-recovery",
-      "source": "../control-plane/updater/recovery.component.json",
-      "mediaType": "application/vnd.dsh-platform.component.v1+json"
-    },
-    {
       "id": "dsh-runtime",
       "artifactId": "component-dsh-runtime",
       "source": "dsh-runtime/component.json",
-      "mediaType": "application/vnd.dsh-platform.component.v1+json"
-    },
-    {
-      "id": "platform-management",
-      "artifactId": "component-platform-management",
-      "source": "../control-plane/management/component.json",
-      "mediaType": "application/vnd.dsh-platform.component.v1+json"
-    },
-    {
-      "id": "gateway",
-      "artifactId": "component-gateway",
-      "source": "../control-plane/gateway/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     }
   ],

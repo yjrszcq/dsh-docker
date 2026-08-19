@@ -27,9 +27,7 @@ test('packages the initial Environment deterministically from real resources', a
   const secondManifest = await readFile(join(second, 'environment.manifest.json'))
   assert.deepEqual(firstManifest, secondManifest)
   const manifest = parseEnvironmentManifest(firstManifest)
-  assert.deepEqual(manifest.components.map(component => component.id), [
-    'platform-recovery', 'dsh-runtime', 'platform-management', 'gateway',
-  ])
+  assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime'])
   assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
   assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['update-ui'])
   for (const reference of [...manifest.components, ...manifest.patches, ...manifest.systemPlugins]) {
@@ -67,7 +65,7 @@ test('packager rejects source escapes and duplicate Artifact IDs without publish
   const root = await mkdtemp(join(tmpdir(), 'dsh-environment-invalid-'))
   const original = JSON.parse(await readFile(definition, 'utf8'))
   original.components[0].source = '../../../../README.md'
-  original.components[1].artifactId = original.components[0].artifactId
+  original.components.push({ ...original.components[0] })
   const invalid = join(dirname(definition), `invalid-${process.pid}.json`)
   const output = join(root, 'output')
   try {
