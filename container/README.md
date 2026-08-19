@@ -8,8 +8,6 @@ container/
 ├── control-plane/      Bootstrap-owned services and platform managers
 ├── environment/        Reloadable Environment definition and workload components
 ├── resources/          Patches and System Plugins packaged into an Environment
-│   ├── patches/
-│   └── system-plugins/
 └── test/               Container and Compose integration checks
 ```
 
