@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { DeploymentManager } from '../bootstrap/lib/deployments.mjs'
+import { PlatformGarbageCollector } from '../bootstrap/lib/gc.mjs'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import {
   deriveImageBuildId,
@@ -338,4 +339,48 @@ test('keeps Experimental candidate slots uncommitted through probation and suppo
   assert.equal(cancelled.cancelled, true)
   assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
   assert.equal(await context.manager.activation(), undefined)
+})
+
+test('collects only Store assets and records outside slots, transactions, Holds, and snapshots', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const current = await context.manager.writeRecord(await managedRecord(context, 'current', 2))
+  await context.manager.activateManaged(current, {
+    healthCheck: async () => {},
+    activateReceipts: async () => {},
+  })
+  const orphan = await context.manager.writeRecord(await managedRecord(context, 'orphan', 3))
+  const held = await context.manager.writeRecord(await managedRecord(
+    context,
+    'held',
+    4,
+    'experimental',
+    '0.1.0-rc.held',
+  ))
+  await writeFile(join(context.paths.updaterStateRoot, 'channel.json'), JSON.stringify({
+    schema: 1,
+    updateChannel: 'experimental',
+    holds: [{
+      id: 'hold', type: 'version', dshVersion: held.dshVersion, environmentVersion: null,
+      reason: 'fixture', createdAt: '2026-08-19T00:00:00.000Z',
+    }],
+    experimentalBlocked: null,
+  }))
+  await mkdir(join(context.paths.snapshotsRoot, 'versions', 'snapshot-kept'), { recursive: true })
+  await mkdir(join(context.paths.snapshotsRoot, 'versions', 'snapshot-orphan'), { recursive: true })
+  await writeFile(join(context.paths.updaterStateRoot, 'transaction.json'), JSON.stringify({
+    from: { runtime: current.id }, to: { runtime: current.id }, snapshotId: 'snapshot-kept',
+  }))
+  await writeFile(join(context.paths.downloadsRoot, 'disposable'), 'cache')
+
+  const result = await new PlatformGarbageCollector({ paths: context.paths, deployments: context.manager }).collect()
+  assert.equal(result.deployments.records.includes(orphan.id), true)
+  assert.equal(result.deployments.records.includes(held.id), false)
+  await assert.rejects(lstat(context.manager.recordPath(orphan.id)), { code: 'ENOENT' })
+  assert.equal((await lstat(context.manager.recordPath(held.id))).isFile(), true)
+  await assert.rejects(lstat(join(context.paths.runtimesRoot, orphan.runtime.id)), { code: 'ENOENT' })
+  assert.equal((await lstat(join(context.paths.runtimesRoot, held.runtime.id))).isDirectory(), true)
+  assert.equal((await lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-kept'))).isDirectory(), true)
+  await assert.rejects(lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-orphan')), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(context.paths.downloadsRoot, 'disposable')), { code: 'ENOENT' })
 })

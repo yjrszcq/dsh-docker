@@ -183,10 +183,10 @@ export class PlatformActivator {
   }
 
   async cleanup() {
+    const platform = await this.bootstrap.request('POST', '/v1/platform/gc')
     return Object.freeze({
-      runtimes: await this.runtimeSlots.prune(),
-      environments: await this.environmentSlots.prune(),
-      systemPlugins: await this.systemPluginSlots.prune(),
+      platform,
+      bootstrap: await this.stage0.collectBootstrap(),
       trustedObjects: (await this.stage0.collectGarbage()).removed,
     })
   }

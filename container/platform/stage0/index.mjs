@@ -67,6 +67,7 @@ const trustServer = createTrustServer({
     await slots.promote(record.id)
     setImmediate(() => { void supervisor.restart().catch(error => console.error(error)) })
   },
+  collectBootstrap: () => slots.collectGarbage(),
 })
 await listenUnix(trustServer, paths.trustSocket, {
   mode: process.getuid?.() === 0 ? 0o660 : 0o600,

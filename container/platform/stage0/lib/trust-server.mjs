@@ -20,7 +20,7 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createTrustServer({ ledger, objects, stageBootstrap }) {
+export function createTrustServer({ ledger, objects, stageBootstrap, collectBootstrap }) {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://stage0.internal')
@@ -73,6 +73,8 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
       } else if (url.pathname === '/v1/bootstrap/stage' && stageBootstrap !== undefined) {
         await stageBootstrap(body.receipt, body.version)
         send(response, 202, { status: 'switching', version: body.version })
+      } else if (url.pathname === '/v1/bootstrap/collect' && collectBootstrap !== undefined) {
+        send(response, 200, await collectBootstrap())
       } else {
         send(response, 404, { error: 'not found' })
       }

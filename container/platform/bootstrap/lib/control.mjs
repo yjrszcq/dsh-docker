@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { chmod, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { PlatformGarbageCollector } from './gc.mjs'
 
 async function jsonBody(request) {
   const chunks = []
@@ -59,6 +60,8 @@ export function createBootstrapControl(runner, { deployments, trust } = {}) {
         send(response, 200, { slots })
       } else if (request.method === 'POST' && pathname === '/v1/deployments/candidate/cancel' && deployments !== undefined) {
         send(response, 200, await deployments.cancelCandidate())
+      } else if (request.method === 'POST' && pathname === '/v1/platform/gc' && deployments !== undefined) {
+        send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments }).collect())
       }
       else {
         const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume)$/.exec(pathname)

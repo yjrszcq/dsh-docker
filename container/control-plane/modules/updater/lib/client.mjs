@@ -54,4 +54,5 @@ export class LocalApiClient {
   stageBootstrap(receipt, version) {
     return this.request('POST', '/v1/bootstrap/stage', { receipt, version })
   }
+  collectBootstrap() { return this.request('POST', '/v1/bootstrap/collect', {}) }
 }

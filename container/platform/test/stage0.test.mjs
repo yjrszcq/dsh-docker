@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
@@ -91,6 +91,21 @@ test('tracks immutable Bootstrap Records in one generation-based slots file', as
   assert.equal(state.current, image.record.id)
   assert.equal(state.previous, managed.id)
   assert.equal(state.generation, 3)
+})
+
+test('Stage-0 collects only Bootstrap assets outside current and previous', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-gc-'))
+  const image = await imageBootstrap(root, '1.0.0', 1)
+  const manager = bootstrapManager(root, image)
+  await manager.reconcileImage(image.record)
+  const retained = await storeBootstrap(manager, '2.0.0', 2, 'retained')
+  await manager.promote(retained.id)
+  const orphan = await storeBootstrap(manager, '3.0.0', 3, 'orphan')
+  const removed = await manager.collectGarbage()
+  assert.deepEqual(removed.records, [orphan.id])
+  await assert.rejects(lstat(manager.recordPath(orphan.id)), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(manager.storeRoot, orphan.artifact.id)), { code: 'ENOENT' })
+  assert.equal((await lstat(join(manager.storeRoot, retained.artifact.id))).isDirectory(), true)
 })
 
 test('advances to a newer image without reinterpreting an old Image Reference', async () => {

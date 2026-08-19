@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -180,5 +180,37 @@ export class BootstrapManager {
     } finally {
       await rm(temporary, { recursive: true, force: true })
     }
+  }
+
+  async collectGarbage() {
+    const state = await this.state()
+    const retainedRecords = new Set([state.current, state.previous].filter(Boolean))
+    const retainedAssets = new Set()
+    let names
+    try { names = await readdir(this.recordsRoot) } catch (error) {
+      if (error?.code === 'ENOENT') return Object.freeze({ assets: [], records: [] })
+      throw error
+    }
+    const records = []
+    for (const name of names.filter(name => name.endsWith('.json')).sort()) {
+      const record = parseBootstrapRecord(await readFile(join(this.recordsRoot, name)))
+      records.push(record)
+      if (retainedRecords.has(record.id) && record.artifact.storage === 'store') retainedAssets.add(record.artifact.id)
+    }
+    const removedAssets = []
+    for (const name of await readdir(this.storeRoot).catch(error => error?.code === 'ENOENT' ? [] : Promise.reject(error))) {
+      if (name.startsWith('.') || retainedAssets.has(name)) continue
+      const path = join(this.storeRoot, name)
+      const details = await lstat(path)
+      if (!details.isDirectory() || details.isSymbolicLink()) continue
+      await rm(path, { recursive: true, force: true })
+      removedAssets.push(name)
+    }
+    const removedRecords = []
+    for (const record of records) if (!retainedRecords.has(record.id)) {
+      await rm(this.recordPath(record.id), { force: true })
+      removedRecords.push(record.id)
+    }
+    return Object.freeze({ assets: removedAssets.sort(), records: removedRecords.sort() })
   }
 }
