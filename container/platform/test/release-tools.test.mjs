@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
 import { parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
+import { parseImageInventory } from '../lib/deployment-contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
 
@@ -88,8 +89,15 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(result.status, 0, result.stderr)
 
   const packageRoot = join(root, 'npm', 'package')
-  await mkdir(packageRoot, { recursive: true })
+  await mkdir(join(packageRoot, 'lib'), { recursive: true })
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.7' }))
+  await writeFile(join(packageRoot, 'lib/bin.js'), '#!/usr/bin/env node\n')
+  const picker = join(packageRoot, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
+  const connection = join(packageRoot, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
+  await mkdir(picker, { recursive: true })
+  await mkdir(connection, { recursive: true })
+  await writeFile(join(picker, 'index.js'), 'const target = resolve(path ?? home);\n')
+  await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
   const tarball = join(root, 'deepseek-ai-dsh-0.1.0-rc.7.tgz')
   result = spawnSync('tar', ['-czf', tarball, '-C', join(root, 'npm'), 'package'], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
@@ -144,6 +152,24 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   })
   assert.equal(verifiedImage.stable.targetSequence, 1)
   assert.equal(verifiedImage.environment.manifest.version, '2026.08.19.1')
+
+  const imageInput = join(root, 'image-input')
+  const seedOutput = join(root, 'formal-seed')
+  await mkdir(imageInput)
+  await cp(output, join(imageInput, 'release'), { recursive: true })
+  await cp(join(trust, 'recovery-root.spki.base64'), join(imageInput, 'recovery-root.spki.base64'))
+  await cp(tarball, join(imageInput, 'dsh.tgz'))
+  await cp(new URL('../../../release/supported-target.json', import.meta.url), join(imageInput, 'supported-target.json'))
+  await cp(new URL('../../environment/definition.json', import.meta.url), join(imageInput, 'environment-definition.json'))
+  result = spawnSync(process.execPath, [
+    new URL('../tools/build-seed.mjs', import.meta.url).pathname,
+    packageRoot, seedOutput, imageInput, 'fixture-revision',
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const inventory = parseImageInventory(await readFile(join(seedOutput, 'inventory.json')))
+  assert.equal(inventory.authority, 'stable')
+  assert.equal(inventory.targetSequence, 1)
+  assert.equal(inventory.deployment.dshVersion, '0.1.0-rc.7')
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)

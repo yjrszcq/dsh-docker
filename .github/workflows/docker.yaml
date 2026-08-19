@@ -48,8 +48,10 @@ jobs:
           cp release/supported-target.json "$image_input/supported-target.json"
           cp container/environment/definition.json "$image_input/environment-definition.json"
           version="$(jq -er '.latestSupportedDsh' release/supported-target.json)"
-          npm pack "@deepseek-ai/dsh@${version}" --pack-destination "$RUNNER_TEMP" >/dev/null
-          tarball="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          npm_input="$RUNNER_TEMP/image-npm-input"
+          mkdir -p "$npm_input"
+          npm pack "@deepseek-ai/dsh@${version}" --pack-destination "$npm_input" >/dev/null
+          tarball="$(find "$npm_input" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
           test -n "$tarball"
           cp "$tarball" "$image_input/dsh.tgz"
           verified="$(node container/platform/tools/verify-image-release.mjs \
