@@ -225,6 +225,12 @@ export class TrustLedger {
     if (currentTarget === undefined || currentTarget.experimentalPolicy === null) {
       throw new TrustError('official DSH requires an accepted registry policy')
     }
+    const keyring = (await this.currentKeyring())?.value
+    if (
+      keyring === undefined
+      || currentTarget.keyringGeneration !== keyring.generation
+      || currentTarget.keyId !== keyring.current.keyId
+    ) throw new TrustError('official DSH policy is no longer authorized', 'TRUST_REVOKED')
     return Object.freeze({
       ...record,
       value: verifyOfficialDshCandidate(
@@ -248,6 +254,12 @@ export class TrustLedger {
     if (target === undefined || target.experimentalPolicy === null) {
       throw new TrustError('official DSH requires an accepted registry policy')
     }
+    const keyring = (await this.currentKeyring())?.value
+    if (
+      keyring === undefined
+      || target.keyringGeneration !== keyring.generation
+      || target.keyId !== keyring.current.keyId
+    ) throw new TrustError('official DSH policy is no longer authorized', 'TRUST_REVOKED')
     const candidateDocument = parseOfficialDshCandidate({
       schema: candidate.schema,
       name: candidate.name,
@@ -277,6 +289,13 @@ export class TrustLedger {
     }
     const record = { candidate: candidateDocument, objectSha256, size }
     await durableReplace(this.officialDshPath('current.record.json'), `${JSON.stringify(record)}\n`)
-    return Object.freeze({ candidate: next, objectSha256, size, value: next })
+    return Object.freeze({
+      candidate: next,
+      objectSha256,
+      size,
+      value: next,
+      keyringGeneration: target.keyringGeneration,
+      targetSequence: target.targetSequence,
+    })
   }
 }

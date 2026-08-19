@@ -137,10 +137,11 @@ test('imports official DSH from Stage-0-owned metadata and tarball requests', as
   const content = Buffer.from('official tarball')
   const registry = registryKeyPair()
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const policy = experimentalPolicy(registry)
   const requests = []
-  const { ledger, untrustedRoot, directory } = await fixture(
+  const { current, ledger, untrustedRoot, directory } = await fixture(
     [descriptor('stable-only', Buffer.alloc(0))],
-    experimentalPolicy(registry),
+    policy,
   )
   const store = new VerifiedObjectStore({
     root: join(directory, 'trust'),
@@ -149,6 +150,8 @@ test('imports official DSH from Stage-0-owned metadata and tarball requests', as
     fetchImpl: async (url, options) => {
       requests.push({ url: url.href, options })
       if (requests.length === 1) {
+        const advanced = document(releaseTarget(1, 2, [descriptor('stable-only', Buffer.alloc(0))], policy))
+        await ledger.acceptTarget(advanced, signature(advanced, current))
         return new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
       }
       return new Response(content)
@@ -157,6 +160,7 @@ test('imports official DSH from Stage-0-owned metadata and tarball requests', as
   const receipt = await store.ensureOfficialDsh(candidate.version)
   assert.equal(receipt.authorityType, 'official-dsh')
   assert.equal(receipt.authorityVersion, candidate.version)
+  assert.equal(receipt.targetSequence, 2)
   assert.deepEqual(await readFile(receipt.path), content)
   assert.equal(requests.length, 2)
   assert.equal(requests[0].url, 'https://registry.npmjs.org/%40deepseek-ai%2Fdsh')

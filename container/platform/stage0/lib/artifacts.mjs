@@ -3,8 +3,7 @@ import { link, mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { Transform } from 'node:stream'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { durableReplace } from '../../lib/atomic.mjs'
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
@@ -482,7 +481,8 @@ export class VerifiedObjectStore {
           }
           await rm(temporary, { force: true })
         }
-        await this.ledger.acceptOfficialDsh(candidate, objectSha256, size)
+        const accepted = await this.ledger.acceptOfficialDsh(candidate, objectSha256, size)
+        const verifiedCandidate = accepted.value
         const authority = `${candidate.name}@${candidate.version}:${candidate.dist.integrity}`
         const receipt = {
           token: receiptToken(),
@@ -492,9 +492,9 @@ export class VerifiedObjectStore {
           size,
           parentReceipt: null,
           parentSha256: createHash('sha256').update(authority).digest('hex'),
-          signerKeyId: candidate.signerKeyId,
-          keyringGeneration: target.keyringGeneration,
-          targetSequence: target.targetSequence,
+          signerKeyId: verifiedCandidate.signerKeyId,
+          keyringGeneration: accepted.keyringGeneration,
+          targetSequence: accepted.targetSequence,
           authorityType: 'official-dsh',
           authorityVersion: candidate.version,
           status: 'staged',
