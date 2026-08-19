@@ -37,7 +37,7 @@ test('reconciles only declared System Plugins into a separate immutable overlay'
   const artifacts = new Map([['update-ui', first], ['diagnostics', second]])
   await reconcileSystemPlugins({
     root: join(root, 'managed'),
-    environmentVersion: '2026.08.19.1',
+    environmentVersion: '2026.08.20.1',
     plugins: [
       { id: 'update-ui', sha256: '1'.repeat(64) },
       { id: 'diagnostics', sha256: '2'.repeat(64) },

@@ -215,7 +215,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     components: [{ id: 'gateway' }],
   })
   const environmentRunner = runner('environment', {
-    environmentVersion: '2026.08.19.1',
+    environmentVersion: '2026.08.20.1',
     components: [{ id: 'dsh-runtime' }],
   })
   const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })

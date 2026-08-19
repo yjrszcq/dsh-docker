@@ -42,7 +42,7 @@ async function fixture() {
     deployment: {
       id: 'image-deployment',
       dshVersion: '0.1.0-rc.1',
-      environmentVersion: '2026.08.19.1',
+      environmentVersion: '2026.08.20.1',
       environment: assets.environment,
       pristine: assets.pristine,
       runtime: assets.runtime,
@@ -84,7 +84,7 @@ async function managedRecord(
     authority,
     targetSequence: sequence,
     dshVersion,
-    environmentVersion: '2026.08.19.1',
+    environmentVersion: '2026.08.20.1',
     environment: references.environment,
     pristine: references.pristine,
     runtime: references.runtime,

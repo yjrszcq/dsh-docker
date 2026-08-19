@@ -19,7 +19,7 @@ async function fixture(options = {}) {
 const state = {
   id: 'before-rc8',
   runtimeId: '0.1.0-rc.7-1',
-  environmentVersion: '2026.08.19.1',
+  environmentVersion: '2026.08.20.1',
   dshVersion: '0.1.0-rc.7',
 }
 

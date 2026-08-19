@@ -33,7 +33,7 @@ function releaseTarget(generation, sequence, artifacts, policy = officialDshPoli
     artifacts: targetArtifacts,
     desired: {
       bootstrap: { version: '1.0.0', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
-      environment: { version: '2026.08.19.1', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
+      environment: { version: '2026.08.20.1', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
       dsh: {
         version: '0.1.0-rc.7',
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
@@ -47,7 +47,7 @@ function manifest(generation, sequence, artifacts) {
   return {
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.19.1',
+    version: '2026.08.20.1',
     keyringGeneration: generation,
     targetSequence: sequence,
     issuedAt: '2026-08-19T00:00:00.000Z',

@@ -14,7 +14,7 @@ import {
 const target = {
   schema: 1,
   latestSupportedDsh: '0.1.0-rc.7',
-  environment: '2026.08.19.1-dev',
+  environment: '2026.08.20.1-dev',
 }
 const bytes = value => Buffer.from(`${JSON.stringify(value)}\n`)
 

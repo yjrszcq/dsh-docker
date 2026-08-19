@@ -42,7 +42,7 @@ test('builds a complete content-addressed Managed Deployment from verified input
   const manifest = {
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.19.1',
+    version: '2026.08.20.1',
     keyringGeneration: 1,
     targetSequence: 2,
     issuedAt: '2026-08-19T00:00:00.000Z',
