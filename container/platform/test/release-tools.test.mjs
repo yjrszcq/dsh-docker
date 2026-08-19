@@ -112,6 +112,16 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   ]) assert.ok(files.includes(name), `${name} is missing`)
   assert.equal(files.some(name => name.startsWith('.')), false)
 
+  const bootstrapArchive = spawnSync('tar', ['-tzf', join(output, 'bootstrap.tgz')], { encoding: 'utf8' })
+  assert.equal(bootstrapArchive.status, 0, bootstrapArchive.stderr)
+  const bootstrapEntries = bootstrapArchive.stdout.trim().split('\n')
+  for (const name of [
+    'platform/bootstrap/index.mjs',
+    'control-plane/definition.json',
+    'control-plane/gateway/index.mjs',
+    'control-plane/management/index.mjs',
+  ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
+
   const stableBytes = await readFile(join(output, 'stable.json'))
   const stable = parseStable(stableBytes)
   const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
