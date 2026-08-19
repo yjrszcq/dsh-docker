@@ -152,10 +152,12 @@ test('management requests use the protected local socket instead of DSH upstream
   })
   const gatewayPort = await listen(gateway)
   try {
-    const result = await request(gatewayPort, '/_dsh_platform/api/v1/update', { host: 'dsh.example' })
+    const result = await request(gatewayPort, '/_dsh_platform/api/v1/status', { host: 'dsh.example' })
     assert.equal(result.status, 202)
-    assert.deepEqual(JSON.parse(result.body), { method: 'GET', path: '/_dsh_platform/api/v1/update' })
+    assert.deepEqual(JSON.parse(result.body), { method: 'GET', path: '/_dsh_platform/api/v1/status' })
     assert.equal(upstreamRequests, 0)
+    const rollback = await request(gatewayPort, '/_dsh_platform/api/v1/rollback', { host: 'dsh.example' })
+    assert.equal(rollback.status, 404)
   } finally {
     await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
   }
