@@ -172,7 +172,7 @@ tini
 
 The gateway validates the external `Host`, `Origin`, and Fetch Metadata and optionally requires one password. It sends the fixed `/_dsh_platform/ui/` and bounded management API routes to the persistent Management service; all other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
 
-The source tree follows the same lifecycle boundary. `container/control-plane/services/` contains the Gateway and Management processes supervised by Bootstrap, while `container/control-plane/hooks/` contains supervised one-shot recovery work. `container/control-plane/modules/` contains updater, logging, patch, and System Plugin logic imported by them. `container/environment/` contains workloads that updates may suspend and replace. Environment reload therefore stops DSH without stopping Gateway, Management, or the Update Console.
+The source tree follows the same lifecycle boundary. `container/control-plane/services/` contains the Gateway and Management processes supervised by Bootstrap, while `container/control-plane/hooks/` contains supervised one-shot recovery work. `container/control-plane/modules/` contains updater, logging, patch, and System Plugin logic imported by them. `container/environment/` contains workloads that updates may suspend and replace; non-process Environment inputs live under `container/resources/{patches,system-plugins}`. Environment reload therefore stops DSH without stopping Gateway, Management, or the Update Console.
 
 ## **Online updates and trust**
 

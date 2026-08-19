@@ -27,8 +27,8 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
   const originalPicker = await readFile(join(source, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js'))
   const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-'))
   const patches = [
-    join(containerRoot, 'patches/directory-picker.mjs'),
-    join(containerRoot, 'patches/browser-loopback.mjs'),
+    join(containerRoot, 'resources/patches/directory-picker.mjs'),
+    join(containerRoot, 'resources/patches/browser-loopback.mjs'),
   ]
   const first = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'one', patchPaths: patches })
   const second = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'two', patchPaths: patches })
@@ -47,7 +47,7 @@ test('rejects a Patch mismatch without publishing a partial Runtime', async () =
     pristineRoot: source,
     versionsRoot: join(root, 'versions'),
     runtimeId: 'broken',
-    patchPaths: [join(containerRoot, 'patches/browser-loopback.mjs')],
+    patchPaths: [join(containerRoot, 'resources/patches/browser-loopback.mjs')],
   }), /found 0/)
   await assert.rejects(readFile(join(root, 'versions/broken/package/lib/bin.js')), { code: 'ENOENT' })
 })
