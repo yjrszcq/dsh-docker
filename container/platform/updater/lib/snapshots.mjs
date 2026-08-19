@@ -170,4 +170,9 @@ export class PersistentStateSnapshots {
     for (const name of names.filter(name => !name.startsWith('.')).sort()) snapshots.push(await this.inspect(name))
     return Object.freeze(snapshots)
   }
+
+  async remove(id) {
+    await this.inspect(id)
+    await rm(this.path(id), { recursive: true, force: true })
+  }
 }

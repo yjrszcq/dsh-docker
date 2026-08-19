@@ -14,6 +14,7 @@ import { UpdateJournal } from '../updater/lib/journal.mjs'
 import { PersistentStateSnapshots } from '../updater/lib/snapshots.mjs'
 import { reconcileRecoveredState } from '../updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../updater/lib/channel-state.mjs'
+import { CompleteStateRecovery } from '../updater/lib/rollback.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
@@ -30,6 +31,11 @@ const metadata = new MetadataClient({
 const preparer = new TargetPreparer({ untrustedRoot: join(dataRoot, 'downloads', 'untrusted'), trust })
 const activator = new PlatformActivator({ dataRoot, stage0: trust })
 const journal = new UpdateJournal(join(dataRoot, 'state', 'update-transaction.json'))
+const snapshots = new PersistentStateSnapshots({
+  root: join(dataRoot, 'snapshots'),
+  sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
+})
+const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
 const coordinator = new UpdateCoordinator({
   metadata,
   preparer,
@@ -37,12 +43,10 @@ const coordinator = new UpdateCoordinator({
   state: new UpdateStateStore(join(dataRoot, 'state', 'update.json')),
   npm: new NpmRegistryClient({}),
   journal,
-  snapshots: new PersistentStateSnapshots({
-    root: join(dataRoot, 'snapshots'),
-    sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
-  }),
+  snapshots,
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
   channelState: new ChannelStateStore(join(dataRoot, 'state', 'channel.json')),
+  completeRecovery,
 })
 const server = createManagementServer({
   coordinator,

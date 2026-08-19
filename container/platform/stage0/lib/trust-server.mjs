@@ -62,6 +62,8 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
         send(response, 200, await objects.acceptManifest(body.receipt, body.signatureReceipt))
       } else if (url.pathname === '/v1/activate') {
         send(response, 200, { receipts: await objects.activate(body.receipts) })
+      } else if (url.pathname === '/v1/objects/collect') {
+        send(response, 200, { removed: await objects.collectGarbage() })
       } else if (url.pathname === '/v1/bootstrap/stage' && stageBootstrap !== undefined) {
         await stageBootstrap(body.receipt, body.version)
         send(response, 202, { status: 'switching', version: body.version })

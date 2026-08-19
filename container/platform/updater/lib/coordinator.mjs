@@ -8,7 +8,7 @@ export class UpdateConflictError extends Error {}
 
 export class UpdateCoordinator extends EventEmitter {
   constructor({
-    metadata, preparer, activator, state, npm, journal, snapshots, channelState,
+    metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery,
     probationSeconds = 120,
     now = () => new Date(),
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
@@ -22,6 +22,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.journal = journal
     this.snapshots = snapshots
     this.channelState = channelState
+    this.completeRecovery = completeRecovery
     this.probationSeconds = probationSeconds
     this.now = now
     this.sleep = sleep
@@ -79,6 +80,31 @@ export class UpdateCoordinator extends EventEmitter {
     return { taskId, completion: this.task }
   }
 
+  rollbackPlan() {
+    if (this.completeRecovery === undefined) return Promise.resolve(null)
+    return this.completeRecovery.plan()
+  }
+
+  startCompleteRollback(planId, options = {}) {
+    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+    if (this.completeRecovery === undefined) throw new Error('complete rollback is not configured')
+    const taskId = randomUUID()
+    this.task = this.runCompleteRollback(taskId, planId, options).finally(() => { this.task = undefined })
+    return { taskId, completion: this.task }
+  }
+
+  async runCompleteRollback(taskId, planId, options) {
+    try {
+      await this.transition('restoring-data', { taskId, progress: 20, error: null })
+      const result = await this.completeRecovery.restore(planId, options)
+      await this.transition('success', { taskId, progress: 100, error: null })
+      return result
+    } catch (error) {
+      await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'rollback failed' })
+      throw error
+    }
+  }
+
   async desiredState() {
     if (this.channelState === undefined) throw new Error('update channels are not configured')
     const stable = (await this.metadata.check()).value
@@ -133,6 +159,7 @@ export class UpdateCoordinator extends EventEmitter {
     let transaction
     let candidate
     let failureClass = 'check'
+    let obsoleteSnapshotId = null
     try {
       await this.transition('checking-upstream', { taskId, progress: 0, error: null })
       const stable = (await this.metadata.check()).value
@@ -150,6 +177,10 @@ export class UpdateCoordinator extends EventEmitter {
       const prepared = await this.preparer.prepareExperimental(candidate)
       await this.transition('building-candidate', { taskId, progress: 35 })
       const built = await this.activator.prepareExperimental(prepared)
+      const previousJournal = await this.journal.read()
+      if (previousJournal !== undefined && ['committed', 'rolled-back', 'failed'].includes(previousJournal.phase)) {
+        obsoleteSnapshotId = previousJournal.snapshotId
+      }
       transaction = await this.journal.begin({
         transactionId: taskId,
         mode: 'experimental',
@@ -186,6 +217,10 @@ export class UpdateCoordinator extends EventEmitter {
       const activationTokens = await this.activator.experimentalActivationTokens(prepared.receiptTokens)
       await this.preparer.trust.activate(activationTokens)
       transaction = await this.journal.transition('committed')
+      await this.activator.cleanup?.().catch(() => {})
+      if (obsoleteSnapshotId !== null && obsoleteSnapshotId !== transaction.snapshotId) {
+        await this.snapshots.remove?.(obsoleteSnapshotId).catch(() => {})
+      }
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'

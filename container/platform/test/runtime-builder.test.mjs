@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -67,4 +67,14 @@ test('checks npm SHA-512 integrity and tracks Runtime current/previous slots', a
   assert.deepEqual(await slots.state(), { current: 'two', previous: 'one' })
   await slots.rollback()
   assert.deepEqual(await slots.state(), { current: 'one', previous: 'two' })
+})
+
+test('prunes only Runtime versions outside current and previous slots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-prune-'))
+  const slots = new RuntimeSlots(root)
+  for (const version of ['one', 'two', 'old']) await mkdir(join(root, 'versions', version), { recursive: true })
+  await slots.promote('one')
+  await slots.promote('two')
+  assert.deepEqual(await slots.prune(), ['old'])
+  assert.deepEqual((await readdir(join(root, 'versions'))).sort(), ['one', 'two'])
 })

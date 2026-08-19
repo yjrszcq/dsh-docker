@@ -36,6 +36,7 @@ export class PlatformActivator {
     this.stage0 = stage0
     this.runtimeSlots = new RuntimeSlots(join(dataRoot, 'runtime'))
     this.environmentSlots = new RuntimeSlots(join(dataRoot, 'environments'))
+    this.systemPluginSlots = new RuntimeSlots(join(dataRoot, 'system-plugins'))
   }
 
   async pristine(prepared) {
@@ -107,6 +108,7 @@ export class PlatformActivator {
     try {
       await this.bootstrap.request('POST', '/v1/reload')
     } catch (error) {
+      await this.systemPluginSlots.rollback().catch(() => {})
       await this.environmentSlots.rollback().catch(() => {})
       await this.runtimeSlots.rollback().catch(() => {})
       await this.bootstrap.request('POST', '/v1/reload').catch(() => {})
@@ -115,6 +117,7 @@ export class PlatformActivator {
   }
 
   async rollback() {
+    await this.systemPluginSlots.rollback()
     await this.environmentSlots.rollback()
     await this.runtimeSlots.rollback()
     await this.bootstrap.request('POST', '/v1/reload')
@@ -135,7 +138,7 @@ export class PlatformActivator {
       runtime: runtime.current,
       environment: environment.current,
       dataSnapshot: null,
-      receiptTokens: Object.freeze((await this.stage0.activeReceipts()).receipts.map(receipt => receipt.token)),
+      receiptTokens: Object.freeze((await this.stage0.activeReceipts()).receipts.map(receipt => receipt.token).sort()),
     })
   }
 
@@ -196,7 +199,17 @@ export class PlatformActivator {
   async restoreDeployment(deployment, { resume = true } = {}) {
     await this.runtimeSlots.promote(deployment.runtime)
     await this.environmentSlots.promote(deployment.environment)
+    await this.systemPluginSlots.promote(deployment.environment)
     if (deployment.receiptTokens.length > 0) await this.stage0.activate(deployment.receiptTokens)
     if (resume) await this.resumeDsh()
+  }
+
+  async cleanup() {
+    return Object.freeze({
+      runtimes: await this.runtimeSlots.prune(),
+      environments: await this.environmentSlots.prune(),
+      systemPlugins: await this.systemPluginSlots.prune(),
+      trustedObjects: (await this.stage0.collectGarbage()).removed,
+    })
   }
 }

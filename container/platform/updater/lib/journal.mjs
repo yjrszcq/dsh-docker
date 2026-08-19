@@ -16,7 +16,7 @@ const TRANSITIONS = new Map([
   ['switched', new Set(['probation', 'restoring-data'])],
   ['probation', new Set(['committed', 'restoring-data'])],
   ['restoring-data', new Set(['rolled-back', 'failed'])],
-  ['committed', new Set()],
+  ['committed', new Set(['restoring-data'])],
   ['rolled-back', new Set()],
   ['failed', new Set()],
 ])

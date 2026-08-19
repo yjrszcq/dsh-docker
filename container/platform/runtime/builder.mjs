@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TrustError } from '../lib/validation.mjs'
@@ -97,5 +97,23 @@ export class RuntimeSlots {
     await replaceLink(this.root, 'current', state.previous)
     if (state.current !== undefined) await replaceLink(this.root, 'previous', state.current)
     return this.state()
+  }
+
+  async prune() {
+    const state = await this.state()
+    const retained = new Set([state.current, state.previous].filter(Boolean))
+    let versions
+    try { versions = await readdir(join(this.root, 'versions')) } catch (error) {
+      if (error?.code === 'ENOENT') return Object.freeze([])
+      throw error
+    }
+    const removed = []
+    for (const version of versions) {
+      if (!version.startsWith('.') && !retained.has(version)) {
+        await rm(join(this.root, 'versions', version), { recursive: true, force: true })
+        removed.push(version)
+      }
+    }
+    return Object.freeze(removed.sort())
   }
 }

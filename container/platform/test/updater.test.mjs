@@ -394,6 +394,36 @@ test('replaces the prior Experimental authority while retaining Stable deploymen
   )
 })
 
+test('restores Runtime, Environment, System Plugins, and receipts as one deployment', async () => {
+  const calls = []
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async () => calls.push('resume') },
+    stage0: { activate: async tokens => calls.push(`receipts:${tokens.join(',')}`) },
+  })
+  activator.runtimeSlots = { promote: async value => calls.push(`runtime:${value}`) }
+  activator.environmentSlots = { promote: async value => calls.push(`environment:${value}`) }
+  activator.systemPluginSlots = { promote: async value => calls.push(`plugins:${value}`) }
+  await activator.restoreDeployment({
+    runtime: 'runtime-a', environment: 'env-1', receiptTokens: ['stable-a'],
+  }, { resume: false })
+  assert.deepEqual(calls, ['runtime:runtime-a', 'environment:env-1', 'plugins:env-1', 'receipts:stable-a'])
+})
+
+test('removes the superseded snapshot only after the next Experimental commit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-retention-'))
+  const { coordinator } = experimentalSystem(root)
+  const removed = []
+  coordinator.snapshots.remove = async id => removed.push(id)
+  await coordinator.startExperimental().completion
+  assert.deepEqual(removed, [])
+  coordinator.activator.currentDeployment = async () => ({
+    dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-b', dataSnapshot: null, receiptTokens: ['stable-receipt'],
+  })
+  await coordinator.startExperimental().completion
+  assert.equal(removed.length, 1)
+})
+
 test('reads npm latest from the official packument without trusting it locally', async () => {
   const candidate = {
     name: '@deepseek-ai/dsh', version: '0.1.0-rc.8',
