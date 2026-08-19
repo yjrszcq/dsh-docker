@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import './style.css'
 
 export const inject = ['slots', 'locale']
 
 const API = '/_dsh_platform/api/v1'
+const TERMINAL = new Set(['idle', 'success', 'failed'])
 
-async function request(path, options) {
-  const response = await fetch(`${API}/${path}`, options)
+async function request(path, { method = 'GET', body } = {}) {
+  const response = await fetch(`${API}/${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
   const value = await response.json()
   if (!response.ok) throw new Error(value.error ?? `HTTP ${response.status}`)
   return value
@@ -15,11 +21,19 @@ function valueOrDash(value) {
   return value === undefined || value === null || value === '' ? '-' : String(value)
 }
 
+function VersionRow({ label, version, detail }) {
+  return React.createElement('div', { className: 'dsh-platform-update__version' },
+    React.createElement('span', null, label),
+    React.createElement('strong', null, valueOrDash(version)),
+    detail && React.createElement('small', null, detail))
+}
+
 export function UpdateSection() {
   const [status, setStatus] = useState()
   const [logs, setLogs] = useState([])
   const [error, setError] = useState('')
-  const busy = status?.update && !['idle', 'success', 'failed'].includes(status.update.status)
+  const [confirmStable, setConfirmStable] = useState(false)
+  const busy = status?.update && !TERMINAL.has(status.update.status)
   const load = useCallback(async () => {
     try {
       const [nextStatus, nextLogs] = await Promise.all([
@@ -40,23 +54,76 @@ export function UpdateSection() {
     events.onerror = () => { void load() }
     return () => events.close()
   }, [load])
-  const check = async () => { await request('check', { method: 'POST' }); await load() }
-  const update = async () => { await request('update', { method: 'POST' }); await load() }
+
+  const act = async operation => {
+    setError('')
+    try { await operation(); await load() } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Request failed')
+    }
+  }
+  const setChannel = channel => act(() => request('channel', { method: 'PUT', body: { channel } }))
+  const rollbackPlan = status?.rollbackPlan
   const updateState = status?.update ?? {}
+  const holds = [...(status?.holds ?? []), ...(status?.experimentalBlocked ? [status.experimentalBlocked] : [])]
+  const uniqueHolds = [...new Map(holds.map(hold => [hold.id, hold])).values()]
+  const updateLabel = status?.updateChannel === 'experimental' ? '更新到最新上游版本' : '更新到最新支持版本'
+
   return React.createElement('section', { className: 'dsh-platform-update' },
+    React.createElement('header', { className: 'dsh-platform-update__header' },
+      React.createElement('h2', null, '平台更新'),
+      React.createElement('div', { className: 'dsh-platform-update__channel', role: 'group', 'aria-label': '更新通道' },
+        ['stable', 'experimental'].map(channel => React.createElement('button', {
+          type: 'button', key: channel, disabled: busy,
+          'aria-pressed': status?.updateChannel === channel,
+          onClick: () => setChannel(channel),
+        }, channel === 'stable' ? 'Stable' : 'Experimental')))),
+    error && React.createElement('p', { className: 'dsh-platform-update__error', role: 'alert' }, error),
+    React.createElement('div', { className: 'dsh-platform-update__versions' },
+      React.createElement(VersionRow, { label: 'Current', version: status?.current?.dsh, detail: status?.current?.environment }),
+      React.createElement(VersionRow, { label: 'Latest Supported', version: status?.supported?.dsh, detail: status?.supported?.environment }),
+      React.createElement(VersionRow, { label: 'Latest Upstream', version: status?.upstream?.version })),
+    status?.aheadOfStable && React.createElement('p', { className: 'dsh-platform-update__notice' }, '当前版本领先 Latest Supported，已冻结 Runtime 与 Environment 组合。'),
+    status?.experimentalBlocked && React.createElement('p', { className: 'dsh-platform-update__error' }, '当前 Experimental DSH 与正式 Environment 组合不可用。'),
     React.createElement('div', { className: 'dsh-platform-update__toolbar' },
-      React.createElement('button', { type: 'button', onClick: check, disabled: busy }, '检查更新'),
-      React.createElement('button', { type: 'button', onClick: update, disabled: busy }, '更新到最新支持版本')),
-    error && React.createElement('p', { role: 'alert' }, error),
-    React.createElement('dl', null,
-      React.createElement('dt', null, '当前版本'), React.createElement('dd', null, valueOrDash(status?.runtime?.dsh)),
-      React.createElement('dt', null, '目标版本'), React.createElement('dd', null, valueOrDash(updateState.available?.dsh)),
+      React.createElement('button', { type: 'button', onClick: () => act(() => request('check', { method: 'POST' })), disabled: busy }, '检查更新'),
+      React.createElement('button', { type: 'button', className: 'is-primary', onClick: () => act(() => request('update', { method: 'POST' })), disabled: busy }, updateLabel),
+      rollbackPlan && React.createElement('button', {
+        type: 'button', disabled: busy,
+        onClick: () => act(() => request('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } })),
+      }, '回滚 previous'),
+      rollbackPlan?.returnStableAvailable && React.createElement('button', {
+        type: 'button', className: 'is-danger', disabled: busy, onClick: () => setConfirmStable(true),
+      }, '立即回 Stable')),
+    uniqueHolds.length > 0 && React.createElement('div', { className: 'dsh-platform-update__holds' },
+      uniqueHolds.map(hold => React.createElement('div', { key: hold.id },
+        React.createElement('span', null, `${hold.dshVersion}${hold.environmentVersion ? ` + ${hold.environmentVersion}` : ''}`),
+        React.createElement('small', null, hold.reason),
+        React.createElement('button', {
+          type: 'button', disabled: busy,
+          onClick: () => act(() => request('holds/retry', { method: 'POST', body: { id: hold.id } })),
+        }, '重试')))),
+    React.createElement('dl', { className: 'dsh-platform-update__state' },
       React.createElement('dt', null, '上次检查'), React.createElement('dd', null, valueOrDash(updateState.checkedAt)),
       React.createElement('dt', null, '状态'), React.createElement('dd', null, valueOrDash(updateState.status)),
       React.createElement('dt', null, '进度'), React.createElement('dd', null, `${valueOrDash(updateState.progress)}%`),
-      React.createElement('dt', null, '结果'), React.createElement('dd', null, valueOrDash(updateState.error ?? updateState.status))),
-    React.createElement('pre', { className: 'dsh-platform-update__logs' }, logs.map(entry =>
-      `${entry.timestamp} ${entry.source} ${entry.message}`).join('\n')))
+      React.createElement('dt', null, '观察期'), React.createElement('dd', null, valueOrDash(status?.probation?.until)),
+      React.createElement('dt', null, '结果'), React.createElement('dd', null, valueOrDash(updateState.error ?? updateState.outcome ?? updateState.status))),
+    React.createElement('pre', { className: 'dsh-platform-update__logs', 'aria-label': '更新日志' }, logs.map(entry =>
+      `${entry.timestamp} ${entry.source} ${entry.message}`).join('\n')),
+    confirmStable && React.createElement('div', { className: 'dsh-platform-update__backdrop' },
+      React.createElement('div', { className: 'dsh-platform-update__dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dsh-return-stable-title' },
+        React.createElement('h3', { id: 'dsh-return-stable-title' }, '恢复 Stable 状态'),
+        React.createElement('p', null, `将恢复 ${valueOrDash(rollbackPlan?.snapshot?.createdAt)} 的数据快照，之后产生的数据会丢失。`),
+        React.createElement('div', null,
+          React.createElement('button', { type: 'button', onClick: () => setConfirmStable(false) }, '取消'),
+          React.createElement('button', {
+            type: 'button', className: 'is-danger', onClick: () => {
+              setConfirmStable(false)
+              void act(() => request('return-stable', {
+                method: 'POST', body: { planId: rollbackPlan.planId, confirmDataLoss: true },
+              }))
+            },
+          }, '确认恢复并丢弃新数据')))))
 }
 
 export function apply(ctx) {

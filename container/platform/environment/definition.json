@@ -1,5 +1,5 @@
 {
-  "version": "2026.08.19.2-dev",
+  "version": "2026.08.19.3-dev",
   "bootstrapApi": 1,
   "components": [
     {
@@ -50,7 +50,7 @@
   "systemPlugins": [
     {
       "id": "update-ui",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "artifactId": "system-plugin-update-ui",
       "source": "../update-ui/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
