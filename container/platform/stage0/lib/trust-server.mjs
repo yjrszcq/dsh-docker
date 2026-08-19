@@ -27,11 +27,10 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
       if (request.method === 'GET' && url.pathname === '/v1/status') {
         const keyring = await ledger.currentKeyring()
         const target = await ledger.currentTarget()
-        const experimental = await ledger.currentExperimental().catch(() => undefined)
         send(response, 200, {
           keyringGeneration: keyring?.value.generation ?? null,
           targetSequence: target?.value.targetSequence ?? null,
-          experimentalSequence: experimental?.value.experimentalSequence ?? null,
+          experimentalVersion: (await ledger.currentExperimental().catch(() => undefined))?.value.version ?? null,
         })
         return
       }
@@ -48,17 +47,13 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
         const value = await ledger.acceptTarget(Buffer.from(body.document, 'base64'), body.signature)
         await objects.reconcileRevocations((await ledger.currentKeyring()).value)
         send(response, 200, { targetSequence: value.targetSequence })
-      } else if (url.pathname === '/v1/experimental') {
-        const value = await ledger.acceptExperimental(Buffer.from(body.document, 'base64'), body.signature)
-        await objects.reconcileRevocations((await ledger.currentKeyring()).value)
-        send(response, 200, { experimentalSequence: value.experimentalSequence })
       } else if (url.pathname === '/v1/artifacts/import') {
         const receipt = body.parentReceipt === null || body.parentReceipt === undefined
           ? await objects.importFromTarget(body.artifactId, body.sourcePath)
           : await objects.importFromManifest(body.parentReceipt, body.artifactId, body.sourcePath)
         send(response, 200, receipt)
       } else if (url.pathname === '/v1/artifacts/import-experimental') {
-        send(response, 200, await objects.importFromExperimental(body.artifactId, body.sourcePath))
+        send(response, 200, await objects.importFromExperimental(body.candidate, body.sourcePath))
       } else if (url.pathname === '/v1/manifests/accept') {
         send(response, 200, await objects.acceptManifest(body.receipt, body.signatureReceipt))
       } else if (url.pathname === '/v1/activate') {

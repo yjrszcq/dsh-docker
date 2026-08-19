@@ -36,13 +36,14 @@ else {
   issuedAt = new Date(sourceDateEpoch * 1000).toISOString()
 }
 const stable = canonicalJson({
-  schema: 1,
+  schema: config.experimentalPolicy === undefined ? 1 : 2,
   updateApi: 1,
   keyringGeneration: config.keyringGeneration,
   targetSequence: config.targetSequence,
   issuedAt,
   artifacts,
   desired: config.desired,
+  ...(config.experimentalPolicy === undefined ? {} : { experimentalPolicy: config.experimentalPolicy }),
 })
 parseStable(stable)
 const signature = canonicalJson({

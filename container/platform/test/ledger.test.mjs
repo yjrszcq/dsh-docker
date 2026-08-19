@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, experimentalTarget, keyPair, keyring, signature, target } from './helpers.mjs'
+import { document, experimentalPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature, target } from './helpers.mjs'
 
 async function fixture() {
   const recovery = keyPair()
@@ -56,26 +57,28 @@ test('requires an accepted keyring before accepting a target', async () => {
   await assert.rejects(ledger.acceptTarget(bytes, signature(bytes, release)), /keyring/)
 })
 
-test('keeps Experimental sequence independent and requires a newer DSH signed by current Release Key', async () => {
+test('accepts only increasing Experimental DSH candidates signed by a delegated npm Registry key', async () => {
   const { ledger, recovery } = await fixture()
   const current = keyPair()
   const next = keyPair()
+  const registry = registryKeyPair()
   const ring = document(keyring(1, current, next))
   await ledger.acceptKeyring(ring, signature(ring, recovery))
-  const stable = document(target(1, 4))
+  const stable = document(target(1, 4, experimentalPolicy(registry)))
   await ledger.acceptTarget(stable, signature(stable, current))
 
-  const first = document(experimentalTarget(1, 1))
-  await assert.rejects(ledger.acceptExperimental(first, signature(first, next)), { code: 'TRUST_UNKNOWN_KEY' })
-  await ledger.acceptExperimental(first, signature(first, current))
-  await ledger.acceptExperimental(first, signature(first, current))
-  assert.equal((await ledger.currentExperimental()).value.experimentalSequence, 1)
+  const content = Buffer.from('rc8')
+  const first = registryCandidate(registry, '0.1.0-rc.8', content)
+  const digest = createHash('sha256').update(content).digest('hex')
+  await ledger.acceptExperimental(first, digest, content.byteLength)
+  await ledger.acceptExperimental(first, digest, content.byteLength)
+  assert.equal((await ledger.currentExperimental()).value.version, '0.1.0-rc.8')
 
-  const sameVersion = document(experimentalTarget(1, 2, '0.1.0-rc.7'))
-  await assert.rejects(ledger.acceptExperimental(sameVersion, signature(sameVersion, current)), /newer/)
-  const second = document(experimentalTarget(1, 2, '0.1.0-rc.9'))
-  await ledger.acceptExperimental(second, signature(second, current))
-  await assert.rejects(ledger.acceptExperimental(first, signature(first, current)), { code: 'TRUST_ROLLBACK' })
+  const unsupported = registryCandidate(registry, '0.1.0-rc.7', content)
+  await assert.rejects(ledger.acceptExperimental(unsupported, digest, content.byteLength), /newer/)
+  const second = registryCandidate(registry, '0.1.0-rc.9', content)
+  await ledger.acceptExperimental(second, digest, content.byteLength)
+  await assert.rejects(ledger.acceptExperimental(first, digest, content.byteLength), { code: 'TRUST_ROLLBACK' })
 })
 
 test('retains historical keyrings so an accepted target remains verifiable after rotation', async () => {

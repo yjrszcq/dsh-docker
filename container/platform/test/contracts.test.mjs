@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseExperimental, parseStable } from '../lib/contracts.mjs'
+import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseExperimentalPolicy, parseStable } from '../lib/contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
-import { document, experimentalTarget, target } from './helpers.mjs'
+import { document, experimentalPolicy, registryKeyPair, target } from './helpers.mjs'
 
 const common = manifestType => ({
   schema: 1,
@@ -43,14 +43,13 @@ test('parses the exact stable desired state and rejects missing referenced Artif
   assert.throws(() => parseStable(document({ ...target(1, 1), unknown: true })), /fields/)
 })
 
-test('parses an exact Experimental DSH target and rejects broader authority', () => {
-  const parsed = parseExperimental(document(experimentalTarget(1, 1)))
-  assert.equal(parsed.desired.dsh.packageName, '@deepseek-ai/dsh')
-  assert.equal(parsed.experimentalSequence, 1)
-  assert.throws(() => parseExperimental(document({ ...experimentalTarget(1, 1), environment: 'untrusted' })), /fields/)
-  const wrongPackage = experimentalTarget(1, 1)
-  wrongPackage.desired.dsh.packageName = '@example/dsh'
-  assert.throws(() => parseExperimental(document(wrongPackage)), /packageName/)
+test('parses a Release-delegated npm Experimental policy while retaining Stable schema 1', () => {
+  const policy = experimentalPolicy(registryKeyPair())
+  assert.equal(parseExperimentalPolicy(policy).packageName, '@deepseek-ai/dsh')
+  assert.equal(parseStable(document(target(1, 1))).experimentalPolicy, null)
+  assert.equal(parseStable(document(target(1, 1, policy))).experimentalPolicy.keys[0].keyId, policy.keys[0].keyId)
+  const wrongRegistry = { ...policy, registry: 'https://registry.example/' }
+  assert.throws(() => parseExperimentalPolicy(wrongRegistry), /official npm registry/)
 })
 
 test('parses bootstrap and environment manifests with ordered references', () => {

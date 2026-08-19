@@ -6,6 +6,8 @@ import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
 import { durableReplace } from '../../lib/atomic.mjs'
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
+import { compareDshVersions } from '../../lib/supported-target.mjs'
+import { verifyRegistryCandidate } from './experimental.mjs'
 import { verifyDetached } from './signature.mjs'
 
 export const MANIFEST_MEDIA_TYPE = 'application/vnd.dsh-platform.manifest.v1+json'
@@ -125,8 +127,12 @@ function validateReceipt(value) {
     'targetSequence', 'token',
   ]
   const authorityType = receipt.authorityType ?? 'stable'
-  exactKeys(receipt, receipt.authorityType === undefined ? required : [...required, 'authorityType'], 'receipt')
+  const receiptFields = receipt.authorityType === undefined
+    ? required
+    : [...required, 'authorityType', ...(authorityType === 'experimental' ? ['authorityVersion'] : [])]
+  exactKeys(receipt, receiptFields, 'receipt')
   if (!['stable', 'experimental'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
+  if (authorityType === 'experimental') compareDshVersions(receipt.authorityVersion, receipt.authorityVersion)
   if (typeof receipt.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(receipt.token)) {
     throw new TrustError('receipt token is invalid')
   }
@@ -144,7 +150,10 @@ function validateReceipt(value) {
     ['parent SHA-256', receipt.parentSha256],
     ['signer key ID', receipt.signerKeyId],
   ]) {
-    if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)) {
+    const valid = name === 'signer key ID' && authorityType === 'experimental'
+      ? typeof digest === 'string' && /^SHA256:[A-Za-z0-9+/]{43}$/.test(digest)
+      : typeof digest === 'string' && /^[a-f0-9]{64}$/.test(digest)
+    if (!valid) {
       throw new TrustError(`receipt ${name} is invalid`)
     }
   }
@@ -214,20 +223,6 @@ export class VerifiedObjectStore {
     }
   }
 
-  async authorityFromExperimental(artifactId) {
-    const target = await this.ledger.currentExperimental()
-    if (target === undefined) throw new TrustError('no accepted experimental target exists')
-    return {
-      descriptor: descriptorById(target.value.artifacts, artifactId),
-      keyringGeneration: target.value.keyringGeneration,
-      parentReceipt: null,
-      parentSha256: createHash('sha256').update(target.bytes).digest('hex'),
-      signerKeyId: target.value.keyId,
-      targetSequence: target.value.experimentalSequence,
-      authorityType: 'experimental',
-    }
-  }
-
   async authorityFromManifest(parentToken, artifactId) {
     const parent = await this.readReceipt(parentToken)
     if (!['staged', 'active', 'previous'].includes(parent.status)) {
@@ -268,27 +263,15 @@ export class VerifiedObjectStore {
     ))
   }
 
-  importFromExperimental(artifactId, sourcePath) {
-    return this.exclusive(async () => this.importAuthorized(
-      await this.authorityFromExperimental(artifactId),
-      sourcePath,
-    ))
-  }
-
   async importAuthorized(authority, sourcePath) {
     const currentKeyring = (await this.ledger.currentKeyring())?.value
-    const currentTarget = authority.authorityType === 'experimental'
-      ? (await this.ledger.currentExperimental())?.value
-      : (await this.ledger.currentTarget())?.value
-    const currentSequence = authority.authorityType === 'experimental'
-      ? currentTarget?.experimentalSequence
-      : currentTarget?.targetSequence
+    const currentTarget = (await this.ledger.currentTarget())?.value
     if (
       currentKeyring === undefined
       || currentTarget === undefined
       || authority.keyringGeneration !== currentKeyring.generation
       || authority.signerKeyId !== currentKeyring.current.keyId
-      || authority.targetSequence !== currentSequence
+      || authority.targetSequence !== currentTarget.targetSequence
     ) throw new TrustError('artifact authority is no longer current', 'TRUST_REVOKED')
     const source = resolve(sourcePath)
     if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
@@ -353,6 +336,81 @@ export class VerifiedObjectStore {
     }
   }
 
+  importFromExperimental(candidateValue, sourcePath) {
+    return this.exclusive(async () => {
+      const stable = (await this.ledger.currentTarget())?.value
+      if (stable === undefined) throw new TrustError('Experimental import requires a current Stable target')
+      const candidate = verifyRegistryCandidate(candidateValue, stable, this.now())
+      const source = resolve(sourcePath)
+      if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
+        throw new TrustError('artifact source must be inside the untrusted download directory')
+      }
+      await mkdir(join(this.root, 'objects'), { recursive: true })
+      const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const temporary = join(this.root, 'objects', `.${randomUUID()}.tmp`)
+      let destinationHandle
+      try {
+        if (!(await sourceHandle.stat()).isFile()) throw new TrustError('artifact source must be a regular file')
+        destinationHandle = await open(temporary, 'wx', 0o400)
+        const sha256 = createHash('sha256')
+        const sha512 = createHash('sha512')
+        let size = 0
+        const meter = new Transform({
+          transform(chunk, _encoding, callback) {
+            sha256.update(chunk)
+            sha512.update(chunk)
+            size += chunk.byteLength
+            callback(null, chunk)
+          },
+        })
+        await pipeline(sourceHandle.createReadStream({ autoClose: false }), meter, destinationHandle.createWriteStream())
+        destinationHandle = undefined
+        const objectSha256 = sha256.digest('hex')
+        const integrity = `sha512-${sha512.digest('base64')}`
+        if (integrity !== candidate.dist.integrity) {
+          throw new TrustError('Experimental Artifact does not match npm integrity', 'TRUST_ARTIFACT_MISMATCH')
+        }
+        const destination = this.objectPath(objectSha256)
+        try {
+          await link(temporary, destination)
+          await rm(temporary)
+        } catch (error) {
+          if (error?.code !== 'EEXIST') throw error
+          const existing = await hashFile(destination)
+          if (existing.size !== size || existing.sha256 !== objectSha256) {
+            throw new TrustError('trusted object store contains conflicting content')
+          }
+          await rm(temporary, { force: true })
+        }
+        await this.ledger.acceptExperimental(candidateValue, objectSha256, size)
+        const authority = `${candidate.name}@${candidate.version}:${candidate.dist.integrity}`
+        const receipt = {
+          token: receiptToken(),
+          artifactId: 'experimental-dsh-tarball',
+          mediaType: 'application/vnd.npm.package+gzip',
+          objectSha256,
+          size,
+          parentReceipt: null,
+          parentSha256: createHash('sha256').update(authority).digest('hex'),
+          signerKeyId: candidate.signerKeyId,
+          keyringGeneration: stable.keyringGeneration,
+          targetSequence: stable.targetSequence,
+          authorityType: 'experimental',
+          authorityVersion: candidate.version,
+          status: 'staged',
+          authoritySignature: null,
+          importedAt: this.now().toISOString(),
+        }
+        await atomicJson(this.receiptPath(receipt.token), receipt)
+        return Object.freeze({ ...receipt, path: destination })
+      } finally {
+        await sourceHandle.close().catch(() => {})
+        await destinationHandle?.close().catch(() => {})
+        await rm(temporary, { force: true }).catch(() => {})
+      }
+    })
+  }
+
   acceptManifest(token, signatureToken) {
     return this.exclusive(async () => {
       const receipt = await this.readReceipt(token)
@@ -412,7 +470,7 @@ export class VerifiedObjectStore {
       const receipts = await this.allReceipts()
       const revoked = new Set(keyring.revokedKeyIds)
       const currentTarget = (await this.ledger.currentTarget())?.value
-      const currentExperimental = (await this.ledger.currentExperimental().catch(() => undefined))?.value
+      const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
       const unusable = new Set(receipts.filter(receipt => (
         receipt.status === 'revoked' || receipt.status === 'retired'
       )).map(receipt => receipt.token))
@@ -431,8 +489,9 @@ export class VerifiedObjectStore {
               ))
               || (receipt.authorityType === 'experimental' && (
                 currentExperimental === undefined
-                || receipt.keyringGeneration !== currentExperimental.keyringGeneration
-                || receipt.targetSequence !== currentExperimental.experimentalSequence
+                || receipt.authorityVersion !== currentExperimental.value.version
+                || receipt.objectSha256 !== currentExperimental.objectSha256
+                || receipt.signerKeyId !== currentExperimental.value.signerKeyId
               ))
               || (receipt.parentReceipt !== null && unusable.has(receipt.parentReceipt))
             )
@@ -457,23 +516,24 @@ export class VerifiedObjectStore {
       if (currentKeyring === undefined) throw new TrustError('activation requires a current keyring')
       const currentTarget = (await this.ledger.currentTarget())?.value
       if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
-      const currentExperimental = (await this.ledger.currentExperimental().catch(() => undefined))?.value
+      const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
       const add = (token) => {
         const receipt = byToken.get(token)
         if (receipt === undefined) throw new TrustError('activation references an unknown receipt')
         if (!['staged', 'active', 'previous'].includes(receipt.status)) {
           throw new TrustError('activation references an unusable receipt')
         }
-        const authoritySequence = receipt.authorityType === 'experimental'
-          ? currentExperimental?.experimentalSequence
-          : currentTarget.targetSequence
+        const authorityCurrent = receipt.authorityType === 'experimental'
+          ? currentExperimental !== undefined
+            && receipt.authorityVersion === currentExperimental.value.version
+            && receipt.objectSha256 === currentExperimental.objectSha256
+            && receipt.signerKeyId === currentExperimental.value.signerKeyId
+          : receipt.keyringGeneration === currentKeyring.generation
+            && receipt.signerKeyId === currentKeyring.current.keyId
+            && receipt.targetSequence === currentTarget.targetSequence
         if (
           receipt.status === 'staged'
-          && (
-            receipt.keyringGeneration !== currentKeyring.generation
-            || receipt.signerKeyId !== currentKeyring.current.keyId
-            || receipt.targetSequence !== authoritySequence
-          )
+          && !authorityCurrent
         ) throw new TrustError('activation references a revoked receipt', 'TRUST_REVOKED')
         if (selected.has(token)) return
         selected.add(token)

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MANIFEST_MEDIA_TYPE, SIGNATURE_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, experimentalTarget, keyPair, keyring, signature } from './helpers.mjs'
+import { document, experimentalPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature } from './helpers.mjs'
 
 function descriptor(id, content, mediaType = 'application/octet-stream') {
   return {
@@ -18,14 +18,14 @@ function descriptor(id, content, mediaType = 'application/octet-stream') {
   }
 }
 
-function releaseTarget(generation, sequence, artifacts) {
+function releaseTarget(generation, sequence, artifacts, policy) {
   const selected = artifacts[0]
   const signatureArtifact = descriptor('stable-signature', Buffer.from('signature'), 'application/vnd.dsh-platform.signature.v1+json')
   const targetArtifacts = artifacts.some(artifact => artifact.id === signatureArtifact.id)
     ? artifacts
     : [...artifacts, signatureArtifact]
   return {
-    schema: 1,
+    schema: policy === undefined ? 1 : 2,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
@@ -40,6 +40,7 @@ function releaseTarget(generation, sequence, artifacts) {
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
       },
     },
+    ...(policy === undefined ? {} : { experimentalPolicy: policy }),
   }
 }
 
@@ -59,7 +60,7 @@ function manifest(generation, sequence, artifacts) {
   }
 }
 
-async function fixture(targetArtifacts) {
+async function fixture(targetArtifacts, policy = undefined) {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-object-store-'))
   const recovery = keyPair()
   const current = keyPair()
@@ -68,7 +69,7 @@ async function fixture(targetArtifacts) {
   const ringBytes = document(keyring(1, current, next))
   await ledger.acceptKeyring(ringBytes, signature(ringBytes, recovery))
   const artifacts = typeof targetArtifacts === 'function' ? targetArtifacts(current) : targetArtifacts
-  const targetBytes = document(releaseTarget(1, 1, artifacts))
+  const targetBytes = document(releaseTarget(1, 1, artifacts, policy))
   await ledger.acceptTarget(targetBytes, signature(targetBytes, current))
   const untrustedRoot = join(directory, 'downloads', 'untrusted')
   await mkdir(untrustedRoot, { recursive: true })
@@ -116,15 +117,18 @@ test('treats receipts written before authority typing as Stable receipts', async
 
 test('imports Experimental bytes only through the separate signed authority', async () => {
   const content = Buffer.from('experimental tarball')
-  const { current, ledger, store, untrustedRoot } = await fixture([descriptor('stable-only', Buffer.alloc(0))])
-  const experimental = document(experimentalTarget(1, 1, '0.1.0-rc.8', content))
-  await ledger.acceptExperimental(experimental, signature(experimental, current))
+  const registry = registryKeyPair()
+  const { store, untrustedRoot } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    experimentalPolicy(registry),
+  )
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
   const source = join(untrustedRoot, 'experimental.tgz')
   await writeFile(source, content)
   await assert.rejects(store.importFromTarget('experimental-dsh-tarball', source), /not authorized/)
-  const receipt = await store.importFromExperimental('experimental-dsh-tarball', source)
+  const receipt = await store.importFromExperimental(candidate, source)
   assert.equal(receipt.authorityType, 'experimental')
-  assert.equal(receipt.targetSequence, 1)
+  assert.equal(receipt.authorityVersion, '0.1.0-rc.8')
   await store.activate([receipt.token])
   assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })

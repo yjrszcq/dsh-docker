@@ -59,6 +59,7 @@ test('production publication is protected, monotonic, and exclusively owns Relea
   const workflow = await readFile(productionUrl, 'utf8')
   assert.match(workflow, /branches:\n      - main/)
   assert.match(workflow, /release\/supported-target\.json/)
+  assert.match(workflow, /release\/experimental-policy\.json/)
   assert.match(workflow, /environment: production-release/)
   assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/)
   assert.match(workflow, /DSH_RELEASE_PRIVATE_KEY/)

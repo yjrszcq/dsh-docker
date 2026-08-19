@@ -98,6 +98,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, '-', '1', 'https://release.example/platform-1/', output,
   ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
   assert.equal(result.status, 0, result.stderr)
@@ -117,6 +118,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
   assert.equal(stable.desired.dsh.version, '0.1.0-rc.7')
   assert.equal(stable.desired.environment.version, '2026.08.19.1-dev')
+  assert.equal(stable.experimentalPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
@@ -126,6 +128,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, output, '1',
     'https://release.example/platform-1-repeat/', rollbackOutput,
   ], { encoding: 'utf8' })
@@ -154,6 +157,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, futureRelease, '2',
     'https://release.example/platform-2/', join(root, 'generation-rollback-release'),
   ], { encoding: 'utf8' })
@@ -171,6 +175,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../environment/definition.json', import.meta.url).pathname,
+    new URL('../../../release/experimental-policy.json', import.meta.url).pathname,
     conflictingTrust, current.privatePath, tarball, output, '2',
     'https://release.example/platform-conflict/', join(root, 'conflicting-release'),
   ], { encoding: 'utf8' })

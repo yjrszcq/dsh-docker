@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
-import { parseExperimental } from '../../lib/contracts.mjs'
+import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from './keyring.mjs'
 import { parseReleaseTarget, validateTargetTransition, verifyReleaseTarget } from './target.mjs'
-import { validateExperimentalTransition, verifyExperimentalTarget } from './experimental.mjs'
+import { parseRegistryCandidate, verifyRegistryCandidate } from './experimental.mjs'
 
 async function readOptional(path) {
   try {
@@ -44,6 +44,18 @@ function parseSignedRecord(bytes, label) {
     throw new TrustError(`${label} record document must be canonical base64`)
   }
   return { document, signature: value.signature }
+}
+
+function parseExperimentalRecord(bytes) {
+  let record
+  try { record = JSON.parse(bytes.toString('utf8')) } catch { throw new TrustError('Experimental record must contain valid JSON') }
+  if (
+    record === null || typeof record !== 'object' || Array.isArray(record)
+    || Object.keys(record).sort().join(',') !== 'candidate,objectSha256,size'
+    || typeof record.objectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.objectSha256)
+    || !Number.isSafeInteger(record.size) || record.size < 0
+  ) throw new TrustError('Experimental record is invalid')
+  return { candidate: parseRegistryCandidate(record.candidate), objectSha256: record.objectSha256, size: record.size }
 }
 
 export class TrustLedger {
@@ -148,38 +160,43 @@ export class TrustLedger {
     return next
   }
 
-  async currentExperimental(keyring = undefined, stable = undefined) {
+  async currentExperimental(stable = undefined) {
     const recordBytes = await readOptional(this.experimentalPath('current.record.json'))
     if (recordBytes === undefined) return undefined
-    const { document, signature } = parseSignedRecord(recordBytes, 'experimental target')
+    const record = parseExperimentalRecord(recordBytes)
     const currentStable = stable ?? (await this.currentTarget())?.value
-    if (currentStable === undefined) throw new TrustError('experimental target requires an accepted stable target')
-    const parsed = parseExperimental(document)
-    const trustedKeyring = keyring?.generation === parsed.keyringGeneration
-      ? keyring
-      : (await this.keyringGeneration(parsed.keyringGeneration)).value
-    return {
-      bytes: document,
-      signature,
-      value: verifyExperimentalTarget(document, signature, trustedKeyring, currentStable),
-    }
+    if (currentStable === undefined) throw new TrustError('Experimental candidate requires an accepted Stable target')
+    return Object.freeze({ ...record, value: verifyRegistryCandidate(record.candidate, currentStable) })
   }
 
-  acceptExperimental(bytes, signature) {
-    return this.exclusive(() => this.acceptExperimentalUnlocked(bytes, signature))
+  acceptExperimental(candidate, objectSha256, size) {
+    return this.exclusive(() => this.acceptExperimentalUnlocked(candidate, objectSha256, size))
   }
 
-  async acceptExperimentalUnlocked(bytes, signature) {
-    const keyring = (await this.currentKeyring())?.value
-    const stable = (await this.currentTarget(keyring))?.value
-    if (keyring === undefined || stable === undefined) {
-      throw new TrustError('keyring and stable target must be accepted before an experimental target')
+  async acceptExperimentalUnlocked(candidate, objectSha256, size) {
+    if (typeof objectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(objectSha256)) {
+      throw new TrustError('Experimental object SHA-256 is invalid')
     }
-    const next = verifyExperimentalTarget(bytes, signature, keyring, stable)
-    const current = await this.currentExperimental(keyring, stable)
-    if (current !== undefined) validateExperimentalTransition(current.bytes, current.value, bytes, next)
-    if (current?.bytes.equals(bytes)) return current.value
-    await durableReplace(this.experimentalPath('current.record.json'), signedRecord(bytes, signature))
-    return next
+    if (!Number.isSafeInteger(size) || size < 0) throw new TrustError('Experimental object size is invalid')
+    const stable = (await this.currentTarget())?.value
+    if (stable === undefined) throw new TrustError('Stable target must be accepted before an Experimental candidate')
+    const next = verifyRegistryCandidate(candidate, stable)
+    const previousBytes = await readOptional(this.experimentalPath('current.record.json'))
+    if (previousBytes !== undefined) {
+      const previous = parseExperimentalRecord(previousBytes)
+      const compared = compareDshVersions(next.version, previous.candidate.version)
+      if (compared < 0) throw new TrustError('Experimental DSH version cannot decrease', 'TRUST_ROLLBACK')
+      if (compared === 0) {
+        if (
+          next.dist.integrity !== previous.candidate.dist.integrity
+          || objectSha256 !== previous.objectSha256
+          || size !== previous.size
+        ) throw new TrustError('Experimental DSH version cannot identify different content')
+        return Object.freeze({ ...previous, value: next })
+      }
+    }
+    const record = { candidate, objectSha256, size }
+    await durableReplace(this.experimentalPath('current.record.json'), `${JSON.stringify(record)}\n`)
+    return Object.freeze({ candidate: next, objectSha256, size, value: next })
   }
 }

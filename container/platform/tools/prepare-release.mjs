@@ -7,22 +7,23 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { parseBootstrapManifest, parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
+import { parseBootstrapManifest, parseEnvironmentManifest, parseExperimentalPolicy, parseStable } from '../lib/contracts.mjs'
 import { validateSupportedTarget } from '../lib/supported-target.mjs'
 import { positiveSafeInteger } from '../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 
 const args = process.argv.slice(2)
-if (args.length !== 9) {
-  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-release-dir|-> <target-sequence> <artifact-base-url> <output-dir>')
+if (args.length !== 10) {
+  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <experimental-policy.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-release-dir|-> <target-sequence> <artifact-base-url> <output-dir>')
   process.exit(64)
 }
 
-const [targetArg, definitionArg, trustArg, privateKeyArg, tarballArg, previousArg, sequenceArg, baseUrlArg, outputArg] = args
+const [targetArg, definitionArg, policyArg, trustArg, privateKeyArg, tarballArg, previousArg, sequenceArg, baseUrlArg, outputArg] = args
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const targetPath = resolve(targetArg)
 const definitionPath = resolve(definitionArg)
+const experimentalPolicy = parseExperimentalPolicy(JSON.parse(await readFile(resolve(policyArg), 'utf8')))
 const trustRoot = resolve(trustArg)
 const privateKeyPath = resolve(privateKeyArg)
 const tarballPath = resolve(tarballArg)
@@ -166,6 +167,7 @@ try {
     keyringGeneration: keyring.generation,
     targetSequence,
     artifactBaseUrl: artifactBaseUrl.href,
+    experimentalPolicy,
     artifacts: [
       ['environment-manifest', environmentManifestPath, 'application/vnd.dsh-platform.manifest.v1+json'],
       ['environment-signature', join(staging, 'environment.manifest.sig.json'), 'application/vnd.dsh-platform.signature.v1+json'],

@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - release/supported-target.json
+      - release/experimental-policy.json
   workflow_dispatch:
 
 concurrency:
@@ -127,6 +128,7 @@ jobs:
           node container/platform/tools/prepare-release.mjs \
             release/supported-target.json \
             container/platform/environment/definition.json \
+            release/experimental-policy.json \
             "$RUNNER_TEMP/production-trust" \
             "$private_key" \
             "$DSH_TARBALL" \

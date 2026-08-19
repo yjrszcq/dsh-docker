@@ -41,31 +41,45 @@ function dshReference(value) {
   })
 }
 
-function experimentalDshReference(value) {
-  const object = plainObject(value, 'experimental.desired.dsh')
-  exactKeys(object, ['integrity', 'packageName', 'tarballArtifactId', 'version'], 'experimental.desired.dsh')
+function registryKey(value, label) {
+  const object = plainObject(value, label)
+  exactKeys(object, ['algorithm', 'expires', 'keyId', 'publicKey'], label)
+  if (object.algorithm !== 'ECDSA-P256-SHA256') throw new TrustError(`${label}.algorithm is unsupported`)
+  if (typeof object.keyId !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(object.keyId)) {
+    throw new TrustError(`${label}.keyId is invalid`)
+  }
+  if (typeof object.publicKey !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(object.publicKey)) {
+    throw new TrustError(`${label}.publicKey is invalid`)
+  }
+  if (object.expires !== null) isoTimestamp(object.expires, `${label}.expires`)
+  return Object.freeze({ ...object })
+}
+
+export function parseExperimentalPolicy(value, label = 'experimental policy') {
+  const object = plainObject(value, label)
+  exactKeys(object, ['keys', 'packageName', 'registry'], label)
+  if (object.registry !== 'https://registry.npmjs.org/') {
+    throw new TrustError(`${label}.registry must be the official npm registry`)
+  }
   if (object.packageName !== '@deepseek-ai/dsh') {
-    throw new TrustError('experimental.desired.dsh.packageName must be @deepseek-ai/dsh')
+    throw new TrustError(`${label}.packageName must be @deepseek-ai/dsh`)
   }
-  if (typeof object.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(object.integrity)) {
-    throw new TrustError('experimental.desired.dsh.integrity must be npm SHA-512 integrity')
-  }
-  return Object.freeze({
-    packageName: object.packageName,
-    version: version(object.version, 'experimental.desired.dsh.version'),
-    tarballArtifactId: identifier(object.tarballArtifactId, 'experimental.desired.dsh.tarballArtifactId'),
-    integrity: object.integrity,
-  })
+  if (!Array.isArray(object.keys) || object.keys.length === 0) throw new TrustError(`${label}.keys must not be empty`)
+  const keys = object.keys.map((entry, index) => registryKey(entry, `${label}.keys[${String(index)}]`))
+  if (new Set(keys.map(key => key.keyId)).size !== keys.length) throw new TrustError(`${label}.keys must be unique`)
+  return Object.freeze({ registry: object.registry, packageName: object.packageName, keys: Object.freeze(keys) })
 }
 
 export function parseStable(bytes) {
   const object = parseJsonDocument(bytes, 'stable')
+  const fields = ['artifacts', 'desired', 'issuedAt', 'keyringGeneration', 'schema', 'targetSequence', 'updateApi']
+  if (object.schema === 2) fields.push('experimentalPolicy')
   exactKeys(
     object,
-    ['artifacts', 'desired', 'issuedAt', 'keyringGeneration', 'schema', 'targetSequence', 'updateApi'],
+    fields,
     'stable',
   )
-  if (object.schema !== 1) throw new TrustError('stable.schema must be 1')
+  if (![1, 2].includes(object.schema)) throw new TrustError('stable.schema must be 1 or 2')
   if (object.updateApi !== 1) throw new TrustError('stable.updateApi must be 1')
   const desired = plainObject(object.desired, 'stable.desired')
   exactKeys(desired, ['bootstrap', 'dsh', 'environment'], 'stable.desired')
@@ -92,32 +106,7 @@ export function parseStable(bytes) {
     issuedAt: isoTimestamp(object.issuedAt, 'stable.issuedAt'),
     artifacts,
     desired: parsedDesired,
-  })
-}
-
-export function parseExperimental(bytes) {
-  const object = parseJsonDocument(bytes, 'experimental')
-  exactKeys(
-    object,
-    ['artifacts', 'desired', 'experimentalSequence', 'issuedAt', 'keyringGeneration', 'schema', 'updateApi'],
-    'experimental',
-  )
-  if (object.schema !== 1) throw new TrustError('experimental.schema must be 1')
-  if (object.updateApi !== 1) throw new TrustError('experimental.updateApi must be 1')
-  const desired = plainObject(object.desired, 'experimental.desired')
-  exactKeys(desired, ['dsh'], 'experimental.desired')
-  const dsh = experimentalDshReference(desired.dsh)
-  const artifacts = parseArtifactList(object.artifacts, 'experimental.artifacts')
-  if (artifacts.length !== 1 || artifacts[0].id !== dsh.tarballArtifactId) {
-    throw new TrustError('experimental must authorize exactly its DSH tarball Artifact')
-  }
-  return Object.freeze({
-    document: object,
-    keyringGeneration: positiveSafeInteger(object.keyringGeneration, 'experimental.keyringGeneration'),
-    experimentalSequence: positiveSafeInteger(object.experimentalSequence, 'experimental.experimentalSequence'),
-    issuedAt: isoTimestamp(object.issuedAt, 'experimental.issuedAt'),
-    artifacts,
-    desired: Object.freeze({ dsh }),
+    experimentalPolicy: object.schema === 2 ? parseExperimentalPolicy(object.experimentalPolicy) : null,
   })
 }
 

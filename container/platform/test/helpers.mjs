@@ -10,6 +10,39 @@ export function keyPair() {
   }
 }
 
+export function registryKeyPair() {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  const der = pair.publicKey.export({ format: 'der', type: 'spki' })
+  return {
+    privateKey: pair.privateKey,
+    publicKey: der.toString('base64'),
+    keyId: `SHA256:${createHash('sha256').update(der).digest('base64').replace(/=$/, '')}`,
+  }
+}
+
+export function experimentalPolicy(pair, expires = null) {
+  return {
+    registry: 'https://registry.npmjs.org/',
+    packageName: '@deepseek-ai/dsh',
+    keys: [{ algorithm: 'ECDSA-P256-SHA256', keyId: pair.keyId, publicKey: pair.publicKey, expires }],
+  }
+}
+
+export function registryCandidate(pair, version = '0.1.0-rc.8', content = Buffer.alloc(0)) {
+  const integrity = `sha512-${createHash('sha512').update(content).digest('base64')}`
+  const message = `@deepseek-ai/dsh@${version}:${integrity}`
+  return {
+    schema: 1,
+    name: '@deepseek-ai/dsh',
+    version,
+    dist: {
+      integrity,
+      tarball: `https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-${version}.tgz`,
+      signatures: [{ keyid: pair.keyId, sig: sign('sha256', Buffer.from(message), pair.privateKey).toString('base64') }],
+    },
+  }
+}
+
 export function releaseKey(pair) {
   return { algorithm: 'Ed25519', keyId: pair.keyId, publicKey: pair.publicKey }
 }
@@ -38,7 +71,7 @@ export function keyring(generation, current, next, revokedKeyIds = []) {
   }
 }
 
-export function target(generation, sequence) {
+export function target(generation, sequence, policy = undefined) {
   const emptyHash = '0'.repeat(64)
   const artifacts = ['bootstrap-manifest', 'bootstrap-signature', 'environment-manifest', 'environment-signature', 'dsh-tarball'].map(id => ({
     id,
@@ -48,7 +81,7 @@ export function target(generation, sequence) {
     url: `https://example.com/${id}`,
   }))
   return {
-    schema: 1,
+    schema: policy === undefined ? 1 : 2,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
@@ -63,31 +96,6 @@ export function target(generation, sequence) {
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
       },
     },
-  }
-}
-
-export function experimentalTarget(generation, sequence, version = '0.1.0-rc.8', content = Buffer.alloc(0)) {
-  const artifact = {
-    id: 'experimental-dsh-tarball',
-    mediaType: 'application/vnd.npm.package+gzip',
-    sha256: createHash('sha256').update(content).digest('hex'),
-    size: content.byteLength,
-    url: `https://example.com/experimental-${String(sequence)}.tgz`,
-  }
-  return {
-    schema: 1,
-    updateApi: 1,
-    keyringGeneration: generation,
-    experimentalSequence: sequence,
-    issuedAt: new Date(Date.UTC(2026, 7, 19, 2, 0, sequence)).toISOString(),
-    artifacts: [artifact],
-    desired: {
-      dsh: {
-        packageName: '@deepseek-ai/dsh',
-        version,
-        tarballArtifactId: artifact.id,
-        integrity: `sha512-${createHash('sha512').update(content).digest('base64')}`,
-      },
-    },
+    ...(policy === undefined ? {} : { experimentalPolicy: policy }),
   }
 }
