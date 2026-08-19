@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 
 export const DIRECTORY_PICKER_TARGET = '/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js'
+export const DIRECTORY_PICKER_RELATIVE_TARGET = 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js'
 
 export function patchDirectoryPicker(target = DIRECTORY_PICKER_TARGET) {
   const before = 'const target = resolve(path ?? home);'
@@ -18,6 +19,10 @@ export function patchDirectoryPicker(target = DIRECTORY_PICKER_TARGET) {
   }
 
   writeFileSync(target, source.replace(before, after))
+}
+
+export function applyPatch(dshRoot) {
+  patchDirectoryPicker(resolve(dshRoot, DIRECTORY_PICKER_RELATIVE_TARGET))
 }
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) patchDirectoryPicker()
