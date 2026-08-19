@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { parseTrustedHosts } from '../lib/config.mjs'
 import {
@@ -126,6 +129,36 @@ test('health endpoint reports gateway readiness without touching upstream', asyn
     assert.equal(response.body, 'ok\n')
     assert.equal(requests(), 0)
   })
+})
+
+test('management requests use the protected local socket instead of DSH upstream', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-management-'))
+  const socketPath = join(root, 'management.sock')
+  const management = createServer((incoming, response) => {
+    response.writeHead(202, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ method: incoming.method, path: incoming.url }))
+  })
+  await new Promise((resolve, reject) => {
+    management.once('error', reject)
+    management.listen(socketPath, resolve)
+  })
+  let upstreamRequests = 0
+  const upstream = createServer((_incoming, response) => { upstreamRequests += 1; response.end('dsh') })
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    managementSocketPath: socketPath,
+    upstreamPort,
+  })
+  const gatewayPort = await listen(gateway)
+  try {
+    const result = await request(gatewayPort, '/_dsh_platform/api/v1/update', { host: 'dsh.example' })
+    assert.equal(result.status, 202)
+    assert.deepEqual(JSON.parse(result.body), { method: 'GET', path: '/_dsh_platform/api/v1/update' })
+    assert.equal(upstreamRequests, 0)
+  } finally {
+    await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
+  }
 })
 
 test('HTML responses receive a guarded polyfill and updated metadata', async () => {

@@ -8,6 +8,7 @@ export const INTERNAL_HOST = '127.0.0.1'
 export const INTERNAL_PORT = 3079
 export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
+export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
 const upgradedSocketsByServer = new WeakMap()
@@ -112,8 +113,9 @@ function pipeHttpResponse(upstream, response) {
 
 function proxyHttp(request, response, options) {
   const upstream = httpRequest({
-    hostname: options.upstreamHost,
-    port: options.upstreamPort,
+    ...(options.socketPath === undefined
+      ? { hostname: options.upstreamHost, port: options.upstreamPort }
+      : { socketPath: options.socketPath }),
     method: request.method,
     path: request.url,
     headers: upstreamRequestHeaders(request.headers),
@@ -172,12 +174,13 @@ export function createGatewayServer({
   polyfill = true,
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
+  managementSocketPath = '/data/run/management.sock',
   isReady = () => true,
   password = '',
   username = '',
   passwordAccess = createPasswordAccess(password, { username }),
 }) {
-  const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, isReady, passwordAccess }
+  const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, isReady, passwordAccess }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
     void handleRequest(request, response)
@@ -200,6 +203,10 @@ export function createGatewayServer({
         return
       }
       if (options.passwordAccess.handleHttp(request, response)) return
+      if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        return
+      }
       proxyHttp(request, response, options)
     } catch {
       rejectHttp(response, 400, 'bad request')
@@ -213,6 +220,11 @@ export function createGatewayServer({
     }
     if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
       rejectUpgrade(socket, 401, 'Unauthorized', { 'WWW-Authenticate': BASIC_AUTH_CHALLENGE })
+      return
+    }
+    const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+    if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+      rejectUpgrade(socket, 400, 'Bad Request')
       return
     }
     upgradedSockets.add(socket)
