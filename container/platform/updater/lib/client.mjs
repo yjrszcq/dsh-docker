@@ -44,8 +44,8 @@ export class LocalApiClient {
   importArtifact(artifactId, sourcePath, parentReceipt = null) {
     return this.request('POST', '/v1/artifacts/import', { artifactId, sourcePath, parentReceipt })
   }
-  acceptManifest(receipt, signature) {
-    return this.request('POST', '/v1/manifests/accept', { receipt, signature })
+  acceptManifest(receipt, signatureReceipt) {
+    return this.request('POST', '/v1/manifests/accept', { receipt, signatureReceipt })
   }
   activate(receipts) { return this.request('POST', '/v1/activate', { receipts }) }
 }

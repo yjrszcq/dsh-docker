@@ -52,7 +52,7 @@ export function createTrustServer({ ledger, objects }) {
           : await objects.importFromManifest(body.parentReceipt, body.artifactId, body.sourcePath)
         send(response, 200, receipt)
       } else if (url.pathname === '/v1/manifests/accept') {
-        send(response, 200, await objects.acceptManifest(body.receipt, body.signature))
+        send(response, 200, await objects.acceptManifest(body.receipt, body.signatureReceipt))
       } else if (url.pathname === '/v1/activate') {
         send(response, 200, { receipts: await objects.activate(body.receipts) })
       } else {

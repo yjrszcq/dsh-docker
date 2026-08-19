@@ -54,9 +54,14 @@ export class UpdateCoordinator extends EventEmitter {
       await this.transition('downloading', { taskId, progress: 10, targetSequence: target.value.targetSequence })
       const prepared = await this.preparer.prepare(target.value)
       await this.transition('validating', { taskId, progress: 70 })
-      await this.trustActivate(prepared)
       await this.transition('switching', { taskId, progress: 85 })
-      await this.activator.activate(prepared)
+      try {
+        await this.activator.activate(prepared)
+        await this.trustActivate(prepared)
+      } catch (error) {
+        await this.activator.rollback?.(prepared)
+        throw error
+      }
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update failed' })

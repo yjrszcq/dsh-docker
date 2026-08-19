@@ -116,7 +116,7 @@ async function system() {
     importArtifact: (id, path, parent) => parent === null
       ? objects.importFromTarget(id, path)
       : objects.importFromManifest(parent, id, path),
-    acceptManifest: (token, value) => objects.acceptManifest(token, value),
+    acceptManifest: (token, signatureToken) => objects.acceptManifest(token, signatureToken),
     activate: tokens => objects.activate(tokens),
   }
   const fetchImpl = async url => {
@@ -157,8 +157,8 @@ test('serializes one update task and persists success progress', async () => {
   assert.equal((await state.read()).progress, 100)
 })
 
-test('persists a failed update and permits a later retry', async () => {
-  const { root, metadata, preparer } = await system()
+test('persists a failed update without activating receipts and permits a later retry', async () => {
+  const { root, metadata, objects, preparer } = await system()
   let fail = true
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
   const coordinator = new UpdateCoordinator({
@@ -169,7 +169,28 @@ test('persists a failed update and permits a later retry', async () => {
   })
   await assert.rejects(coordinator.start().completion, /activation failed/)
   assert.equal((await state.read()).status, 'failed')
+  assert.equal((await objects.allReceipts()).every(receipt => receipt.status === 'staged'), true)
   fail = false
   await coordinator.start().completion
   assert.equal((await state.read()).status, 'success')
+})
+
+test('rolls back the runtime switch when receipt activation fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-updater-rollback-'))
+  let rolledBack = false
+  const prepared = { receiptTokens: ['receipt'] }
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: { targetSequence: 1 } }) },
+    preparer: {
+      prepare: async () => prepared,
+      trust: { activate: async () => { throw new Error('receipt activation failed') } },
+    },
+    activator: {
+      activate: async value => assert.equal(value, prepared),
+      rollback: async value => { rolledBack = value === prepared },
+    },
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+  })
+  await assert.rejects(coordinator.start().completion, /receipt activation failed/)
+  assert.equal(rolledBack, true)
 })

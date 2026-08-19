@@ -55,9 +55,8 @@ export class TargetPreparer {
 
     const prepareManifest = async (reference, parser) => {
       const manifestReceipt = receipts.get(reference.manifestArtifactId)
-      const signaturePath = paths.get(reference.signatureArtifactId)
-      const signature = JSON.parse(await readFile(signaturePath, 'utf8'))
-      await this.trust.acceptManifest(manifestReceipt.token, signature)
+      const signatureReceipt = receipts.get(reference.signatureArtifactId)
+      await this.trust.acceptManifest(manifestReceipt.token, signatureReceipt.token)
       const manifest = parser(await readFile(paths.get(reference.manifestArtifactId)))
       for (const descriptor of manifest.artifacts) await importDescriptor(descriptor, manifestReceipt.token)
       return { manifest, manifestReceipt }

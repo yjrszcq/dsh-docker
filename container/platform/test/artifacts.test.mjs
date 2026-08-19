@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { MANIFEST_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
+import { MANIFEST_MEDIA_TYPE, SIGNATURE_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { document, keyPair, keyring, signature } from './helpers.mjs'
 
@@ -67,7 +67,8 @@ async function fixture(targetArtifacts) {
   const ledger = new TrustLedger(join(directory, 'trust'), recovery.publicKey)
   const ringBytes = document(keyring(1, current, next))
   await ledger.acceptKeyring(ringBytes, signature(ringBytes, recovery))
-  const targetBytes = document(releaseTarget(1, 1, targetArtifacts))
+  const artifacts = typeof targetArtifacts === 'function' ? targetArtifacts(current) : targetArtifacts
+  const targetBytes = document(releaseTarget(1, 1, artifacts))
   await ledger.acceptTarget(targetBytes, signature(targetBytes, current))
   const untrustedRoot = join(directory, 'downloads', 'untrusted')
   await mkdir(untrustedRoot, { recursive: true })
@@ -80,6 +81,12 @@ async function fixture(targetArtifacts) {
     store: new VerifiedObjectStore({ root: join(directory, 'trust'), untrustedRoot, ledger }),
     untrustedRoot,
   }
+}
+
+async function importSignature(store, untrustedRoot, signatureBytes) {
+  const path = join(untrustedRoot, 'manifest.sig.json')
+  await writeFile(path, signatureBytes)
+  return store.importFromTarget('stable-signature', path)
 }
 
 test('imports only target-authorized bytes from the untrusted directory', async () => {
@@ -112,12 +119,17 @@ test('verifies a signed manifest before authorizing its child artifacts', async 
   const component = Buffer.from('component')
   const manifestBytes = document(manifest(1, 1, [descriptor('component', component)]))
   const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
-  const { current, store, untrustedRoot } = await fixture([manifestDescriptor])
+  let signatureBytes
+  const { store, untrustedRoot } = await fixture(current => {
+    signatureBytes = document(signature(manifestBytes, current))
+    return [manifestDescriptor, descriptor('stable-signature', signatureBytes, SIGNATURE_MEDIA_TYPE)]
+  })
   const manifestPath = join(untrustedRoot, 'manifest.json')
   await writeFile(manifestPath, manifestBytes)
   const imported = await store.importFromTarget('environment-manifest', manifestPath)
   await assert.rejects(store.importFromManifest(imported.token, 'component', manifestPath), /verified manifest/)
-  await store.acceptManifest(imported.token, signature(manifestBytes, current))
+  const signatureReceipt = await importSignature(store, untrustedRoot, signatureBytes)
+  await store.acceptManifest(imported.token, signatureReceipt.token)
   const componentPath = join(untrustedRoot, 'component.bin')
   await writeFile(componentPath, component)
   const child = await store.importFromManifest(imported.token, 'component', componentPath)
@@ -160,12 +172,21 @@ test('activation includes manifest ancestors and rollback swaps current and prev
   const other = Buffer.from('other')
   const manifestBytes = document(manifest(1, 1, [descriptor('component', component)]))
   const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
-  const { current, store, untrustedRoot } = await fixture([manifestDescriptor, descriptor('other', other)])
+  let signatureBytes
+  const { store, untrustedRoot } = await fixture(current => {
+    signatureBytes = document(signature(manifestBytes, current))
+    return [
+      manifestDescriptor,
+      descriptor('stable-signature', signatureBytes, SIGNATURE_MEDIA_TYPE),
+      descriptor('other', other),
+    ]
+  })
   await writeFile(join(untrustedRoot, 'manifest'), manifestBytes)
   await writeFile(join(untrustedRoot, 'component'), component)
   await writeFile(join(untrustedRoot, 'other'), other)
   const parent = await store.importFromTarget('environment-manifest', join(untrustedRoot, 'manifest'))
-  await store.acceptManifest(parent.token, signature(manifestBytes, current))
+  const signatureReceipt = await importSignature(store, untrustedRoot, signatureBytes)
+  await store.acceptManifest(parent.token, signatureReceipt.token)
   const child = await store.importFromManifest(parent.token, 'component', join(untrustedRoot, 'component'))
   const selected = await store.activate([child.token])
   assert.deepEqual(new Set(selected), new Set([parent.token, child.token]))
@@ -195,11 +216,16 @@ test('rejects child imports through a manifest from an older targetSequence', as
   const componentDescriptor = descriptor('component', component)
   const manifestBytes = document(manifest(1, 1, [componentDescriptor]))
   const manifestDescriptor = descriptor('environment-manifest', manifestBytes, MANIFEST_MEDIA_TYPE)
-  const { current, ledger, store, untrustedRoot } = await fixture([manifestDescriptor])
+  let signatureBytes
+  const { current, ledger, store, untrustedRoot } = await fixture(release => {
+    signatureBytes = document(signature(manifestBytes, release))
+    return [manifestDescriptor, descriptor('stable-signature', signatureBytes, SIGNATURE_MEDIA_TYPE)]
+  })
   await writeFile(join(untrustedRoot, 'manifest'), manifestBytes)
   await writeFile(join(untrustedRoot, 'component'), component)
   const parent = await store.importFromTarget('environment-manifest', join(untrustedRoot, 'manifest'))
-  await store.acceptManifest(parent.token, signature(manifestBytes, current))
+  const signatureReceipt = await importSignature(store, untrustedRoot, signatureBytes)
+  await store.acceptManifest(parent.token, signatureReceipt.token)
   const advanced = document(releaseTarget(1, 2, [manifestDescriptor]))
   await ledger.acceptTarget(advanced, signature(advanced, current))
   await assert.rejects(

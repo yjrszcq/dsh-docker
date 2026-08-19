@@ -9,6 +9,7 @@ import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeIn
 import { verifyDetached } from './signature.mjs'
 
 export const MANIFEST_MEDIA_TYPE = 'application/vnd.dsh-platform.manifest.v1+json'
+export const SIGNATURE_MEDIA_TYPE = 'application/vnd.dsh-platform.signature.v1+json'
 
 function nonNegativeSafeInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -321,12 +322,29 @@ export class VerifiedObjectStore {
     }
   }
 
-  acceptManifest(token, signature) {
+  acceptManifest(token, signatureToken) {
     return this.exclusive(async () => {
       const receipt = await this.readReceipt(token)
+      const signatureReceipt = await this.readReceipt(signatureToken)
       if (receipt.mediaType !== MANIFEST_MEDIA_TYPE) throw new TrustError('receipt is not a manifest artifact')
       if (receipt.status !== 'staged') throw new TrustError('only a staged manifest can become an authority')
+      if (signatureReceipt.mediaType !== SIGNATURE_MEDIA_TYPE) throw new TrustError('signature receipt has the wrong media type')
+      if (signatureReceipt.status !== 'staged' || signatureReceipt.parentReceipt !== null) {
+        throw new TrustError('manifest signature must be a staged target Artifact')
+      }
+      if (
+        signatureReceipt.keyringGeneration !== receipt.keyringGeneration
+        || signatureReceipt.targetSequence !== receipt.targetSequence
+        || signatureReceipt.signerKeyId !== receipt.signerKeyId
+      ) throw new TrustError('manifest and signature receipts have different authorities')
       const bytes = await readFile(this.objectPath(receipt.objectSha256))
+      const signatureBytes = await readFile(this.objectPath(signatureReceipt.objectSha256))
+      let signature
+      try {
+        signature = JSON.parse(signatureBytes.toString('utf8'))
+      } catch {
+        throw new TrustError('manifest signature Artifact must contain valid JSON')
+      }
       const manifest = parseReleaseManifest(bytes)
       const currentTarget = await this.ledger.currentTarget()
       if (
