@@ -202,7 +202,7 @@ jobs:
     if: needs.discover.outputs.changed == 'true'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: 发现 DSH 上游新版本
+      title: 发现 DSH 上游新版本 ${{ needs.discover.outputs.upstream }}
       message: >-
         当前支持版本：${{ needs.discover.outputs.current }}；上游候选版本：${{ needs.discover.outputs.upstream }}。
         候选 Environment：${{ needs.discover.outputs.environment }}。
@@ -218,7 +218,7 @@ jobs:
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result == 'success'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH 候选版本验证通过
+      title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证通过
       message: >-
         DSH ${{ needs.discover.outputs.upstream }} 已通过 Environment
         ${{ needs.discover.outputs.environment }} 兼容性验证。请审核并合并：
@@ -234,7 +234,7 @@ jobs:
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result != 'success'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH 候选版本验证失败
+      title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证失败
       message: >-
         DSH ${{ needs.discover.outputs.upstream }} 未通过 Environment
         ${{ needs.discover.outputs.environment }} 兼容性验证，需要适配 Environment。
