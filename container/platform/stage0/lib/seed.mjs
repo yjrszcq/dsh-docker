@@ -1,6 +1,7 @@
 import { lchown, lstat, mkdir, readFile, readlink, rename, stat, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { PlatformPaths, preparePersistentLayout } from '../../lib/paths.mjs'
 
 async function exists(path) {
   return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
@@ -45,30 +46,36 @@ async function replaceLink(path, target) {
 }
 
 export async function provisionPlatformSeed(seedRoot, dataRoot) {
-  for (const name of ['bootstrap', 'environments', 'dsh/pristine', 'runtime', 'state', 'logs', 'downloads/untrusted', 'trust', 'run', 'snapshots', 'system-plugins']) {
-    await mkdir(join(dataRoot, name), { recursive: true })
-  }
+  const paths = dataRoot instanceof PlatformPaths ? dataRoot : new PlatformPaths(dataRoot)
+  await preparePersistentLayout(paths)
+  const environmentSeedRoot = await exists(join(seedRoot, 'environments'))
+    ? join(seedRoot, 'environments')
+    : join(seedRoot, 'environment')
+  const runtimeSeedRoot = await exists(join(seedRoot, 'runtimes'))
+    ? join(seedRoot, 'runtimes')
+    : join(seedRoot, 'runtime')
   const environmentVersion = validSeedId(
-    (await readFile(join(seedRoot, 'environment', 'VERSION'), 'utf8')).trim(),
+    (await readFile(join(environmentSeedRoot, 'VERSION'), 'utf8')).trim(),
     'Environment',
   )
   const runtimeVersion = validSeedId(
-    (await readFile(join(seedRoot, 'runtime', 'VERSION'), 'utf8')).trim(),
+    (await readFile(join(runtimeSeedRoot, 'VERSION'), 'utf8')).trim(),
     'Runtime',
   )
   const seededLinks = (await Promise.all([
-    seedSlot(join(seedRoot, 'environment', environmentVersion), join(dataRoot, 'environments'), environmentVersion),
-    seedSlot(join(seedRoot, 'runtime', runtimeVersion), join(dataRoot, 'runtime'), runtimeVersion),
-    seedLink(join(seedRoot, 'pristine', runtimeVersion), join(dataRoot, 'dsh', 'pristine', runtimeVersion)),
-    seedSlot(join(seedRoot, 'system-plugins', environmentVersion), join(dataRoot, 'system-plugins'), environmentVersion),
+    seedSlot(join(environmentSeedRoot, environmentVersion), paths.environmentsRoot, environmentVersion),
+    seedSlot(join(runtimeSeedRoot, runtimeVersion), paths.runtimesRoot, runtimeVersion),
+    seedLink(join(seedRoot, 'pristine', runtimeVersion), join(paths.pristineRoot, runtimeVersion)),
+    seedSlot(join(seedRoot, 'system-plugins', environmentVersion), paths.systemPluginsRoot, environmentVersion),
   ])).filter(Boolean)
   if (process.getuid?.() === 0) {
     const writableRoots = [
-      'environments', 'environments/versions', 'dsh', 'dsh/pristine',
-      'runtime', 'runtime/versions', 'state', 'logs', 'downloads', 'downloads/untrusted',
-      'run', 'snapshots', 'system-plugins', 'system-plugins/versions',
+      paths.stateRoot, paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
+      paths.storeRoot, paths.objectsRoot, paths.bootstrapStoreRoot, paths.environmentsRoot, join(paths.environmentsRoot, 'versions'),
+      paths.pristineRoot, paths.runtimesRoot, join(paths.runtimesRoot, 'versions'), paths.systemPluginsRoot,
+      join(paths.systemPluginsRoot, 'versions'), paths.snapshotsRoot, paths.cacheRoot, paths.downloadsRoot, paths.logsRoot,
     ]
-    await Promise.all(writableRoots.map(name => lchown(join(dataRoot, name), 1000, 1000)))
+    await Promise.all(writableRoots.map(path => lchown(path, 1000, 1000)))
   }
   return Object.freeze({ environmentVersion, runtimeVersion, seededLinks: Object.freeze(seededLinks) })
 }

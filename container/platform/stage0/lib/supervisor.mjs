@@ -27,6 +27,7 @@ export class BootstrapSupervisor {
   constructor({
     slots,
     dataRoot,
+    runRoot = '/run/dsh-platform',
     node = process.execPath,
     entrypoint = 'index.mjs',
     readyTimeoutMs = 30_000,
@@ -36,6 +37,7 @@ export class BootstrapSupervisor {
   }) {
     this.slots = slots
     this.dataRoot = dataRoot
+    this.runRoot = runRoot
     this.node = node
     this.entrypoint = entrypoint
     this.readyTimeoutMs = readyTimeoutMs
@@ -48,7 +50,12 @@ export class BootstrapSupervisor {
 
   async launch(version) {
     const child = this.spawnImpl(this.node, [join(this.slots.versionPath(version), this.entrypoint)], {
-      env: { ...process.env, DSH_PLATFORM_DATA: this.dataRoot, DSH_BOOTSTRAP_VERSION: version },
+      env: {
+        ...process.env,
+        DSH_PLATFORM_DATA: this.dataRoot,
+        DSH_PLATFORM_RUN: this.runRoot,
+        DSH_BOOTSTRAP_VERSION: version,
+      },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       uid: this.uid,
       gid: this.gid,

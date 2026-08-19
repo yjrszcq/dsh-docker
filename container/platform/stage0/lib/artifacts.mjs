@@ -125,8 +125,12 @@ function validateReceipt(value) {
 }
 
 export class VerifiedObjectStore {
-  constructor({ root, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch, requestTimeoutMs = 30_000 }) {
-    this.root = resolve(root)
+  constructor({ root, objectRoot, receiptRoot, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch, requestTimeoutMs = 30_000 }) {
+    if (root === undefined && (objectRoot === undefined || receiptRoot === undefined)) {
+      throw new TypeError('VerifiedObjectStore requires root or explicit objectRoot and receiptRoot')
+    }
+    this.objectRoot = resolve(objectRoot ?? join(root, 'objects'))
+    this.receiptRoot = resolve(receiptRoot ?? join(root, 'receipts'))
     this.untrustedRoot = resolve(untrustedRoot)
     this.ledger = ledger
     this.now = now
@@ -142,11 +146,11 @@ export class VerifiedObjectStore {
   }
 
   objectPath(sha256) {
-    return join(this.root, 'objects', sha256)
+    return join(this.objectRoot, sha256)
   }
 
   receiptPath(token) {
-    return join(this.root, 'receipts', `${token}.json`)
+    return join(this.receiptRoot, `${token}.json`)
   }
 
   async readReceipt(token) {
@@ -231,7 +235,8 @@ export class VerifiedObjectStore {
     if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
       throw new TrustError('artifact source must be inside the untrusted download directory')
     }
-    await mkdir(join(this.root, 'objects'), { recursive: true })
+    await mkdir(this.objectRoot, { recursive: true })
+    await mkdir(this.receiptRoot, { recursive: true })
     const destination = this.objectPath(authority.descriptor.sha256)
     const temporary = `${destination}.${randomUUID()}.tmp`
     const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW)
@@ -312,8 +317,9 @@ export class VerifiedObjectStore {
         throw new TrustError('official DSH metadata does not match the supported target integrity', 'TRUST_ARTIFACT_MISMATCH')
       }
       const body = await fetchOfficialDshTarball({ candidate, fetchImpl: this.fetchImpl, signal })
-      await mkdir(join(this.root, 'objects'), { recursive: true })
-      const temporary = join(this.root, 'objects', `.${randomUUID()}.tmp`)
+      await mkdir(this.objectRoot, { recursive: true })
+      await mkdir(this.receiptRoot, { recursive: true })
+      const temporary = join(this.objectRoot, `.${randomUUID()}.tmp`)
       let destinationHandle
       try {
         destinationHandle = await open(temporary, 'wx', 0o400)
@@ -421,7 +427,7 @@ export class VerifiedObjectStore {
 
   async receiptFiles() {
     try {
-      return (await readdir(join(this.root, 'receipts'))).filter(name => name.endsWith('.json'))
+      return (await readdir(this.receiptRoot)).filter(name => name.endsWith('.json'))
     } catch (error) {
       if (error?.code === 'ENOENT') return []
       throw error
@@ -430,7 +436,7 @@ export class VerifiedObjectStore {
 
   async allReceipts() {
     return Promise.all((await this.receiptFiles()).map(async name => (
-      validateReceipt(JSON.parse(await readFile(join(this.root, 'receipts', name), 'utf8')))
+      validateReceipt(JSON.parse(await readFile(join(this.receiptRoot, name), 'utf8')))
     )))
   }
 
@@ -574,7 +580,7 @@ export class VerifiedObjectStore {
       }
       let objects = []
       try {
-        objects = await readdir(join(this.root, 'objects'))
+        objects = await readdir(this.objectRoot)
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error
       }

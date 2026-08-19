@@ -1,3 +1,3 @@
 #!/bin/sh
 set -eu
-exec /data/platform/runtime/current/bin/dsh "$@"
+exec /run/dsh-platform/views/runtime/bin/dsh "$@"

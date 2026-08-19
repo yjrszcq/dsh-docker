@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { buildRuntime, RuntimeSlots } from '../../patch-manager/index.mjs'
 import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
 import { artifactForReference, parseEnvironmentManifest } from '../../../../platform/lib/contracts.mjs'
+import { PlatformPaths } from '../../../../platform/lib/paths.mjs'
 import { LocalApiClient } from './client.mjs'
 
 function run(command, args) {
@@ -28,19 +29,21 @@ async function exists(path) {
 export class PlatformActivator {
   constructor({
     dataRoot,
-    bootstrap = new LocalApiClient(join(dataRoot, 'run', 'bootstrap.sock')),
-    stage0 = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock')),
+    runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform',
+    bootstrap,
+    stage0,
   }) {
     this.dataRoot = dataRoot
-    this.bootstrap = bootstrap
-    this.stage0 = stage0
-    this.runtimeSlots = new RuntimeSlots(join(dataRoot, 'runtime'))
-    this.environmentSlots = new RuntimeSlots(join(dataRoot, 'environments'))
-    this.systemPluginSlots = new RuntimeSlots(join(dataRoot, 'system-plugins'))
+    this.paths = new PlatformPaths(dataRoot, runRoot)
+    this.bootstrap = bootstrap ?? new LocalApiClient(this.paths.bootstrapSocket)
+    this.stage0 = stage0 ?? new LocalApiClient(this.paths.trustSocket)
+    this.runtimeSlots = new RuntimeSlots(this.paths.runtimesRoot)
+    this.environmentSlots = new RuntimeSlots(this.paths.environmentsRoot)
+    this.systemPluginSlots = new RuntimeSlots(this.paths.systemPluginsRoot)
   }
 
   async pristine(version, receipt) {
-    const root = join(this.dataRoot, 'dsh', 'pristine', version)
+    const root = join(this.paths.pristineRoot, version)
     if (!await exists(root)) {
       const staging = `${root}.${randomUUID()}.tmp`
       await mkdir(staging, { recursive: true })
@@ -66,7 +69,7 @@ export class PlatformActivator {
 
   async stageEnvironment(prepared) {
     const version = prepared.environment.manifest.version
-    const versions = join(this.dataRoot, 'environments', 'versions')
+    const versions = join(this.paths.environmentsRoot, 'versions')
     const destination = join(versions, version)
     if (await exists(destination)) return version
     const staging = join(versions, `.${version}.${randomUUID()}.tmp`)
@@ -95,11 +98,11 @@ export class PlatformActivator {
       await new Promise(() => {})
     }
     const runtimeId = `${prepared.stable.desired.dsh.version}-${String(prepared.stable.targetSequence)}`
-    if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {
+    if (!await exists(join(this.paths.runtimesRoot, 'versions', runtimeId))) {
       const pristineRoot = await this.pristine(prepared.dsh.version, prepared.dsh.receipt)
       await buildRuntime({
         pristineRoot,
-        versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
+        versionsRoot: join(this.paths.runtimesRoot, 'versions'),
         runtimeId,
         patchPaths: prepared.environment.manifest.patches.map(item => (
           prepared.paths.get(artifactForReference(prepared.environment.manifest, item).id)
@@ -108,7 +111,7 @@ export class PlatformActivator {
     }
     const environmentVersion = await this.stageEnvironment(prepared)
     await reconcileSystemPlugins({
-      root: join(this.dataRoot, 'system-plugins'),
+      root: this.paths.systemPluginsRoot,
       environmentVersion,
       plugins: prepared.environment.manifest.systemPlugins,
       artifactPath: reference => prepared.paths.get(artifactForReference(prepared.environment.manifest, reference).id),
@@ -140,7 +143,7 @@ export class PlatformActivator {
       throw new Error('current Runtime and Environment are required')
     }
     const packageMetadata = JSON.parse(await readFile(join(
-      this.dataRoot, 'runtime', 'versions', runtime.current, 'package', 'package.json',
+      this.paths.runtimesRoot, 'versions', runtime.current, 'package', 'package.json',
     ), 'utf8'))
     if (typeof packageMetadata.version !== 'string') throw new Error('current Runtime has no DSH version')
     return Object.freeze({
@@ -155,13 +158,13 @@ export class PlatformActivator {
   async prepareExperimental(prepared) {
     const version = prepared.version
     const pristineRoot = await this.pristine(version, prepared.receipt)
-    const environmentRoot = join(this.dataRoot, 'environments', 'current')
+    const environmentRoot = join(this.paths.environmentsRoot, 'current')
     const environment = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
     const runtimeId = `${version}-experimental-${prepared.receipt.objectSha256.slice(0, 12)}`
-    if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {
+    if (!await exists(join(this.paths.runtimesRoot, 'versions', runtimeId))) {
       await buildRuntime({
         pristineRoot,
-        versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
+        versionsRoot: join(this.paths.runtimesRoot, 'versions'),
         runtimeId,
         patchPaths: environment.patches.map(item => (
           join(environmentRoot, 'artifacts', artifactForReference(environment, item).id)

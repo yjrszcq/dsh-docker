@@ -38,21 +38,21 @@ test('registers immutable image seed trees once and preserves later current link
   const first = await provisionPlatformSeed(seed, data)
   assert.equal(first.seededLinks.length, 4)
   for (const [entry, source] of [
-    ['environments/versions/env-one', 'environment/env-one'],
-    ['runtime/versions/runtime-one', 'runtime/runtime-one'],
-    ['dsh/pristine/runtime-one', 'pristine/runtime-one'],
-    ['system-plugins/versions/env-one', 'system-plugins/env-one'],
+    ['store/environments/versions/env-one', 'environment/env-one'],
+    ['store/runtimes/versions/runtime-one', 'runtime/runtime-one'],
+    ['store/pristine/runtime-one', 'pristine/runtime-one'],
+    ['store/system-plugins/versions/env-one', 'system-plugins/env-one'],
   ]) {
     assert.equal((await lstat(join(data, entry))).isSymbolicLink(), true)
     assert.equal(await readlink(join(data, entry)), join(seed, source))
   }
-  assert.equal(await readlink(join(data, 'environments', 'current')), 'versions/env-one')
-  assert.equal(await readlink(join(data, 'dsh/pristine/runtime-one/node_modules/.bin/tool')), '../package/bin.js')
-  assert.equal((await lstat(join(data, 'snapshots'))).isDirectory(), true)
-  await writeFile(join(data, 'state', 'sentinel'), 'keep')
+  assert.equal(await readlink(join(data, 'store/environments', 'current')), 'versions/env-one')
+  assert.equal(await readlink(join(data, 'store/pristine/runtime-one/node_modules/.bin/tool')), '../package/bin.js')
+  assert.equal((await lstat(join(data, 'store/snapshots'))).isDirectory(), true)
+  await writeFile(join(data, 'state/updater', 'sentinel'), 'keep')
   const repeated = await provisionPlatformSeed(seed, data)
   assert.deepEqual(repeated.seededLinks, [])
-  assert.equal(await readFile(join(data, 'state', 'sentinel'), 'utf8'), 'keep')
+  assert.equal(await readFile(join(data, 'state/updater', 'sentinel'), 'utf8'), 'keep')
 })
 
 test('preserves an existing materialized version instead of replacing it with an image seed link', async () => {
@@ -65,13 +65,13 @@ test('preserves an existing materialized version instead of replacing it with an
   }
   await mkdir(join(seed, 'pristine/runtime-one'), { recursive: true })
   await mkdir(join(seed, 'system-plugins/env-one'), { recursive: true })
-  await mkdir(join(data, 'runtime/versions/runtime-one'), { recursive: true })
-  await writeFile(join(data, 'runtime/versions/runtime-one/sentinel'), 'materialized')
+  await mkdir(join(data, 'store/runtimes/versions/runtime-one'), { recursive: true })
+  await writeFile(join(data, 'store/runtimes/versions/runtime-one/sentinel'), 'materialized')
 
   await provisionPlatformSeed(seed, data)
 
-  assert.equal((await lstat(join(data, 'runtime/versions/runtime-one'))).isDirectory(), true)
-  assert.equal(await readFile(join(data, 'runtime/versions/runtime-one/sentinel'), 'utf8'), 'materialized')
+  assert.equal((await lstat(join(data, 'store/runtimes/versions/runtime-one'))).isDirectory(), true)
+  assert.equal(await readFile(join(data, 'store/runtimes/versions/runtime-one/sentinel'), 'utf8'), 'materialized')
 })
 
 test('repairs broken image entries and current slots after an image replacement', async () => {
@@ -84,15 +84,15 @@ test('repairs broken image entries and current slots after an image replacement'
   }
   await mkdir(join(seed, 'pristine/runtime-one'), { recursive: true })
   await mkdir(join(seed, 'system-plugins/env-one'), { recursive: true })
-  await mkdir(join(data, 'runtime/versions'), { recursive: true })
-  await symlink('/missing-old-image/runtime-old', join(data, 'runtime/versions/runtime-old'))
-  await symlink('versions/runtime-old', join(data, 'runtime/current'))
+  await mkdir(join(data, 'store/runtimes/versions'), { recursive: true })
+  await symlink('/missing-old-image/runtime-old', join(data, 'store/runtimes/versions/runtime-old'))
+  await symlink('versions/runtime-old', join(data, 'store/runtimes/current'))
 
   await provisionPlatformSeed(seed, data)
 
-  assert.equal(await readlink(join(data, 'runtime/versions/runtime-one')), join(seed, 'runtime/runtime-one'))
-  assert.equal(await readlink(join(data, 'runtime/current')), 'versions/runtime-one')
-  assert.equal((await lstat(join(data, 'runtime/current'))).isSymbolicLink(), true)
+  assert.equal(await readlink(join(data, 'store/runtimes/versions/runtime-one')), join(seed, 'runtime/runtime-one'))
+  assert.equal(await readlink(join(data, 'store/runtimes/current')), 'versions/runtime-one')
+  assert.equal((await lstat(join(data, 'store/runtimes/current'))).isSymbolicLink(), true)
 })
 
 test('rejects seed IDs that could escape their image roots', async () => {

@@ -5,10 +5,13 @@ import { EnvironmentRunner, loadControlPlane } from './lib/lifecycle.mjs'
 import { BootstrapRuntime } from './lib/runtime.mjs'
 import { createBootstrapControl, listenBootstrapControl } from './lib/control.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
+import { PlatformPaths } from '../lib/paths.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
+const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
+const paths = new PlatformPaths(dataRoot, runRoot)
 const logs = new JsonlLogManager({
-  root: join(dataRoot, 'logs'),
+  root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
 })
@@ -20,13 +23,13 @@ const controlPlane = new EnvironmentRunner({
   capture,
 })
 const environment = new EnvironmentRunner({
-  environmentRoot: join(dataRoot, 'environments', 'current'),
+  environmentRoot: join(paths.viewsRoot, 'environment'),
   capture,
 })
 const runtime = new BootstrapRuntime({ controlPlane, environment })
 await runtime.start()
 const server = createBootstrapControl(runtime)
-await listenBootstrapControl(server, join(dataRoot, 'run', 'bootstrap.sock'))
+await listenBootstrapControl(server, paths.bootstrapSocket)
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 
 let resolveSignal

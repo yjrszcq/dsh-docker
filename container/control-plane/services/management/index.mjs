@@ -15,11 +15,14 @@ import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mj
 import { reconcileRecoveredState } from '../../modules/updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
+import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
-const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
+const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
+const paths = new PlatformPaths(dataRoot, runRoot)
+const trust = new LocalApiClient(paths.trustSocket)
 const logs = new JsonlLogManager({
-  root: join(dataRoot, 'logs'),
+  root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
 })
@@ -28,11 +31,11 @@ const metadata = new MetadataClient({
   baseUrl: process.env.DSH_UPDATE_METADATA_URL,
   trust,
 })
-const preparer = new TargetPreparer({ untrustedRoot: join(dataRoot, 'downloads', 'untrusted'), trust })
-const activator = new PlatformActivator({ dataRoot, stage0: trust })
-const journal = new UpdateJournal(join(dataRoot, 'state', 'update-transaction.json'))
+const preparer = new TargetPreparer({ untrustedRoot: paths.downloadsRoot, trust })
+const activator = new PlatformActivator({ dataRoot, runRoot, stage0: trust })
+const journal = new UpdateJournal(join(paths.updaterStateRoot, 'transaction.json'))
 const snapshots = new PersistentStateSnapshots({
-  root: join(dataRoot, 'snapshots'),
+  root: paths.snapshotsRoot,
   sourceRoot: process.env.DSH_HOME ?? '/data/dsh',
 })
 const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
@@ -40,12 +43,12 @@ const coordinator = new UpdateCoordinator({
   metadata,
   preparer,
   activator,
-  state: new UpdateStateStore(join(dataRoot, 'state', 'update.json')),
+  state: new UpdateStateStore(join(paths.updaterStateRoot, 'status.json')),
   npm: new NpmRegistryClient({}),
   journal,
   snapshots,
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
-  channelState: new ChannelStateStore(join(dataRoot, 'state', 'channel.json')),
+  channelState: new ChannelStateStore(join(paths.updaterStateRoot, 'channel.json')),
   completeRecovery,
 })
 const server = createManagementServer({
@@ -53,7 +56,7 @@ const server = createManagementServer({
   logs,
   platformStatus: async () => ({ trust: await trust.status() }),
 })
-await listenManagement(server, join(dataRoot, 'run', 'management.sock'))
+await listenManagement(server, paths.managementSocket)
 const scheduler = new UpdateScheduler({
   check: () => coordinator.check(),
   intervalSeconds: Number(process.env.DSH_UPDATE_CHECK_INTERVAL_SECONDS ?? 21600),

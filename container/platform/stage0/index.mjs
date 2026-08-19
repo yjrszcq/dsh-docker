@@ -8,26 +8,44 @@ import { BootstrapSlots } from './lib/slots.mjs'
 import { BootstrapSupervisor } from './lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from './lib/trust-server.mjs'
 import { provisionPlatformSeed } from './lib/seed.mjs'
+import {
+  PlatformPaths,
+  preparePersistentLayout,
+  replaceRuntimeView,
+  resetRuntimeLayout,
+} from '../lib/paths.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
+const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
+const paths = new PlatformPaths(dataRoot, runRoot)
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const bootstrapVersion = (await readFile(join(seedRoot, 'bootstrap', 'VERSION'), 'utf8')).trim()
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
-const ledger = new TrustLedger(join(dataRoot, 'trust'), recoveryPublicKey)
+await preparePersistentLayout(paths)
+await resetRuntimeLayout(paths)
+const ledger = new TrustLedger(paths.trustStateRoot, recoveryPublicKey)
 const objects = new VerifiedObjectStore({
-  root: join(dataRoot, 'trust'),
-  untrustedRoot: join(dataRoot, 'downloads', 'untrusted'),
+  objectRoot: paths.objectsRoot,
+  receiptRoot: join(paths.trustStateRoot, 'receipts'),
+  untrustedRoot: paths.downloadsRoot,
   ledger,
 })
-const slots = new BootstrapSlots(join(dataRoot, 'bootstrap'))
+const slots = new BootstrapSlots(paths.bootstrapStateRoot)
 await slots.provisionSeed(join(seedRoot, 'bootstrap', bootstrapVersion), bootstrapVersion)
-await provisionPlatformSeed(seedRoot, dataRoot)
+await provisionPlatformSeed(seedRoot, paths)
+await Promise.all([
+  replaceRuntimeView(paths, 'bootstrap', join(paths.bootstrapStateRoot, 'current')),
+  replaceRuntimeView(paths, 'environment', join(paths.environmentsRoot, 'current')),
+  replaceRuntimeView(paths, 'runtime', join(paths.runtimesRoot, 'current')),
+  replaceRuntimeView(paths, 'system-plugins', join(paths.systemPluginsRoot, 'current')),
+])
 const seedKeyring = await readFile(join(seedRoot, 'trust', 'keyring.json'))
 const seedSignature = JSON.parse(await readFile(join(seedRoot, 'trust', 'keyring.sig.json'), 'utf8'))
 await ledger.acceptKeyring(seedKeyring, seedSignature)
 const supervisor = new BootstrapSupervisor({
   slots,
   dataRoot,
+  runRoot,
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
   entrypoint: 'platform/bootstrap/index.mjs',
@@ -42,7 +60,7 @@ const trustServer = createTrustServer({
     setImmediate(() => { void supervisor.restart().catch(error => console.error(error)) })
   },
 })
-await listenUnix(trustServer, join(dataRoot, 'run', 'stage0-trust.sock'), {
+await listenUnix(trustServer, paths.trustSocket, {
   mode: process.getuid?.() === 0 ? 0o660 : 0o600,
   uid: process.getuid?.() === 0 ? 0 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,

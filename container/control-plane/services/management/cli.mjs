@@ -2,6 +2,7 @@ import { access, rm } from 'node:fs/promises'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { LocalApiClient } from '../../modules/updater/lib/client.mjs'
+import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 
 const API_PREFIX = '/_dsh_platform/api/v1'
 
@@ -43,19 +44,21 @@ export function parseCli(argv) {
 
 export async function resetTrust({
   dataRoot = '/data/platform',
+  runRoot = '/run/dsh-platform',
   input = stdin,
   output = stdout,
   getuid = () => process.getuid?.(),
 } = {}) {
   if (getuid() !== 0) throw new Error('trust reset must run as root from the container console')
   if (!input.isTTY || !output.isTTY) throw new Error('trust reset requires an interactive container console')
-  const socket = `${dataRoot}/run/stage0-trust.sock`
+  const paths = new PlatformPaths(dataRoot, runRoot)
+  const socket = paths.trustSocket
   if (await access(socket).then(() => true, () => false)) throw new Error('stop Stage-0 before resetting trust')
   const prompt = createInterface({ input, output })
   const answer = await prompt.question('Type RESET DSH TRUST to clear accepted trust state: ')
   prompt.close()
   if (answer !== 'RESET DSH TRUST') throw new Error('trust reset cancelled')
-  await rm(`${dataRoot}/trust`, { recursive: true, force: true })
+  await rm(paths.trustStateRoot, { recursive: true, force: true })
   return { status: 'reset', recoveryRoot: 'image' }
 }
 
@@ -70,8 +73,8 @@ function queryString(options) {
 
 export async function runCli({
   argv = process.argv.slice(2),
-  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/data/platform/run/management.sock'),
-  trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/data/platform/run/stage0-trust.sock'),
+  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock'),
+  trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/run/dsh-platform/stage0-trust.sock'),
   reset = resetTrust,
   write = value => process.stdout.write(`${value}\n`),
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
