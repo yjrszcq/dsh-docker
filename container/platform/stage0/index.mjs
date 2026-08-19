@@ -41,12 +41,7 @@ const slots = new BootstrapManager({
 })
 await slots.reconcileImage(imageRecords.bootstrap)
 const currentBootstrap = await slots.current()
-await Promise.all([
-  replaceRuntimeView(paths, 'bootstrap', currentBootstrap.path),
-  replaceRuntimeView(paths, 'environment', join(paths.environmentsRoot, 'current')),
-  replaceRuntimeView(paths, 'runtime', join(paths.runtimesRoot, 'current')),
-  replaceRuntimeView(paths, 'system-plugins', join(paths.systemPluginsRoot, 'current')),
-])
+await replaceRuntimeView(paths, 'bootstrap', currentBootstrap.path)
 const seedKeyring = await readFile(join(seedRoot, 'trust', 'keyring.json'))
 const seedSignature = JSON.parse(await readFile(join(seedRoot, 'trust', 'keyring.sig.json'), 'utf8'))
 await ledger.acceptKeyring(seedKeyring, seedSignature)
@@ -58,6 +53,7 @@ const supervisor = new BootstrapSupervisor({
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
   entrypoint: 'platform/bootstrap/index.mjs',
+  seedRoot,
 })
 const trustServer = createTrustServer({
   ledger,

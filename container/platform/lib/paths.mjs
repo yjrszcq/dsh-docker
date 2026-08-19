@@ -31,6 +31,8 @@ export class PlatformPaths {
     this.snapshotsRoot = join(this.storeRoot, 'snapshots')
     this.downloadsRoot = join(this.cacheRoot, 'downloads')
     this.viewsRoot = join(this.runRoot, 'views')
+    this.deploymentViewsRoot = join(this.runRoot, 'deployments')
+    this.deploymentView = join(this.runRoot, 'deployment')
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
@@ -66,16 +68,22 @@ export async function resetRuntimeLayout(paths) {
   if (paths.runRoot === '/' || paths.runRoot === paths.dataRoot) throw new Error('platform run root is unsafe')
   await rm(paths.runRoot, { recursive: true, force: true })
   await mkdir(paths.viewsRoot, { recursive: true })
+  await mkdir(paths.deploymentViewsRoot, { recursive: true })
+  for (const name of ['environment', 'runtime', 'system-plugins']) {
+    await symlink(join('..', 'deployment', name), join(paths.viewsRoot, name), 'dir')
+  }
   if (process.getuid?.() === 0) {
     await chown(paths.runRoot, 0, 1000)
     await chmod(paths.runRoot, 0o1770)
     await chown(paths.viewsRoot, 0, 0)
     await chmod(paths.viewsRoot, 0o755)
+    await chown(paths.deploymentViewsRoot, 1000, 1000)
+    await chmod(paths.deploymentViewsRoot, 0o755)
   }
 }
 
 export async function replaceRuntimeView(paths, name, target) {
-  if (!['bootstrap', 'environment', 'runtime', 'system-plugins'].includes(name)) {
+  if (name !== 'bootstrap') {
     throw new Error(`runtime view ${name} is invalid`)
   }
   const path = join(paths.viewsRoot, name)
@@ -83,4 +91,11 @@ export async function replaceRuntimeView(paths, name, target) {
   await symlink(resolve(target), temporary, 'dir')
   await rename(temporary, path)
   return path
+}
+
+export async function replaceDeploymentView(paths, target) {
+  const temporary = join(paths.runRoot, `.deployment.${randomUUID()}.tmp`)
+  await symlink(resolve(target), temporary, 'dir')
+  await rename(temporary, paths.deploymentView)
+  return paths.deploymentView
 }

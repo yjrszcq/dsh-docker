@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { lstat, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -46,5 +46,9 @@ test('rebuilds only the ephemeral run directory', async () => {
   await resetRuntimeLayout(paths)
   await assert.rejects(lstat(join(paths.runRoot, 'stale.sock')), { code: 'ENOENT' })
   assert.equal((await lstat(paths.viewsRoot)).isDirectory(), true)
+  assert.equal((await lstat(paths.deploymentViewsRoot)).isDirectory(), true)
+  assert.equal(await readlink(join(paths.viewsRoot, 'runtime')), join('..', 'deployment', 'runtime'))
+  assert.equal(await readlink(join(paths.viewsRoot, 'environment')), join('..', 'deployment', 'environment'))
+  assert.equal(await readlink(join(paths.viewsRoot, 'system-plugins')), join('..', 'deployment', 'system-plugins'))
   assert.equal(await readFile(join(paths.updaterStateRoot, 'sentinel'), 'utf8'), 'persistent')
 })

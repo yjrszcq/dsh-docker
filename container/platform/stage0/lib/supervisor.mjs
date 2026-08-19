@@ -32,6 +32,7 @@ export class BootstrapSupervisor {
     paths,
     node = process.execPath,
     entrypoint = 'index.mjs',
+    seedRoot,
     readyTimeoutMs = 30_000,
     spawnImpl = spawn,
     uid,
@@ -43,6 +44,7 @@ export class BootstrapSupervisor {
     this.paths = paths
     this.node = node
     this.entrypoint = entrypoint
+    this.seedRoot = seedRoot
     this.readyTimeoutMs = readyTimeoutMs
     this.spawnImpl = spawnImpl
     this.uid = uid
@@ -59,6 +61,7 @@ export class BootstrapSupervisor {
         ...process.env,
         DSH_PLATFORM_DATA: this.dataRoot,
         DSH_PLATFORM_RUN: this.runRoot,
+        ...(this.seedRoot === undefined ? {} : { DSH_PLATFORM_SEED: this.seedRoot }),
         DSH_BOOTSTRAP_VERSION: resolved.record.version,
       },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
