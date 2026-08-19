@@ -316,3 +316,26 @@ test('finishes a journaled activation after receipts became active before restar
   assert.equal((await context.manager.state()).current, candidate.id)
   assert.equal(await context.manager.activation(), undefined)
 })
+
+test('keeps Experimental candidate slots uncommitted through probation and supports cancellation', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await managedRecord(
+    context,
+    'probation',
+    1,
+    'experimental',
+    '0.1.0-rc.2',
+    ['experimental-receipt'],
+  )
+  await context.manager.stageCandidate(candidate, async () => {
+    assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:probation')
+  })
+  const during = await context.manager.state()
+  assert.notEqual(during.current, candidate.id)
+  assert.equal((await context.manager.activation()).phase, 'probation')
+  const cancelled = await context.manager.cancelCandidate()
+  assert.equal(cancelled.cancelled, true)
+  assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
+  assert.equal(await context.manager.activation(), undefined)
+})

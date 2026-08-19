@@ -2,12 +2,11 @@ import { spawn } from 'node:child_process'
 import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { buildRuntime, RuntimeSlots } from '../../patch-manager/index.mjs'
-import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
-import { artifactForReference, parseEnvironmentManifest } from '../../../../platform/lib/contracts.mjs'
+import { RuntimeSlots } from '../../patch-manager/index.mjs'
 import { PlatformPaths } from '../../../../platform/lib/paths.mjs'
 import { LocalApiClient } from './client.mjs'
 import { ManagedDeploymentBuilder } from './managed-store.mjs'
+import { deriveRecordId, parseDeploymentRecord } from '../../../../platform/lib/deployment-contracts.mjs'
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -43,6 +42,7 @@ export class PlatformActivator {
     this.runtimeSlots = new RuntimeSlots(this.paths.runtimesRoot)
     this.environmentSlots = new RuntimeSlots(this.paths.environmentsRoot)
     this.systemPluginSlots = new RuntimeSlots(this.paths.systemPluginsRoot)
+    this.experimentalCandidates = new Map()
   }
 
   prepareManaged(prepared) {
@@ -126,22 +126,16 @@ export class PlatformActivator {
   }
 
   async prepareExperimental(prepared) {
-    const version = prepared.version
-    const pristineRoot = await this.pristine(version, prepared.receipt)
-    const environmentRoot = join(this.paths.environmentsRoot, 'current')
-    const environment = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
-    const runtimeId = `${version}-experimental-${prepared.receipt.objectSha256.slice(0, 12)}`
-    if (!await exists(join(this.paths.runtimesRoot, 'versions', runtimeId))) {
-      await buildRuntime({
-        pristineRoot,
-        versionsRoot: join(this.paths.runtimesRoot, 'versions'),
-        runtimeId,
-        patchPaths: environment.patches.map(item => (
-          join(environmentRoot, 'artifacts', artifactForReference(environment, item).id)
-        )),
-      })
-    }
-    return Object.freeze({ runtimeId, environmentVersion: environment.version, dshVersion: version })
+    const { record: current } = await this.bootstrap.request('GET', '/v1/deployments/current')
+    if (current === null) throw new Error('current Deployment is required')
+    const receiptTokens = await this.experimentalActivationTokens(prepared.receiptTokens)
+    const built = await this.builder.buildExperimental(prepared, current, receiptTokens)
+    this.experimentalCandidates.set(built.record.id, built.record)
+    return Object.freeze({
+      runtimeId: built.record.id,
+      environmentVersion: built.record.environmentVersion,
+      dshVersion: built.record.dshVersion,
+    })
   }
 
   suspendDsh() { return this.bootstrap.request('POST', '/v1/components/dsh-runtime/suspend') }
@@ -157,15 +151,34 @@ export class PlatformActivator {
   }
 
   async switchExperimental(runtimeId) {
-    await this.runtimeSlots.promote(runtimeId)
-    await this.resumeDsh()
+    const record = this.experimentalCandidates.get(runtimeId)
+    if (record === undefined) throw new Error('Experimental Deployment candidate is not prepared')
+    return this.bootstrap.request('POST', '/v1/deployments/candidate', { record })
+  }
+
+  async bindExperimentalSnapshot(runtimeId, snapshotId) {
+    const record = this.experimentalCandidates.get(runtimeId)
+    if (record === undefined) throw new Error('Experimental Deployment candidate is not prepared')
+    const content = { ...record, snapshotId }
+    delete content.id
+    const bound = parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) })
+    this.experimentalCandidates.delete(runtimeId)
+    this.experimentalCandidates.set(bound.id, bound)
+    return bound.id
+  }
+
+  async commitExperimental(runtimeId) {
+    const result = await this.bootstrap.request('POST', '/v1/deployments/candidate/commit', { recordId: runtimeId })
+    this.experimentalCandidates.delete(runtimeId)
+    return result
   }
 
   async restoreDeployment(deployment, { resume = true } = {}) {
-    await this.runtimeSlots.promote(deployment.runtime)
-    await this.environmentSlots.promote(deployment.environment)
-    await this.systemPluginSlots.promote(deployment.environment)
-    if (deployment.receiptTokens.length > 0) await this.stage0.activate(deployment.receiptTokens)
+    await this.bootstrap.request('POST', '/v1/deployments/candidate/cancel')
+    const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
+    if (record?.id !== deployment.runtime) {
+      await this.bootstrap.request('POST', '/v1/deployments/rollback', { recordId: deployment.runtime })
+    }
     if (resume) await this.resumeDsh()
   }
 

@@ -51,14 +51,21 @@ const environment = new EnvironmentRunner({
   capture,
 })
 const runtime = new BootstrapRuntime({ controlPlane, environment })
+const server = createBootstrapControl(runtime, { deployments, trust })
+await listenBootstrapControl(server, paths.bootstrapSocket)
 let imageCandidateHealthy = true
-await runtime.start({
-  allowRecovery: true,
-  onEnvironmentFailure: async () => {
-    imageCandidateHealthy = false
-    return imagePlan === undefined ? false : deployments.rejectImage(imagePlan)
-  },
-})
+try {
+  await runtime.start({
+    allowRecovery: true,
+    onEnvironmentFailure: async () => {
+      imageCandidateHealthy = false
+      return imagePlan === undefined ? false : deployments.rejectImage(imagePlan)
+    },
+  })
+} catch (error) {
+  server.close()
+  throw error
+}
 if (imageCandidateHealthy && imagePlan !== undefined) await deployments.acceptImage(imagePlan)
 const recoveryReason = planningError instanceof Error ? planningError.message : runtime.recoveryMode
 const recoveryMode = recoveryReason === null ? null : {
@@ -66,8 +73,6 @@ const recoveryMode = recoveryReason === null ? null : {
   failedRecordId: imagePlan?.target ?? null,
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
-const server = createBootstrapControl(runtime, { deployments, trust })
-await listenBootstrapControl(server, paths.bootstrapSocket)
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 
 let resolveSignal

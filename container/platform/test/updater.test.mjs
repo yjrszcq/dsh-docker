@@ -250,6 +250,7 @@ function experimentalSystem(root, overrides = {}) {
     suspendDsh: async () => { calls.push('suspend') },
     resumeDsh: async () => { calls.push('resume') },
     switchExperimental: async id => { calls.push(`switch:${id}`) },
+    commitExperimental: async id => { calls.push(`commit:${id}`) },
     health: async () => ({ healthy: true }),
     experimentalActivationTokens: async tokens => ['stable-receipt', ...tokens],
     restoreDeployment: async (from, options) => { calls.push(`restore-runtime:${from.runtime}:${String(options?.resume)}`) },
@@ -284,7 +285,7 @@ test('runs a user-started Experimental candidate through snapshot and probation'
   await coordinator.startExperimental().completion
   assert.equal((await coordinator.journal.read()).phase, 'committed')
   assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
-    'suspend', 'snapshot:task', 'switch:runtime-b', 'activate:stable-receipt,experimental-receipt',
+    'suspend', 'snapshot:task', 'switch:runtime-b', 'commit:runtime-b',
   ])
 })
 
@@ -425,20 +426,25 @@ test('replaces the prior official DSH authority while retaining Stable deploymen
   )
 })
 
-test('restores Runtime, Environment, System Plugins, and receipts as one deployment', async () => {
+test('restores a staged complete Deployment through Bootstrap candidate cancellation', async () => {
   const calls = []
   const activator = new PlatformActivator({
     dataRoot: '/unused',
-    bootstrap: { request: async () => calls.push('resume') },
-    stage0: { activate: async tokens => calls.push(`receipts:${tokens.join(',')}`) },
+    bootstrap: { request: async (method, path) => {
+      calls.push(`${method}:${path}`)
+      if (path.endsWith('/cancel')) return { cancelled: true }
+      if (path.endsWith('/current')) return { record: { id: 'runtime-a' } }
+      return {}
+    } },
+    stage0: {},
   })
-  activator.runtimeSlots = { promote: async value => calls.push(`runtime:${value}`) }
-  activator.environmentSlots = { promote: async value => calls.push(`environment:${value}`) }
-  activator.systemPluginSlots = { promote: async value => calls.push(`plugins:${value}`) }
   await activator.restoreDeployment({
     runtime: 'runtime-a', environment: 'env-1', receiptTokens: ['stable-a'],
   }, { resume: false })
-  assert.deepEqual(calls, ['runtime:runtime-a', 'environment:env-1', 'plugins:env-1', 'receipts:stable-a'])
+  assert.deepEqual(calls, [
+    'POST:/v1/deployments/candidate/cancel',
+    'GET:/v1/deployments/current',
+  ])
 })
 
 test('removes the superseded snapshot only after the next Experimental commit', async () => {

@@ -4,7 +4,7 @@ import { cp, lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { buildRuntime } from '../../patch-manager/index.mjs'
 import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
-import { artifactForReference } from '../../../../platform/lib/contracts.mjs'
+import { artifactForReference, parseEnvironmentManifest } from '../../../../platform/lib/contracts.mjs'
 import { deriveRecordId, parseDeploymentRecord } from '../../../../platform/lib/deployment-contracts.mjs'
 import { hashTree } from '../../../../platform/lib/tree-hash.mjs'
 
@@ -184,5 +184,48 @@ export class ManagedDeploymentBuilder {
       record: parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) }),
       assets: Object.freeze({ pristine, environment, runtime, systemPlugins }),
     })
+  }
+
+  async buildExperimental(prepared, currentValue, receiptTokens) {
+    const current = parseDeploymentRecord(currentValue)
+    const pristine = await this.pristine(prepared.version, prepared.receipt)
+    const environmentRoot = join(this.paths.viewsRoot, 'environment')
+    const manifest = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
+    if (manifest.version !== current.environmentVersion) throw new Error('current Environment view differs from its Deployment Record')
+    const patches = manifest.patches.map(reference => {
+      const artifact = artifactForReference(manifest, reference)
+      return { id: reference.id, artifactId: artifact.id, sha256: artifact.sha256 }
+    })
+    const runtimeId = deriveRecordId('runtime', {
+      schema: 1,
+      pristine: pristine.sha256,
+      environment: current.environment.sha256,
+      patches,
+    })
+    const runtimePath = join(this.paths.runtimesRoot, runtimeId)
+    if (!await exists(runtimePath)) {
+      await buildRuntime({
+        pristineRoot: pristine.path,
+        versionsRoot: this.paths.runtimesRoot,
+        runtimeId,
+        patchPaths: patches.map(patch => join(environmentRoot, 'artifacts', patch.artifactId)),
+      })
+    }
+    const runtime = Object.freeze({ id: runtimeId, sha256: await verifyDirectory(runtimePath), path: runtimePath })
+    const content = {
+      schema: 1,
+      authority: 'experimental',
+      targetSequence: current.targetSequence,
+      dshVersion: prepared.version,
+      environmentVersion: current.environmentVersion,
+      environment: current.environment,
+      pristine: storeReference('pristine', pristine),
+      runtime: storeReference('runtime', runtime),
+      systemPlugins: current.systemPlugins,
+      receiptTokens: [...receiptTokens],
+      snapshotId: null,
+    }
+    const record = parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) })
+    return Object.freeze({ record, runtime })
   }
 }

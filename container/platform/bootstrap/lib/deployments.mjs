@@ -348,7 +348,7 @@ export class DeploymentManager {
     const value = JSON.parse(bytes.toString('utf8'))
     if (
       value?.schema !== 1
-      || !['prepared', 'healthy', 'receipts-active'].includes(value.phase)
+      || !['prepared', 'healthy', 'probation', 'receipts-active'].includes(value.phase)
       || typeof value.from !== 'string'
       || typeof value.to !== 'string'
     ) throw new TrustError('Deployment activation journal is invalid')
@@ -416,6 +416,49 @@ export class DeploymentManager {
       await this.clearActivation().catch(() => {})
       throw error
     }
+  }
+
+  async stageCandidate(value, healthCheck) {
+    const candidate = await this.writeRecord(value)
+    await this.materializeCurrent()
+    const state = await this.state()
+    const from = await this.record(state.current)
+    await this.writeActivation({ phase: 'prepared', from: from.id, to: candidate.id })
+    try {
+      await this.select(candidate.id)
+      await healthCheck()
+      await this.writeActivation({ phase: 'probation', from: from.id, to: candidate.id })
+      return candidate
+    } catch (error) {
+      await this.select(from.id).catch(() => {})
+      await healthCheck().catch(() => {})
+      await this.clearActivation().catch(() => {})
+      throw error
+    }
+  }
+
+  async commitCandidate(recordId, activateReceipts) {
+    const journal = await this.activation()
+    if (journal?.phase !== 'probation' || journal.to !== recordId) {
+      throw new TrustError('Deployment candidate is not in probation')
+    }
+    const candidate = await this.record(recordId)
+    await activateReceipts(candidate.receiptTokens)
+    await this.writeActivation({ phase: 'receipts-active', from: journal.from, to: journal.to })
+    const committed = await this.commit(candidate.id, journal.from)
+    await this.clearActivation()
+    await this.publishStatus()
+    return committed
+  }
+
+  async cancelCandidate() {
+    const journal = await this.activation()
+    if (journal === undefined) return Object.freeze({ cancelled: false, slots: await this.state() })
+    const from = await this.record(journal.from)
+    await this.select(from.id)
+    await this.clearActivation()
+    await this.publishStatus()
+    return Object.freeze({ cancelled: true, slots: await this.state() })
   }
 
   describe(record) {

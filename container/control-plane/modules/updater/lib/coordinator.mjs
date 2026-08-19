@@ -266,10 +266,16 @@ export class UpdateCoordinator extends EventEmitter {
         environmentVersion: from.environment,
         dshVersion: from.dsh,
       })
-      transaction = await this.journal.transition('snapshot-created', { snapshotId: snapshot.id })
+      const candidateRuntimeId = this.activator.bindExperimentalSnapshot === undefined
+        ? built.runtimeId
+        : await this.activator.bindExperimentalSnapshot(built.runtimeId, snapshot.id)
+      transaction = await this.journal.transition('snapshot-created', {
+        snapshotId: snapshot.id,
+        to: { ...transaction.to, runtime: candidateRuntimeId },
+      })
 
       await this.transition('switching', { taskId, progress: 70 })
-      await this.activator.switchExperimental(built.runtimeId)
+      await this.activator.switchExperimental(candidateRuntimeId)
       failureClass = 'combination'
       transaction = await this.journal.transition('switched')
       const probationUntil = new Date(this.now().valueOf() + this.probationSeconds * 1000).toISOString()
@@ -281,8 +287,7 @@ export class UpdateCoordinator extends EventEmitter {
         if (this.now().valueOf() >= new Date(probationUntil).valueOf()) break
         await this.sleep(Math.min(1_000, Math.max(0, new Date(probationUntil).valueOf() - this.now().valueOf())))
       } while (true)
-      const activationTokens = await this.activator.experimentalActivationTokens(prepared.receiptTokens)
-      await this.preparer.trust.activate(activationTokens)
+      await this.activator.commitExperimental(candidateRuntimeId)
       transaction = await this.journal.transition('committed')
       await this.activator.cleanup?.().catch(() => {})
       if (obsoleteSnapshotId !== null && obsoleteSnapshotId !== transaction.snapshotId) {
