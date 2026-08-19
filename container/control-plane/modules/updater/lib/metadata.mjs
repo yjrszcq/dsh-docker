@@ -1,7 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseStable } from '../../../../platform/lib/contracts.mjs'
 import { compareDshVersions } from '../../../../platform/lib/supported-target.mjs'
-import { parseRegistryCandidate } from '../../../../platform/stage0/lib/experimental.mjs'
 
 async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
   if (!response.ok) throw new Error(`${label} returned HTTP ${String(response.status)}`)
@@ -54,28 +53,18 @@ export class NpmRegistryClient {
   }
 
   async latest(stable) {
-    const policy = stable.experimentalPolicy
-    if (policy === null) return null
+    const policy = stable.officialDshPolicy
     const packagePath = encodeURIComponent(policy.packageName)
     const response = await this.fetchImpl(new URL(packagePath, policy.registry), {
       headers: { accept: 'application/vnd.npm.install-v1+json' },
+      redirect: 'error',
     })
     const bytes = await responseBytes(response, 'npm packument', 20 * 1024 * 1024)
     let packument
     try { packument = JSON.parse(bytes.toString('utf8')) } catch { throw new Error('npm packument is not valid JSON') }
     const latest = packument?.['dist-tags']?.latest
-    const version = typeof latest === 'string' ? packument?.versions?.[latest] : undefined
-    if (version === undefined) throw new Error('npm packument has no latest DSH version')
-    const candidate = parseRegistryCandidate({
-      schema: 1,
-      name: version.name,
-      version: version.version,
-      dist: {
-        integrity: version.dist?.integrity,
-        tarball: version.dist?.tarball,
-        signatures: version.dist?.signatures,
-      },
-    })
-    return compareDshVersions(candidate.version, stable.desired.dsh.version) > 0 ? candidate : null
+    const version = typeof latest === 'string' ? packument?.versions?.[latest]?.version : undefined
+    if (version !== latest) throw new Error('npm packument has no coherent latest DSH version')
+    return compareDshVersions(version, stable.desired.dsh.version) > 0 ? Object.freeze({ version }) : null
   }
 }

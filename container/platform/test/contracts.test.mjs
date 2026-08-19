@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseExperimentalPolicy, parseStable } from '../lib/contracts.mjs'
+import { parseBootstrapManifest, parseComponentManifest, parseEnvironmentManifest, parseOfficialDshPolicy, parseStable } from '../lib/contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
-import { document, experimentalPolicy, registryKeyPair, target } from './helpers.mjs'
+import { document, officialDshPolicy, registryKeyPair, target } from './helpers.mjs'
 
 const common = manifestType => ({
   schema: 1,
@@ -43,13 +43,12 @@ test('parses the exact stable desired state and rejects missing referenced Artif
   assert.throws(() => parseStable(document({ ...target(1, 1), unknown: true })), /fields/)
 })
 
-test('parses a Release-delegated npm Experimental policy while retaining Stable schema 1', () => {
-  const policy = experimentalPolicy(registryKeyPair())
-  assert.equal(parseExperimentalPolicy(policy).packageName, '@deepseek-ai/dsh')
-  assert.equal(parseStable(document(target(1, 1))).experimentalPolicy, null)
-  assert.equal(parseStable(document(target(1, 1, policy))).experimentalPolicy.keys[0].keyId, policy.keys[0].keyId)
+test('parses the Release-delegated official DSH policy with Stable schema 1', () => {
+  const policy = officialDshPolicy(registryKeyPair())
+  assert.equal(parseOfficialDshPolicy(policy).packageName, '@deepseek-ai/dsh')
+  assert.equal(parseStable(document(target(1, 1, policy))).officialDshPolicy.keys[0].keyId, policy.keys[0].keyId)
   const wrongRegistry = { ...policy, registry: 'https://registry.example/' }
-  assert.throws(() => parseExperimentalPolicy(wrongRegistry), /official npm registry/)
+  assert.throws(() => parseOfficialDshPolicy(wrongRegistry), /official npm registry/)
 })
 
 test('parses bootstrap and environment manifests with ordered references', () => {

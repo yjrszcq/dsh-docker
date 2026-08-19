@@ -16,7 +16,7 @@ import { NpmRegistryClient } from '../../control-plane/modules/updater/lib/metad
 import { reconcileRecoveredState, recoverInterruptedUpdate } from '../../control-plane/modules/updater/lib/recovery.mjs'
 import { PlatformActivator } from '../../control-plane/modules/updater/lib/activator.mjs'
 import { ChannelStateStore } from '../../control-plane/modules/updater/lib/channel-state.mjs'
-import { keyPair, keyring, signature } from './helpers.mjs'
+import { keyPair, keyring, officialDshPolicy, registryCandidate, registryKeyPair, signature } from './helpers.mjs'
 
 function descriptor(id, bytes, mediaType = 'application/octet-stream') {
   return {
@@ -36,6 +36,7 @@ async function releaseFixture() {
   const recovery = keyPair()
   const current = keyPair()
   const next = keyPair()
+  const registry = registryKeyPair()
   const component = Buffer.from('component')
   const bootstrapPackage = Buffer.from('bootstrap')
   const environmentManifest = canonicalJson({
@@ -65,12 +66,12 @@ async function releaseFixture() {
   const environmentSignature = canonicalJson(signature(environmentManifest, current))
   const bootstrapSignature = canonicalJson(signature(bootstrapManifest, current))
   const dsh = Buffer.from('dsh tarball')
+  const dshCandidate = registryCandidate(registry, '0.1.0-rc.7', dsh)
   const artifacts = [
     descriptor('environment-manifest', environmentManifest, 'application/vnd.dsh-platform.manifest.v1+json'),
     descriptor('environment-signature', environmentSignature, 'application/vnd.dsh-platform.signature.v1+json'),
     descriptor('bootstrap-manifest', bootstrapManifest, 'application/vnd.dsh-platform.manifest.v1+json'),
     descriptor('bootstrap-signature', bootstrapSignature, 'application/vnd.dsh-platform.signature.v1+json'),
-    descriptor('dsh-tarball', dsh, 'application/vnd.npm.package+gzip'),
   ]
   const stable = canonicalJson({
     schema: 1,
@@ -84,10 +85,10 @@ async function releaseFixture() {
       environment: { version: '2026.08.19.1', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: {
         version: '0.1.0-rc.7',
-        tarballArtifactId: 'dsh-tarball',
         integrity: `sha512-${createHash('sha512').update(dsh).digest('base64')}`,
       },
     },
+    officialDshPolicy: officialDshPolicy(registry),
   })
   const ring = canonicalJson(keyring(1, current, next))
   const files = new Map([
@@ -100,10 +101,13 @@ async function releaseFixture() {
       'environment-signature': environmentSignature,
       'bootstrap-manifest': bootstrapManifest,
       'bootstrap-signature': bootstrapSignature,
-      'dsh-tarball': dsh,
     }[artifact.id]]),
     ['https://release.example/environment-component', component],
     ['https://release.example/bootstrap-package', bootstrapPackage],
+    ['https://registry.npmjs.org/%40deepseek-ai%2Fdsh', Buffer.from(JSON.stringify({
+      versions: { [dshCandidate.version]: dshCandidate },
+    }))],
+    [dshCandidate.dist.tarball, dsh],
   ])
   return { recovery, current, next, files, stable }
 }
@@ -114,7 +118,11 @@ async function system() {
   const untrustedRoot = join(root, 'downloads', 'untrusted')
   await mkdir(untrustedRoot, { recursive: true })
   const ledger = new TrustLedger(join(root, 'trust'), fixture.recovery.publicKey)
-  const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot, ledger })
+  const fetchImpl = async url => {
+    const bytes = fixture.files.get(String(url))
+    return bytes === undefined ? response('missing', 404) : response(bytes)
+  }
+  const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot, ledger, fetchImpl })
   const trust = {
     acceptKeyring: (bytes, value) => ledger.acceptKeyring(bytes, value),
     acceptTarget: (bytes, value) => ledger.acceptTarget(bytes, value),
@@ -122,11 +130,8 @@ async function system() {
       ? objects.importFromTarget(id, path)
       : objects.importFromManifest(parent, id, path),
     acceptManifest: (token, signatureToken) => objects.acceptManifest(token, signatureToken),
+    ensureOfficialDsh: version => objects.ensureOfficialDsh(version),
     activate: tokens => objects.activate(tokens),
-  }
-  const fetchImpl = async url => {
-    const bytes = fixture.files.get(String(url))
-    return bytes === undefined ? response('missing', 404) : response(bytes)
   }
   const metadata = new MetadataClient({ baseUrl: 'https://metadata.example/', trust, fetchImpl, retryMs: 1 })
   const preparer = new TargetPreparer({ untrustedRoot, trust, fetchImpl })
@@ -138,7 +143,9 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   const checked = await metadata.check()
   assert.equal(checked.value.targetSequence, 1)
   const prepared = await preparer.prepare(checked.value)
-  assert.equal(prepared.receipts.size, 7)
+  assert.equal(prepared.receipts.size, 6)
+  assert.equal(prepared.dsh.receipt.authorityType, 'official-dsh')
+  assert.equal(prepared.receiptTokens.length, 7)
   assert.equal((await ledger.currentKeyring()).value.generation, 1)
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
 })
@@ -376,14 +383,14 @@ test('reconciles a committed journal with a state write interrupted after activa
   assert.equal(unrelated.persisted.status, 'downloading')
 })
 
-test('replaces the prior Experimental authority while retaining Stable deployment receipts', async () => {
+test('replaces the prior official DSH authority while retaining Stable deployment receipts', async () => {
   const activator = new PlatformActivator({
     dataRoot: '/unused',
     bootstrap: {},
     stage0: {
       activeReceipts: async () => ({ receipts: [
         { token: 'stable-a', authorityType: 'stable' },
-        { token: 'experimental-old', authorityType: 'experimental' },
+        { token: 'official-old', authorityType: 'official-dsh' },
         { token: 'stable-b', authorityType: 'stable' },
       ] }),
     },
@@ -434,7 +441,7 @@ test('reads npm latest from the official packument without trusting it locally',
   })) })
   const found = await client.latest({
     desired: { dsh: { version: '0.1.0-rc.7' } },
-    experimentalPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
+    officialDshPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
   })
   assert.equal(found.version, candidate.version)
 })

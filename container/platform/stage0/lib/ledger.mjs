@@ -5,7 +5,6 @@ import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from './keyring.mjs'
 import { parseReleaseTarget, validateTargetTransition, verifyReleaseTarget } from './target.mjs'
-import { parseRegistryCandidate, verifyRegistryCandidate } from './experimental.mjs'
 import { parseOfficialDshCandidate, verifyOfficialDshCandidate } from './official-dsh.mjs'
 
 async function readOptional(path) {
@@ -47,18 +46,6 @@ function parseSignedRecord(bytes, label) {
   return { document, signature: value.signature }
 }
 
-function parseExperimentalRecord(bytes) {
-  let record
-  try { record = JSON.parse(bytes.toString('utf8')) } catch { throw new TrustError('Experimental record must contain valid JSON') }
-  if (
-    record === null || typeof record !== 'object' || Array.isArray(record)
-    || Object.keys(record).sort().join(',') !== 'candidate,objectSha256,size'
-    || typeof record.objectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.objectSha256)
-    || !Number.isSafeInteger(record.size) || record.size < 0
-  ) throw new TrustError('Experimental record is invalid')
-  return { candidate: parseRegistryCandidate(record.candidate), objectSha256: record.objectSha256, size: record.size }
-}
-
 function parseOfficialDshRecord(bytes) {
   let record
   try { record = JSON.parse(bytes.toString('utf8')) } catch { throw new TrustError('official DSH record must contain valid JSON') }
@@ -90,10 +77,6 @@ export class TrustLedger {
 
   targetPath(name) {
     return join(this.root, 'target', name)
-  }
-
-  experimentalPath(name) {
-    return join(this.root, 'experimental', name)
   }
 
   officialDshPath(name) {
@@ -177,52 +160,12 @@ export class TrustLedger {
     return next
   }
 
-  async currentExperimental(stable = undefined) {
-    const recordBytes = await readOptional(this.experimentalPath('current.record.json'))
-    if (recordBytes === undefined) return undefined
-    const record = parseExperimentalRecord(recordBytes)
-    const currentStable = stable ?? (await this.currentTarget())?.value
-    if (currentStable === undefined) throw new TrustError('Experimental candidate requires an accepted Stable target')
-    return Object.freeze({ ...record, value: verifyRegistryCandidate(record.candidate, currentStable) })
-  }
-
-  acceptExperimental(candidate, objectSha256, size) {
-    return this.exclusive(() => this.acceptExperimentalUnlocked(candidate, objectSha256, size))
-  }
-
-  async acceptExperimentalUnlocked(candidate, objectSha256, size) {
-    if (typeof objectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(objectSha256)) {
-      throw new TrustError('Experimental object SHA-256 is invalid')
-    }
-    if (!Number.isSafeInteger(size) || size < 0) throw new TrustError('Experimental object size is invalid')
-    const stable = (await this.currentTarget())?.value
-    if (stable === undefined) throw new TrustError('Stable target must be accepted before an Experimental candidate')
-    const next = verifyRegistryCandidate(candidate, stable)
-    const previousBytes = await readOptional(this.experimentalPath('current.record.json'))
-    if (previousBytes !== undefined) {
-      const previous = parseExperimentalRecord(previousBytes)
-      const compared = compareDshVersions(next.version, previous.candidate.version)
-      if (compared < 0) throw new TrustError('Experimental DSH version cannot decrease', 'TRUST_ROLLBACK')
-      if (compared === 0) {
-        if (
-          next.dist.integrity !== previous.candidate.dist.integrity
-          || objectSha256 !== previous.objectSha256
-          || size !== previous.size
-        ) throw new TrustError('Experimental DSH version cannot identify different content')
-        return Object.freeze({ ...previous, value: next })
-      }
-    }
-    const record = { candidate, objectSha256, size }
-    await durableReplace(this.experimentalPath('current.record.json'), `${JSON.stringify(record)}\n`)
-    return Object.freeze({ candidate: next, objectSha256, size, value: next })
-  }
-
   async currentOfficialDsh(target = undefined) {
     const recordBytes = await readOptional(this.officialDshPath('current.record.json'))
     if (recordBytes === undefined) return undefined
     const record = parseOfficialDshRecord(recordBytes)
     const currentTarget = target ?? (await this.currentTarget())?.value
-    if (currentTarget === undefined || currentTarget.experimentalPolicy === null) {
+    if (currentTarget === undefined) {
       throw new TrustError('official DSH requires an accepted registry policy')
     }
     const keyring = (await this.currentKeyring())?.value
@@ -236,7 +179,7 @@ export class TrustLedger {
       value: verifyOfficialDshCandidate(
         record.candidate,
         record.candidate.version,
-        currentTarget.experimentalPolicy,
+        currentTarget.officialDshPolicy,
       ),
     })
   }
@@ -251,7 +194,7 @@ export class TrustLedger {
     }
     if (!Number.isSafeInteger(size) || size < 0) throw new TrustError('official DSH object size is invalid')
     const target = (await this.currentTarget())?.value
-    if (target === undefined || target.experimentalPolicy === null) {
+    if (target === undefined) {
       throw new TrustError('official DSH requires an accepted registry policy')
     }
     const keyring = (await this.currentKeyring())?.value
@@ -266,7 +209,7 @@ export class TrustLedger {
       version: candidate.version,
       dist: candidate.dist,
     })
-    const next = verifyOfficialDshCandidate(candidateDocument, candidateDocument.version, target.experimentalPolicy)
+    const next = verifyOfficialDshCandidate(candidateDocument, candidateDocument.version, target.officialDshPolicy)
     if (compareDshVersions(next.version, target.desired.dsh.version) < 0) {
       throw new TrustError('official DSH version is older than the current supported target', 'TRUST_ROLLBACK')
     }

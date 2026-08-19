@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { canonicalJson } from '../lib/canonical-json.mjs'
-import { parseBootstrapManifest, parseEnvironmentManifest, parseExperimentalPolicy, parseStable } from '../lib/contracts.mjs'
+import { parseBootstrapManifest, parseEnvironmentManifest, parseOfficialDshPolicy, parseStable } from '../lib/contracts.mjs'
 import { validateSupportedTarget } from '../lib/supported-target.mjs'
 import { positiveSafeInteger } from '../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
@@ -15,7 +15,7 @@ import { verifyDetached } from '../stage0/lib/signature.mjs'
 
 const args = process.argv.slice(2)
 if (args.length !== 10) {
-  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <experimental-policy.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-release-dir|-> <target-sequence> <artifact-base-url> <output-dir>')
+  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <official-dsh-policy.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-release-dir|-> <target-sequence> <artifact-base-url> <output-dir>')
   process.exit(64)
 }
 
@@ -24,7 +24,7 @@ const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const containerRoot = dirname(platformRoot)
 const targetPath = resolve(targetArg)
 const definitionPath = resolve(definitionArg)
-const experimentalPolicy = parseExperimentalPolicy(JSON.parse(await readFile(resolve(policyArg), 'utf8')))
+const officialDshPolicy = parseOfficialDshPolicy(JSON.parse(await readFile(resolve(policyArg), 'utf8')))
 const trustRoot = resolve(trustArg)
 const privateKeyPath = resolve(privateKeyArg)
 const tarballPath = resolve(tarballArg)
@@ -166,25 +166,22 @@ try {
   await writeFile(join(staging, 'bootstrap.manifest.json'), bootstrapManifest, { flag: 'wx' })
   await writeFile(join(staging, 'bootstrap.manifest.sig.json'), signature(bootstrapManifest), { flag: 'wx', mode: 0o600 })
 
-  const dshDestination = join(staging, basename(tarballPath))
-  await cp(tarballPath, dshDestination, { errorOnExist: true, force: false })
   const releaseConfig = {
     currentKeyId,
     keyringGeneration: keyring.generation,
     targetSequence,
     artifactBaseUrl: artifactBaseUrl.href,
-    experimentalPolicy,
+    officialDshPolicy,
     artifacts: [
       ['environment-manifest', environmentManifestPath, 'application/vnd.dsh-platform.manifest.v1+json'],
       ['environment-signature', join(staging, 'environment.manifest.sig.json'), 'application/vnd.dsh-platform.signature.v1+json'],
       ['bootstrap-manifest', join(staging, 'bootstrap.manifest.json'), 'application/vnd.dsh-platform.manifest.v1+json'],
       ['bootstrap-signature', join(staging, 'bootstrap.manifest.sig.json'), 'application/vnd.dsh-platform.signature.v1+json'],
-      ['dsh-tarball', dshDestination, 'application/vnd.npm.package+gzip'],
     ].map(([id, path, mediaType]) => ({ id, path, mediaType })),
     desired: {
       bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
       environment: { version: target.environment, manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
-      dsh: { version: target.latestSupportedDsh, tarballArtifactId: 'dsh-tarball', integrity: dshIntegrity },
+      dsh: { version: target.latestSupportedDsh, integrity: dshIntegrity },
     },
   }
   await writeFile(releaseConfigPath, JSON.stringify(releaseConfig), { flag: 'wx' })

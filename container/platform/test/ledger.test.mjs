@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, experimentalPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature, target } from './helpers.mjs'
+import { document, officialDshPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature, target } from './helpers.mjs'
 
 async function fixture() {
   const recovery = keyPair()
@@ -57,30 +57,6 @@ test('requires an accepted keyring before accepting a target', async () => {
   await assert.rejects(ledger.acceptTarget(bytes, signature(bytes, release)), /keyring/)
 })
 
-test('accepts only increasing Experimental DSH candidates signed by a delegated npm Registry key', async () => {
-  const { ledger, recovery } = await fixture()
-  const current = keyPair()
-  const next = keyPair()
-  const registry = registryKeyPair()
-  const ring = document(keyring(1, current, next))
-  await ledger.acceptKeyring(ring, signature(ring, recovery))
-  const stable = document(target(1, 4, experimentalPolicy(registry)))
-  await ledger.acceptTarget(stable, signature(stable, current))
-
-  const content = Buffer.from('rc8')
-  const first = registryCandidate(registry, '0.1.0-rc.8', content)
-  const digest = createHash('sha256').update(content).digest('hex')
-  await ledger.acceptExperimental(first, digest, content.byteLength)
-  await ledger.acceptExperimental(first, digest, content.byteLength)
-  assert.equal((await ledger.currentExperimental()).value.version, '0.1.0-rc.8')
-
-  const unsupported = registryCandidate(registry, '0.1.0-rc.7', content)
-  await assert.rejects(ledger.acceptExperimental(unsupported, digest, content.byteLength), /newer/)
-  const second = registryCandidate(registry, '0.1.0-rc.9', content)
-  await ledger.acceptExperimental(second, digest, content.byteLength)
-  await assert.rejects(ledger.acceptExperimental(first, digest, content.byteLength), { code: 'TRUST_ROLLBACK' })
-})
-
 test('records official DSH identity monotonically without choosing an update channel', async () => {
   const { ledger, recovery } = await fixture()
   const current = keyPair()
@@ -88,7 +64,7 @@ test('records official DSH identity monotonically without choosing an update cha
   const registry = registryKeyPair()
   const ring = document(keyring(1, current, next))
   await ledger.acceptKeyring(ring, signature(ring, recovery))
-  const stable = document(target(1, 4, experimentalPolicy(registry)))
+  const stable = document(target(1, 4, officialDshPolicy(registry)))
   await ledger.acceptTarget(stable, signature(stable, current))
 
   const content = Buffer.from('rc8')
@@ -114,7 +90,7 @@ test('rejects new official DSH imports after the target Release Key is revoked',
   const registry = registryKeyPair()
   const ring = document(keyring(1, current, next))
   await ledger.acceptKeyring(ring, signature(ring, recovery))
-  const stable = document(target(1, 4, experimentalPolicy(registry)))
+  const stable = document(target(1, 4, officialDshPolicy(registry)))
   await ledger.acceptTarget(stable, signature(stable, current))
 
   const content = Buffer.from('rc8')

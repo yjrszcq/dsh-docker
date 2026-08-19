@@ -20,7 +20,9 @@ export function registryKeyPair() {
   }
 }
 
-export function experimentalPolicy(pair, expires = null) {
+const defaultRegistry = registryKeyPair()
+
+export function officialDshPolicy(pair = defaultRegistry, expires = null) {
   return {
     registry: 'https://registry.npmjs.org/',
     packageName: '@deepseek-ai/dsh',
@@ -71,9 +73,9 @@ export function keyring(generation, current, next, revokedKeyIds = []) {
   }
 }
 
-export function target(generation, sequence, policy = undefined) {
+export function target(generation, sequence, policy = officialDshPolicy()) {
   const emptyHash = '0'.repeat(64)
-  const artifacts = ['bootstrap-manifest', 'bootstrap-signature', 'environment-manifest', 'environment-signature', 'dsh-tarball'].map(id => ({
+  const artifacts = ['bootstrap-manifest', 'bootstrap-signature', 'environment-manifest', 'environment-signature'].map(id => ({
     id,
     mediaType: 'application/octet-stream',
     sha256: emptyHash,
@@ -81,7 +83,7 @@ export function target(generation, sequence, policy = undefined) {
     url: `https://example.com/${id}`,
   }))
   return {
-    schema: policy === undefined ? 1 : 2,
+    schema: 1,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
@@ -92,10 +94,9 @@ export function target(generation, sequence, policy = undefined) {
       environment: { version: '2026.08.19.1', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: {
         version: '0.1.0-rc.7',
-        tarballArtifactId: 'dsh-tarball',
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
       },
     },
-    ...(policy === undefined ? {} : { experimentalPolicy: policy }),
+    officialDshPolicy: policy,
   }
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MANIFEST_MEDIA_TYPE, SIGNATURE_MEDIA_TYPE, VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
-import { document, experimentalPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature } from './helpers.mjs'
+import { document, officialDshPolicy, keyPair, keyring, registryCandidate, registryKeyPair, signature } from './helpers.mjs'
 
 function descriptor(id, content, mediaType = 'application/octet-stream') {
   return {
@@ -18,14 +18,14 @@ function descriptor(id, content, mediaType = 'application/octet-stream') {
   }
 }
 
-function releaseTarget(generation, sequence, artifacts, policy) {
+function releaseTarget(generation, sequence, artifacts, policy = officialDshPolicy()) {
   const selected = artifacts[0]
   const signatureArtifact = descriptor('stable-signature', Buffer.from('signature'), 'application/vnd.dsh-platform.signature.v1+json')
   const targetArtifacts = artifacts.some(artifact => artifact.id === signatureArtifact.id)
     ? artifacts
     : [...artifacts, signatureArtifact]
   return {
-    schema: policy === undefined ? 1 : 2,
+    schema: 1,
     updateApi: 1,
     keyringGeneration: generation,
     targetSequence: sequence,
@@ -36,11 +36,10 @@ function releaseTarget(generation, sequence, artifacts, policy) {
       environment: { version: '2026.08.19.1', manifestArtifactId: selected.id, signatureArtifactId: signatureArtifact.id },
       dsh: {
         version: '0.1.0-rc.7',
-        tarballArtifactId: selected.id,
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,
       },
     },
-    ...(policy === undefined ? {} : { experimentalPolicy: policy }),
+    officialDshPolicy: policy,
   }
 }
 
@@ -60,7 +59,7 @@ function manifest(generation, sequence, artifacts) {
   }
 }
 
-async function fixture(targetArtifacts, policy = undefined) {
+async function fixture(targetArtifacts, policy = officialDshPolicy()) {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-object-store-'))
   const recovery = keyPair()
   const current = keyPair()
@@ -115,29 +114,11 @@ test('treats receipts written before authority typing as Stable receipts', async
   assert.equal((await store.readReceipt(receipt.token)).authorityType, 'stable')
 })
 
-test('imports Experimental bytes only through the separate signed authority', async () => {
-  const content = Buffer.from('experimental tarball')
-  const registry = registryKeyPair()
-  const { store, untrustedRoot } = await fixture(
-    [descriptor('stable-only', Buffer.alloc(0))],
-    experimentalPolicy(registry),
-  )
-  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
-  const source = join(untrustedRoot, 'experimental.tgz')
-  await writeFile(source, content)
-  await assert.rejects(store.importFromTarget('experimental-dsh-tarball', source), /not authorized/)
-  const receipt = await store.importFromExperimental(candidate, source)
-  assert.equal(receipt.authorityType, 'experimental')
-  assert.equal(receipt.authorityVersion, '0.1.0-rc.8')
-  await store.activate([receipt.token])
-  assert.equal((await store.readReceipt(receipt.token)).status, 'active')
-})
-
 test('imports official DSH from Stage-0-owned metadata and tarball requests', async () => {
   const content = Buffer.from('official tarball')
   const registry = registryKeyPair()
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
-  const policy = experimentalPolicy(registry)
+  const policy = officialDshPolicy(registry)
   const requests = []
   const { current, ledger, untrustedRoot, directory } = await fixture(
     [descriptor('stable-only', Buffer.alloc(0))],
@@ -176,7 +157,7 @@ test('official DSH import rejects redirects and mismatched bytes', async () => {
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
   const { ledger, untrustedRoot, directory } = await fixture(
     [descriptor('stable-only', Buffer.alloc(0))],
-    experimentalPolicy(registry),
+    officialDshPolicy(registry),
   )
   const redirected = new VerifiedObjectStore({
     root: join(directory, 'trust'), untrustedRoot, ledger,
@@ -199,26 +180,34 @@ test('official DSH import rejects redirects and mismatched bytes', async () => {
   await assert.rejects(mismatched.ensureOfficialDsh(candidate.version), { code: 'TRUST_ARTIFACT_MISMATCH' })
 })
 
-test('revokes staged Experimental receipts after Registry delegation changes but retains active objects', async () => {
-  const content = Buffer.from('experimental tarball')
+test('revokes staged official DSH receipts after Registry delegation changes but retains active objects', async () => {
+  const content = Buffer.from('official tarball')
   const registry = registryKeyPair()
   const replacement = registryKeyPair()
-  const { current, ledger, store, untrustedRoot } = await fixture(
-    [descriptor('stable-only', Buffer.alloc(0))],
-    experimentalPolicy(registry),
-  )
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
-  const source = join(untrustedRoot, 'experimental-policy-change.tgz')
-  await writeFile(source, content)
-  const active = await store.importFromExperimental(candidate, source)
+  const { current, directory, ledger, untrustedRoot } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    officialDshPolicy(registry),
+  )
+  let request = 0
+  const store = new VerifiedObjectStore({
+    root: join(directory, 'trust'), untrustedRoot, ledger,
+    fetchImpl: async () => {
+      request += 1
+      return request % 2 === 1
+        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
+        : new Response(content)
+    },
+  })
+  const active = await store.ensureOfficialDsh(candidate.version)
   await store.activate([active.token])
-  const staged = await store.importFromExperimental(candidate, source)
+  const staged = await store.ensureOfficialDsh(candidate.version)
 
   const advanced = document(releaseTarget(
     1,
     2,
     [descriptor('stable-only', Buffer.alloc(0))],
-    experimentalPolicy(replacement),
+    officialDshPolicy(replacement),
   ))
   await ledger.acceptTarget(advanced, signature(advanced, current))
   await store.reconcileRevocations((await ledger.currentKeyring()).value)

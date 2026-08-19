@@ -74,7 +74,7 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
   try {
     assert.deepEqual(await unixRequest(socketPath, 'GET', '/v1/status'), {
       status: 200,
-      body: { keyringGeneration: null, targetSequence: null, experimentalVersion: null, officialDshVersion: null },
+      body: { keyringGeneration: null, targetSequence: null, officialDshVersion: null },
     })
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/trust/reset', {})).status, 404)
     assert.equal((await readFile(socketPath).catch(error => error.code)), 'ENXIO')

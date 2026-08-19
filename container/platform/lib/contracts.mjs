@@ -30,13 +30,12 @@ function exactReference(value, label) {
 
 function dshReference(value) {
   const object = plainObject(value, 'stable.desired.dsh')
-  exactKeys(object, ['integrity', 'tarballArtifactId', 'version'], 'stable.desired.dsh')
+  exactKeys(object, ['integrity', 'version'], 'stable.desired.dsh')
   if (typeof object.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(object.integrity)) {
     throw new TrustError('stable.desired.dsh.integrity must be npm SHA-512 integrity')
   }
   return Object.freeze({
     version: version(object.version, 'stable.desired.dsh.version'),
-    tarballArtifactId: identifier(object.tarballArtifactId, 'stable.desired.dsh.tarballArtifactId'),
     integrity: object.integrity,
   })
 }
@@ -55,7 +54,7 @@ function registryKey(value, label) {
   return Object.freeze({ ...object })
 }
 
-export function parseExperimentalPolicy(value, label = 'experimental policy') {
+export function parseOfficialDshPolicy(value, label = 'official DSH policy') {
   const object = plainObject(value, label)
   exactKeys(object, ['keys', 'packageName', 'registry'], label)
   if (object.registry !== 'https://registry.npmjs.org/') {
@@ -72,14 +71,12 @@ export function parseExperimentalPolicy(value, label = 'experimental policy') {
 
 export function parseStable(bytes) {
   const object = parseJsonDocument(bytes, 'stable')
-  const fields = ['artifacts', 'desired', 'issuedAt', 'keyringGeneration', 'schema', 'targetSequence', 'updateApi']
-  if (object.schema === 2) fields.push('experimentalPolicy')
   exactKeys(
     object,
-    fields,
+    ['artifacts', 'desired', 'issuedAt', 'keyringGeneration', 'officialDshPolicy', 'schema', 'targetSequence', 'updateApi'],
     'stable',
   )
-  if (![1, 2].includes(object.schema)) throw new TrustError('stable.schema must be 1 or 2')
+  if (object.schema !== 1) throw new TrustError('stable.schema must be 1')
   if (object.updateApi !== 1) throw new TrustError('stable.updateApi must be 1')
   const desired = plainObject(object.desired, 'stable.desired')
   exactKeys(desired, ['bootstrap', 'dsh', 'environment'], 'stable.desired')
@@ -95,7 +92,6 @@ export function parseStable(bytes) {
     parsedDesired.bootstrap.signatureArtifactId,
     parsedDesired.environment.manifestArtifactId,
     parsedDesired.environment.signatureArtifactId,
-    parsedDesired.dsh.tarballArtifactId,
   ]) {
     if (!artifactIds.has(artifactId)) throw new TrustError(`stable desired Artifact ${JSON.stringify(artifactId)} is missing`)
   }
@@ -106,7 +102,7 @@ export function parseStable(bytes) {
     issuedAt: isoTimestamp(object.issuedAt, 'stable.issuedAt'),
     artifacts,
     desired: parsedDesired,
-    experimentalPolicy: object.schema === 2 ? parseExperimentalPolicy(object.experimentalPolicy) : null,
+    officialDshPolicy: parseOfficialDshPolicy(object.officialDshPolicy),
   })
 }
 

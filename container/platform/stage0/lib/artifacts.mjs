@@ -7,7 +7,6 @@ import { Readable, Transform } from 'node:stream'
 import { durableReplace } from '../../lib/atomic.mjs'
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
-import { verifyRegistryCandidate } from './experimental.mjs'
 import {
   fetchOfficialDshCandidate,
   fetchOfficialDshTarball,
@@ -134,10 +133,10 @@ function validateReceipt(value) {
   const authorityType = receipt.authorityType ?? 'stable'
   const receiptFields = receipt.authorityType === undefined
     ? required
-    : [...required, 'authorityType', ...(['experimental', 'official-dsh'].includes(authorityType) ? ['authorityVersion'] : [])]
+    : [...required, 'authorityType', ...(authorityType === 'official-dsh' ? ['authorityVersion'] : [])]
   exactKeys(receipt, receiptFields, 'receipt')
-  if (!['stable', 'experimental', 'official-dsh'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
-  if (['experimental', 'official-dsh'].includes(authorityType)) {
+  if (!['stable', 'official-dsh'].includes(authorityType)) throw new TrustError('receipt authority type is invalid')
+  if (authorityType === 'official-dsh') {
     compareDshVersions(receipt.authorityVersion, receipt.authorityVersion)
   }
   if (typeof receipt.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(receipt.token)) {
@@ -157,7 +156,7 @@ function validateReceipt(value) {
     ['parent SHA-256', receipt.parentSha256],
     ['signer key ID', receipt.signerKeyId],
   ]) {
-    const valid = name === 'signer key ID' && ['experimental', 'official-dsh'].includes(authorityType)
+    const valid = name === 'signer key ID' && authorityType === 'official-dsh'
       ? typeof digest === 'string' && /^SHA256:[A-Za-z0-9+/]{43}$/.test(digest)
       : typeof digest === 'string' && /^[a-f0-9]{64}$/.test(digest)
     if (!valid) {
@@ -345,86 +344,11 @@ export class VerifiedObjectStore {
     }
   }
 
-  importFromExperimental(candidateValue, sourcePath) {
-    return this.exclusive(async () => {
-      const stable = (await this.ledger.currentTarget())?.value
-      if (stable === undefined) throw new TrustError('Experimental import requires a current Stable target')
-      const candidate = verifyRegistryCandidate(candidateValue, stable, this.now())
-      const source = resolve(sourcePath)
-      if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
-        throw new TrustError('artifact source must be inside the untrusted download directory')
-      }
-      await mkdir(join(this.root, 'objects'), { recursive: true })
-      const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW)
-      const temporary = join(this.root, 'objects', `.${randomUUID()}.tmp`)
-      let destinationHandle
-      try {
-        if (!(await sourceHandle.stat()).isFile()) throw new TrustError('artifact source must be a regular file')
-        destinationHandle = await open(temporary, 'wx', 0o400)
-        const sha256 = createHash('sha256')
-        const sha512 = createHash('sha512')
-        let size = 0
-        const meter = new Transform({
-          transform(chunk, _encoding, callback) {
-            sha256.update(chunk)
-            sha512.update(chunk)
-            size += chunk.byteLength
-            callback(null, chunk)
-          },
-        })
-        await pipeline(sourceHandle.createReadStream({ autoClose: false }), meter, destinationHandle.createWriteStream())
-        destinationHandle = undefined
-        const objectSha256 = sha256.digest('hex')
-        const integrity = `sha512-${sha512.digest('base64')}`
-        if (integrity !== candidate.dist.integrity) {
-          throw new TrustError('Experimental Artifact does not match npm integrity', 'TRUST_ARTIFACT_MISMATCH')
-        }
-        const destination = this.objectPath(objectSha256)
-        try {
-          await link(temporary, destination)
-          await rm(temporary)
-        } catch (error) {
-          if (error?.code !== 'EEXIST') throw error
-          const existing = await hashFile(destination)
-          if (existing.size !== size || existing.sha256 !== objectSha256) {
-            throw new TrustError('trusted object store contains conflicting content')
-          }
-          await rm(temporary, { force: true })
-        }
-        await this.ledger.acceptExperimental(candidateValue, objectSha256, size)
-        const authority = `${candidate.name}@${candidate.version}:${candidate.dist.integrity}`
-        const receipt = {
-          token: receiptToken(),
-          artifactId: 'experimental-dsh-tarball',
-          mediaType: 'application/vnd.npm.package+gzip',
-          objectSha256,
-          size,
-          parentReceipt: null,
-          parentSha256: createHash('sha256').update(authority).digest('hex'),
-          signerKeyId: candidate.signerKeyId,
-          keyringGeneration: stable.keyringGeneration,
-          targetSequence: stable.targetSequence,
-          authorityType: 'experimental',
-          authorityVersion: candidate.version,
-          status: 'staged',
-          authoritySignature: null,
-          importedAt: this.now().toISOString(),
-        }
-        await atomicJson(this.receiptPath(receipt.token), receipt)
-        return Object.freeze({ ...receipt, path: destination })
-      } finally {
-        await sourceHandle.close().catch(() => {})
-        await destinationHandle?.close().catch(() => {})
-        await rm(temporary, { force: true }).catch(() => {})
-      }
-    })
-  }
-
   ensureOfficialDsh(requestedVersion) {
     return this.exclusive(async () => {
       compareDshVersions(requestedVersion, requestedVersion)
       const target = (await this.ledger.currentTarget())?.value
-      if (target === undefined || target.experimentalPolicy === null) {
+      if (target === undefined) {
         throw new TrustError('official DSH import requires an accepted registry policy')
       }
       if (compareDshVersions(requestedVersion, target.desired.dsh.version) < 0) {
@@ -433,7 +357,7 @@ export class VerifiedObjectStore {
       const signal = AbortSignal.timeout(this.requestTimeoutMs)
       const candidate = await fetchOfficialDshCandidate({
         requestedVersion,
-        policy: target.experimentalPolicy,
+        policy: target.officialDshPolicy,
         fetchImpl: this.fetchImpl,
         now: this.now(),
         signal,
@@ -575,7 +499,6 @@ export class VerifiedObjectStore {
       const receipts = await this.allReceipts()
       const revoked = new Set(keyring.revokedKeyIds)
       const currentTarget = (await this.ledger.currentTarget())?.value
-      const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
       const currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
       const unusable = new Set(receipts.filter(receipt => (
         receipt.status === 'revoked' || receipt.status === 'retired'
@@ -592,12 +515,6 @@ export class VerifiedObjectStore {
                 currentTarget === undefined
                 || receipt.keyringGeneration !== currentTarget.keyringGeneration
                 || receipt.targetSequence !== currentTarget.targetSequence
-              ))
-              || (receipt.authorityType === 'experimental' && (
-                currentExperimental === undefined
-                || receipt.authorityVersion !== currentExperimental.value.version
-                || receipt.objectSha256 !== currentExperimental.objectSha256
-                || receipt.signerKeyId !== currentExperimental.value.signerKeyId
               ))
               || (receipt.authorityType === 'official-dsh' && (
                 currentOfficialDsh === undefined
@@ -628,7 +545,6 @@ export class VerifiedObjectStore {
       if (currentKeyring === undefined) throw new TrustError('activation requires a current keyring')
       const currentTarget = (await this.ledger.currentTarget())?.value
       if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
-      const currentExperimental = await this.ledger.currentExperimental().catch(() => undefined)
       const currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
       const add = (token) => {
         const receipt = byToken.get(token)
@@ -641,11 +557,6 @@ export class VerifiedObjectStore {
             && receipt.authorityVersion === currentOfficialDsh.value.version
             && receipt.objectSha256 === currentOfficialDsh.objectSha256
             && receipt.signerKeyId === currentOfficialDsh.value.signerKeyId
-          : receipt.authorityType === 'experimental'
-          ? currentExperimental !== undefined
-            && receipt.authorityVersion === currentExperimental.value.version
-            && receipt.objectSha256 === currentExperimental.objectSha256
-            && receipt.signerKeyId === currentExperimental.value.signerKeyId
           : receipt.keyringGeneration === currentKeyring.generation
             && receipt.signerKeyId === currentKeyring.current.keyId
             && receipt.targetSequence === currentTarget.targetSequence

@@ -30,6 +30,7 @@ export class TargetPreparer {
   async prepare(stable) {
     const taskRoot = join(this.untrustedRoot, `target-${String(stable.targetSequence)}`)
     await mkdir(taskRoot, { recursive: true })
+    const downloads = new Map()
     const paths = new Map()
     const receipts = new Map()
     const authorities = new Map()
@@ -39,15 +40,17 @@ export class TargetPreparer {
         throw new Error(`Artifact ID ${descriptor.id} is reused across authorities`)
       }
       authorities.set(descriptor.id, authority)
-      if (!paths.has(descriptor.id)) {
-        paths.set(descriptor.id, await download(descriptor, join(taskRoot, descriptor.id), this.fetchImpl))
+      if (!downloads.has(descriptor.id)) {
+        downloads.set(descriptor.id, await download(descriptor, join(taskRoot, descriptor.id), this.fetchImpl))
       }
       if (!receipts.has(descriptor.id)) {
-        receipts.set(descriptor.id, await this.trust.importArtifact(
+        const receipt = await this.trust.importArtifact(
           descriptor.id,
-          paths.get(descriptor.id),
+          downloads.get(descriptor.id),
           parentReceipt,
-        ))
+        )
+        receipts.set(descriptor.id, receipt)
+        paths.set(descriptor.id, receipt.path)
       }
       return receipts.get(descriptor.id)
     }
@@ -63,32 +66,20 @@ export class TargetPreparer {
     }
     const bootstrap = await prepareManifest(stable.desired.bootstrap, parseBootstrapManifest)
     const environment = await prepareManifest(stable.desired.environment, parseEnvironmentManifest)
+    const dshReceipt = await this.trust.ensureOfficialDsh(stable.desired.dsh.version)
     return Object.freeze({
       stable,
       paths,
       receipts,
       bootstrap,
       environment,
-      receiptTokens: Object.freeze([...receipts.values()].map(receipt => receipt.token)),
+      dsh: Object.freeze({ version: stable.desired.dsh.version, receipt: dshReceipt }),
+      receiptTokens: Object.freeze([...receipts.values(), dshReceipt].map(receipt => receipt.token)),
     })
   }
 
   async prepareExperimental(candidate) {
-    const taskId = createHash('sha256').update(JSON.stringify(candidate)).digest('hex')
-    const taskRoot = join(this.untrustedRoot, `experimental-${taskId}`)
-    await mkdir(taskRoot, { recursive: true })
-    const path = join(taskRoot, 'dsh.tgz')
-    const response = await this.fetchImpl(candidate.dist.tarball)
-    if (!response.ok) throw new Error(`Experimental DSH returned HTTP ${String(response.status)}`)
-    const bytes = Buffer.from(await response.arrayBuffer())
-    if (bytes.byteLength > 512 * 1024 * 1024) throw new Error('Experimental DSH exceeds the download limit')
-    try {
-      await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
-    } catch (error) {
-      if (error?.code !== 'EEXIST') throw error
-      if (!(await readFile(path)).equals(bytes)) throw new Error('existing Experimental download differs from npm')
-    }
-    const receipt = await this.trust.importExperimentalArtifact(candidate, path)
-    return Object.freeze({ candidate, path, receipt, receiptTokens: Object.freeze([receipt.token]) })
+    const receipt = await this.trust.ensureOfficialDsh(candidate.version)
+    return Object.freeze({ version: candidate.version, receipt, receiptTokens: Object.freeze([receipt.token]) })
   }
 }

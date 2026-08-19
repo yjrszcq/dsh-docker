@@ -39,19 +39,27 @@ export class PlatformActivator {
     this.systemPluginSlots = new RuntimeSlots(join(dataRoot, 'system-plugins'))
   }
 
-  async pristine(prepared) {
-    const version = prepared.stable.desired.dsh.version
+  async pristine(version, receipt) {
     const root = join(this.dataRoot, 'dsh', 'pristine', version)
     if (!await exists(root)) {
       const staging = `${root}.${randomUUID()}.tmp`
       await mkdir(staging, { recursive: true })
       try {
-        await run('tar', ['-xzf', prepared.paths.get(prepared.stable.desired.dsh.tarballArtifactId), '-C', staging])
+        const entries = (await run('tar', ['-tzf', receipt.path])).toString('utf8').split('\n').filter(Boolean)
+        if (!entries.includes('package/package.json')) throw new Error('official DSH has no package metadata')
+        if (entries.some(entry => entry.startsWith('/') || !entry.startsWith('package/') || entry.split('/').includes('..'))) {
+          throw new Error('official DSH archive contains an unsafe path')
+        }
+        await run('tar', ['-xzf', receipt.path, '-C', staging])
         await rename(staging, root)
       } catch (error) {
         await rm(staging, { recursive: true, force: true })
         throw error
       }
+    }
+    const packageMetadata = JSON.parse(await readFile(join(root, 'package', 'package.json'), 'utf8'))
+    if (packageMetadata.name !== '@deepseek-ai/dsh' || packageMetadata.version !== version) {
+      throw new Error('official DSH package metadata differs from its requested version')
     }
     return join(root, 'package')
   }
@@ -88,7 +96,7 @@ export class PlatformActivator {
     }
     const runtimeId = `${prepared.stable.desired.dsh.version}-${String(prepared.stable.targetSequence)}`
     if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {
-      const pristineRoot = await this.pristine(prepared)
+      const pristineRoot = await this.pristine(prepared.dsh.version, prepared.dsh.receipt)
       await buildRuntime({
         pristineRoot,
         versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
@@ -145,34 +153,14 @@ export class PlatformActivator {
   }
 
   async prepareExperimental(prepared) {
-    const version = prepared.candidate.version
-    const root = join(this.dataRoot, 'dsh', 'pristine', version)
-    if (!await exists(root)) {
-      const staging = `${root}.${randomUUID()}.tmp`
-      await mkdir(staging, { recursive: true })
-      try {
-        const entries = (await run('tar', ['-tzf', prepared.receipt.path])).toString('utf8').split('\n').filter(Boolean)
-        if (!entries.includes('package/package.json')) throw new Error('Experimental DSH has no package metadata')
-        if (entries.some(entry => entry.startsWith('/') || !entry.startsWith('package/') || entry.split('/').includes('..'))) {
-          throw new Error('Experimental DSH archive contains an unsafe path')
-        }
-        await run('tar', ['-xzf', prepared.receipt.path, '-C', staging])
-        await rename(staging, root)
-      } catch (error) {
-        await rm(staging, { recursive: true, force: true })
-        throw error
-      }
-    }
-    const packageMetadata = JSON.parse(await readFile(join(root, 'package', 'package.json'), 'utf8'))
-    if (packageMetadata.name !== prepared.candidate.name || packageMetadata.version !== version) {
-      throw new Error('Experimental DSH package metadata differs from its signed registry candidate')
-    }
+    const version = prepared.version
+    const pristineRoot = await this.pristine(version, prepared.receipt)
     const environmentRoot = join(this.dataRoot, 'environments', 'current')
     const environment = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
     const runtimeId = `${version}-experimental-${prepared.receipt.objectSha256.slice(0, 12)}`
     if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {
       await buildRuntime({
-        pristineRoot: join(root, 'package'),
+        pristineRoot,
         versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
         runtimeId,
         patchPaths: environment.patches.map(item => (
