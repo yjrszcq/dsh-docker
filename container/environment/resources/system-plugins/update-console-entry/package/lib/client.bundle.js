@@ -37,6 +37,10 @@ function display(value) {
   return value === undefined || value === null || value === '' ? '-' : String(value)
 }
 
+function displayEnvironment(value) {
+  return value === undefined || value === null || value === '' ? '-' : `env-${String(value)}`
+}
+
 function localTime(value) {
   if (!value) return '-'
   const date = new Date(value)
@@ -166,8 +170,8 @@ function UpdateConsoleEntry({ t }) {
             onClick: () => { void act('channel', { method: 'PUT', body: { channel } }) },
           }, channel === 'stable' ? 'Stable' : 'Experimental')))),
       h('div', { className: `${css.versions} ${status?.updateChannel === 'experimental' ? css.experimentalVersions : ''}` },
-        h(VersionCell, { label: t('current'), version: status?.current?.dsh, detail: status?.current?.environment }),
-        h(VersionCell, { label: t('supported'), version: status?.supported?.dsh, detail: status?.supported?.environment }),
+        h(VersionCell, { label: t('current'), version: status?.current?.dsh, detail: displayEnvironment(status?.current?.environment) }),
+        h(VersionCell, { label: t('supported'), version: status?.supported?.dsh, detail: displayEnvironment(status?.supported?.environment) }),
         status?.updateChannel === 'experimental'
           ? h(VersionCell, { label: t('upstream'), version: status?.upstream?.version, detail: t('officialNpm') })
           : null),
@@ -196,7 +200,7 @@ function UpdateConsoleEntry({ t }) {
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
-            h('strong', null, `${display(hold.dshVersion)}${hold.environmentVersion ? ` + ${hold.environmentVersion}` : ''}`),
+            h('strong', null, `${display(hold.dshVersion)}${hold.environmentVersion ? ` + ${displayEnvironment(hold.environmentVersion)}` : ''}`),
             h('span', null, display(hold.reason))),
           h('button', { type: 'button', className: css.smallButton, disabled: busy, onClick: () => { void act('holds/retry', { method: 'POST', body: { id: hold.id } }) } }, t('retry'))))) : null,
       confirmStable ? h('div', { className: css.confirmation, role: 'alertdialog', 'aria-labelledby': 'return-stable-title' },

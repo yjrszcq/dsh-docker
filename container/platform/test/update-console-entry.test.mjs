@@ -41,6 +41,8 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /confirmDataLoss: true/)
   assert.doesNotMatch(source, /trust\/reset/)
   assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
+  assert.match(source, /`env-\$\{String\(value\)\}`/)
+  assert.equal((source.match(/detail: displayEnvironment/g) ?? []).length, 2)
   assert.doesNotMatch(source, /display\(update\.status\)/)
   for (const status of ['idle', 'checking', 'planning', 'downloading', 'validating', 'switching', 'probation', 'success', 'failed']) {
     assert.match(source, new RegExp(`${status.replace('-', '\\-')}: ['"]status`))
