@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
 
@@ -15,6 +16,8 @@ if (definitionArg === undefined || outputArg === undefined) {
 const definitionPath = resolve(definitionArg)
 const definitionRoot = dirname(definitionPath)
 const output = resolve(outputArg)
+const staging = `${output}.${randomUUID()}.tmp`
+const allowedSourceRoot = resolve(definitionRoot, '../..')
 const definition = JSON.parse(await readFile(definitionPath, 'utf8'))
 const generation = Number(generationArg)
 const sequence = Number(sequenceArg)
@@ -25,10 +28,25 @@ if (!Array.isArray(definition.components) || !Array.isArray(definition.patches) 
   throw new Error('definition resource lists must be arrays')
 }
 
-await mkdir(join(output, 'artifacts'), { recursive: true })
 const groups = ['components', 'patches', 'systemPlugins']
 const artifacts = []
 const references = {}
+const ids = new Set()
+const artifactIds = new Set()
+for (const group of groups) {
+  for (const item of definition[group]) {
+    const source = resolve(definitionRoot, item.source)
+    if (source !== allowedSourceRoot && !source.startsWith(`${allowedSourceRoot}/`)) {
+      throw new Error(`resource ${item.id} source escapes the container source root`)
+    }
+    if (ids.has(item.id)) throw new Error(`duplicate resource ID ${item.id}`)
+    if (artifactIds.has(item.artifactId)) throw new Error(`duplicate Artifact ID ${item.artifactId}`)
+    ids.add(item.id)
+    artifactIds.add(item.artifactId)
+  }
+}
+await mkdir(join(staging, 'artifacts'), { recursive: true })
+try {
 for (const group of groups) {
   references[group] = []
   for (const item of definition[group]) {
@@ -41,7 +59,7 @@ for (const group of groups) {
       }
     }
     const name = `${item.artifactId}-${basename(source)}`
-    const destination = join(output, 'artifacts', name)
+    const destination = join(staging, 'artifacts', name)
     await cp(source, destination, { errorOnExist: true, force: false })
     artifacts.push({
       id: item.artifactId,
@@ -71,4 +89,9 @@ const manifest = {
 }
 const manifestBytes = canonicalJson(manifest)
 parseEnvironmentManifest(manifestBytes)
-await writeFile(join(output, 'environment.manifest.json'), manifestBytes, { flag: 'wx' })
+await writeFile(join(staging, 'environment.manifest.json'), manifestBytes, { flag: 'wx' })
+await rename(staging, output)
+} catch (error) {
+  await rm(staging, { recursive: true, force: true })
+  throw error
+}
