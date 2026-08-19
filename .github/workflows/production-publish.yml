@@ -189,11 +189,11 @@ jobs:
     needs: publish
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH Latest Supported published
+      title: DSH 正式支持版本已发布
       message: >-
-        DSH ${{ needs.publish.outputs.dsh_version }} with Environment
-        ${{ needs.publish.outputs.environment_version }} is now available as
-        ${{ needs.publish.outputs.tag }} (sequence ${{ needs.publish.outputs.sequence }}).
+        DSH ${{ needs.publish.outputs.dsh_version }} 与 Environment
+        ${{ needs.publish.outputs.environment_version }} 已发布为
+        ${{ needs.publish.outputs.tag }}（目标序列 ${{ needs.publish.outputs.sequence }}）。
       priority: 7
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}

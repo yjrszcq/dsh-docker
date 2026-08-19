@@ -202,11 +202,11 @@ jobs:
     if: needs.discover.outputs.changed == 'true'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH upstream release discovered
+      title: 发现 DSH 上游新版本
       message: >-
-        DSH ${{ needs.discover.outputs.current }} -> ${{ needs.discover.outputs.upstream }}.
-        Candidate Environment: ${{ needs.discover.outputs.environment }}.
-        Candidate PR: ${{ needs.discover.outputs.pull_request_url }}
+        当前支持版本：${{ needs.discover.outputs.current }}；上游候选版本：${{ needs.discover.outputs.upstream }}。
+        候选 Environment：${{ needs.discover.outputs.environment }}。
+        候选 PR：${{ needs.discover.outputs.pull_request_url }}
       priority: 6
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
@@ -218,10 +218,10 @@ jobs:
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result == 'success'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH candidate validation passed
+      title: DSH 候选版本验证通过
       message: >-
-        DSH ${{ needs.discover.outputs.upstream }} passed with Environment
-        ${{ needs.discover.outputs.environment }}. Review and merge:
+        DSH ${{ needs.discover.outputs.upstream }} 已通过 Environment
+        ${{ needs.discover.outputs.environment }} 兼容性验证。请审核并合并：
         ${{ needs.discover.outputs.pull_request_url }}
       priority: 7
     secrets:
@@ -234,11 +234,11 @@ jobs:
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result != 'success'
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
     with:
-      title: DSH candidate validation failed
+      title: DSH 候选版本验证失败
       message: >-
-        DSH ${{ needs.discover.outputs.upstream }} failed with Environment
-        ${{ needs.discover.outputs.environment }}. Environment adaptation is required.
-        Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        DSH ${{ needs.discover.outputs.upstream }} 未通过 Environment
+        ${{ needs.discover.outputs.environment }} 兼容性验证，需要适配 Environment。
+        工作流：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       priority: 8
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
