@@ -132,7 +132,6 @@ ports:
 | `DSH_PROXY_USERNAME` | 空 | 可选的 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_PASSWORD` | 空 | 可选的单一 gateway 密码；留空即禁用 gateway 密码认证 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码；仅接受 `true` 或 `false` |
-| `DSH_UPDATE_METADATA_URL` | 项目 Release 地址 | 签名更新元数据根地址 |
 | `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | 后台检查间隔；检查不会自动下载或激活 |
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |

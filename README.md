@@ -132,7 +132,6 @@ The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an externa
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
 | `DSH_PROXY_POLYFILL` | `true` | Inject a guarded `crypto.randomUUID` compatibility shim; `true` or `false` |
-| `DSH_UPDATE_METADATA_URL` | Project release URL | Signed update metadata base URL |
 | `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | Background check interval; checks do not download or activate |
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
