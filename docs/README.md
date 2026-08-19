@@ -116,11 +116,13 @@ Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` an
 
 ## Trust and Recovery
 
-Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Downloads stay in `/data/downloads/untrusted` until Stage-0 verifies their authority and imports them into the trusted object store.
+Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/downloads/untrusted` until Stage-0 matches them to signed descriptors and imports them into the trusted object store. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
 
 Bootstrap and Updater cannot add a root key, modify keyrings, submit arbitrary expected hashes, or mint receipts. They consume only Stage-0 verification results.
 
-Stable metadata delegates the official npm Registry origin, exact `@deepseek-ai/dsh` package name, and accepted Registry signing keys. Experimental mode queries npm directly. Stage-0 verifies the Registry signature over `name@version:integrity`, canonical tarball URL, version advancement, and downloaded integrity before issuing an Experimental receipt. There is no per-version Experimental GitHub publication.
+Stable metadata delegates the exact official npm Registry origin, `@deepseek-ai/dsh` package identity, and accepted Registry signing keys. Updater may inspect npm `latest` to choose an Experimental version, but both Stable and Experimental submit only that selected version to `POST /v1/dsh/ensure`. Stage-0 independently fetches the exact version metadata with redirects disabled, verifies the Registry signature over `name@version:integrity`, derives the canonical tarball URL, downloads with a bounded identity-encoded response, recalculates SHA-512, and issues an `official-dsh` receipt backed by the trusted object store. Updater cannot submit a package, Registry, URL, integrity, expected hash, candidate document, or tarball path through this operation.
+
+The official DSH ledger is monotonic: same-version repair is allowed only for identical signed content, lower-version import is rejected, and rollback restores the retained previous Runtime/Environment/receipt/snapshot state without downloading an older package. A Release-key or Registry-policy change invalidates staged receipts but does not destroy already active or previous states.
 
 `dsh` is a dynamic shim which always executes the current verified Runtime. `dsh-platform trust status` reports accepted trust state. `dsh-platform trust reset` is console-only: stop Stage-0, mount the platform-data Volume into a one-shot container with `dsh-platform` as its entrypoint, run `trust reset` from an interactive TTY, and enter the exact confirmation. This clears accepted state but does not replace the image Recovery Root.
 
@@ -151,7 +153,7 @@ Compose enables unrestricted passwordless root access for the agent by default. 
 - `DSH_KEYRING_SIGNATURE_BASE64`
 - `DSH_RELEASE_PRIVATE_KEY`
 
-The workflow resumes `targetSequence`, creates a draft, uploads all immutable Artifacts, then publishes it as Latest. The Recovery private key has no workflow input.
+The workflow resumes `targetSequence`, creates a draft, uploads immutable Bootstrap and Environment Artifacts plus signed metadata, then publishes it as Latest. It validates the selected npm tarball and binds its npm integrity into Stable metadata, but does not republish a duplicate DSH tarball; Stage-0 imports the official npm copy. The Recovery private key has no workflow input.
 
 `Publish Docker Image` is protected by a separate `production-image` Environment. It uses the three public trust-bundle secrets and `DOCKER_TOKEN`; it has no Release private key or GitHub Release write permission. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow.
 

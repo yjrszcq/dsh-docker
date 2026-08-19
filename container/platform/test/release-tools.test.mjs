@@ -109,6 +109,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'environment.manifest.json', 'environment.manifest.sig.json',
     'stable.json', 'stable.sig.json', 'keyring.json', 'keyring.sig.json',
   ]) assert.ok(files.includes(name), `${name} is missing`)
+  assert.equal(files.includes('deepseek-ai-dsh-0.1.0-rc.7.tgz'), false)
   assert.equal(files.some(name => name.startsWith('.')), false)
 
   const bootstrapArchive = spawnSync('tar', ['-tzf', join(output, 'bootstrap.tgz')], { encoding: 'utf8' })
@@ -130,6 +131,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(stable.desired.dsh.version, '0.1.0-rc.7')
   assert.equal(stable.desired.environment.version, '2026.08.19.1')
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
+  assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))

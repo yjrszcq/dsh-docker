@@ -116,11 +116,13 @@ Experimental Runtime 接触真实数据前，Updater 停止 `dsh-runtime`，并�
 
 ## 信任与恢复
 
-Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。下载内容保留在 `/data/downloads/untrusted`，直到 Stage-0 验证其授权关系并导入可信对象库。
+Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/downloads/untrusted`，直到 Stage-0 按签名描述验证并导入可信对象库；Runtime 构建后续使用的每条路径都来自 receipt，不再读取 untrusted 下载文件。
 
 Bootstrap 和 Updater 不能添加根公钥、修改 keyring、提交任意 expected hash 或自行签发 receipt；它们只消费 Stage-0 验证结果。
 
-Stable 元数据会委托官方 npm Registry 地址、精确的 `@deepseek-ai/dsh` 包名和允许的 Registry 签名公钥。Experimental 模式直接查询 npm。Stage-0 验证 `name@version:integrity` 的 Registry 签名、规范 tarball URL、版本递增关系和下载 integrity 后，才签发 Experimental receipt。系统不存在逐版本 Experimental GitHub 发布。
+Stable 元数据委托精确的官方 npm Registry Origin、`@deepseek-ai/dsh` 包身份和允许的 Registry 签名公钥。Updater 可以读取 npm `latest` 选择 Experimental 版本，但 Stable 与 Experimental 最终都只向 `POST /v1/dsh/ensure` 提交所选版本。Stage-0 禁止重定向并独立获取该版本 metadata，验证 `name@version:integrity` 的 Registry 签名，推导规范 tarball URL，以受限、identity encoding 响应下载并重新计算 SHA-512，最后签发由可信对象库支撑的 `official-dsh` receipt。Updater 无法通过该接口提交包名、Registry、URL、integrity、expected hash、candidate 文档或 tarball 路径。
+
+官方 DSH ledger 保持单调：同版本 repair 只允许完全相同的签名内容，低版本普通导入会被拒绝；回滚直接恢复保留的 previous Runtime、Environment、receipt 和数据快照，不重新下载旧包。Release Key 或 Registry policy 变化会使 staged receipt 失效，但不会破坏 active/previous 状态。
 
 `dsh` 是动态 shim，始终执行 current 可信 Runtime。`dsh-platform trust status` 显示已接受的信任状态。`dsh-platform trust reset` 只能在控制台执行：停止 Stage-0，将 platform-data Volume 挂到以 `dsh-platform` 为 entrypoint 的一次性容器，通过交互式 TTY 运行 `trust reset` 并输入完整确认文本。该操作清除已接受状态，但不会替换镜像内 Recovery Root。
 
@@ -151,7 +153,7 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 - `DSH_KEYRING_SIGNATURE_BASE64`
 - `DSH_RELEASE_PRIVATE_KEY`
 
-工作流接续 `targetSequence`，创建 draft，上传全部不可变 Artifact，最后发布为 Latest。Recovery 私钥没有任何工作流输入。
+工作流接续 `targetSequence`，创建 draft，上传不可变 Bootstrap/Environment Artifact 和签名元数据，最后发布为 Latest。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。Recovery 私钥没有任何工作流输入。
 
 `Publish Docker Image` 由独立的 `production-image` Environment 保护。它使用三个公开 trust bundle secret 和 `DOCKER_TOKEN`，不拥有 Release 私钥或 GitHub Release 写权限。仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。
 

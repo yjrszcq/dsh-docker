@@ -143,10 +143,17 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   const { metadata, preparer, ledger, objects } = await system()
   const checked = await metadata.check()
   assert.equal(checked.value.targetSequence, 1)
+  let requestedVersion
+  const ensureOfficialDsh = preparer.trust.ensureOfficialDsh
+  preparer.trust.ensureOfficialDsh = version => {
+    requestedVersion = version
+    return ensureOfficialDsh(version)
+  }
   const prepared = await preparer.prepare(checked.value)
   assert.equal(prepared.receipts.size, 6)
   assert.equal(prepared.dsh.receipt.authorityType, 'official-dsh')
   assert.equal(prepared.receiptTokens.length, 7)
+  assert.equal(requestedVersion, checked.value.desired.dsh.version)
   assert.equal([...prepared.paths.values()].every(path => path.includes('/trust/objects/')), true)
   assert.equal((await ledger.currentKeyring()).value.generation, 1)
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
@@ -460,7 +467,7 @@ test('reads npm latest from the official packument without trusting it locally',
     desired: { dsh: { version: '0.1.0-rc.7' } },
     officialDshPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
   })
-  assert.equal(found.version, candidate.version)
+  assert.deepEqual(found, { version: candidate.version })
 })
 
 test('records candidate and combination Holds without holding snapshot failures', async () => {

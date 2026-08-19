@@ -134,6 +134,9 @@ test('official DSH Trust API accepts only a requested version', async () => {
     ]) {
       assert.equal((await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', extra)).status, 400)
     }
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/artifacts/import-experimental', {
+      candidate: {}, sourcePath: '/data/downloads/untrusted/dsh.tgz',
+    })).status, 404)
     assert.deepEqual(calls, ['0.1.0-rc.8'])
   } finally {
     await new Promise(resolve => server.close(resolve))
