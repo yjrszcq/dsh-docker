@@ -97,6 +97,8 @@ export class EnvironmentRunner {
     this.running = []
     this.environment = undefined
     this.operation = Promise.resolve()
+    this.stopping = false
+    this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
   serialized(operation) {
@@ -143,6 +145,13 @@ export class EnvironmentRunner {
             once(child, 'error').then(([error]) => { throw error }),
           ])
           running = { component, child }
+          child.once('exit', (code, signal) => {
+            if (!this.stopping && this.running.includes(running)) {
+              this.resolveFatal(new Error(
+                `${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
+              ))
+            }
+          })
         } else {
           await runCommand(component.command, this.commandOptions(component))
           running = { component, child: undefined }
@@ -163,6 +172,7 @@ export class EnvironmentRunner {
   }
 
   async stopUnlocked() {
+    this.stopping = true
     const failures = []
     for (const running of [...this.running].reverse()) {
       const { component, child } = running
@@ -175,6 +185,7 @@ export class EnvironmentRunner {
       try { await this.phase(component, 'postStop') } catch (error) { failures.push(error) }
     }
     this.running = []
+    this.stopping = false
     if (failures.length > 0) throw new AggregateError(failures, 'Environment shutdown failed')
   }
 

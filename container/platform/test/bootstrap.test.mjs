@@ -112,3 +112,17 @@ test('stops already-started services when a later component fails', async () => 
   await assert.rejects(runner.start(), /failure command failed/)
   assert.deepEqual(runner.status().components, [])
 })
+
+test('reports a service exit after readiness as a fatal Bootstrap condition', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-runtime-exit-'))
+  const exits = join(temp, 'exits.mjs')
+  await writeFile(exits, 'setTimeout(() => process.exit(7), 20)')
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([component('service', exits, 'service')]),
+    capture: () => {},
+  })
+  await runner.start()
+  const error = await runner.fatal
+  assert.match(error.message, /service exited unexpectedly.*code=7/)
+  await runner.stop()
+})

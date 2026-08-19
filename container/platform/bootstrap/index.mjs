@@ -11,12 +11,15 @@ const server = createBootstrapControl(runner)
 await listenBootstrapControl(server, join(dataRoot, 'run', 'bootstrap.sock'))
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 
-await new Promise(resolve => {
-  const stop = async () => {
-    server.close()
-    await runner.stop().catch(error => console.error(error))
-    resolve()
-  }
-  process.once('SIGINT', stop)
-  process.once('SIGTERM', stop)
-})
+let resolveSignal
+const signal = new Promise(resolve => { resolveSignal = resolve })
+const onSignal = () => resolveSignal({ type: 'signal' })
+process.once('SIGINT', onSignal)
+process.once('SIGTERM', onSignal)
+const outcome = await Promise.race([
+  signal,
+  runner.fatal.then(error => ({ type: 'fatal', error })),
+])
+server.close()
+await runner.stop().catch(error => console.error(error))
+if (outcome.type === 'fatal') throw outcome.error

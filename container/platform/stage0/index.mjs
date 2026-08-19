@@ -32,14 +32,20 @@ await listenUnix(trustServer, join(dataRoot, 'run', 'stage0-trust.sock'), {
   uid: process.getuid?.() === 0 ? 0 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
 })
-await supervisor.startWithRollback()
-
-await new Promise(resolve => {
-  const stop = async () => {
-    trustServer.close()
-    await supervisor.stop()
-    resolve()
-  }
-  process.once('SIGINT', stop)
-  process.once('SIGTERM', stop)
-})
+const child = await supervisor.startWithRollback()
+let resolveSignal
+const signal = new Promise(resolve => { resolveSignal = resolve })
+const onSignal = () => resolveSignal({ type: 'signal' })
+process.once('SIGINT', onSignal)
+process.once('SIGTERM', onSignal)
+const outcome = await Promise.race([
+  signal,
+  new Promise(resolve => child.once('exit', (code, childSignal) => (
+    resolve({ type: 'exit', code, signal: childSignal })
+  ))),
+])
+trustServer.close()
+await supervisor.stop()
+if (outcome.type === 'exit') {
+  throw new Error(`Bootstrap exited unexpectedly (code=${String(outcome.code)}, signal=${String(outcome.signal)})`)
+}
