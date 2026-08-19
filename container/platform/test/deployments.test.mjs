@@ -476,3 +476,18 @@ test('explicit recovery replaces an invalid Managed current with the exact Image
   assert.equal(state.previous, managed.id)
   assert.deepEqual(activated, [])
 })
+
+test('explicit recovery repairs only the exact image Record after its persisted bytes are damaged', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const managed = await managedRecord(context, 'managed-before-repair', 3)
+  await context.manager.activateManaged(managed, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await writeFile(context.manager.recordPath(context.image.id), '{"damaged":true}\n')
+  const state = await context.manager.recoverImageBaseline(context.image, {
+    healthCheck: async () => {},
+    activateReceipts: async () => {},
+  })
+  assert.equal(state.current, context.image.id)
+  assert.deepEqual(await context.manager.record(context.image.id), context.image)
+  await assert.rejects(context.manager.repairImageRecord(managed), /differs from the current image inventory/)
+})

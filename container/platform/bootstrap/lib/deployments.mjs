@@ -6,6 +6,7 @@ import {
   deriveRecordId,
   parseDeploymentRecord,
   parseSlots,
+  recordsFromImageInventory,
 } from '../../lib/deployment-contracts.mjs'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
 import { writeDeploymentStatus } from '../../lib/deployment-status.mjs'
@@ -64,6 +65,7 @@ export class DeploymentManager {
     this.paths = paths
     this.seedRoot = resolve(seedRoot)
     this.inventory = inventory
+    this.imageRecord = recordsFromImageInventory(inventory).deployment
     this.stateRoot = paths.deploymentStateRoot
     this.recordsRoot = join(this.stateRoot, 'records')
     this.slotsPath = join(this.stateRoot, 'slots.json')
@@ -88,6 +90,16 @@ export class DeploymentManager {
     const existing = await readOptional(path)
     if (existing === undefined) await durableCreate(path, bytes)
     else if (!existing.equals(bytes)) throw new TrustError('Deployment Record ID identifies conflicting content')
+    return record
+  }
+
+  async repairImageRecord(value) {
+    const record = parseDeploymentRecord(value)
+    const bytes = canonicalJson(record)
+    if (!bytes.equals(canonicalJson(this.imageRecord))) {
+      throw new TrustError('image recovery Record differs from the current image inventory')
+    }
+    await durableReplace(this.recordPath(record.id), bytes)
     return record
   }
 
@@ -499,7 +511,7 @@ export class DeploymentManager {
   }
 
   async recoverImageBaseline(value, { healthCheck, activateReceipts }) {
-    const image = await this.writeRecord(value)
+    const image = await this.repairImageRecord(value)
     await this.prepareView(image.id)
     const state = await this.state()
     await this.select(image.id)

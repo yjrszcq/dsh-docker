@@ -45,7 +45,7 @@ const capture = (child, source, declaration) => logs.capture(
   child,
   source,
   declaration,
-  { acceptForwarded: source === 'management' },
+  { acceptForwarded: source === 'platform-management' },
 )
 const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),

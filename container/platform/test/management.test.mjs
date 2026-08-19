@@ -89,6 +89,28 @@ test('management socket exposes status, check, update, logs, and local rollback'
   }
 })
 
+test('management records a completion audit for a successful update task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-audit-'))
+  const coordinator = new Coordinator()
+  coordinator.startReconcile = () => ({ taskId: 'task-success', completion: Promise.resolve() })
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({ coordinator, logs })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    const client = new LocalApiClient(socketPath)
+    await client.request('POST', '/_dsh_platform/api/v1/update')
+    await new Promise(resolve => setImmediate(resolve))
+    await logs.queue
+    assert.deepEqual(
+      (await logs.query({ sources: ['audit'] })).map(entry => [entry.message, entry.taskId]),
+      [['update.started', 'task-success'], ['update.completed', 'task-success']],
+    )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management serves only the fixed persistent Update Console assets', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-console-'))
   const coordinator = new Coordinator()

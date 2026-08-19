@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtemp, readdir, stat, utimes } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -79,7 +79,7 @@ test('mirrors new entries to the matching container output without replaying his
   assert.deepEqual(secondOutput, [])
 })
 
-test('passes a child platform envelope through without persisting it twice', async () => {
+test('passes a platform-management envelope through without persisting it twice', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-log-forwarded-'))
   const stdout = []
   const stderr = []
@@ -93,7 +93,7 @@ test('passes a child platform envelope through without persisting it twice', asy
   const child = new EventEmitter()
   child.stdout = new PassThrough()
   child.stderr = new PassThrough()
-  logs.capture(child, 'management', { stdout: true, stderr: true }, { acceptForwarded: true })
+  logs.capture(child, 'platform-management', { stdout: true, stderr: true }, { acceptForwarded: true })
   const audit = JSON.stringify({
     timestamp: '2026-08-19T00:00:00.000Z', source: 'audit', stream: 'audit', message: 'update.started',
     platformLog: 'dsh-platform-log-v1', taskId: 'task-one',
@@ -104,11 +104,13 @@ test('passes a child platform envelope through without persisting it twice', asy
   await logs.queue
 
   assert.equal(stdout[0], `${audit}\n`)
-  assert.equal(JSON.parse(stdout[1]).source, 'management')
+  assert.equal(JSON.parse(stdout[1]).source, 'platform-management')
   assert.equal(JSON.parse(stderr[0]).stream, 'stderr')
   assert.deepEqual(
-    (await logs.query({ sources: ['management'] })).map(entry => [entry.stream, entry.message]),
+    (await logs.query({ sources: ['platform-management'] })).map(entry => [entry.stream, entry.message]),
     [['stdout', 'plain output'], ['stderr', 'plain error']],
   )
   assert.deepEqual(await logs.query({ sources: ['audit'] }), [])
+  const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
+  assert.match(bootstrap, /acceptForwarded: source === 'platform-management'/)
 })

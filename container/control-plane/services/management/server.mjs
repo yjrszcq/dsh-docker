@@ -101,7 +101,10 @@ export function createManagementServer({
       } else if (request.method === 'POST' && route === 'update') {
         const task = coordinator.startReconcile()
         void task.completion
-          .catch(error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }))
+          .then(
+            () => logs.audit('update.completed', { taskId: task.taskId }),
+            error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }),
+          )
           .catch(() => {})
         await logs.audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
