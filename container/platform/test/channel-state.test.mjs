@@ -48,3 +48,14 @@ test('suppresses only the held Experimental candidate and Environment combinatio
   assert.equal(plan.action, 'held')
   assert.equal(plan.hold.id, 'hold')
 })
+
+test('retries an Experimental Block independently of ordinary Holds', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-channel-block-'))
+  const store = new ChannelStateStore(join(root, 'channel.json'), () => new Date('2026-08-19T00:00:00.000Z'))
+  const blocked = await store.block({
+    dshVersion: '0.1.0-rc.8', environmentVersion: 'env-2', reason: 'combination failed',
+  })
+  assert.equal((await store.read()).experimentalBlocked.id, blocked.experimentalBlocked.id)
+  await store.retry(blocked.experimentalBlocked.id)
+  assert.equal((await store.read()).experimentalBlocked, null)
+})

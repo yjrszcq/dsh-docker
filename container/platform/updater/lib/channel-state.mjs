@@ -106,8 +106,9 @@ export class ChannelStateStore {
     return this.exclusive(async () => {
       const current = await this.read()
       const holds = current.holds.filter(hold => hold.id !== id)
-      if (holds.length === current.holds.length) throw new TrustError('update hold does not exist')
-      const next = parseState({ ...current, holds, experimentalBlocked: current.experimentalBlocked?.id === id ? null : current.experimentalBlocked })
+      const clearsBlock = current.experimentalBlocked?.id === id
+      if (holds.length === current.holds.length && !clearsBlock) throw new TrustError('update hold does not exist')
+      const next = parseState({ ...current, holds, experimentalBlocked: clearsBlock ? null : current.experimentalBlocked })
       await this.write(next)
       return next
     })

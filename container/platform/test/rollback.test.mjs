@@ -30,7 +30,10 @@ async function fixture() {
     resumeDsh: async () => calls.push('resume'),
   }
   const snapshots = {
-    inspect: async id => ({ id, createdAt: '2026-08-19T00:00:00.000Z', archiveSha256: 'a'.repeat(64), archiveSize: 42 }),
+    inspect: async id => ({
+      id, createdAt: '2026-08-19T00:00:00.000Z', archiveSha256: 'a'.repeat(64), archiveSize: 42,
+      runtimeId: from.runtime, environmentVersion: from.environment, dshVersion: from.dsh,
+    }),
     restore: async id => calls.push(`data:${id}`),
   }
   return { journal, from, to, current, activator, snapshots, calls, recovery: new CompleteStateRecovery({ journal, snapshots, activator }) }
@@ -55,4 +58,11 @@ test('restores the previous complete state only with the current plan ID', async
   assert.deepEqual(value.calls, ['suspend', 'restore:runtime-a:false', 'data:snapshot-a', 'resume'])
   assert.equal((await value.journal.read()).phase, 'rolled-back')
   assert.equal(await value.recovery.plan(), null)
+})
+
+test('rejects a valid snapshot archive bound to a different deployment', async () => {
+  const value = await fixture()
+  const inspect = value.snapshots.inspect
+  value.snapshots.inspect = async id => ({ ...await inspect(id), environmentVersion: 'other-env' })
+  await assert.rejects(value.recovery.plan(), /does not describe/)
 })

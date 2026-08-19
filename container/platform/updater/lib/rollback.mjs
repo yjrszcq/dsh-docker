@@ -28,6 +28,11 @@ export class CompleteStateRecovery {
       || current.runtime !== transaction.to.runtime
     ) return null
     const snapshot = await this.snapshots.inspect(transaction.snapshotId)
+    if (
+      snapshot.runtimeId !== transaction.from.runtime
+      || snapshot.environmentVersion !== transaction.from.environment
+      || snapshot.dshVersion !== transaction.from.dsh
+    ) throw new TrustError('rollback snapshot does not describe the previous deployment')
     const value = {
       transactionId: transaction.transactionId,
       current: deploymentIdentity(current),
