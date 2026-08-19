@@ -23,14 +23,17 @@ const TRANSITIONS = new Map([
 
 function deployment(value, label, snapshot) {
   const object = plainObject(value, label)
-  exactKeys(object, ['dsh', 'environment', 'runtime', ...(snapshot ? ['dataSnapshot'] : [])], label)
+  exactKeys(object, ['dsh', 'environment', 'runtime', ...(snapshot ? ['dataSnapshot', 'receiptTokens'] : [])], label)
   for (const name of ['dsh', 'environment', 'runtime']) {
     if (typeof object[name] !== 'string' || object[name] === '') throw new TrustError(`${label}.${name} is invalid`)
   }
   if (snapshot && object.dataSnapshot !== null && typeof object.dataSnapshot !== 'string') {
     throw new TrustError(`${label}.dataSnapshot is invalid`)
   }
-  return Object.freeze({ ...object })
+  if (snapshot && (!Array.isArray(object.receiptTokens) || object.receiptTokens.some(token => typeof token !== 'string'))) {
+    throw new TrustError(`${label}.receiptTokens is invalid`)
+  }
+  return Object.freeze({ ...object, ...(snapshot ? { receiptTokens: Object.freeze([...object.receiptTokens]) } : {}) })
 }
 
 function parseJournal(value) {
@@ -88,7 +91,10 @@ export class UpdateJournal {
 
   begin(value) {
     return this.exclusive(async () => {
-      if (await this.read() !== undefined) throw new TrustError('an update transaction journal already exists')
+      const previous = await this.read()
+      if (previous !== undefined && !['committed', 'rolled-back', 'failed'].includes(previous.phase)) {
+        throw new TrustError('an update transaction journal already exists')
+      }
       const journal = parseJournal({
         schema: 1,
         transactionId: value.transactionId,

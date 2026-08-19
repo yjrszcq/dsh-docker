@@ -4,12 +4,14 @@ import { join } from 'node:path'
 import { JsonlLogManager } from '../logging/manager.mjs'
 import { createManagementServer, listenManagement } from './server.mjs'
 import { LocalApiClient } from '../updater/lib/client.mjs'
-import { MetadataClient } from '../updater/lib/metadata.mjs'
+import { MetadataClient, NpmRegistryClient } from '../updater/lib/metadata.mjs'
 import { TargetPreparer } from '../updater/lib/preparer.mjs'
 import { UpdateCoordinator } from '../updater/lib/coordinator.mjs'
 import { UpdateScheduler } from '../updater/lib/scheduler.mjs'
 import { UpdateStateStore } from '../updater/lib/state.mjs'
 import { PlatformActivator } from '../updater/lib/activator.mjs'
+import { UpdateJournal } from '../updater/lib/journal.mjs'
+import { PersistentStateSnapshots } from '../updater/lib/snapshots.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 const trust = new LocalApiClient(join(dataRoot, 'run', 'stage0-trust.sock'))
@@ -25,11 +27,19 @@ const metadata = new MetadataClient({
 })
 const preparer = new TargetPreparer({ untrustedRoot: join(dataRoot, 'downloads', 'untrusted'), trust })
 const activator = new PlatformActivator({ dataRoot, stage0: trust })
+const journal = new UpdateJournal(join(dataRoot, 'state', 'update-transaction.json'))
 const coordinator = new UpdateCoordinator({
   metadata,
   preparer,
   activator,
   state: new UpdateStateStore(join(dataRoot, 'state', 'update.json')),
+  npm: new NpmRegistryClient({}),
+  journal,
+  snapshots: new PersistentStateSnapshots({
+    root: join(dataRoot, 'snapshots'),
+    sourceRoot: process.env.DSH_HOME ?? '/home/node/.dsh',
+  }),
+  probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
 })
 const server = createManagementServer({
   coordinator,
@@ -44,7 +54,8 @@ const scheduler = new UpdateScheduler({
 })
 scheduler.start()
 const persisted = await coordinator.state.read()
-if (!['idle', 'success', 'failed'].includes(persisted.status)) {
+const transaction = await journal.read()
+if (transaction === undefined && !['idle', 'success', 'failed'].includes(persisted.status)) {
   setImmediate(() => {
     try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
   })

@@ -1,5 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseStable } from '../../lib/contracts.mjs'
+import { compareDshVersions } from '../../lib/supported-target.mjs'
+import { parseRegistryCandidate } from '../../stage0/lib/experimental.mjs'
 
 async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
   if (!response.ok) throw new Error(`${label} returned HTTP ${String(response.status)}`)
@@ -43,5 +45,37 @@ export class MetadataClient {
       }
     }
     throw lastError
+  }
+}
+
+export class NpmRegistryClient {
+  constructor({ fetchImpl = fetch }) {
+    this.fetchImpl = fetchImpl
+  }
+
+  async latest(stable) {
+    const policy = stable.experimentalPolicy
+    if (policy === null) return null
+    const packagePath = encodeURIComponent(policy.packageName)
+    const response = await this.fetchImpl(new URL(packagePath, policy.registry), {
+      headers: { accept: 'application/vnd.npm.install-v1+json' },
+    })
+    const bytes = await responseBytes(response, 'npm packument', 20 * 1024 * 1024)
+    let packument
+    try { packument = JSON.parse(bytes.toString('utf8')) } catch { throw new Error('npm packument is not valid JSON') }
+    const latest = packument?.['dist-tags']?.latest
+    const version = typeof latest === 'string' ? packument?.versions?.[latest] : undefined
+    if (version === undefined) throw new Error('npm packument has no latest DSH version')
+    const candidate = parseRegistryCandidate({
+      schema: 1,
+      name: version.name,
+      version: version.version,
+      dist: {
+        integrity: version.dist?.integrity,
+        tarball: version.dist?.tarball,
+        signatures: version.dist?.signatures,
+      },
+    })
+    return compareDshVersions(candidate.version, stable.desired.dsh.version) > 0 ? candidate : null
   }
 }

@@ -4,15 +4,20 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { buildRuntime, RuntimeSlots } from '../../runtime/builder.mjs'
 import { reconcileSystemPlugins } from '../../runtime/system-plugins.mjs'
+import { parseEnvironmentManifest } from '../../lib/contracts.mjs'
 import { LocalApiClient } from './client.mjs'
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout = []
     const stderr = []
+    child.stdout.on('data', chunk => stdout.push(chunk))
     child.stderr.on('data', chunk => stderr.push(chunk))
     child.once('error', reject)
-    child.once('exit', code => code === 0 ? resolve() : reject(new Error(Buffer.concat(stderr).toString('utf8'))))
+    child.once('exit', code => code === 0
+      ? resolve(Buffer.concat(stdout))
+      : reject(new Error(Buffer.concat(stderr).toString('utf8'))))
   })
 }
 
@@ -113,5 +118,85 @@ export class PlatformActivator {
     await this.environmentSlots.rollback()
     await this.runtimeSlots.rollback()
     await this.bootstrap.request('POST', '/v1/reload')
+  }
+
+  async currentDeployment() {
+    const runtime = await this.runtimeSlots.state()
+    const environment = await this.environmentSlots.state()
+    if (runtime.current === undefined || environment.current === undefined) {
+      throw new Error('current Runtime and Environment are required')
+    }
+    const packageMetadata = JSON.parse(await readFile(join(
+      this.dataRoot, 'runtime', 'versions', runtime.current, 'package', 'package.json',
+    ), 'utf8'))
+    if (typeof packageMetadata.version !== 'string') throw new Error('current Runtime has no DSH version')
+    return Object.freeze({
+      dsh: packageMetadata.version,
+      runtime: runtime.current,
+      environment: environment.current,
+      dataSnapshot: null,
+      receiptTokens: Object.freeze((await this.stage0.activeReceipts()).receipts.map(receipt => receipt.token)),
+    })
+  }
+
+  async prepareExperimental(prepared) {
+    const version = prepared.candidate.version
+    const root = join(this.dataRoot, 'dsh', 'pristine', version)
+    if (!await exists(root)) {
+      const staging = `${root}.${randomUUID()}.tmp`
+      await mkdir(staging, { recursive: true })
+      try {
+        const entries = (await run('tar', ['-tzf', prepared.receipt.path])).toString('utf8').split('\n').filter(Boolean)
+        if (!entries.includes('package/package.json')) throw new Error('Experimental DSH has no package metadata')
+        if (entries.some(entry => entry.startsWith('/') || !entry.startsWith('package/') || entry.split('/').includes('..'))) {
+          throw new Error('Experimental DSH archive contains an unsafe path')
+        }
+        await run('tar', ['-xzf', prepared.receipt.path, '-C', staging])
+        await rename(staging, root)
+      } catch (error) {
+        await rm(staging, { recursive: true, force: true })
+        throw error
+      }
+    }
+    const packageMetadata = JSON.parse(await readFile(join(root, 'package', 'package.json'), 'utf8'))
+    if (packageMetadata.name !== prepared.candidate.name || packageMetadata.version !== version) {
+      throw new Error('Experimental DSH package metadata differs from its signed registry candidate')
+    }
+    const environmentRoot = join(this.dataRoot, 'environments', 'current')
+    const environment = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
+    const runtimeId = `${version}-experimental-${prepared.receipt.objectSha256.slice(0, 12)}`
+    if (!await exists(join(this.dataRoot, 'runtime', 'versions', runtimeId))) {
+      await buildRuntime({
+        pristineRoot: join(root, 'package'),
+        versionsRoot: join(this.dataRoot, 'runtime', 'versions'),
+        runtimeId,
+        patchPaths: environment.patches.map(item => join(environmentRoot, 'artifacts', item.artifactId)),
+      })
+    }
+    return Object.freeze({ runtimeId, environmentVersion: environment.version, dshVersion: version })
+  }
+
+  suspendDsh() { return this.bootstrap.request('POST', '/v1/components/dsh-runtime/suspend') }
+  resumeDsh() { return this.bootstrap.request('POST', '/v1/components/dsh-runtime/resume') }
+  health() { return this.bootstrap.request('GET', '/v1/health') }
+
+  async experimentalActivationTokens(experimentalTokens) {
+    const active = (await this.stage0.activeReceipts()).receipts
+    return Object.freeze([
+      ...active.filter(receipt => receipt.authorityType === 'stable').map(receipt => receipt.token),
+      ...experimentalTokens,
+    ])
+  }
+
+  async switchExperimental(runtimeId) {
+    await this.runtimeSlots.promote(runtimeId)
+    await this.resumeDsh()
+  }
+
+  async restoreDeployment(deployment, { resume = true } = {}) {
+    await this.runtimeSlots.promote(deployment.runtime)
+    await this.environmentSlots.promote(deployment.environment)
+    if (deployment.receiptTokens.length > 0) await this.stage0.activate(deployment.receiptTokens)
+    if (resume) await this.resumeDsh()
   }
 }

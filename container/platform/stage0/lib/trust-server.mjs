@@ -34,6 +34,10 @@ export function createTrustServer({ ledger, objects, stageBootstrap }) {
         })
         return
       }
+      if (request.method === 'GET' && url.pathname === '/v1/receipts/active') {
+        send(response, 200, { receipts: await objects.activeReceipts() })
+        return
+      }
       if (request.method !== 'POST') {
         send(response, 404, { error: 'not found' })
         return

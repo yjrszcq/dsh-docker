@@ -11,6 +11,10 @@ import { UpdateConflictError, UpdateCoordinator } from '../updater/lib/coordinat
 import { MetadataClient } from '../updater/lib/metadata.mjs'
 import { TargetPreparer } from '../updater/lib/preparer.mjs'
 import { UpdateStateStore } from '../updater/lib/state.mjs'
+import { UpdateJournal } from '../updater/lib/journal.mjs'
+import { NpmRegistryClient } from '../updater/lib/metadata.mjs'
+import { recoverInterruptedUpdate } from '../updater/lib/recovery.mjs'
+import { PlatformActivator } from '../updater/lib/activator.mjs'
 import { keyPair, keyring, signature } from './helpers.mjs'
 
 function descriptor(id, bytes, mediaType = 'application/octet-stream') {
@@ -193,4 +197,173 @@ test('rolls back the runtime switch when receipt activation fails', async () => 
   })
   await assert.rejects(coordinator.start().completion, /receipt activation failed/)
   assert.equal(rolledBack, true)
+})
+
+function experimentalSystem(root, overrides = {}) {
+  const calls = []
+  const stable = {
+    desired: {
+      bootstrap: { version: '1.0.0' },
+      environment: { version: 'env-1' },
+      dsh: { version: '0.1.0-rc.7' },
+    },
+  }
+  const prepared = { receiptTokens: ['experimental-receipt'] }
+  const activator = {
+    bootstrap: { status: async () => ({ bootstrapVersion: '1.0.0' }) },
+    currentDeployment: async () => ({
+      dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a', dataSnapshot: null, receiptTokens: ['stable-receipt'],
+    }),
+    prepareExperimental: async () => ({ runtimeId: 'runtime-b', environmentVersion: 'env-1', dshVersion: '0.1.0-rc.8' }),
+    suspendDsh: async () => { calls.push('suspend') },
+    resumeDsh: async () => { calls.push('resume') },
+    switchExperimental: async id => { calls.push(`switch:${id}`) },
+    health: async () => ({ healthy: true }),
+    experimentalActivationTokens: async tokens => ['stable-receipt', ...tokens],
+    restoreDeployment: async (from, options) => { calls.push(`restore-runtime:${from.runtime}:${String(options?.resume)}`) },
+    ...overrides.activator,
+  }
+  const snapshots = {
+    create: async value => { calls.push(`snapshot:${value.id}`); return { id: value.id } },
+    restore: async id => { calls.push(`restore-data:${id}`) },
+    ...overrides.snapshots,
+  }
+  const trust = {
+    activate: async tokens => { calls.push(`activate:${tokens.join(',')}`) },
+    ...overrides.trust,
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: stable }) },
+    npm: { latest: async () => ({ version: '0.1.0-rc.8' }) },
+    preparer: { prepareExperimental: async () => prepared, trust },
+    activator,
+    snapshots,
+    journal: new UpdateJournal(join(root, 'state', 'transaction.json')),
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    probationSeconds: 0,
+  })
+  return { calls, coordinator }
+}
+
+test('runs a user-started Experimental candidate through snapshot and probation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-success-'))
+  const { calls, coordinator } = experimentalSystem(root)
+  await coordinator.startExperimental().completion
+  assert.equal((await coordinator.journal.read()).phase, 'committed')
+  assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
+    'suspend', 'snapshot:task', 'switch:runtime-b', 'activate:stable-receipt,experimental-receipt',
+  ])
+})
+
+test('does not switch when the mandatory snapshot fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-snapshot-fail-'))
+  const { calls, coordinator } = experimentalSystem(root, {
+    snapshots: { create: async () => { throw new Error('snapshot failed') } },
+  })
+  await assert.rejects(coordinator.startExperimental().completion, /snapshot failed/)
+  assert.equal((await coordinator.journal.read()).phase, 'failed')
+  assert.deepEqual(calls, ['suspend', 'resume'])
+})
+
+test('restores exact Runtime and data when Experimental probation fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-health-fail-'))
+  const { calls, coordinator } = experimentalSystem(root, {
+    activator: { health: async () => ({ healthy: false }) },
+  })
+  await assert.rejects(coordinator.startExperimental().completion, /probation/)
+  assert.equal((await coordinator.journal.read()).phase, 'rolled-back')
+  assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
+    'suspend', 'snapshot:task', 'switch:runtime-b', 'suspend',
+    'restore-runtime:runtime-a:false', 'restore-data:task', 'resume',
+  ])
+})
+
+test('restores an interrupted Experimental transaction before DSH starts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-boot-recovery-'))
+  const journal = new UpdateJournal(join(root, 'state', 'transaction.json'))
+  const from = {
+    dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a',
+    dataSnapshot: null, receiptTokens: ['stable-receipt'],
+  }
+  await journal.begin({
+    transactionId: 'interrupted', mode: 'experimental', from,
+    to: { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-b' },
+  })
+  await journal.transition('candidate-ready', { receiptTokens: ['experimental-receipt'] })
+  await journal.transition('suspended')
+  await journal.transition('snapshot-created', { snapshotId: 'snapshot-a' })
+  await journal.transition('switched')
+  await journal.transition('probation', { probationUntil: '2026-08-19T00:02:00.000Z' })
+  const calls = []
+  await recoverInterruptedUpdate({
+    journal,
+    snapshots: { restore: async id => calls.push(`restore-data:${id}`) },
+    activator: {
+      restoreDeployment: async (deployment, options) => calls.push(`restore-runtime:${deployment.runtime}:${String(options.resume)}`),
+      suspendDsh: async () => calls.push('suspend'),
+      resumeDsh: async () => calls.push('resume'),
+    },
+    resume: false,
+  })
+  assert.deepEqual(calls, ['restore-runtime:runtime-a:false', 'restore-data:snapshot-a'])
+  assert.equal((await journal.read()).phase, 'rolled-back')
+})
+
+test('marks a pre-switch interruption failed without touching DSH during boot', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-early-recovery-'))
+  const journal = new UpdateJournal(join(root, 'state', 'transaction.json'))
+  await journal.begin({
+    transactionId: 'interrupted', mode: 'experimental',
+    from: {
+      dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a',
+      dataSnapshot: null, receiptTokens: ['stable-receipt'],
+    },
+    to: { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-b' },
+  })
+  const calls = []
+  await recoverInterruptedUpdate({
+    journal,
+    snapshots: { restore: async () => calls.push('restore-data') },
+    activator: {
+      restoreDeployment: async () => calls.push('restore-runtime'),
+      suspendDsh: async () => calls.push('suspend'),
+      resumeDsh: async () => calls.push('resume'),
+    },
+    resume: false,
+  })
+  assert.deepEqual(calls, [])
+  assert.equal((await journal.read()).phase, 'failed')
+})
+
+test('replaces the prior Experimental authority while retaining Stable deployment receipts', async () => {
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: {},
+    stage0: {
+      activeReceipts: async () => ({ receipts: [
+        { token: 'stable-a', authorityType: 'stable' },
+        { token: 'experimental-old', authorityType: 'experimental' },
+        { token: 'stable-b', authorityType: 'stable' },
+      ] }),
+    },
+  })
+  assert.deepEqual(
+    await activator.experimentalActivationTokens(['experimental-new']),
+    ['stable-a', 'stable-b', 'experimental-new'],
+  )
+})
+
+test('reads npm latest from the official packument without trusting it locally', async () => {
+  const candidate = {
+    name: '@deepseek-ai/dsh', version: '0.1.0-rc.8',
+    dist: { integrity: `sha512-${Buffer.alloc(64).toString('base64')}`, tarball: 'https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.1.0-rc.8.tgz', signatures: [{ keyid: 'key', sig: 'signature' }] },
+  }
+  const client = new NpmRegistryClient({ fetchImpl: async () => response(JSON.stringify({
+    'dist-tags': { latest: candidate.version }, versions: { [candidate.version]: candidate },
+  })) })
+  const found = await client.latest({
+    desired: { dsh: { version: '0.1.0-rc.7' } },
+    experimentalPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
+  })
+  assert.equal(found.version, candidate.version)
 })

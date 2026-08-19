@@ -465,6 +465,12 @@ export class VerifiedObjectStore {
     )))
   }
 
+  async activeReceipts() {
+    return Object.freeze((await this.allReceipts())
+      .filter(receipt => receipt.status === 'active')
+      .map(receipt => Object.freeze({ token: receipt.token, authorityType: receipt.authorityType })))
+  }
+
   reconcileRevocations(keyring) {
     return this.exclusive(async () => {
       const receipts = await this.allReceipts()

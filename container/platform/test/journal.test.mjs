@@ -9,7 +9,7 @@ const transaction = {
   transactionId: 'transaction-one',
   mode: 'experimental',
   from: {
-    dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a', dataSnapshot: null,
+    dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a', dataSnapshot: null, receiptTokens: [],
   },
   to: { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-b' },
 }

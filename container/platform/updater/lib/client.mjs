@@ -35,6 +35,7 @@ export class LocalApiClient {
   }
 
   status() { return this.request('GET', '/v1/status') }
+  activeReceipts() { return this.request('GET', '/v1/receipts/active') }
   acceptKeyring(document, signature) {
     return this.request('POST', '/v1/keyring', { document: document.toString('base64'), signature })
   }

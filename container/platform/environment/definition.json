@@ -1,7 +1,14 @@
 {
-  "version": "2026.08.19.1-dev",
+  "version": "2026.08.19.2-dev",
   "bootstrapApi": 1,
   "components": [
+    {
+      "id": "platform-recovery",
+      "version": "1.0.0",
+      "artifactId": "component-platform-recovery",
+      "source": "components/platform-recovery.json",
+      "mediaType": "application/vnd.dsh-platform.component.v1+json"
+    },
     {
       "id": "dsh-runtime",
       "version": "1.0.0",

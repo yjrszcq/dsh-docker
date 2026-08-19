@@ -72,4 +72,23 @@ export class TargetPreparer {
       receiptTokens: Object.freeze([...receipts.values()].map(receipt => receipt.token)),
     })
   }
+
+  async prepareExperimental(candidate) {
+    const taskId = createHash('sha256').update(JSON.stringify(candidate)).digest('hex')
+    const taskRoot = join(this.untrustedRoot, `experimental-${taskId}`)
+    await mkdir(taskRoot, { recursive: true })
+    const path = join(taskRoot, 'dsh.tgz')
+    const response = await this.fetchImpl(candidate.dist.tarball)
+    if (!response.ok) throw new Error(`Experimental DSH returned HTTP ${String(response.status)}`)
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.byteLength > 512 * 1024 * 1024) throw new Error('Experimental DSH exceeds the download limit')
+    try {
+      await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      if (!(await readFile(path)).equals(bytes)) throw new Error('existing Experimental download differs from npm')
+    }
+    const receipt = await this.trust.importExperimentalArtifact(candidate, path)
+    return Object.freeze({ candidate, path, receipt, receiptTokens: Object.freeze([receipt.token]) })
+  }
 }

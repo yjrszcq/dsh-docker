@@ -26,7 +26,9 @@ test('packages the initial Environment deterministically from real resources', a
   const secondManifest = await readFile(join(second, 'environment.manifest.json'))
   assert.deepEqual(firstManifest, secondManifest)
   const manifest = parseEnvironmentManifest(firstManifest)
-  assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime', 'platform-management', 'gateway'])
+  assert.deepEqual(manifest.components.map(component => component.id), [
+    'platform-recovery', 'dsh-runtime', 'platform-management', 'gateway',
+  ])
   assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
   assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['update-ui'])
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
@@ -45,7 +47,7 @@ test('can emit flat Artifact URLs for GitHub Release assets', async () => {
 })
 
 test('checked-in Component manifests satisfy the public contract', async () => {
-  for (const name of ['gateway.json', 'dsh-runtime.json', 'platform-management.json']) {
+  for (const name of ['gateway.json', 'dsh-runtime.json', 'platform-management.json', 'platform-recovery.json']) {
     const bytes = await readFile(join(platformRoot, 'environment', 'components', name))
     assert.doesNotThrow(() => parseComponentManifest(bytes))
   }

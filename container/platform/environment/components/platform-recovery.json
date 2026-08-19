@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "platform-recovery",
+  "version": "1.0.0",
+  "type": "oneshot",
+  "command": {
+    "executable": "/usr/local/bin/node",
+    "args": ["/data/bootstrap/current/updater/recovery.mjs"],
+    "timeoutSeconds": 120
+  },
+  "environment": {},
+  "lifecycle": {
+    "prepare": null,
+    "preStart": null,
+    "postStart": null,
+    "preStop": null,
+    "stop": null,
+    "postStop": null
+  },
+  "health": null,
+  "logging": { "stdout": true, "stderr": true }
+}
