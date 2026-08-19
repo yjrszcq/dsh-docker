@@ -9,7 +9,7 @@ test('Update UI declares an rc.7 web client and a platform-namespaced overlay ro
   const patch = JSON.parse(await readFile(new URL('cordis.patch.json', root)))
   assert.equal(packageJson.dsh.client.platform, 'web')
   assert.equal(packageJson.exports['./client'], './lib/client.js')
-  assert.equal(await readFile(new URL('lib/style.css', root), 'utf8').then(value => value.includes('@media (max-width: 640px)')), true)
+  assert.equal(await readFile(new URL('lib/style.module.css', root), 'utf8').then(value => value.includes('@media (max-width: 640px)')), true)
   assert.equal(patch[0].id, 'dsh-docker.update-ui.plugin')
 })
 

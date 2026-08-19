@@ -488,3 +488,16 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
   await coordinator.startCompleteRollback('plan-a', { requireConfirmation: true, confirmDataLoss: true }).completion
   assert.equal(restored, true)
 })
+
+test('persists a planner failure started through the selected channel', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-reconcile-planning-failure-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => { throw new Error('metadata unavailable') } },
+    preparer: {}, activator: {}, state,
+    channelState: { read: async () => ({ updateChannel: 'experimental', holds: [], experimentalBlocked: null }) },
+  })
+  await assert.rejects(coordinator.startReconcile().completion, /metadata unavailable/)
+  assert.equal((await state.read()).status, 'failed')
+  assert.match((await state.read()).error, /metadata unavailable/)
+})

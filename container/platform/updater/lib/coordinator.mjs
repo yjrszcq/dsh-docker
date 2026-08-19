@@ -185,13 +185,21 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async runReconcile(taskId) {
-    const plan = await this.desiredState()
-    if (plan.action === 'stable') return this.run(taskId)
-    if (plan.action === 'experimental') return this.runExperimental(taskId)
-    return this.transition('success', {
-      taskId, progress: 100, error: null,
-      outcome: plan.action,
-    })
+    try {
+      const plan = await this.desiredState()
+      if (plan.action === 'stable') return this.run(taskId)
+      if (plan.action === 'experimental') return this.runExperimental(taskId)
+      return this.transition('success', {
+        taskId, progress: 100, error: null,
+        outcome: plan.action,
+      })
+    } catch (error) {
+      const current = await this.state.read()
+      if (current.status !== 'failed') {
+        await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update planning failed' })
+      }
+      throw error
+    }
   }
 
   async run(taskId) {
