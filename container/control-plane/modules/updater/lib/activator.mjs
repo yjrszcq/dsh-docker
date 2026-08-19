@@ -104,61 +104,24 @@ export class PlatformActivator {
       await this.stage0.stageBootstrap(receipt.token, desiredBootstrap)
       await new Promise(() => {})
     }
-    const runtimeId = `${prepared.stable.desired.dsh.version}-${String(prepared.stable.targetSequence)}`
-    if (!await exists(join(this.paths.runtimesRoot, 'versions', runtimeId))) {
-      const pristineRoot = await this.pristine(prepared.dsh.version, prepared.dsh.receipt)
-      await buildRuntime({
-        pristineRoot,
-        versionsRoot: join(this.paths.runtimesRoot, 'versions'),
-        runtimeId,
-        patchPaths: prepared.environment.manifest.patches.map(item => (
-          prepared.paths.get(artifactForReference(prepared.environment.manifest, item).id)
-        )),
-      })
-    }
-    const environmentVersion = await this.stageEnvironment(prepared)
-    await reconcileSystemPlugins({
-      root: this.paths.systemPluginsRoot,
-      environmentVersion,
-      plugins: prepared.environment.manifest.systemPlugins,
-      artifactPath: reference => prepared.paths.get(artifactForReference(prepared.environment.manifest, reference).id),
-    })
-    await this.runtimeSlots.promote(runtimeId)
-    await this.environmentSlots.promote(environmentVersion)
-    try {
-      await this.bootstrap.request('POST', '/v1/reload')
-    } catch (error) {
-      await this.systemPluginSlots.rollback().catch(() => {})
-      await this.environmentSlots.rollback().catch(() => {})
-      await this.runtimeSlots.rollback().catch(() => {})
-      await this.bootstrap.request('POST', '/v1/reload').catch(() => {})
-      throw error
-    }
+    const managed = await this.prepareManaged(prepared)
+    await this.bootstrap.request('POST', '/v1/deployments/activate', { record: managed.record })
+    return managed.record
   }
 
   async rollback() {
-    await this.systemPluginSlots.rollback()
-    await this.environmentSlots.rollback()
-    await this.runtimeSlots.rollback()
-    await this.bootstrap.request('POST', '/v1/reload')
+    return this.bootstrap.request('POST', '/v1/deployments/rollback')
   }
 
   async currentDeployment() {
-    const runtime = await this.runtimeSlots.state()
-    const environment = await this.environmentSlots.state()
-    if (runtime.current === undefined || environment.current === undefined) {
-      throw new Error('current Runtime and Environment are required')
-    }
-    const packageMetadata = JSON.parse(await readFile(join(
-      this.paths.runtimesRoot, 'versions', runtime.current, 'package', 'package.json',
-    ), 'utf8'))
-    if (typeof packageMetadata.version !== 'string') throw new Error('current Runtime has no DSH version')
+    const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
+    if (record === null) throw new Error('current Deployment is required')
     return Object.freeze({
-      dsh: packageMetadata.version,
-      runtime: runtime.current,
-      environment: environment.current,
-      dataSnapshot: null,
-      receiptTokens: Object.freeze((await this.stage0.activeReceipts()).receipts.map(receipt => receipt.token).sort()),
+      dsh: record.dshVersion,
+      runtime: record.id,
+      environment: record.environmentVersion,
+      dataSnapshot: record.snapshotId,
+      receiptTokens: Object.freeze([...record.receiptTokens]),
     })
   }
 

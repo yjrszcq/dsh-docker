@@ -44,6 +44,7 @@ export class DeploymentManager {
     this.stateRoot = paths.deploymentStateRoot
     this.recordsRoot = join(this.stateRoot, 'records')
     this.slotsPath = join(this.stateRoot, 'slots.json')
+    this.activationPath = join(this.stateRoot, 'activation.json')
     this.queue = Promise.resolve()
   }
 
@@ -339,6 +340,82 @@ export class DeploymentManager {
       await this.commit(materialized.id, state.previous)
       return materialized
     })
+  }
+
+  async activation() {
+    const bytes = await readOptional(this.activationPath)
+    if (bytes === undefined) return undefined
+    const value = JSON.parse(bytes.toString('utf8'))
+    if (
+      value?.schema !== 1
+      || !['prepared', 'healthy', 'receipts-active'].includes(value.phase)
+      || typeof value.from !== 'string'
+      || typeof value.to !== 'string'
+    ) throw new TrustError('Deployment activation journal is invalid')
+    return Object.freeze(value)
+  }
+
+  async writeActivation(value) {
+    const journal = Object.freeze({ schema: 1, ...value, updatedAt: new Date().toISOString() })
+    await durableReplace(this.activationPath, canonicalJson(journal))
+    return journal
+  }
+
+  async clearActivation() {
+    await rm(this.activationPath, { force: true })
+  }
+
+  async recoverActivation(trust) {
+    const journal = await this.activation()
+    if (journal === undefined) return null
+    const [from, to, active] = await Promise.all([
+      this.record(journal.from),
+      this.record(journal.to),
+      trust.activeReceipts(),
+    ])
+    const activeTokens = new Set(active.receipts.map(receipt => receipt.token))
+    const candidateReceiptsActive = to.receiptTokens.every(token => activeTokens.has(token))
+    if (journal.phase === 'receipts-active' || (journal.phase === 'healthy' && candidateReceiptsActive)) {
+      await this.select(to.id)
+      const state = await this.state()
+      if (state.current !== to.id) await this.commit(to.id, from.id)
+      await this.clearActivation()
+      return Object.freeze({ action: 'committed', recordId: to.id })
+    }
+    await trust.activate(from.receiptTokens)
+    await this.select(from.id)
+    const state = await this.state()
+    if (state.current !== from.id) await this.commit(from.id, state.current)
+    await this.clearActivation()
+    return Object.freeze({ action: 'rolled-back', recordId: from.id })
+  }
+
+  async activateManaged(value, { healthCheck, activateReceipts }) {
+    const candidate = await this.writeRecord(value)
+    await this.materializeCurrent()
+    const state = await this.state()
+    const from = await this.record(state.current)
+    if (candidate.id === from.id) return state
+    await this.writeActivation({ phase: 'prepared', from: from.id, to: candidate.id })
+    let receiptsActive = false
+    try {
+      await this.select(candidate.id)
+      await healthCheck()
+      await this.writeActivation({ phase: 'healthy', from: from.id, to: candidate.id })
+      await activateReceipts(candidate.receiptTokens)
+      receiptsActive = true
+      await this.writeActivation({ phase: 'receipts-active', from: from.id, to: candidate.id })
+      const committed = await this.commit(candidate.id, from.id)
+      await this.clearActivation()
+      await this.publishStatus()
+      return committed
+    } catch (error) {
+      if (receiptsActive) await activateReceipts(from.receiptTokens).catch(() => {})
+      await this.select(from.id).catch(() => {})
+      await healthCheck().catch(() => {})
+      await this.clearActivation().catch(() => {})
+      throw error
+    }
   }
 
   describe(record) {

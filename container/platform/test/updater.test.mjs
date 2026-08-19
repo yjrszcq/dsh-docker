@@ -211,24 +211,24 @@ test('persists a failed update without activating receipts and permits a later r
   assert.equal((await state.read()).status, 'success')
 })
 
-test('rolls back the runtime switch when receipt activation fails', async () => {
+test('treats Bootstrap-owned receipt activation failure as one failed switch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-updater-rollback-'))
-  let rolledBack = false
   const prepared = { receiptTokens: ['receipt'] }
   const coordinator = new UpdateCoordinator({
     metadata: { check: async () => ({ value: { targetSequence: 1 } }) },
     preparer: {
       prepare: async () => prepared,
-      trust: { activate: async () => { throw new Error('receipt activation failed') } },
+      trust: { activate: async () => { throw new Error('Updater must not activate receipts directly') } },
     },
     activator: {
-      activate: async value => assert.equal(value, prepared),
-      rollback: async value => { rolledBack = value === prepared },
+      activate: async value => {
+        assert.equal(value, prepared)
+        throw new Error('receipt activation failed inside Bootstrap transaction')
+      },
     },
     state: new UpdateStateStore(join(root, 'state', 'update.json')),
   })
   await assert.rejects(coordinator.start().completion, /receipt activation failed/)
-  assert.equal(rolledBack, true)
 })
 
 function experimentalSystem(root, overrides = {}) {

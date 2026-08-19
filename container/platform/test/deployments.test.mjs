@@ -55,7 +55,14 @@ async function fixture() {
   return { root, seedRoot, paths, inventory, manager, image: recordsFromImageInventory(inventory).deployment }
 }
 
-async function managedRecord(context, suffix, sequence = 2, authority = 'stable', dshVersion = `0.1.0-rc.${String(sequence)}`) {
+async function managedRecord(
+  context,
+  suffix,
+  sequence = 2,
+  authority = 'stable',
+  dshVersion = `0.1.0-rc.${String(sequence)}`,
+  receiptTokens = [],
+) {
   const references = {}
   for (const kind of kinds) {
     const root = kind === 'environment'
@@ -81,7 +88,7 @@ async function managedRecord(context, suffix, sequence = 2, authority = 'stable'
     pristine: references.pristine,
     runtime: references.runtime,
     systemPlugins: references['system-plugins'],
-    receiptTokens: [],
+    receiptTokens,
     snapshotId: null,
   }
   return parseDeploymentRecord({ ...content, id: deriveRecordId('deployment-record', content) })
@@ -249,4 +256,63 @@ test('preserves Experimental DSH until a Stable image catches up', async () => {
   const caughtUp = await caughtUpManager.prepareImage(recordsFromImageInventory(caughtUpInventory).deployment)
   assert.equal(caughtUp.action, 'stable-caught-up')
   assert.notEqual(caughtUp.target, experimental.id)
+})
+
+test('activates receipts and commits one complete Managed Deployment transaction', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await managedRecord(context, 'transaction', 2, 'stable', '0.1.0-rc.2', ['candidate-receipt'])
+  let active = []
+  const trust = {
+    activate: async tokens => { active = [...tokens] },
+    activeReceipts: async () => ({ receipts: active.map(token => ({ token })) }),
+  }
+  const slots = await context.manager.activateManaged(candidate, {
+    healthCheck: async () => {
+      assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:transaction')
+    },
+    activateReceipts: tokens => trust.activate(tokens),
+  })
+  assert.equal(slots.current, candidate.id)
+  assert.deepEqual(active, ['candidate-receipt'])
+  const previous = await context.manager.record(slots.previous)
+  assert.equal(previous.runtime.storage, 'store')
+  assert.equal(await context.manager.activation(), undefined)
+})
+
+test('restores the materialized previous Deployment when receipt activation fails', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const candidate = await managedRecord(context, 'receipt-failure', 2, 'stable', '0.1.0-rc.2', ['candidate-receipt'])
+  await assert.rejects(context.manager.activateManaged(candidate, {
+    healthCheck: async () => {},
+    activateReceipts: async () => { throw new Error('receipt activation failed') },
+  }), /receipt activation failed/)
+  const state = await context.manager.state()
+  assert.notEqual(state.current, context.image.id)
+  assert.equal((await context.manager.record(state.current)).runtime.storage, 'store')
+  assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
+  assert.equal(await context.manager.activation(), undefined)
+})
+
+test('finishes a journaled activation after receipts became active before restart', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const from = await context.manager.materializeCurrent()
+  const candidate = await context.manager.writeRecord(await managedRecord(
+    context,
+    'resume',
+    2,
+    'stable',
+    '0.1.0-rc.2',
+    ['candidate-receipt'],
+  ))
+  await context.manager.writeActivation({ phase: 'healthy', from: from.id, to: candidate.id })
+  const recovered = await context.manager.recoverActivation({
+    activeReceipts: async () => ({ receipts: [{ token: 'candidate-receipt' }] }),
+    activate: async () => { throw new Error('active candidate must be completed') },
+  })
+  assert.deepEqual(recovered, { action: 'committed', recordId: candidate.id })
+  assert.equal((await context.manager.state()).current, candidate.id)
+  assert.equal(await context.manager.activation(), undefined)
 })

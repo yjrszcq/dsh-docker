@@ -2,12 +2,23 @@ import { createServer } from 'node:http'
 import { chmod, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
+async function jsonBody(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.byteLength
+    if (size > 256 * 1024) throw new Error('Bootstrap request body is too large')
+    chunks.push(chunk)
+  }
+  return size === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
+
 function send(response, status, value) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createBootstrapControl(runner) {
+export function createBootstrapControl(runner, { deployments, trust } = {}) {
   return createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url ?? '/', 'http://bootstrap.internal').pathname
@@ -17,6 +28,26 @@ export function createBootstrapControl(runner) {
       })
       else if (request.method === 'POST' && pathname === '/v1/reload') send(response, 200, await runner.reload())
       else if (request.method === 'GET' && pathname === '/v1/health') send(response, 200, await runner.health())
+      else if (request.method === 'GET' && pathname === '/v1/deployments/current' && deployments !== undefined) {
+        const state = await deployments.state()
+        send(response, 200, { record: state.current === null ? null : await deployments.record(state.current) })
+      } else if (request.method === 'POST' && pathname === '/v1/deployments/activate' && deployments !== undefined && trust !== undefined) {
+        const body = await jsonBody(request)
+        const slots = await deployments.activateManaged(body.record, {
+          healthCheck: () => runner.reload(),
+          activateReceipts: tokens => trust.activate(tokens),
+        })
+        send(response, 200, { slots })
+      } else if (request.method === 'POST' && pathname === '/v1/deployments/rollback' && deployments !== undefined && trust !== undefined) {
+        const state = await deployments.state()
+        if (state.previous === null) throw new Error('no previous Deployment exists')
+        const record = await deployments.record(state.previous)
+        const slots = await deployments.activateManaged(record, {
+          healthCheck: () => runner.reload(),
+          activateReceipts: tokens => trust.activate(tokens),
+        })
+        send(response, 200, { slots })
+      }
       else {
         const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume)$/.exec(pathname)
         if (request.method === 'POST' && operation !== null) {

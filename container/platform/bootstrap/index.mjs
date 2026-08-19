@@ -9,6 +9,7 @@ import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.m
 import { PlatformPaths } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 import { DeploymentManager } from './lib/deployments.mjs'
+import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -17,6 +18,8 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
+const trust = new LocalApiClient(paths.trustSocket)
+await deployments.recoverActivation(trust)
 let imagePlan
 let planningError = null
 try {
@@ -63,7 +66,7 @@ const recoveryMode = recoveryReason === null ? null : {
   failedRecordId: imagePlan?.target ?? null,
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
-const server = createBootstrapControl(runtime)
+const server = createBootstrapControl(runtime, { deployments, trust })
 await listenBootstrapControl(server, paths.bootstrapSocket)
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 
