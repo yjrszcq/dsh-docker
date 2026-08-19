@@ -3,7 +3,7 @@
   "components": [
     {
       "id": "platform-recovery",
-      "source": "modules/updater/recovery.component.json"
+      "source": "hooks/recovery/component.json"
     },
     {
       "id": "platform-management",

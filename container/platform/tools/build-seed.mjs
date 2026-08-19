@@ -36,6 +36,11 @@ for (const directory of ['management', 'gateway']) {
     { recursive: true },
   )
 }
+await cp(
+  join(containerRoot, 'control-plane', 'hooks'),
+  join(bootstrapRoot, 'control-plane', 'hooks'),
+  { recursive: true },
+)
 await cp(join(containerRoot, 'control-plane', 'definition.json'), join(bootstrapRoot, 'control-plane', 'definition.json'))
 await writeFile(join(output, 'bootstrap', 'VERSION'), `${bootstrapVersion}\n`)
 

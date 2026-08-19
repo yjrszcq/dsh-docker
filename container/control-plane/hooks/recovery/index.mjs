@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { join } from 'node:path'
-import { PlatformActivator } from './lib/activator.mjs'
-import { UpdateJournal } from './lib/journal.mjs'
-import { recoverInterruptedUpdate } from './lib/recovery.mjs'
-import { PersistentStateSnapshots } from './lib/snapshots.mjs'
+import { PlatformActivator } from '../../modules/updater/lib/activator.mjs'
+import { UpdateJournal } from '../../modules/updater/lib/journal.mjs'
+import { recoverInterruptedUpdate } from '../../modules/updater/lib/recovery.mjs'
+import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data'
 await recoverInterruptedUpdate({
