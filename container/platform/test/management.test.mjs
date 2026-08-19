@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
-import { parseCli, resetTrust, runCli } from '../../control-plane/services/management/cli.mjs'
+import { parseCli, recoverImageBaseline, resetTrust, runCli } from '../../control-plane/services/management/cli.mjs'
 import { createManagementServer, listenManagement } from '../../control-plane/services/management/server.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { UpdateConflictError } from '../../control-plane/modules/updater/lib/coordinator.mjs'
@@ -166,6 +166,35 @@ test('CLI parses channel controls and refuses noninteractive Stable return', asy
 test('trust reset refuses non-root and non-interactive callers before mutation', async () => {
   await assert.rejects(resetTrust({ getuid: () => 1000 }), /root/)
   await assert.rejects(resetTrust({ getuid: () => 0, input: { isTTY: false }, output: { isTTY: false } }), /interactive/)
+})
+
+test('image baseline recovery is root/TTY-only and requires the complete image identity', async () => {
+  assert.deepEqual(parseCli(['recover', '--image-baseline']), { command: 'recover', imageBaseline: true })
+  const calls = []
+  const recovery = {
+    request: async (method, path, body) => {
+      calls.push({ method, path, body })
+      if (method === 'GET') return { imageBaseline: { imageBuildId: `sha256:${'a'.repeat(64)}`, dsh: '0.1.0-rc.10' } }
+      return { status: 'recovered' }
+    },
+  }
+  await assert.rejects(recoverImageBaseline({ recovery, getuid: () => 1000 }), /root/)
+  await assert.rejects(recoverImageBaseline({
+    recovery, getuid: () => 0, input: { isTTY: false }, output: { isTTY: false },
+  }), /interactive/)
+  const expected = `RECOVER IMAGE BASELINE sha256:${'a'.repeat(64)}`
+  const value = await recoverImageBaseline({
+    recovery,
+    getuid: () => 0,
+    input: { isTTY: true },
+    output: { isTTY: true },
+    ask: async prompt => prompt,
+  })
+  assert.equal(value.status, 'recovered')
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/v1/status', body: undefined },
+    { method: 'POST', path: '/v1/recover-image-baseline', body: { confirm: expected.slice('RECOVER IMAGE BASELINE '.length) } },
+  ])
 })
 
 test('scheduler applies bounded jitter and performs checks without activating updates', async () => {

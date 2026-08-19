@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { replaceRuntimeView } from '../../lib/paths.mjs'
 
 function timeout(milliseconds, message) {
@@ -50,6 +51,7 @@ export class BootstrapSupervisor {
     this.uid = uid
     this.gid = gid
     this.child = undefined
+    this.requests = new Map()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
@@ -76,6 +78,14 @@ export class BootstrapSupervisor {
       )))
       child.on('message', message => {
         if (message?.type === 'ready' && message.bootstrapApi === 1) resolve()
+        if (message?.type === 'recovery-result' && typeof message.requestId === 'string') {
+          const pending = this.requests.get(message.requestId)
+          if (pending !== undefined) {
+            this.requests.delete(message.requestId)
+            if (message.error === undefined) pending.resolve(message.slots)
+            else pending.reject(new Error(message.error))
+          }
+        }
       })
     })
     try {
@@ -120,5 +130,27 @@ export class BootstrapSupervisor {
     const child = this.child
     this.child = undefined
     if (child !== undefined) await terminateChild(child)
+  }
+
+  recoverImageBaseline(timeoutMs = 60_000) {
+    if (this.child === undefined || this.child.connected !== true) throw new Error('Bootstrap is unavailable for recovery')
+    const requestId = randomUUID()
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.requests.delete(requestId)
+        reject(new Error('image baseline recovery timed out'))
+      }, timeoutMs)
+      this.requests.set(requestId, {
+        resolve: value => { clearTimeout(timer); resolve(value) },
+        reject: error => { clearTimeout(timer); reject(error) },
+      })
+      this.child.send({ type: 'recover-image-baseline', requestId }, error => {
+        if (error !== null && error !== undefined) {
+          clearTimeout(timer)
+          this.requests.delete(requestId)
+          reject(error)
+        }
+      })
+    })
   }
 }

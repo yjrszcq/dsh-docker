@@ -485,6 +485,24 @@ export class DeploymentManager {
     return Object.freeze({ cancelled: true, slots: await this.state() })
   }
 
+  async recoverImageBaseline(value, { healthCheck, activateReceipts }) {
+    const image = await this.writeRecord(value)
+    await this.prepareView(image.id)
+    const state = await this.state()
+    await this.select(image.id)
+    try {
+      await healthCheck()
+      await activateReceipts(image.receiptTokens)
+      const committed = state.current === image.id ? state : await this.commit(image.id, state.current)
+      await this.clearActivation()
+      await this.publishStatus({ recoveryMode: null })
+      return committed
+    } catch (error) {
+      if (state.current !== null) await this.select(state.current).catch(() => {})
+      throw error
+    }
+  }
+
   describe(record) {
     const references = [record.environment, record.pristine, record.runtime, record.systemPlugins]
     return Object.freeze({

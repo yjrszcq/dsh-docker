@@ -15,6 +15,8 @@ import {
   resetRuntimeLayout,
 } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
+import { readDeploymentStatus } from '../lib/deployment-status.mjs'
+import { createRecoveryServer, listenRecovery } from './lib/recovery-server.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -75,6 +77,12 @@ await listenUnix(trustServer, paths.trustSocket, {
   gid: process.getgid?.() === 0 ? 1000 : undefined,
 })
 await supervisor.startWithRollback()
+const recoveryServer = createRecoveryServer({
+  inventory,
+  deployments: () => readDeploymentStatus(paths.deploymentStatusPath),
+  supervisor,
+})
+await listenRecovery(recoveryServer, paths.recoverySocket)
 let resolveSignal
 const signal = new Promise(resolve => { resolveSignal = resolve })
 const onSignal = () => resolveSignal({ type: 'signal' })
@@ -85,6 +93,7 @@ const outcome = await Promise.race([
   supervisor.fatal.then(error => ({ type: 'exit', error })),
 ])
 trustServer.close()
+recoveryServer.close()
 await supervisor.stop()
 if (outcome.type === 'exit') {
   throw outcome.error

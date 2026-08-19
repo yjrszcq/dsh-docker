@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|channel [stable|experimental]|retry|rollback|return-stable|logs [--source NAME] [--since ISO] [--limit N]|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -18,6 +18,9 @@ export function parseCli(argv) {
   }
   if (command === 'channel' && (rest.length === 0 || (rest.length === 1 && ['stable', 'experimental'].includes(rest[0])))) {
     return { command, channel: rest[0] }
+  }
+  if (command === 'recover' && rest.length === 1 && rest[0] === '--image-baseline') {
+    return { command, imageBaseline: true }
   }
   if (command === 'update') {
     if (rest.some(value => value !== '--wait') || rest.filter(value => value === '--wait').length > 1) throw new Error(usage())
@@ -40,6 +43,32 @@ export function parseCli(argv) {
     return { command, operation: rest[0] }
   }
   throw new Error(usage())
+}
+
+export async function recoverImageBaseline({
+  recovery,
+  input = stdin,
+  output = stdout,
+  getuid = () => process.getuid?.(),
+  ask,
+} = {}) {
+  if (getuid() !== 0) throw new Error('image baseline recovery must run as root from the container console')
+  if (!input.isTTY || !output.isTTY) throw new Error('image baseline recovery requires an interactive container console')
+  const status = await recovery.request('GET', '/v1/status')
+  const imageBuildId = status.imageBaseline?.imageBuildId
+  if (typeof imageBuildId !== 'string') throw new Error('image baseline is unavailable')
+  const expected = `RECOVER IMAGE BASELINE ${imageBuildId}`
+  let answer
+  if (ask !== undefined) answer = await ask(expected, status)
+  else {
+    const prompt = createInterface({ input, output })
+    answer = await prompt.question(
+      `Current Deployment may be incompatible with image ${status.imageBaseline.dsh}. Type ${expected}: `,
+    )
+    prompt.close()
+  }
+  if (answer !== expected) throw new Error('image baseline recovery cancelled')
+  return recovery.request('POST', '/v1/recover-image-baseline', { confirm: imageBuildId })
 }
 
 export async function resetTrust({
@@ -76,12 +105,19 @@ export async function runCli({
   management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock'),
   trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/run/dsh-platform/stage0-trust.sock'),
   reset = resetTrust,
+  recovery = new LocalApiClient(process.env.DSH_PLATFORM_RECOVERY_SOCKET ?? '/run/dsh-platform/recovery.sock'),
+  recover = recoverImageBaseline,
   write = value => process.stdout.write(`${value}\n`),
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   input = stdin,
   output = stdout,
 } = {}) {
   const parsed = parseCli(argv)
+  if (parsed.command === 'recover') {
+    const value = await recover({ recovery, input, output })
+    write(JSON.stringify(value, null, 2))
+    return 0
+  }
   if (parsed.command === 'trust') {
     const value = parsed.operation === 'status' ? await trust.status() : await reset()
     write(JSON.stringify(value, null, 2))

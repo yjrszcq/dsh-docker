@@ -74,6 +74,19 @@ const recoveryMode = recoveryReason === null ? null : {
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
+process.on('message', message => {
+  if (message?.type !== 'recover-image-baseline' || typeof message.requestId !== 'string') return
+  void deployments.recoverImageBaseline(imageRecords.deployment, {
+    healthCheck: () => runtime.reload(),
+    activateReceipts: tokens => trust.activate(tokens),
+  }).then(
+    slots => process.send?.({ type: 'recovery-result', requestId: message.requestId, slots }),
+    error => process.send?.({
+      type: 'recovery-result', requestId: message.requestId,
+      error: error instanceof Error ? error.message : 'image baseline recovery failed',
+    }),
+  )
+})
 
 let resolveSignal
 const signal = new Promise(resolve => { resolveSignal = resolve })

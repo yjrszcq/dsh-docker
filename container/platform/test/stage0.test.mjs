@@ -8,6 +8,7 @@ import test from 'node:test'
 import { BootstrapManager } from '../stage0/lib/slots.mjs'
 import { BootstrapSupervisor } from '../stage0/lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
+import { createRecoveryServer, listenRecovery } from '../stage0/lib/recovery-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { keyPair } from './helpers.mjs'
@@ -198,6 +199,31 @@ function unixRequest(socketPath, method, path, body) {
     req.end(requestBody)
   })
 }
+
+test('root-only recovery server requires the exact current imageBuildId', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-recovery-server-'))
+  const image = await imageBootstrap(root, '1.0.0', 2)
+  let recoveries = 0
+  const server = createRecoveryServer({
+    inventory: image.inventory,
+    deployments: async () => ({ current: { recordId: 'broken' } }),
+    supervisor: { recoverImageBaseline: async () => { recoveries += 1; return { current: image.record.id } } },
+  })
+  const socketPath = join(root, 'run', 'recovery.sock')
+  await listenRecovery(server, socketPath)
+  try {
+    const status = await unixRequest(socketPath, 'GET', '/v1/status')
+    assert.equal(status.status, 200)
+    assert.equal(status.body.imageBaseline.imageBuildId, image.inventory.imageBuildId)
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/recover-image-baseline', { confirm: 'wrong' })).status, 400)
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/recover-image-baseline', {
+      confirm: image.inventory.imageBuildId,
+    })).status, 200)
+    assert.equal(recoveries, 1)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
 
 test('exposes a bounded local Trust API without trust-root mutation routes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-trust-server-'))

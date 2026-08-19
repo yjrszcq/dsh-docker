@@ -421,3 +421,20 @@ test('collects only Store assets and records outside slots, transactions, Holds,
   await assert.rejects(lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-orphan')), { code: 'ENOENT' })
   await assert.rejects(lstat(join(context.paths.downloadsRoot, 'disposable')), { code: 'ENOENT' })
 })
+
+test('explicit recovery replaces an invalid Managed current with the exact Image Baseline', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const managed = await managedRecord(context, 'invalid-managed', 3)
+  await context.manager.activateManaged(managed, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  let activated
+  const state = await context.manager.recoverImageBaseline(context.image, {
+    healthCheck: async () => {
+      assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
+    },
+    activateReceipts: async tokens => { activated = tokens },
+  })
+  assert.equal(state.current, context.image.id)
+  assert.equal(state.previous, managed.id)
+  assert.deepEqual(activated, [])
+})
