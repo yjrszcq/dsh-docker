@@ -9,9 +9,19 @@ import {
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
 import { replaceDeploymentView } from '../../lib/paths.mjs'
 import { hashTree } from '../../lib/tree-hash.mjs'
+import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 
 const KINDS = Object.freeze(['environment', 'pristine', 'runtime', 'system-plugins'])
+
+function sameDeployment(left, right) {
+  return left.dshVersion === right.dshVersion
+    && left.environmentVersion === right.environmentVersion
+    && KINDS.every(kind => {
+      const field = kind === 'system-plugins' ? 'systemPlugins' : kind
+      return left[field].sha256 === right[field].sha256
+    })
+}
 
 async function readOptional(path) {
   try { return await readFile(path) } catch (error) {
@@ -150,13 +160,81 @@ export class DeploymentManager {
   }
 
   async initialize(record) {
+    const plan = await this.prepareImage(record)
+    return this.acceptImage(plan)
+  }
+
+  async prepareImage(record) {
     return this.exclusive(async () => {
       const image = await this.writeRecord(record)
       const state = await this.state()
-      if (state.current === null) await this.commit(image.id, null)
-      const selected = await this.state()
-      await this.select(selected.current)
-      return selected
+      if (state.current === null) {
+        await this.select(image.id)
+        return Object.freeze({
+          baseGeneration: 0,
+          target: image.id,
+          fallback: null,
+          action: 'initialize',
+          imageBehindCurrent: false,
+          requiresExperimentalRebuild: false,
+        })
+      }
+
+      const current = await this.record(state.current)
+      let target = current.id
+      let action = 'retain'
+      let imageBehindCurrent = false
+      let requiresExperimentalRebuild = false
+
+      if (current.authority === 'experimental') {
+        const dshCaughtUp = compareDshVersions(image.dshVersion, current.dshVersion) >= 0
+        if (image.targetSequence >= current.targetSequence && dshCaughtUp) {
+          target = image.id
+          action = 'stable-caught-up'
+        } else {
+          imageBehindCurrent = image.targetSequence < current.targetSequence
+          requiresExperimentalRebuild = image.targetSequence > current.targetSequence && !dshCaughtUp
+        }
+      } else if (image.targetSequence > current.targetSequence) {
+        target = image.id
+        action = 'image-forward'
+      } else if (image.targetSequence < current.targetSequence) {
+        imageBehindCurrent = true
+      } else if (!sameDeployment(current, image)) {
+        throw new TrustError('Deployment image conflicts with current content at the same targetSequence')
+      } else if (current.id !== image.id) {
+        target = image.id
+        action = 'prefer-image'
+      }
+
+      await this.select(target)
+      return Object.freeze({
+        baseGeneration: state.generation,
+        target,
+        fallback: target === current.id ? null : current.id,
+        action,
+        imageBehindCurrent,
+        requiresExperimentalRebuild,
+      })
+    })
+  }
+
+  async acceptImage(plan) {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.generation !== plan.baseGeneration) throw new TrustError('Deployment slots changed during image startup')
+      if (state.current === plan.target) return state
+      return this.commit(plan.target, state.current)
+    })
+  }
+
+  async rejectImage(plan) {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.generation !== plan.baseGeneration) throw new TrustError('Deployment slots changed during image startup')
+      if (plan.fallback === null) return false
+      await this.select(plan.fallback)
+      return true
     })
   }
 

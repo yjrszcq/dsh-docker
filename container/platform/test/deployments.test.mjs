@@ -55,7 +55,7 @@ async function fixture() {
   return { root, seedRoot, paths, inventory, manager, image: recordsFromImageInventory(inventory).deployment }
 }
 
-async function managedRecord(context, suffix, sequence = 2) {
+async function managedRecord(context, suffix, sequence = 2, authority = 'stable', dshVersion = `0.1.0-rc.${String(sequence)}`) {
   const references = {}
   for (const kind of kinds) {
     const root = kind === 'environment'
@@ -73,9 +73,9 @@ async function managedRecord(context, suffix, sequence = 2) {
   }
   const content = {
     schema: 1,
-    authority: 'stable',
+    authority,
     targetSequence: sequence,
-    dshVersion: `0.1.0-rc.${String(sequence)}`,
+    dshVersion,
     environmentVersion: '2026.08.19.1',
     environment: references.environment,
     pristine: references.pristine,
@@ -142,4 +142,91 @@ test('writes immutable Deployment Record bytes', async () => {
     await readFile(context.manager.recordPath(context.image.id)),
     canonicalJson(context.image),
   )
+})
+
+test('advances to a newer image only after startup acceptance', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const nextContent = {
+    ...context.inventory.document,
+    platformRevision: 'deployment-fixture-next',
+    targetSequence: 2,
+  }
+  delete nextContent.imageBuildId
+  const nextInventory = parseImageInventory({ ...nextContent, imageBuildId: deriveImageBuildId(nextContent) })
+  const nextRecord = recordsFromImageInventory(nextInventory).deployment
+  const restarted = new DeploymentManager({ paths: context.paths, seedRoot: context.seedRoot, inventory: nextInventory })
+  const plan = await restarted.prepareImage(nextRecord)
+  assert.equal(plan.action, 'image-forward')
+  assert.equal((await restarted.state()).current, context.image.id)
+  const state = await restarted.acceptImage(plan)
+  assert.equal(state.current, nextRecord.id)
+  assert.equal(state.previous, context.image.id)
+})
+
+test('keeps a newer managed Deployment when the image is behind', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const managed = await context.manager.writeRecord(await managedRecord(context, 'ahead', 3))
+  await context.manager.activate(managed.id, async () => {})
+  const plan = await context.manager.prepareImage(context.image)
+  assert.equal(plan.action, 'retain')
+  assert.equal(plan.imageBehindCurrent, true)
+  assert.equal(plan.target, managed.id)
+})
+
+test('rejects same-sequence Stable content conflicts', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const conflicting = await context.manager.writeRecord(await managedRecord(context, 'conflict', 1))
+  await context.manager.activate(conflicting.id, async () => {})
+  await assert.rejects(context.manager.prepareImage(context.image), /same targetSequence/)
+})
+
+test('preserves Experimental DSH until a Stable image catches up', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const experimental = await context.manager.writeRecord(await managedRecord(
+    context,
+    'experimental',
+    1,
+    'experimental',
+    '0.1.0-rc.3',
+  ))
+  await context.manager.activate(experimental.id, async () => {})
+
+  const behindDshContent = {
+    ...context.inventory.document,
+    platformRevision: 'stable-environment-forward',
+    targetSequence: 2,
+  }
+  delete behindDshContent.imageBuildId
+  const behindDshInventory = parseImageInventory({
+    ...behindDshContent,
+    imageBuildId: deriveImageBuildId(behindDshContent),
+  })
+  const environmentForward = new DeploymentManager({
+    paths: context.paths,
+    seedRoot: context.seedRoot,
+    inventory: behindDshInventory,
+  })
+  const retained = await environmentForward.prepareImage(recordsFromImageInventory(behindDshInventory).deployment)
+  assert.equal(retained.target, experimental.id)
+  assert.equal(retained.requiresExperimentalRebuild, true)
+
+  const caughtUpContent = structuredClone(behindDshContent)
+  caughtUpContent.platformRevision = 'stable-caught-up'
+  caughtUpContent.deployment.dshVersion = '0.1.0-rc.3'
+  const caughtUpInventory = parseImageInventory({
+    ...caughtUpContent,
+    imageBuildId: deriveImageBuildId(caughtUpContent),
+  })
+  const caughtUpManager = new DeploymentManager({
+    paths: context.paths,
+    seedRoot: context.seedRoot,
+    inventory: caughtUpInventory,
+  })
+  const caughtUp = await caughtUpManager.prepareImage(recordsFromImageInventory(caughtUpInventory).deployment)
+  assert.equal(caughtUp.action, 'stable-caught-up')
+  assert.notEqual(caughtUp.target, experimental.id)
 })

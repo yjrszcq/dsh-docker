@@ -238,3 +238,38 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     'control:stop',
   ])
 })
+
+test('retries a previous Deployment without restarting the Control Plane', async () => {
+  const calls = []
+  let environmentStarts = 0
+  const controlPlane = {
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push('control:start') },
+    stop: async () => { calls.push('control:stop') },
+    status: () => ({ components: [] }),
+  }
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    start: async () => {
+      environmentStarts += 1
+      calls.push(`environment:start:${String(environmentStarts)}`)
+      if (environmentStarts === 1) throw new Error('candidate failed')
+    },
+    stop: async () => { calls.push('environment:stop') },
+    status: () => ({ environmentVersion: 'test', components: [] }),
+  }
+  const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
+  await runtime.start({
+    onEnvironmentFailure: async error => {
+      assert.match(error.message, /candidate failed/)
+      calls.push('deployment:restore')
+      return true
+    },
+  })
+  assert.deepEqual(calls, [
+    'control:start',
+    'environment:start:1',
+    'deployment:restore',
+    'environment:start:2',
+  ])
+})

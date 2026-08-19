@@ -17,7 +17,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
-await deployments.initialize(imageRecords.deployment)
+const imagePlan = await deployments.prepareImage(imageRecords.deployment)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -35,7 +35,14 @@ const environment = new EnvironmentRunner({
   capture,
 })
 const runtime = new BootstrapRuntime({ controlPlane, environment })
-await runtime.start()
+let imageCandidateHealthy = true
+await runtime.start({
+  onEnvironmentFailure: async () => {
+    imageCandidateHealthy = false
+    return deployments.rejectImage(imagePlan)
+  },
+})
+if (imageCandidateHealthy) await deployments.acceptImage(imagePlan)
 const server = createBootstrapControl(runtime)
 await listenBootstrapControl(server, paths.bootstrapSocket)
 process.send?.({ type: 'ready', bootstrapApi: 1 })

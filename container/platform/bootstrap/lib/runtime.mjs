@@ -5,13 +5,23 @@ export class BootstrapRuntime {
     this.fatal = Promise.race([controlPlane.fatal, environment.fatal])
   }
 
-  async start() {
+  async start({ onEnvironmentFailure } = {}) {
     await this.controlPlane.start()
     try {
       await this.environment.start()
     } catch (error) {
-      await this.controlPlane.stop().catch(() => {})
-      throw error
+      const retry = await onEnvironmentFailure?.(error)
+      if (retry === true) {
+        try {
+          await this.environment.start()
+        } catch (fallbackError) {
+          await this.controlPlane.stop().catch(() => {})
+          throw new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
+        }
+      } else {
+        await this.controlPlane.stop().catch(() => {})
+        throw error
+      }
     }
     return this.status()
   }
