@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { durableReplace } from '../../lib/atomic.mjs'
-import { compareDshVersions } from '../../lib/supported-target.mjs'
-import { isoTimestamp, plainObject, TrustError } from '../../lib/validation.mjs'
+import { durableReplace } from '../../../platform/lib/atomic.mjs'
+import { compareDshVersions } from '../../../platform/lib/supported-target.mjs'
+import { isoTimestamp, plainObject, TrustError } from '../../../platform/lib/validation.mjs'
 
 const DEFAULT_STATE = Object.freeze({
   schema: 1,

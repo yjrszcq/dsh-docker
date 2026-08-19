@@ -39,7 +39,7 @@ test('candidate validation is secret-free and exercises the complete current Env
   assert.match(workflow, /permissions:\n  contents: read/)
   assert.match(workflow, /supported-target\.mjs validate/)
   assert.match(workflow, /dist\.integrity/)
-  assert.match(workflow, /npm test --prefix container\/gateway/)
+  assert.match(workflow, /npm test --prefix container\/components\/gateway/)
   assert.match(workflow, /npm test --prefix container\/platform/)
   assert.match(workflow, /container-smoke\.sh/)
   assert.match(workflow, /devtools-smoke\.sh/)

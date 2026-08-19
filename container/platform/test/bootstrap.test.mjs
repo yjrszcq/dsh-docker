@@ -6,7 +6,7 @@ import test from 'node:test'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { EnvironmentRunner } from '../bootstrap/lib/lifecycle.mjs'
 import { createBootstrapControl, listenBootstrapControl } from '../bootstrap/lib/control.mjs'
-import { LocalApiClient } from '../updater/lib/client.mjs'
+import { LocalApiClient } from '../../components/updater/lib/client.mjs'
 
 function command(script, args = []) {
   return { executable: process.execPath, args: [script, ...args], timeoutSeconds: 5 }

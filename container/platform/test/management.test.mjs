@@ -4,12 +4,12 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { JsonlLogManager } from '../logging/manager.mjs'
+import { JsonlLogManager } from '../../components/log-manager/index.mjs'
 import { parseCli, resetTrust, runCli } from '../management/cli.mjs'
 import { createManagementServer, listenManagement } from '../management/server.mjs'
-import { LocalApiClient } from '../updater/lib/client.mjs'
-import { UpdateConflictError } from '../updater/lib/coordinator.mjs'
-import { UpdateScheduler } from '../updater/lib/scheduler.mjs'
+import { LocalApiClient } from '../../components/updater/lib/client.mjs'
+import { UpdateConflictError } from '../../components/updater/lib/coordinator.mjs'
+import { UpdateScheduler } from '../../components/updater/lib/scheduler.mjs'
 
 class Coordinator extends EventEmitter {
   constructor() {

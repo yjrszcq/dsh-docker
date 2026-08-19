@@ -30,7 +30,7 @@ const supervisor = new BootstrapSupervisor({
   dataRoot,
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
-  entrypoint: 'bootstrap/index.mjs',
+  entrypoint: 'platform/bootstrap/index.mjs',
 })
 const trustServer = createTrustServer({
   ledger,

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { canonicalJson } from '../../lib/canonical-json.mjs'
-import { TrustError } from '../../lib/validation.mjs'
+import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
+import { TrustError } from '../../../platform/lib/validation.mjs'
 
 function deploymentIdentity(deployment) {
   return {

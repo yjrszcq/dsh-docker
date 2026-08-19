@@ -1,33 +1,33 @@
 {
-  "version": "2026.08.19.3-dev",
+  "version": "2026.08.19.4-dev",
   "bootstrapApi": 1,
   "components": [
     {
       "id": "platform-recovery",
       "version": "1.0.0",
       "artifactId": "component-platform-recovery",
-      "source": "components/platform-recovery.json",
+      "source": "../../components/updater/recovery.component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "dsh-runtime",
       "version": "1.0.0",
       "artifactId": "component-dsh-runtime",
-      "source": "components/dsh-runtime.json",
+      "source": "../../components/dsh-runtime/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "platform-management",
       "version": "1.0.0",
       "artifactId": "component-platform-management",
-      "source": "components/platform-management.json",
+      "source": "../management/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     },
     {
       "id": "gateway",
       "version": "1.0.0",
       "artifactId": "component-gateway",
-      "source": "components/gateway.json",
+      "source": "../../components/gateway/component.json",
       "mediaType": "application/vnd.dsh-platform.component.v1+json"
     }
   ],
@@ -52,7 +52,7 @@
       "id": "update-ui",
       "version": "1.1.0",
       "artifactId": "system-plugin-update-ui",
-      "source": "../update-ui/package",
+      "source": "../../system-plugins/update-ui/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
     }
   ]

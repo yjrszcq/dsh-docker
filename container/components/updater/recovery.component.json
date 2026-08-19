@@ -5,7 +5,7 @@
   "type": "oneshot",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/data/bootstrap/current/updater/recovery.mjs"],
+    "args": ["/data/bootstrap/current/components/updater/recovery.mjs"],
     "timeoutSeconds": 120
   },
   "environment": {},

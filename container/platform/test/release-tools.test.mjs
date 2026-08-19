@@ -117,7 +117,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
   assert.equal(stable.desired.dsh.version, '0.1.0-rc.7')
-  assert.equal(stable.desired.environment.version, '2026.08.19.3-dev')
+  assert.equal(stable.desired.environment.version, '2026.08.19.4-dev')
   assert.equal(stable.experimentalPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
 

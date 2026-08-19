@@ -32,7 +32,7 @@ jobs:
 
       - name: Verify gateway and Compose configuration
         run: |
-          npm test --prefix container/gateway
+          npm test --prefix container/components/gateway
           npm test --prefix container/platform
           node container/test/compose-config.mjs
           sh -n container/test/container-smoke.sh

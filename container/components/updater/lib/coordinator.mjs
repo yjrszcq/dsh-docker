@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { recoverInterruptedUpdate } from './recovery.mjs'
 import { planDesiredState } from './channel-state.mjs'
-import { compareDshVersions } from '../../lib/supported-target.mjs'
+import { compareDshVersions } from '../../../platform/lib/supported-target.mjs'
 
 export class UpdateConflictError extends Error {}
 

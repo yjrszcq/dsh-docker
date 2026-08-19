@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { buildRuntime, RuntimeSlots, verifyNpmIntegrity } from '../runtime/builder.mjs'
+import { buildRuntime, RuntimeSlots, verifyNpmIntegrity } from '../../components/patch-manager/index.mjs'
 
 const containerRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 

@@ -8,6 +8,7 @@ import test from 'node:test'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
 
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+const containerRoot = dirname(platformRoot)
 const definition = join(platformRoot, 'environment', 'definition.json')
 const tool = join(platformRoot, 'tools', 'package-environment.mjs')
 
@@ -47,8 +48,13 @@ test('can emit flat Artifact URLs for GitHub Release assets', async () => {
 })
 
 test('checked-in Component manifests satisfy the public contract', async () => {
-  for (const name of ['gateway.json', 'dsh-runtime.json', 'platform-management.json', 'platform-recovery.json']) {
-    const bytes = await readFile(join(platformRoot, 'environment', 'components', name))
+  for (const path of [
+    join(containerRoot, 'components', 'gateway', 'component.json'),
+    join(containerRoot, 'components', 'dsh-runtime', 'component.json'),
+    join(platformRoot, 'management', 'component.json'),
+    join(containerRoot, 'components', 'updater', 'recovery.component.json'),
+  ]) {
+    const bytes = await readFile(path)
     assert.doesNotThrow(() => parseComponentManifest(bytes))
   }
 })

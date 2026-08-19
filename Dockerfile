@@ -48,10 +48,11 @@ RUN chmod 440 /etc/sudoers.d/dsh-sudo \
     && visudo -cf /etc/sudoers.d/dsh-sudo
 
 COPY --from=platform-seed /opt/dsh-platform-seed /opt/dsh-platform/seed
-COPY container/platform /opt/dsh-platform/runtime
+COPY container/platform /opt/dsh-platform/runtime/platform
+COPY container/components /opt/dsh-platform/runtime/components
 COPY container/platform/tools/dsh-shim.sh /usr/local/bin/dsh
 RUN chmod 755 /usr/local/bin/dsh \
-    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/node /opt/dsh-platform/runtime/platform/management/dsh-platform.mjs "$@"' > /usr/local/bin/dsh-platform \
     && chmod 755 /usr/local/bin/dsh-platform
 
 ENV DSH_HOME=/home/node/.dsh \
@@ -64,9 +65,6 @@ ENV DSH_HOME=/home/node/.dsh \
     DSH_LOG_RETENTION_DAYS=14 \
     DSH_ACTIVATION_TIMEOUT_SECONDS=60 \
     DSH_EXPERIMENTAL_PROBATION_SECONDS=120
-
-COPY --chown=node:node container/gateway/package.json container/gateway/index.mjs /opt/dsh-environment/components/gateway/
-COPY --chown=node:node container/gateway/lib /opt/dsh-environment/components/gateway/lib
 
 RUN mkdir -p /home/node/.dsh /workspace \
     && chown -R node:node /home/node/.dsh /workspace
@@ -119,4 +117,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD /usr/bin/curl --fail --silent --show-error http://127.0.0.1:3080/_dsh_gateway/health >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/local/bin/node", "/opt/dsh-platform/runtime/stage0/index.mjs"]
+CMD ["/usr/local/bin/node", "/opt/dsh-platform/runtime/platform/stage0/index.mjs"]

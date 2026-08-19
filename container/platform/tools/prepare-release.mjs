@@ -21,6 +21,7 @@ if (args.length !== 10) {
 
 const [targetArg, definitionArg, policyArg, trustArg, privateKeyArg, tarballArg, previousArg, sequenceArg, baseUrlArg, outputArg] = args
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+const containerRoot = dirname(platformRoot)
 const targetPath = resolve(targetArg)
 const definitionPath = resolve(definitionArg)
 const experimentalPolicy = parseExperimentalPolicy(JSON.parse(await readFile(resolve(policyArg), 'utf8')))
@@ -143,18 +144,20 @@ try {
   const bootstrapPath = join(staging, 'bootstrap.tgz')
   run('tar', [
     '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
-    '-czf', bootstrapPath, '-C', platformRoot, 'bootstrap', 'lib', 'logging', 'management', 'runtime', 'updater',
+    '-czf', bootstrapPath, '-C', containerRoot,
+    'platform/bootstrap', 'platform/lib', 'platform/management',
+    'components/log-manager', 'components/patch-manager', 'components/system-plugin-manager', 'components/updater',
   ], 'Bootstrap packaging')
   const bootstrapManifest = canonicalJson({
     schema: 1,
     manifestType: 'bootstrap',
-    version: '1.0.0',
+    version: '1.1.0',
     keyringGeneration: keyring.generation,
     targetSequence,
     issuedAt,
     artifacts: [await descriptor('bootstrap-package', bootstrapPath, 'application/gzip')],
     bootstrapApi: 1,
-    entrypoint: '/bootstrap/index.mjs',
+    entrypoint: '/platform/bootstrap/index.mjs',
   })
   parseBootstrapManifest(bootstrapManifest)
   await writeFile(join(staging, 'bootstrap.manifest.json'), bootstrapManifest, { flag: 'wx' })
@@ -176,7 +179,7 @@ try {
       ['dsh-tarball', dshDestination, 'application/vnd.npm.package+gzip'],
     ].map(([id, path, mediaType]) => ({ id, path, mediaType })),
     desired: {
-      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
+      bootstrap: { version: '1.1.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
       environment: { version: target.environment, manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: { version: target.latestSupportedDsh, tarballArtifactId: 'dsh-tarball', integrity: dshIntegrity },
     },

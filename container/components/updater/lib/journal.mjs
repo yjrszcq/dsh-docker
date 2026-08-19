@@ -1,7 +1,7 @@
 import { open, readFile, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { durableReplace } from '../../lib/atomic.mjs'
-import { exactKeys, isoTimestamp, plainObject, TrustError } from '../../lib/validation.mjs'
+import { durableReplace } from '../../../platform/lib/atomic.mjs'
+import { exactKeys, isoTimestamp, plainObject, TrustError } from '../../../platform/lib/validation.mjs'
 
 const PHASES = new Set([
   'planning', 'candidate-ready', 'suspended', 'snapshot-created', 'switched', 'probation',

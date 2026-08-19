@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseBootstrapManifest, parseEnvironmentManifest } from '../../lib/contracts.mjs'
+import { parseBootstrapManifest, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
 
 async function download(descriptor, destination, fetchImpl) {
   const response = await fetchImpl(descriptor.url)

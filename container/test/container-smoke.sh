@@ -70,11 +70,11 @@ loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matc
 [ "$loopback_patch_count" = 1 ]
 
 docker exec "$container" sh -c '
-  pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/stage0/index.mjs$" >/dev/null
-  pgrep -f "/data/bootstrap/versions/.*/bootstrap/index.mjs" >/dev/null
+  pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$" >/dev/null
+  pgrep -f "/data/bootstrap/versions/.*/platform/bootstrap/index.mjs" >/dev/null
   ps -eo args= | rg "package/lib/bin.js web --patch /data/system-plugins/current/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
-  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/management/index.mjs$" >/dev/null
-  pgrep -f "^/usr/local/bin/node /opt/dsh-environment/components/gateway/index.mjs$" >/dev/null
+  pgrep -f "^/usr/local/bin/node /data/bootstrap/current/platform/management/index.mjs$" >/dev/null
+  pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/components/gateway/index.mjs$" >/dev/null
   dsh-platform trust status | jq -e ".keyringGeneration == 1" >/dev/null
   dsh-platform status | jq -e ".trust.keyringGeneration == 1" >/dev/null
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
@@ -116,9 +116,9 @@ docker exec --user node "$container" curl --fail --silent --unix-socket /data/ru
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'
 import { readFile, readlink } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { LocalApiClient } from '/data/bootstrap/current/updater/lib/client.mjs'
-import { UpdateJournal } from '/data/bootstrap/current/updater/lib/journal.mjs'
-import { PersistentStateSnapshots } from '/data/bootstrap/current/updater/lib/snapshots.mjs'
+import { LocalApiClient } from '/data/bootstrap/current/components/updater/lib/client.mjs'
+import { UpdateJournal } from '/data/bootstrap/current/components/updater/lib/journal.mjs'
+import { PersistentStateSnapshots } from '/data/bootstrap/current/components/updater/lib/snapshots.mjs'
 
 const runtime = basename(await readlink('/data/runtime/current'))
 const environment = basename(await readlink('/data/environments/current'))

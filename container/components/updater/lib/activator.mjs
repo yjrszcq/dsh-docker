@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process'
 import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { buildRuntime, RuntimeSlots } from '../../runtime/builder.mjs'
-import { reconcileSystemPlugins } from '../../runtime/system-plugins.mjs'
-import { parseEnvironmentManifest } from '../../lib/contracts.mjs'
+import { buildRuntime, RuntimeSlots } from '../../patch-manager/index.mjs'
+import { reconcileSystemPlugins } from '../../system-plugin-manager/index.mjs'
+import { parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
 import { LocalApiClient } from './client.mjs'
 
 function run(command, args) {

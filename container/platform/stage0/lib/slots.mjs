@@ -101,7 +101,7 @@ export class BootstrapSlots {
     const temporary = `${destination}.${randomUUID()}.tmp`
     await mkdir(temporary, { recursive: true })
     try {
-      const allowed = new Set(['bootstrap', 'lib', 'logging', 'management', 'runtime', 'updater'])
+      const allowed = new Set(['platform', 'components'])
       const entries = (await tar(['-tzf', archive], true)).split('\n').filter(Boolean)
       if (entries.length === 0 || entries.some(name => (
         name.startsWith('/')
@@ -109,7 +109,7 @@ export class BootstrapSlots {
         || !allowed.has(name.split('/')[0])
       ))) throw new TrustError('Bootstrap archive contains an unsafe path')
       await tar(['-xzf', archive, '--no-same-owner', '--no-same-permissions', '-C', temporary])
-      await lstat(join(temporary, 'bootstrap', 'index.mjs'))
+      await lstat(join(temporary, 'platform', 'bootstrap', 'index.mjs'))
       await rename(temporary, destination)
       return destination
     } catch (error) {

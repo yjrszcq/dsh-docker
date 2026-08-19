@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "id": "gateway",
+  "id": "platform-management",
   "version": "1.0.0",
   "type": "service",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/opt/dsh-environment/components/gateway/index.mjs"],
+    "args": ["/data/bootstrap/current/platform/management/index.mjs"],
     "timeoutSeconds": 30
   },
   "environment": {},
@@ -18,15 +18,14 @@
     "postStop": null
   },
   "health": {
-    "type": "http",
-    "host": "127.0.0.1",
-    "port": 3080,
-    "path": "/_dsh_gateway/health",
-    "intervalSeconds": 2,
+    "type": "exec",
+    "command": {
+      "executable": "/usr/local/bin/dsh-platform",
+      "args": ["status"],
+      "timeoutSeconds": 5
+    },
+    "intervalSeconds": 1,
     "timeoutSeconds": 30
   },
-  "logging": {
-    "stdout": true,
-    "stderr": true
-  }
+  "logging": { "stdout": true, "stderr": true }
 }

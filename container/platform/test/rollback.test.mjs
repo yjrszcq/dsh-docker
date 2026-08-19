@@ -3,8 +3,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { UpdateJournal } from '../updater/lib/journal.mjs'
-import { CompleteStateRecovery } from '../updater/lib/rollback.mjs'
+import { UpdateJournal } from '../../components/updater/lib/journal.mjs'
+import { CompleteStateRecovery } from '../../components/updater/lib/rollback.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-complete-rollback-'))
