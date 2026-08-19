@@ -4,7 +4,7 @@ English | [中文](README_CN.md)
 
 An unofficial Docker image build repository for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a small gateway, exact-match patches for the directory picker's initial path and the browser's loopback classification, and their integration checks. No upstream server-side privileged-API code is patched.
+The image installs the official `@deepseek-ai/dsh` npm package at build time. Repository-owned container adaptations live in [`container/`](container/): a persistent control plane, exact-match patches for the directory picker's initial path and the browser's loopback classification, and their integration checks. No upstream server-side privileged-API code is patched.
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This image is not affiliated with DeepSeek AI.
 
@@ -163,12 +163,16 @@ Official DSH also classifies the browser from the public page hostname and disab
 tini
   └─ Stage-0
        └─ Bootstrap
-            ├─ dsh web              127.0.0.1:3079
-            ├─ platform management  Unix socket
-            └─ gateway              0.0.0.0:3080
+            ├─ Control Plane
+            │    ├─ management + Update Console  Unix socket
+            │    └─ gateway                      0.0.0.0:3080
+            └─ Environment
+                 └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
+The gateway validates the external `Host`, `Origin`, and Fetch Metadata and optionally requires one password. It sends the fixed `/_dsh_platform/ui/` and bounded management API routes to the persistent Management service; all other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
+
+The source tree follows the same lifecycle boundary. `container/control-plane/services/` contains the Gateway and Management processes supervised by Bootstrap. `container/control-plane/modules/` contains updater, logging, patch, and System Plugin logic imported by those services. `container/environment/` contains workloads that updates may suspend and replace. Environment reload therefore stops DSH without stopping Gateway, Management, or the Update Console.
 
 ## **Online updates and trust**
 
@@ -178,7 +182,7 @@ Stage-0 contains one offline Recovery Root public key. It first verifies a monot
 
 Stable metadata also delegates the official npm Registry origin, the exact `@deepseek-ai/dsh` package name, and accepted npm Registry signing keys. In Experimental mode, this dsh-docker instance queries npm directly. Stage-0 verifies the Registry signature over `name@version:integrity`, canonical tarball URL, version advancement, and downloaded SHA-512 before issuing an Experimental receipt. There is no per-version Experimental GitHub workflow or `experimental.json` publication.
 
-The UI checks every six hours with jitter but does not download or activate automatically. Use the Platform Update settings section or:
+Management checks every six hours with jitter but does not download or activate automatically. The Platform Update settings section opens the persistent Console at `/_dsh_platform/ui/`; after navigation, it remains available while DSH is suspended, replaced, health-checked, or rolled back. You can also use:
 
 ```bash
 docker exec deepseek-harness dsh-platform status

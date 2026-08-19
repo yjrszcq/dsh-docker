@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { request as httpRequest } from 'node:http'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -115,6 +115,18 @@ test('management serves only the fixed persistent Update Console assets', async 
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
+})
+
+test('Update Console script references only DOM IDs declared by its document', async () => {
+  const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
+  const html = await readFile(new URL('index.html', publicRoot), 'utf8')
+  const script = await readFile(new URL('app.js', publicRoot), 'utf8')
+  const ids = new Set([...html.matchAll(/\bid="([a-z0-9-]+)"/g)].map(match => match[1]))
+  const references = [...script.matchAll(/elements(?:\.([A-Za-z][A-Za-z0-9]*)|\[['"]([a-z0-9-]+)['"]\])/g)]
+    .map(match => match[1] ?? match[2])
+  assert.equal(references.length > 0, true)
+  for (const id of references) assert.equal(ids.has(id), true, `Console element ${id} is not declared`)
+  assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/)
 })
 
 test('CLI parser keeps rollback local and update wait behavior explicit', async () => {

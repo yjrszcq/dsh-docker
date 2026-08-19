@@ -4,7 +4,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的非官方 Docker 镜像构建仓库。
 
-镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：一个轻量 gateway、目录选择器初始路径和浏览器 loopback 判定的精确匹配补丁，以及对应的集成检查。镜像不修改上游服务端特权 API 代码。
+镜像构建时安装官方 `@deepseek-ai/dsh` npm 包。本仓库维护的容器适配集中在 [`container/`](container/)：常驻控制平面、目录选择器初始路径和浏览器 loopback 判定的精确匹配补丁，以及对应的集成检查。镜像不修改上游服务端特权 API 代码。
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本镜像不隶属于 DeepSeek AI。
 
@@ -163,12 +163,16 @@ ports:
 tini
   └─ Stage-0
        └─ Bootstrap
-            ├─ dsh web       127.0.0.1:3079
-            ├─ 平台管理服务   Unix socket
-            └─ gateway       0.0.0.0:3080
+            ├─ Control Plane
+            │    ├─ management + Update Console  Unix socket
+            │    └─ gateway                      0.0.0.0:3080
+            └─ Environment
+                 └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一密码，再将 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
+gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需验证单一密码。固定的 `/_dsh_platform/ui/` 和受限管理 API 路由会转发给常驻 Management 服务；其余 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
+
+源码目录使用同一生命周期边界：`container/control-plane/services/` 保存由 Bootstrap 监督的 Gateway 和 Management 进程；`container/control-plane/modules/` 保存由这些服务导入的更新、日志、补丁和 System Plugin 逻辑；`container/environment/` 只保存更新时可能暂停和替换的工作负载。因此，Environment 重载会停止 DSH，但不会停止 Gateway、Management 或 Update Console。
 
 ## **在线更新与信任体系**
 
@@ -178,7 +182,7 @@ Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、
 
 Stable 元数据还会委托官方 npm Registry 地址、精确的 `@deepseek-ai/dsh` 包名和允许的 npm Registry 签名公钥。选择 Experimental 后，由当前 dsh-docker 实例直接查询 npm。Stage-0 验证 `name@version:integrity` 的 Registry 签名、规范 tarball URL、版本递增关系和下载内容的 SHA-512，再签发 Experimental receipt。系统不会为每个实验版本运行 GitHub 发布工作流，也不存在 `experimental.json` 发布通道。
 
-系统每六小时带抖动检查一次，但不会自动下载或激活。可以使用设置中的“平台更新”页，或执行：
+Management 每六小时带抖动检查一次，但不会自动下载或激活。设置中的“平台更新”入口会打开常驻 Console `/_dsh_platform/ui/`；进入后，即使 DSH 正在暂停、替换、健康检查或回滚，该页面仍可使用。也可以执行：
 
 ```bash
 docker exec deepseek-harness dsh-platform status

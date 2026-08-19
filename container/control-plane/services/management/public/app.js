@@ -78,14 +78,14 @@ function render(next) {
   setText('probation', next.probation?.until)
   setText('snapshot', rollbackPlan?.snapshot?.createdAt)
   setText('keyring', next.trust?.keyringGeneration)
-  elements.checkedAt.textContent = update.checkedAt ? `上次检查 ${update.checkedAt}` : '尚未检查'
-  elements.updateStatus.textContent = display(update.status)
-  elements.updateResult.textContent = display(update.error ?? update.outcome)
+  elements['checked-at'].textContent = update.checkedAt ? `上次检查 ${update.checkedAt}` : '尚未检查'
+  elements['update-status'].textContent = display(update.status)
+  elements['update-result'].textContent = display(update.error ?? update.outcome)
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
-  elements.progressBar.style.width = `${String(progress)}%`
-  elements.progressValue.value = `${String(progress)}%`
-  elements.progressValue.textContent = `${String(progress)}%`
-  elements.progressBar.parentElement.setAttribute('aria-valuenow', String(progress))
+  elements['progress-bar'].style.width = `${String(progress)}%`
+  elements['progress-value'].value = `${String(progress)}%`
+  elements['progress-value'].textContent = `${String(progress)}%`
+  elements['progress-bar'].parentElement.setAttribute('aria-valuenow', String(progress))
   elements.update.textContent = next.updateChannel === 'experimental' ? '更新到最新上游版本' : '更新到最新支持版本'
   for (const button of channelButtons) {
     button.setAttribute('aria-pressed', String(button.dataset.channel === next.updateChannel))
