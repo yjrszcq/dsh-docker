@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -73,4 +73,41 @@ test('retains historical keyrings so an accepted target remains verifiable after
   const rotatedTarget = document(target(2, 8))
   await ledger.acceptTarget(rotatedTarget, signature(rotatedTarget, second))
   assert.equal((await ledger.currentTarget()).value.keyId, second.keyId)
+})
+
+test('serializes concurrent target acceptance in call order', async () => {
+  const { ledger, recovery } = await fixture()
+  const current = keyPair()
+  const next = keyPair()
+  const ring = document(keyring(1, current, next))
+  await ledger.acceptKeyring(ring, signature(ring, recovery))
+  const first = document(target(1, 1))
+  const second = document(target(1, 2))
+  await Promise.all([
+    ledger.acceptTarget(first, signature(first, current)),
+    ledger.acceptTarget(second, signature(second, current)),
+  ])
+  assert.equal((await ledger.currentTarget()).value.targetSequence, 2)
+})
+
+test('does not overwrite a conflicting historical generation after interrupted promotion', async () => {
+  const { ledger, recovery } = await fixture()
+  const first = keyPair()
+  const second = keyPair()
+  const third = keyPair()
+  const initial = document(keyring(1, first, second))
+  await ledger.acceptKeyring(initial, signature(initial, recovery))
+  const rotated = document(keyring(2, second, third, [first.keyId]))
+  await ledger.acceptKeyring(rotated, signature(rotated, recovery))
+  const rotatedRecord = await readFile(ledger.keyringPath('current.record.json'))
+  const initialRecord = await readFile(ledger.keyringPath('generations/1.record.json'))
+  await writeFile(ledger.keyringPath('current.record.json'), initialRecord)
+
+  const replacement = keyPair()
+  const conflicting = document(keyring(2, second, replacement, [first.keyId, third.keyId]))
+  await assert.rejects(
+    ledger.acceptKeyring(conflicting, signature(conflicting, recovery)),
+    /history conflicts/,
+  )
+  assert.deepEqual(await readFile(ledger.keyringPath('generations/2.record.json')), rotatedRecord)
 })

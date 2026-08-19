@@ -1,6 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from './keyring.mjs'
 import { parseReleaseTarget, validateTargetTransition, verifyReleaseTarget } from './target.mjs'
@@ -12,13 +12,6 @@ async function readOptional(path) {
     if (error?.code === 'ENOENT') return undefined
     throw error
   }
-}
-
-async function atomicWrite(path, bytes) {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.tmp`
-  await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 })
-  await rename(temporary, path)
 }
 
 function signedRecord(document, signature) {
@@ -55,6 +48,13 @@ export class TrustLedger {
   constructor(root, recoveryPublicKey) {
     this.root = root
     this.recoveryPublicKey = recoveryPublicKey
+    this.queue = Promise.resolve()
+  }
+
+  exclusive(operation) {
+    const result = this.queue.then(operation, operation)
+    this.queue = result.then(() => undefined, () => undefined)
+    return result
   }
 
   keyringPath(name) {
@@ -88,7 +88,11 @@ export class TrustLedger {
     return record
   }
 
-  async acceptKeyring(bytes, signature) {
+  acceptKeyring(bytes, signature) {
+    return this.exclusive(() => this.acceptKeyringUnlocked(bytes, signature))
+  }
+
+  async acceptKeyringUnlocked(bytes, signature) {
     const next = verifyRecoveryKeyring(bytes, signature, this.recoveryPublicKey)
     const current = await this.currentKeyring()
     if (current !== undefined) {
@@ -101,8 +105,14 @@ export class TrustLedger {
       validateKeyringTransition(current.value, next)
     }
     const record = signedRecord(bytes, signature)
-    await atomicWrite(this.keyringPath(join('generations', `${String(next.generation)}.record.json`)), record)
-    await atomicWrite(this.keyringPath('current.record.json'), record)
+    const generationPath = this.keyringPath(join('generations', `${String(next.generation)}.record.json`))
+    const existingGeneration = await readOptional(generationPath)
+    if (existingGeneration === undefined) {
+      await durableCreate(generationPath, record)
+    } else if (!this.parseKeyringRecord(existingGeneration).bytes.equals(bytes)) {
+      throw new TrustError('keyring generation history conflicts with the proposed content')
+    }
+    await durableReplace(this.keyringPath('current.record.json'), record)
     return next
   }
 
@@ -117,14 +127,18 @@ export class TrustLedger {
     return { bytes: document, signature, value: verifyReleaseTarget(document, signature, trustedKeyring) }
   }
 
-  async acceptTarget(bytes, signature) {
+  acceptTarget(bytes, signature) {
+    return this.exclusive(() => this.acceptTargetUnlocked(bytes, signature))
+  }
+
+  async acceptTargetUnlocked(bytes, signature) {
     const keyring = (await this.currentKeyring())?.value
     if (keyring === undefined) throw new TrustError('a keyring must be accepted before a release target')
     const next = verifyReleaseTarget(bytes, signature, keyring)
     const current = await this.currentTarget(keyring)
     if (current !== undefined) validateTargetTransition(current.bytes, current.value, bytes, next)
     if (current?.bytes.equals(bytes)) return current.value
-    await atomicWrite(this.targetPath('current.record.json'), signedRecord(bytes, signature))
+    await durableReplace(this.targetPath('current.record.json'), signedRecord(bytes, signature))
     return next
   }
 }

@@ -1,9 +1,10 @@
-import { constants, createReadStream } from 'node:fs'
-import { chmod, link, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { link, mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
+import { durableReplace } from '../../lib/atomic.mjs'
 import { exactKeys, isoTimestamp, parseJsonDocument, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
 import { verifyDetached } from './signature.mjs'
 
@@ -90,23 +91,21 @@ function descriptorById(artifacts, artifactId) {
 }
 
 async function atomicJson(path, value) {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, `${JSON.stringify(value)}\n`, { flag: 'wx', mode: 0o600 })
-    await rename(temporary, path)
-  } catch (error) {
-    await rm(temporary, { force: true })
-    throw error
-  }
+  await durableReplace(path, `${JSON.stringify(value)}\n`)
 }
 
 async function hashFile(path) {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
   const hash = createHash('sha256')
   let size = 0
-  for await (const chunk of createReadStream(path)) {
-    hash.update(chunk)
-    size += chunk.byteLength
+  try {
+    if (!(await handle.stat()).isFile()) throw new TrustError('trusted object must be a regular file')
+    for await (const chunk of handle.createReadStream({ autoClose: false })) {
+      hash.update(chunk)
+      size += chunk.byteLength
+    }
+  } finally {
+    await handle.close()
   }
   return { sha256: hash.digest('hex'), size }
 }
@@ -296,7 +295,6 @@ export class VerifiedObjectStore {
         }
         await rm(temporary, { force: true })
       }
-      await chmod(destination, 0o400)
       const receipt = {
         token: receiptToken(),
         artifactId: authority.descriptor.id,
