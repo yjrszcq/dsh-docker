@@ -8,11 +8,19 @@ import { spawn } from 'node:child_process'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
 
-const [definitionArg, outputArg, generationArg = '1', sequenceArg = '1', baseUrlArg = 'https://github.com/yjrszcq/dsh-docker/releases/download/env-dev'] = process.argv.slice(2)
+const [
+  definitionArg,
+  outputArg,
+  generationArg = '1',
+  sequenceArg = '1',
+  baseUrlArg = 'https://github.com/yjrszcq/dsh-docker/releases/download/env-dev',
+  layoutArg = 'nested',
+] = process.argv.slice(2)
 if (definitionArg === undefined || outputArg === undefined) {
-  console.error('usage: package-environment.mjs <definition.json> <output-directory> [keyring-generation] [target-sequence] [artifact-base-url]')
+  console.error('usage: package-environment.mjs <definition.json> <output-directory> [keyring-generation] [target-sequence] [artifact-base-url] [nested|flat]')
   process.exit(64)
 }
+if (!['nested', 'flat'].includes(layoutArg)) throw new Error('Artifact URL layout must be nested or flat')
 
 const definitionPath = resolve(definitionArg)
 const definitionRoot = dirname(definitionPath)
@@ -80,7 +88,7 @@ for (const group of groups) {
       mediaType: item.mediaType,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       size: bytes.byteLength,
-      url: new URL(`artifacts/${name}`, baseUrl).href,
+      url: new URL(layoutArg === 'flat' ? name : `artifacts/${name}`, baseUrl).href,
     })
     references[group].push({ id: item.id, version: item.version, artifactId: item.artifactId })
   }

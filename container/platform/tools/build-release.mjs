@@ -28,12 +28,19 @@ for (const artifact of config.artifacts) {
     url: new URL(basename(artifact.path), config.artifactBaseUrl).href,
   })
 }
+let issuedAt
+if (process.env.SOURCE_DATE_EPOCH === undefined) issuedAt = new Date().toISOString()
+else {
+  const sourceDateEpoch = Number(process.env.SOURCE_DATE_EPOCH)
+  if (!Number.isSafeInteger(sourceDateEpoch) || sourceDateEpoch < 0) throw new Error('SOURCE_DATE_EPOCH must be a non-negative safe integer')
+  issuedAt = new Date(sourceDateEpoch * 1000).toISOString()
+}
 const stable = canonicalJson({
   schema: 1,
   updateApi: 1,
   keyringGeneration: config.keyringGeneration,
   targetSequence: config.targetSequence,
-  issuedAt: new Date().toISOString(),
+  issuedAt,
   artifacts,
   desired: config.desired,
 })

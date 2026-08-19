@@ -32,6 +32,18 @@ test('packages the initial Environment deterministically from real resources', a
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
 })
 
+test('can emit flat Artifact URLs for GitHub Release assets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-environment-flat-'))
+  const output = join(root, 'output')
+  const result = spawnSync(process.execPath, [
+    tool, definition, output, '1', '1', 'https://release.example/platform-1/', 'flat',
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const manifest = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
+  assert.equal(manifest.artifacts.every(artifact => artifact.url.startsWith('https://release.example/platform-1/')), true)
+  assert.equal(manifest.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+})
+
 test('checked-in Component manifests satisfy the public contract', async () => {
   for (const name of ['gateway.json', 'dsh-runtime.json', 'platform-management.json']) {
     const bytes = await readFile(join(platformRoot, 'environment', 'components', name))

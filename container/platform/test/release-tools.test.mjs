@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
-import { parseStable } from '../lib/contracts.mjs'
+import { parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 
 function pair(root, name) {
@@ -72,4 +72,62 @@ test('release tool signs an exact supported target with the configured current k
   const stable = await readFile(join(output, 'stable.json'))
   assert.equal(parseStable(stable).targetSequence, 2)
   verifyDetached(stable, JSON.parse(await readFile(join(output, 'stable.sig.json'))), publicDer.toString('base64'))
+})
+
+test('prepares one flat Recovery-rooted release from the reviewed Supported Target', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-prepare-release-'))
+  const recovery = await pair(root, 'recovery')
+  const current = await pair(root, 'current')
+  const next = await pair(root, 'next')
+  const trust = join(root, 'trust')
+  let result = spawnSync(process.execPath, [
+    new URL('../tools/keyring.mjs', import.meta.url).pathname,
+    recovery.privatePath, current.publicPath, next.publicPath, '1', trust, '-',
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+
+  const packageRoot = join(root, 'npm', 'package')
+  await mkdir(packageRoot, { recursive: true })
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.7' }))
+  const tarball = join(root, 'deepseek-ai-dsh-0.1.0-rc.7.tgz')
+  result = spawnSync('tar', ['-czf', tarball, '-C', join(root, 'npm'), 'package'], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+
+  const output = join(root, 'release')
+  result = spawnSync(process.execPath, [
+    new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
+    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    new URL('../environment/definition.json', import.meta.url).pathname,
+    trust, current.privatePath, tarball, '-', '1', 'https://release.example/platform-1/', output,
+  ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
+  assert.equal(result.status, 0, result.stderr)
+
+  const files = await readdir(output)
+  for (const name of [
+    'bootstrap.tgz', 'bootstrap.manifest.json', 'bootstrap.manifest.sig.json',
+    'environment.manifest.json', 'environment.manifest.sig.json',
+    'stable.json', 'stable.sig.json', 'keyring.json', 'keyring.sig.json',
+    'deepseek-ai-dsh-0.1.0-rc.7.tgz',
+  ]) assert.ok(files.includes(name), `${name} is missing`)
+  assert.equal(files.some(name => name.startsWith('.')), false)
+
+  const stableBytes = await readFile(join(output, 'stable.json'))
+  const stable = parseStable(stableBytes)
+  const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
+  verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
+  assert.equal(stable.desired.dsh.version, '0.1.0-rc.7')
+  assert.equal(stable.desired.environment.version, '2026.08.19.1-dev')
+  assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+
+  const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
+  assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+  const rollbackOutput = join(root, 'rollback-release')
+  result = spawnSync(process.execPath, [
+    new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
+    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    new URL('../environment/definition.json', import.meta.url).pathname,
+    trust, current.privatePath, tarball, join(output, 'stable.json'), '1',
+    'https://release.example/platform-1-repeat/', rollbackOutput,
+  ], { encoding: 'utf8' })
+  assert.notEqual(result.status, 0)
 })
