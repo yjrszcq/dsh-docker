@@ -25,6 +25,7 @@ docker run -d \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
+  -v dsh-platform-data:/data \
   -v "$(pwd)/data:/home/node/.dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
@@ -48,8 +49,12 @@ services:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
     volumes:
+      - dsh-platform-data:/data
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
+
+volumes:
+  dsh-platform-data:
 ```
 
 ### **使用说明**
@@ -72,7 +77,7 @@ cp .env.example .env
 
 #### **权限说明**
 
-容器以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
+Stage-0 以 root 运行，Bootstrap 和 Environment 组件以 `node` 用户（UID/GID `1000:1000`）运行。如果 bind mount 无法访问，请修正目录的所有权或权限，例如：
 
 ```bash
 sudo chown -R 1000:1000 data workspace
@@ -127,6 +132,11 @@ ports:
 | `DSH_PROXY_USERNAME` | 空 | 可选的 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_PASSWORD` | 空 | 可选的单一 gateway 密码；留空即禁用 gateway 密码认证 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码；仅接受 `true` 或 `false` |
+| `DSH_UPDATE_METADATA_URL` | 项目 Release 地址 | 签名更新元数据根地址 |
+| `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | 后台检查间隔；检查不会自动下载或激活 |
+| `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
+| `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
+| `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | 更新激活健康检查期限 |
 
 `DSH_TRUSTED_HOSTS` 的语义如下：
 
@@ -139,7 +149,7 @@ ports:
 
 ### **Workspace 行为**
 
-`DSH_DEFAULT_WORKSPACE` 只影响网页目录选择器未收到显式路径时显示的初始位置，它不是文件系统沙箱。用户仍可选择容器内 `node` 用户有权访问的其他路径。gateway 会在启动前验证该变量；值无效时以状态码 64 退出。
+`DSH_DEFAULT_WORKSPACE` 只影响网页目录选择器未收到显式路径时显示的初始位置，它不是文件系统沙箱。用户仍可选择容器内 `node` 用户有权访问的其他路径。DSH 在 Environment 组件启动时验证访问权限。
 
 这是镜像对上游编译产物保留的精确匹配补丁之一。补丁必须精确匹配一次，因此遇到不兼容的上游版本时，镜像构建会明确失败，而不会静默修改错误位置。
 
@@ -151,11 +161,34 @@ ports:
 
 ```text
 tini
-  └─ gateway        0.0.0.0:3080
-       └─ dsh web   127.0.0.1:3079
+  └─ Stage-0
+       └─ Bootstrap
+            ├─ dsh web       127.0.0.1:3079
+            ├─ 平台管理服务   Unix socket
+            └─ gateway       0.0.0.0:3080
 ```
 
 gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一密码，再将 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
+
+## **在线更新与信任体系**
+
+平台状态保存在 `/data`；DSH 设置、会话和第三方插件仍保存在 `/home/node/.dsh`。两个 Volume 都必须保留。旧 Compose 部署执行下一次 `docker compose up -d` 时会新增平台 Volume，原 DSH Volume 原位复用。
+
+Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。下载内容先进入 `/data/downloads/untrusted`；Stage-0 验证签名父引用、SHA-256、大小和 Artifact ID 后才导入可信对象库并返回 receipt。Bootstrap 和 Updater 没有添加根公钥、修改 keyring 或自行签发 receipt 的接口。
+
+系统每六小时带抖动检查一次，但不会自动下载或激活。可以使用设置中的“平台更新”页，或执行：
+
+```bash
+docker exec deepseek-harness dsh-platform status
+docker exec deepseek-harness dsh-platform check
+docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform logs --source updater
+docker exec deepseek-harness dsh-platform rollback
+```
+
+`dsh` 是动态 shim，始终执行 current 可信 Runtime。紧急回滚只通过 CLI 提供。`dsh-platform trust status` 显示已接受的 generation。`dsh-platform trust reset` 只能在容器控制台使用：先停止服务，将其 platform-data Volume 挂到一个以 `dsh-platform` 为 entrypoint 的一次性容器，以交互式 TTY 执行 `trust reset` 并输入完整确认文本。该操作清除已接受的信任状态，但不会修改镜像内 Recovery Root。
+
+日常轮换或 Release Key 泄露时，使用离线 Recovery Key 签署 generation+1：将原 next 提升为 current、吊销旧 current，并放入新的 next。吊销集合只能累积。只有 Recovery Root 本身失陷或密码学算法迁移时，才需要换镜像或显式 trust reset。Recovery 私钥绝不能进入 GitHub secrets；CI 只接收已签好的公开 keyring bundle 和受保护的 current Release 私钥。
 
 ## **密码访问**
 
@@ -187,6 +220,8 @@ gateway 默认向 HTML 响应注入经过特性检测的 `crypto.randomUUID` pol
 docker build -t deepseek-harness:local .
 ```
 
+本地构建使用带明确标记的非生产信任 fixture。发布工作流会拒绝该 marker；只有通过受保护 secrets 注入离线 Recovery 签署的公开 trust bundle 后才允许推送镜像。
+
 构建指定的官方包版本：
 
 ```bash
@@ -203,6 +238,7 @@ docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtool
 
 ```bash
 npm test --prefix container/gateway
+npm test --prefix container/platform
 node container/test/compose-config.mjs
 ```
 

@@ -25,6 +25,7 @@ docker run -d \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
+  -v dsh-platform-data:/data \
   -v "$(pwd)/data:/home/node/.dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
@@ -48,8 +49,12 @@ services:
       DSH_PROXY_PASSWORD: "${DSH_PROXY_PASSWORD:-}"
       DSH_TRUSTED_HOSTS: "${DSH_TRUSTED_HOSTS:-}"
     volumes:
+      - dsh-platform-data:/data
       - ./data:/home/node/.dsh
       - ./workspace:/workspace
+
+volumes:
+  dsh-platform-data:
 ```
 
 ### **Usage notes**
@@ -72,7 +77,7 @@ Open <http://127.0.0.1:3080>. DSH data is stored in `./data`; `./workspace` is m
 
 #### **Permission notes**
 
-The container runs as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
+Stage-0 runs as root while Bootstrap and Environment components run as `node` (UID/GID `1000:1000`). If a bind mount is inaccessible, correct its ownership or permissions, for example:
 
 ```bash
 sudo chown -R 1000:1000 data workspace
@@ -127,6 +132,11 @@ The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an externa
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_PASSWORD` | Empty | Optional single gateway password; empty disables gateway authentication |
 | `DSH_PROXY_POLYFILL` | `true` | Inject a guarded `crypto.randomUUID` compatibility shim; `true` or `false` |
+| `DSH_UPDATE_METADATA_URL` | Project release URL | Signed update metadata base URL |
+| `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | Background check interval; checks do not download or activate |
+| `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
+| `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
+| `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | Update activation health deadline |
 
 `DSH_TRUSTED_HOSTS` has these semantics:
 
@@ -139,7 +149,7 @@ Values must not contain a scheme, path, credentials, or subdomain wildcard. For 
 
 ### **Workspace behavior**
 
-`DSH_DEFAULT_WORKSPACE` only changes the initial path shown when the web directory picker receives no explicit path. It is not a filesystem sandbox: users can select other paths that the container's `node` user can access. The gateway validates this variable before starting, and invalid values exit with status 64.
+`DSH_DEFAULT_WORKSPACE` only changes the initial path shown when the web directory picker receives no explicit path. It is not a filesystem sandbox: users can select other paths that the container's `node` user can access. DSH validates access while its Environment component starts.
 
 The image makes this behavior through an exact-match compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the image build instead of silently applying the wrong edit.
 
@@ -151,11 +161,34 @@ Official DSH also classifies the browser from the public page hostname and disab
 
 ```text
 tini
-  └─ gateway        0.0.0.0:3080
-       └─ dsh web   127.0.0.1:3079
+  └─ Stage-0
+       └─ Bootstrap
+            ├─ dsh web              127.0.0.1:3079
+            ├─ platform management  Unix socket
+            └─ gateway              0.0.0.0:3080
 ```
 
 The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optionally requires one password, and then proxies HTTP, SSE, and WebSocket traffic to DSH with loopback `Host`/`Origin` values. Consequently, every user admitted by the gateway receives the complete DSH feature set, including settings, credentials, and host-operation interfaces.
+
+## **Online updates and trust**
+
+Platform state lives in `/data`; DSH settings, sessions, and third-party plugins remain in `/home/node/.dsh`. Keep both volumes. Existing Compose deployments gain the new platform volume on the next `docker compose up -d`; the original DSH volume is reused in place.
+
+Stage-0 contains one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from that keyring's current Release Key. Downloads remain under `/data/downloads/untrusted` until Stage-0 verifies the signed parent reference, SHA-256, size, and Artifact ID and issues a receipt. Bootstrap and Updater have no API for adding a root key, editing keyrings, or minting receipts.
+
+The UI checks every six hours with jitter but does not download or activate automatically. Use the Platform Update settings section or:
+
+```bash
+docker exec deepseek-harness dsh-platform status
+docker exec deepseek-harness dsh-platform check
+docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform logs --source updater
+docker exec deepseek-harness dsh-platform rollback
+```
+
+`dsh` is a dynamic shim and always executes the current verified Runtime. Emergency rollback is CLI-only. `dsh-platform trust status` reports the accepted generation. `dsh-platform trust reset` is deliberately console-only: stop the service, mount its platform-data Volume into a one-shot image with `--entrypoint dsh-platform`, run `trust reset` from an interactive TTY, and type the exact confirmation. It clears accepted trust state but does not change the Recovery Root embedded in the image.
+
+For routine Release Key rotation or compromise, use the offline Recovery key to sign generation+1: promote the old `next` key to `current`, revoke the old current key, and install a new next key. Revocations are cumulative. Only Recovery Root compromise or a cryptographic algorithm migration requires a new image or explicit trust reset. Recovery private material must never be stored in GitHub secrets; CI receives only the signed public keyring bundle and the protected current Release private key.
 
 ## **Password access**
 
@@ -187,6 +220,8 @@ Injected HTML uses `Cache-Control: no-cache` and drops upstream validators that 
 docker build -t deepseek-harness:local .
 ```
 
+Local builds use a marked, non-production trust fixture. The release workflow refuses that marker and requires an offline Recovery-signed public trust bundle through protected secrets before it can push an image.
+
 Build a specific official package version:
 
 ```bash
@@ -203,6 +238,7 @@ Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
 npm test --prefix container/gateway
+npm test --prefix container/platform
 node container/test/compose-config.mjs
 ```
 
