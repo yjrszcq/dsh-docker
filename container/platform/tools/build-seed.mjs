@@ -5,13 +5,22 @@ import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { buildRuntime } from '../../control-plane/modules/patch-manager/index.mjs'
 
-const [installedArg, outputArg, version = 'seed'] = process.argv.slice(2)
+const [installedArg, outputArg] = process.argv.slice(2)
 if (installedArg === undefined || outputArg === undefined) {
-  console.error('usage: build-seed.mjs <installed-dsh-root> <output> [version]')
+  console.error('usage: build-seed.mjs <installed-dsh-root> <output>')
   process.exit(64)
 }
 const installed = resolve(installedArg)
 const output = resolve(outputArg)
+const packageMetadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'))
+if (
+  packageMetadata.name !== '@deepseek-ai/dsh'
+  || typeof packageMetadata.version !== 'string'
+  || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(packageMetadata.version)
+) {
+  throw new Error('installed DSH package metadata is invalid')
+}
+const version = packageMetadata.version
 const platformRoot = resolve(new URL('..', import.meta.url).pathname)
 const containerRoot = resolve(platformRoot, '..')
 await rm(output, { recursive: true, force: true })

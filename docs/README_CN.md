@@ -62,7 +62,7 @@ tini
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换或暂停 DSH 不会停止 Gateway、Management 或 Update Console。
+Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过版本槽链接直接使用镜像内的只读 seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换或暂停 DSH 不会停止 Gateway、Management 或 Update Console。
 
 源码目录使用同一边界：
 

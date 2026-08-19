@@ -10,11 +10,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim AS platform-seed
-ARG DSH_VERSION=latest
 COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
 RUN node /opt/dsh-platform-source/platform/tools/build-seed.mjs \
-      /opt/installed-dsh /opt/dsh-platform-seed "${DSH_VERSION}"
+      /opt/installed-dsh /opt/dsh-platform-seed
 
 FROM node:24-bookworm-slim AS runtime
 ARG PNPM_VERSION=11.7.0

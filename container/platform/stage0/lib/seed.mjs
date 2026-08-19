@@ -1,5 +1,6 @@
-import { lchown, lstat, mkdir, readFile, readlink, symlink } from 'node:fs/promises'
+import { lchown, lstat, mkdir, readFile, readlink, rename, stat, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 async function exists(path) {
   return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
@@ -13,20 +14,34 @@ function validSeedId(value, label) {
 }
 
 async function seedLink(source, destination) {
-  if (await exists(destination)) return undefined
   const target = resolve(source)
   const details = await lstat(target)
   if (!details.isDirectory() || details.isSymbolicLink()) throw new Error(`seed source is not a directory: ${target}`)
   await mkdir(dirname(destination), { recursive: true })
-  await symlink(target, destination, 'dir')
+  if (await exists(destination)) {
+    const destinationDetails = await lstat(destination)
+    if (!destinationDetails.isSymbolicLink() || await resolves(destination)) return undefined
+  }
+  await replaceLink(destination, target)
   return destination
 }
 
 async function seedSlot(source, root, version) {
   const seeded = await seedLink(source, join(root, 'versions', version))
   await mkdir(root, { recursive: true })
-  if (!await exists(join(root, 'current'))) await symlink(join('versions', version), join(root, 'current'))
+  const current = join(root, 'current')
+  if (!await exists(current) || !await resolves(current)) await replaceLink(current, join('versions', version))
   return seeded
+}
+
+async function resolves(path) {
+  return stat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+}
+
+async function replaceLink(path, target) {
+  const temporary = `${path}.${randomUUID()}.tmp`
+  await symlink(target, temporary, 'dir')
+  await rename(temporary, path)
 }
 
 export async function provisionPlatformSeed(seedRoot, dataRoot) {

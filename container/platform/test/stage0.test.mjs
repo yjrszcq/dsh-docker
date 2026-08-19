@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { lstat, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
@@ -34,6 +34,21 @@ test('provisions a seed once and atomically tracks current and previous', async 
   assert.deepEqual(await slots.state(), { current: '2.0.0', previous: '1.0.0' })
   await slots.rollback()
   assert.deepEqual(await slots.state(), { current: '1.0.0', previous: '2.0.0' })
+})
+
+test('repairs a Bootstrap seed link which points into a replaced image', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-replaced-image-'))
+  const seeds = join(root, 'seeds')
+  await bootstrap(seeds, '2.0.0', 'next')
+  const slots = new BootstrapSlots(join(root, 'data'))
+  await mkdir(join(root, 'data/versions'), { recursive: true })
+  await symlink('/missing-old-image/bootstrap', slots.versionPath('1.0.0'))
+  await symlink('versions/1.0.0', join(root, 'data/current'))
+
+  await slots.provisionSeed(join(seeds, '2.0.0'), '2.0.0')
+
+  assert.equal(await readlink(slots.versionPath('2.0.0')), join(seeds, '2.0.0'))
+  assert.deepEqual(await slots.state(), { current: '2.0.0', previous: undefined })
 })
 
 test('rolls back when the current Bootstrap exits before readiness', async () => {

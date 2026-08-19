@@ -1,4 +1,4 @@
-import { lstat, mkdir, readlink, rename, rm, symlink } from 'node:fs/promises'
+import { lstat, mkdir, readlink, rename, rm, stat, symlink } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -60,12 +60,25 @@ export class BootstrapSlots {
       throw new TrustError('Bootstrap seed source must be a directory')
     }
     try {
-      await lstat(destination)
+      const details = await lstat(destination)
+      if (details.isSymbolicLink()) {
+        const resolved = await stat(destination).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+        if (!resolved) {
+          const temporary = `${destination}.${randomUUID()}.tmp`
+          await symlink(source, temporary, 'dir')
+          await rename(temporary, destination)
+        }
+      }
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
       await symlink(source, destination, 'dir')
     }
-    if ((await optionalLink(join(this.root, 'current'))) === undefined) {
+    const currentPath = join(this.root, 'current')
+    const current = await optionalLink(currentPath)
+    const currentResolves = current === undefined
+      ? false
+      : await stat(currentPath).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+    if (!currentResolves) {
       await replaceLink(this.root, 'current', version)
     }
     return destination

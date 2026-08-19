@@ -74,6 +74,27 @@ test('preserves an existing materialized version instead of replacing it with an
   assert.equal(await readFile(join(data, 'runtime/versions/runtime-one/sentinel'), 'utf8'), 'materialized')
 })
 
+test('repairs broken image entries and current slots after an image replacement', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-replaced-image-'))
+  const seed = join(root, 'seed')
+  const data = join(root, 'data')
+  for (const [group, version] of [['environment', 'env-one'], ['runtime', 'runtime-one']]) {
+    await mkdir(join(seed, group, version), { recursive: true })
+    await writeFile(join(seed, group, 'VERSION'), `${version}\n`)
+  }
+  await mkdir(join(seed, 'pristine/runtime-one'), { recursive: true })
+  await mkdir(join(seed, 'system-plugins/env-one'), { recursive: true })
+  await mkdir(join(data, 'runtime/versions'), { recursive: true })
+  await symlink('/missing-old-image/runtime-old', join(data, 'runtime/versions/runtime-old'))
+  await symlink('versions/runtime-old', join(data, 'runtime/current'))
+
+  await provisionPlatformSeed(seed, data)
+
+  assert.equal(await readlink(join(data, 'runtime/versions/runtime-one')), join(seed, 'runtime/runtime-one'))
+  assert.equal(await readlink(join(data, 'runtime/current')), 'versions/runtime-one')
+  assert.equal((await lstat(join(data, 'runtime/current'))).isSymbolicLink(), true)
+})
+
 test('rejects seed IDs that could escape their image roots', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-platform-invalid-seed-'))
   const seed = join(root, 'seed')
@@ -89,6 +110,7 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   const installed = join(root, 'installed')
   const output = join(root, 'output')
   await mkdir(join(installed, 'lib'), { recursive: true })
+  await writeFile(join(installed, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.fixture' }))
   await writeFile(join(installed, 'lib/bin.js'), '#!/usr/bin/env node\n')
   const picker = join(installed, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(installed, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
@@ -99,9 +121,9 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   await mkdir(join(installed, 'node_modules/.bin'), { recursive: true })
   await symlink('../tool/bin.js', join(installed, 'node_modules/.bin/tool'))
 
-  await execute(process.execPath, [fileURLToPath(new URL('../tools/build-seed.mjs', import.meta.url)), installed, output, 'fixture'])
+  await execute(process.execPath, [fileURLToPath(new URL('../tools/build-seed.mjs', import.meta.url)), installed, output])
   const contracts = await import(pathToFileURL(join(output, 'bootstrap/1.0.0/platform/lib/contracts.mjs')).href)
   assert.equal(typeof contracts.parseStable, 'function')
-  assert.equal(await readlink(join(output, 'pristine/fixture/node_modules/.bin/tool')), '../tool/bin.js')
-  assert.equal(await readlink(join(output, 'runtime/fixture/package/node_modules/.bin/tool')), '../tool/bin.js')
+  assert.equal(await readlink(join(output, 'pristine/0.1.0-rc.fixture/node_modules/.bin/tool')), '../tool/bin.js')
+  assert.equal(await readlink(join(output, 'runtime/0.1.0-rc.fixture/package/node_modules/.bin/tool')), '../tool/bin.js')
 })

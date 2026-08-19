@@ -62,7 +62,7 @@ tini
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
+Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through version-slot links; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
 
 The source tree follows the same boundary:
 
