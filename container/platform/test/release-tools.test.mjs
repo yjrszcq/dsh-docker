@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -126,8 +126,54 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     new URL('../../../release/supported-target.json', import.meta.url).pathname,
     new URL('../environment/definition.json', import.meta.url).pathname,
-    trust, current.privatePath, tarball, join(output, 'stable.json'), '1',
+    trust, current.privatePath, tarball, output, '1',
     'https://release.example/platform-1-repeat/', rollbackOutput,
   ], { encoding: 'utf8' })
   assert.notEqual(result.status, 0)
+
+  const futureTrust = join(root, 'future-trust')
+  result = spawnSync(process.execPath, [
+    new URL('../tools/keyring.mjs', import.meta.url).pathname,
+    recovery.privatePath, current.publicPath, next.publicPath, '2', futureTrust, '-',
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const futureRelease = join(root, 'future-release')
+  await cp(output, futureRelease, { recursive: true })
+  await cp(join(futureTrust, 'keyring.json'), join(futureRelease, 'keyring.json'), { force: true })
+  await cp(join(futureTrust, 'keyring.sig.json'), join(futureRelease, 'keyring.sig.json'), { force: true })
+  const futureStable = JSON.parse(await readFile(join(futureRelease, 'stable.json'), 'utf8'))
+  futureStable.keyringGeneration = 2
+  await writeFile(join(futureRelease, 'stable.json'), JSON.stringify(futureStable))
+  await rm(join(futureRelease, 'stable.sig.json'))
+  result = spawnSync(process.execPath, [
+    new URL('../tools/sign.mjs', import.meta.url).pathname,
+    'sign', current.privatePath, join(futureRelease, 'stable.json'), join(futureRelease, 'stable.sig.json'),
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  result = spawnSync(process.execPath, [
+    new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
+    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    new URL('../environment/definition.json', import.meta.url).pathname,
+    trust, current.privatePath, tarball, futureRelease, '2',
+    'https://release.example/platform-2/', join(root, 'generation-rollback-release'),
+  ], { encoding: 'utf8' })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /keyring generation must not roll back/)
+
+  const conflictingTrust = join(root, 'conflicting-trust')
+  const conflictingNext = await pair(root, 'conflicting-next')
+  result = spawnSync(process.execPath, [
+    new URL('../tools/keyring.mjs', import.meta.url).pathname,
+    recovery.privatePath, current.publicPath, conflictingNext.publicPath, '1', conflictingTrust, '-',
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  result = spawnSync(process.execPath, [
+    new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
+    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    new URL('../environment/definition.json', import.meta.url).pathname,
+    conflictingTrust, current.privatePath, tarball, output, '2',
+    'https://release.example/platform-conflict/', join(root, 'conflicting-release'),
+  ], { encoding: 'utf8' })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /same keyring generation must be byte-identical/)
 })

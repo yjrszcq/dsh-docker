@@ -92,8 +92,6 @@ jobs:
           build-args: |
             DSH_VERSION=${{ steps.candidate.outputs.version }}
           tags: dsh-candidate:${{ github.run_id }}
-          cache-from: type=gha,scope=dsh-candidate
-          cache-to: type=gha,mode=max,scope=dsh-candidate
 
       - name: Run candidate container smoke checks
         run: container/test/container-smoke.sh "dsh-candidate:${{ github.run_id }}"
@@ -110,8 +108,6 @@ jobs:
             DSH_VERSION=${{ steps.candidate.outputs.version }}
             INSTALL_DEVTOOLS=true
           tags: dsh-candidate-devtools:${{ github.run_id }}
-          cache-from: type=gha,scope=dsh-candidate-devtools
-          cache-to: type=gha,mode=max,scope=dsh-candidate-devtools
 
       - name: Run candidate devtools smoke checks
         run: container/test/devtools-smoke.sh "dsh-candidate-devtools:${{ github.run_id }}"

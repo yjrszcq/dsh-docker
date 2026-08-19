@@ -10,12 +10,12 @@ import { canonicalJson } from '../lib/canonical-json.mjs'
 import { parseBootstrapManifest, parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
 import { validateSupportedTarget } from '../lib/supported-target.mjs'
 import { positiveSafeInteger } from '../lib/validation.mjs'
-import { verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
+import { validateKeyringTransition, verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 
 const args = process.argv.slice(2)
 if (args.length !== 9) {
-  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-stable.json|-> <target-sequence> <artifact-base-url> <output-dir>')
+  console.error('usage: prepare-release.mjs <supported-target.json> <environment-definition.json> <trust-dir> <current-release-private.pem> <dsh-tarball.tgz> <previous-release-dir|-> <target-sequence> <artifact-base-url> <output-dir>')
   process.exit(64)
 }
 
@@ -32,17 +32,39 @@ const artifactBaseUrl = new URL(baseUrlArg.endsWith('/') ? baseUrlArg : `${baseU
 if (artifactBaseUrl.protocol !== 'https:') throw new Error('Artifact base URL must use HTTPS')
 
 const target = validateSupportedTarget(await readFile(targetPath), await readFile(definitionPath))
-if (previousArg === '-') {
-  if (targetSequence !== 1) throw new Error('The first target sequence must be 1')
-} else {
-  const previous = parseStable(await readFile(resolve(previousArg)))
-  if (targetSequence <= previous.targetSequence) throw new Error('target sequence must increase')
-}
-
 const recoveryPublicKey = (await readFile(join(trustRoot, 'recovery-root.spki.base64'), 'utf8')).trim()
 const keyringBytes = await readFile(join(trustRoot, 'keyring.json'))
 const keyringSignatureBytes = await readFile(join(trustRoot, 'keyring.sig.json'))
 const keyring = verifyRecoveryKeyring(keyringBytes, JSON.parse(keyringSignatureBytes.toString('utf8')), recoveryPublicKey)
+let previousTarget
+if (previousArg === '-') {
+  if (targetSequence !== 1) throw new Error('The first target sequence must be 1')
+} else {
+  const previousRoot = resolve(previousArg)
+  const previousKeyringBytes = await readFile(join(previousRoot, 'keyring.json'))
+  const previousKeyring = verifyRecoveryKeyring(
+    previousKeyringBytes,
+    JSON.parse(await readFile(join(previousRoot, 'keyring.sig.json'), 'utf8')),
+    recoveryPublicKey,
+  )
+  const previousStableBytes = await readFile(join(previousRoot, 'stable.json'))
+  previousTarget = parseStable(previousStableBytes)
+  verifyDetached(
+    previousStableBytes,
+    JSON.parse(await readFile(join(previousRoot, 'stable.sig.json'), 'utf8')),
+    previousKeyring.current.publicKey,
+  )
+  if (previousTarget.keyringGeneration !== previousKeyring.generation) {
+    throw new Error('previous stable target does not match its keyring generation')
+  }
+  if (keyring.generation < previousTarget.keyringGeneration) {
+    throw new Error('keyring generation must not roll back from the previous stable target')
+  }
+  if (keyring.generation === previousKeyring.generation) {
+    if (!keyringBytes.equals(previousKeyringBytes)) throw new Error('same keyring generation must be byte-identical')
+  } else validateKeyringTransition(previousKeyring, keyring)
+  if (targetSequence <= previousTarget.targetSequence) throw new Error('target sequence must increase')
+}
 const privateKey = createPrivateKey(await readFile(privateKeyPath))
 if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Release private key must be Ed25519')
 const publicDer = createPublicKey(privateKey).export({ format: 'der', type: 'spki' })

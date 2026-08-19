@@ -68,6 +68,8 @@ test('production publication is protected, monotonic, and exclusively owns Relea
   assert.match(workflow, /--draft/)
   assert.match(workflow, /--draft=false/)
   assert.match(workflow, /--latest/)
+  assert.match(workflow, /--json isDraft/)
+  assert.match(workflow, /diff -u "\$RUNNER_TEMP\/local-assets"/)
   assert.doesNotMatch(workflow, /RECOVERY_PRIVATE|secrets: inherit/)
 })
 

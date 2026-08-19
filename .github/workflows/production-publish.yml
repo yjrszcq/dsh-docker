@@ -78,15 +78,18 @@ jobs:
             mkdir -p "$RUNNER_TEMP/previous-platform-release"
             gh release download "$latest_tag" \
               --pattern stable.json \
+              --pattern stable.sig.json \
+              --pattern keyring.json \
+              --pattern keyring.sig.json \
               --dir "$RUNNER_TEMP/previous-platform-release"
-            previous="$RUNNER_TEMP/previous-platform-release/stable.json"
+            previous="$RUNNER_TEMP/previous-platform-release"
           fi
           sequence="$(PREVIOUS_STABLE="$previous" node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises'
           import { parseStable } from './container/platform/lib/contracts.mjs'
           if (process.env.PREVIOUS_STABLE === '-') process.stdout.write('1')
           else {
-            const previous = parseStable(await readFile(process.env.PREVIOUS_STABLE))
+            const previous = parseStable(await readFile(`${process.env.PREVIOUS_STABLE}/stable.json`))
             if (previous.targetSequence === Number.MAX_SAFE_INTEGER) throw new Error('target sequence is exhausted')
             process.stdout.write(String(previous.targetSequence + 1))
           }
@@ -155,8 +158,19 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "DSH Platform ${TARGET_SEQUENCE}" \
               --notes-file "$notes"
+          else
+            is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+            test "$is_draft" = true
+            gh release edit "$tag" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "DSH Platform ${TARGET_SEQUENCE}" \
+              --notes-file "$notes"
           fi
           gh release upload "$tag" "$RUNNER_TEMP/platform-release"/* --clobber
+          find "$RUNNER_TEMP/platform-release" -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-assets"
+          gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-assets"
+          diff -u "$RUNNER_TEMP/local-assets" "$RUNNER_TEMP/remote-assets"
           gh release edit "$tag" \
             --draft=false \
             --latest \

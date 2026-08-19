@@ -199,7 +199,7 @@ jobs:
       title: DSH upstream release discovered
       message: >-
         DSH ${{ needs.discover.outputs.current }} -> ${{ needs.discover.outputs.upstream }}.
-        Environment ${{ needs.discover.outputs.environment }} remains unchanged.
+        Candidate Environment: ${{ needs.discover.outputs.environment }}.
         Candidate PR: ${{ needs.discover.outputs.pull_request_url }}
       priority: 6
     secrets:
