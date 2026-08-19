@@ -1,0 +1,136 @@
+name: DSH Upstream Update
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: dsh-upstream-update
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_BRANCH: automation/dsh-upstream-candidate
+  DSH_PACKAGE: "@deepseek-ai/dsh"
+  SUPPORTED_TARGET: release/supported-target.json
+  ENVIRONMENT_DEFINITION: container/platform/environment/definition.json
+
+jobs:
+  discover:
+    name: Discover and propose upstream DSH
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      changed: ${{ steps.candidate.outputs.changed }}
+      current: ${{ steps.candidate.outputs.current }}
+      upstream: ${{ steps.candidate.outputs.upstream }}
+      environment: ${{ steps.candidate.outputs.environment }}
+      pull-request-url: ${{ steps.propose.outputs.pull-request-url }}
+
+    steps:
+      - name: Checkout protected branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Resolve latest official DSH
+        id: upstream
+        run: |
+          npm view "${DSH_PACKAGE}@latest" version --json > "$RUNNER_TEMP/dsh-version.json"
+          version="$(jq -er 'if type == "string" then . else error("expected one version") end' "$RUNNER_TEMP/dsh-version.json")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Advance candidate Supported Target
+        id: candidate
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          current="$(jq -er '.latestSupportedDsh' "$SUPPORTED_TARGET")"
+          result="$(node container/platform/tools/supported-target.mjs advance \
+            "$SUPPORTED_TARGET" "$ENVIRONMENT_DEFINITION" "$UPSTREAM_VERSION")"
+          changed="$(jq -er '.changed' <<<"$result")"
+          environment="$(jq -er '.target.environment' <<<"$result")"
+          printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
+          printf 'current=%s\n' "$current" >> "$GITHUB_OUTPUT"
+          printf 'upstream=%s\n' "$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          printf 'environment=%s\n' "$environment" >> "$GITHUB_OUTPUT"
+          {
+            printf '### DSH upstream discovery\n\n'
+            printf -- '- Latest Supported: `%s`\n' "$current"
+            printf -- '- Latest Official: `%s`\n' "$UPSTREAM_VERSION"
+            printf -- '- Environment: `%s`\n' "$environment"
+            printf -- '- Candidate required: `%s`\n' "$changed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create or update candidate pull request
+        id: propose
+        if: steps.candidate.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_VERSION: ${{ steps.candidate.outputs.current }}
+          UPSTREAM_VERSION: ${{ steps.candidate.outputs.upstream }}
+          ENVIRONMENT_VERSION: ${{ steps.candidate.outputs.environment }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$CANDIDATE_BRANCH"
+          git add -- "$SUPPORTED_TARGET"
+          git commit -m "chore(dsh): validate ${UPSTREAM_VERSION}"
+
+          if git ls-remote --exit-code --heads origin "$CANDIDATE_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+          fi
+          git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+
+          body="$RUNNER_TEMP/dsh-candidate-pr.md"
+          {
+            printf '## DSH candidate validation\n\n'
+            printf '| State | Version |\n|---|---|\n'
+            printf '| Latest Supported | `%s` |\n' "$CURRENT_VERSION"
+            printf '| Latest Official candidate | `%s` |\n' "$UPSTREAM_VERSION"
+            printf '| Current Environment | `%s` |\n\n' "$ENVIRONMENT_VERSION"
+            printf 'This PR changes only the candidate Supported Target. Compatibility CI validates the new DSH with the current Environment. Merge remains the production publication gate.\n'
+          } > "$body"
+
+          pr_number="$(gh pr list --state open --head "$CANDIDATE_BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -z "$pr_number" ]; then
+            pr_url="$(gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$CANDIDATE_BRANCH" \
+              --title "chore(dsh): validate ${UPSTREAM_VERSION}" \
+              --body-file "$body")"
+            pr_number="$(gh pr view "$pr_url" --json number --jq .number)"
+          else
+            gh pr edit "$pr_number" \
+              --title "chore(dsh): validate ${UPSTREAM_VERSION}" \
+              --body-file "$body"
+            pr_url="$(gh pr view "$pr_number" --json url --jq .url)"
+          fi
+          printf 'pull-request-url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
+          printf 'Candidate PR: %s\n' "$pr_url" >> "$GITHUB_STEP_SUMMARY"
+
+  notify-discovered:
+    name: Notify upstream discovery
+    needs: discover
+    if: needs.discover.outputs.changed == 'true'
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    with:
+      title: DSH upstream release discovered
+      message: >-
+        DSH ${{ needs.discover.outputs.current }} -> ${{ needs.discover.outputs.upstream }}.
+        Environment ${{ needs.discover.outputs.environment }} remains unchanged.
+        Candidate PR: ${{ needs.discover.outputs.pull-request-url }}
+      priority: 6
+    secrets:
+      gotify_url: ${{ secrets.GOTIFY_URL }}
+      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
