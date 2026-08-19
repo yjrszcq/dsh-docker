@@ -61,8 +61,8 @@ await buildRuntime({
   versionsRoot: join(output, 'runtime'),
   runtimeId: version,
   patchPaths: [
-    resolve(containerRoot, 'resources/patches/directory-picker.mjs'),
-    resolve(containerRoot, 'resources/patches/browser-loopback.mjs'),
+    resolve(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
+    resolve(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
   ],
 })
 await writeFile(join(output, 'runtime', 'VERSION'), `${version}\n`)
@@ -70,12 +70,12 @@ await writeFile(join(output, 'runtime', 'VERSION'), `${version}\n`)
 const pluginRoot = join(output, 'system-plugins', environmentVersion)
 await mkdir(join(pluginRoot, 'packages', 'update-console-entry'), { recursive: true })
 await cp(
-  join(containerRoot, 'resources', 'system-plugins', 'update-console-entry', 'package'),
+  join(containerRoot, 'environment', 'resources', 'system-plugins', 'update-console-entry', 'package'),
   join(pluginRoot, 'packages', 'update-console-entry'),
   { recursive: true },
 )
 await cp(
-  join(containerRoot, 'resources', 'system-plugins', 'update-console-entry', 'package', 'cordis.patch.json'),
+  join(containerRoot, 'environment', 'resources', 'system-plugins', 'update-console-entry', 'package', 'cordis.patch.json'),
   join(pluginRoot, 'cordis.patch.yml'),
 )
 

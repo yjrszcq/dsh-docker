@@ -172,7 +172,7 @@ tini
 
 gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需验证单一密码。固定的 `/_dsh_platform/ui/` 和受限管理 API 路由会转发给常驻 Management 服务；其余 HTTP、SSE 和 WebSocket 请求以 loopback `Host`/`Origin` 转发给 DSH。因此，任何被 gateway 放行的用户都能使用完整 DSH 功能，包括设置、凭据和宿主机操作接口。
 
-源码目录使用同一生命周期边界：`container/control-plane/services/` 保存由 Bootstrap 监督的 Gateway 和 Management 进程，`container/control-plane/hooks/` 保存受监督的一次性恢复任务；`container/control-plane/modules/` 保存由它们导入的更新、日志、补丁和 System Plugin 逻辑；`container/environment/` 只保存更新时可能暂停和替换的工作负载，非进程类 Environment 输入统一位于 `container/resources/{patches,system-plugins}`。因此，Environment 重载会停止 DSH，但不会停止 Gateway、Management 或 Update Console。
+源码目录使用同一生命周期边界：`container/control-plane/services/` 保存由 Bootstrap 监督的 Gateway 和 Management 进程，`container/control-plane/hooks/` 保存受监督的一次性恢复任务；`container/control-plane/modules/` 保存由它们导入的更新、日志、补丁和 System Plugin 逻辑；完整的 Container Environment 源码统一位于 `container/environment/`，包括工作负载和 `resources/{patches,system-plugins}`。因此，Environment 重载会停止 DSH，但不会停止 Gateway、Management 或 Update Console。
 
 ## **在线更新与信任体系**
 
