@@ -137,6 +137,7 @@ The equivalent `docker run` option is `-p 127.0.0.1:3080:3080`. Apply an externa
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
 | `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | Update activation health deadline |
+| `DSH_EXPERIMENTAL_PROBATION_SECONDS` | `120` | Experimental Runtime observation period before commit |
 
 `DSH_TRUSTED_HOSTS` has these semantics:
 
@@ -174,7 +175,9 @@ The gateway validates the external `Host`, `Origin`, and Fetch Metadata, optiona
 
 Platform state lives in `/data`; DSH settings, sessions, and third-party plugins remain in `/home/node/.dsh`. Keep both volumes. Existing Compose deployments gain the new platform volume on the next `docker compose up -d`; the original DSH volume is reused in place.
 
-Stage-0 contains one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from that keyring's current Release Key. Downloads remain under `/data/downloads/untrusted` until Stage-0 verifies the signed parent reference, SHA-256, size, and Artifact ID and issues a receipt. Bootstrap and Updater have no API for adding a root key, editing keyrings, or minting receipts.
+Stage-0 contains one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from that keyring's current Release Key. Downloads remain under `/data/downloads/untrusted` until Stage-0 verifies their authority and imports them into the trusted object store. Bootstrap and Updater have no API for adding a root key, editing keyrings, submitting an arbitrary expected hash, or minting receipts.
+
+Stable metadata also delegates the official npm Registry origin, the exact `@deepseek-ai/dsh` package name, and accepted npm Registry signing keys. In Experimental mode, this dsh-docker instance queries npm directly. Stage-0 verifies the Registry signature over `name@version:integrity`, canonical tarball URL, version advancement, and downloaded SHA-512 before issuing an Experimental receipt. There is no per-version Experimental GitHub workflow or `experimental.json` publication.
 
 The UI checks every six hours with jitter but does not download or activate automatically. Use the Platform Update settings section or:
 
@@ -182,17 +185,24 @@ The UI checks every six hours with jitter but does not download or activate auto
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform channel experimental
+docker exec deepseek-harness dsh-platform retry
 docker exec deepseek-harness dsh-platform logs --source updater
 docker exec deepseek-harness dsh-platform rollback
+docker exec -it deepseek-harness dsh-platform return-stable
 ```
 
-`dsh` is a dynamic shim and always executes the current verified Runtime. Emergency rollback is CLI-only. `dsh-platform trust status` reports the accepted generation. `dsh-platform trust reset` is deliberately console-only: stop the service, mount its platform-data Volume into a one-shot image with `--entrypoint dsh-platform`, run `trust reset` from an interactive TTY, and type the exact confirmation. It clears accepted trust state but does not change the Recovery Root embedded in the image.
+Changing the channel only changes local desired state; it never downloads or activates by itself. Stable converges to the signed supported DSH and Environment. Experimental first converges the official Environment, then offers the newest verified upstream DSH. When the running DSH is ahead of Latest Supported, the complete Runtime/Environment combination is frozen until Stable catches up. Failed candidate builds create a version Hold; failed Runtime/Environment combinations create a combination Hold. `retry` clears the one active Hold or Blocked combination.
+
+Before an Experimental Runtime can touch real data, the updater stops `dsh-runtime` and creates a verified tar snapshot of the complete `/home/node/.dsh`. It then switches the Runtime, checks health, and observes the candidate for the configured probation period. Failure or an interrupted transaction restores Runtime, Environment, System Plugins, receipts, and snapshot before DSH restarts. `rollback` restores the retained previous complete state. `return-stable` is interactive, is available only with a verified pre-Experimental recovery point, and warns that data written after the displayed snapshot time will be lost.
+
+`dsh` is a dynamic shim and always executes the current verified Runtime. `dsh-platform trust status` reports the accepted generation. `dsh-platform trust reset` is deliberately console-only: stop the service, mount its platform-data Volume into a one-shot image with `--entrypoint dsh-platform`, run `trust reset` from an interactive TTY, and type the exact confirmation. It clears accepted trust state but does not change the Recovery Root embedded in the image.
 
 For routine Release Key rotation or compromise, use the offline Recovery key to sign generation+1: promote the old `next` key to `current`, revoke the old current key, and install a new next key. Revocations are cumulative. Only Recovery Root compromise or a cryptographic algorithm migration requires a new image or explicit trust reset. Recovery private material must never be stored in GitHub secrets; CI receives only the signed public keyring bundle and the protected current Release private key.
 
 ## **Release automation**
 
-`DSH Upstream Update` runs daily and on demand. It compares npm `latest` with [`release/supported-target.json`](release/supported-target.json), preserves the current Environment, and creates or updates one candidate PR. Candidate CI verifies npm integrity, applies the current Environment during the image build, runs both project suites, and executes the standard and devtools container smoke tests. These jobs have no Docker, Release, or Recovery credentials; a human merge remains the publication gate.
+`DSH Upstream Update` runs daily and on demand. It compares npm `latest` with [`release/supported-target.json`](release/supported-target.json), preserves the current Environment, and creates or updates one candidate PR for promotion into Latest Supported. It is not the Experimental client update path. Candidate CI verifies npm integrity, applies the current Environment during the image build, runs both project suites, and executes the standard and devtools container smoke tests. These jobs have no Docker, Release, or Recovery credentials; a human merge remains the publication gate.
 
 `Publish Latest Supported DSH` runs only from `main` after the Supported Target changes, or by an explicitly approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main`, with:
 

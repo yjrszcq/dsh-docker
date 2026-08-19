@@ -137,6 +137,7 @@ ports:
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
 | `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | 更新激活健康检查期限 |
+| `DSH_EXPERIMENTAL_PROBATION_SECONDS` | `120` | Experimental Runtime 提交前的观察期 |
 
 `DSH_TRUSTED_HOSTS` 的语义如下：
 
@@ -174,7 +175,9 @@ gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，按需验证单一�
 
 平台状态保存在 `/data`；DSH 设置、会话和第三方插件仍保存在 `/home/node/.dsh`。两个 Volume 都必须保留。旧 Compose 部署执行下一次 `docker compose up -d` 时会新增平台 Volume，原 DSH Volume 原位复用。
 
-Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。下载内容先进入 `/data/downloads/untrusted`；Stage-0 验证签名父引用、SHA-256、大小和 Artifact ID 后才导入可信对象库并返回 receipt。Bootstrap 和 Updater 没有添加根公钥、修改 keyring 或自行签发 receipt 的接口。
+Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。下载内容先进入 `/data/downloads/untrusted`；Stage-0 验证其授权关系后才导入可信对象库。Bootstrap 和 Updater 没有添加根公钥、修改 keyring、提交任意 expected hash 或自行签发 receipt 的接口。
+
+Stable 元数据还会委托官方 npm Registry 地址、精确的 `@deepseek-ai/dsh` 包名和允许的 npm Registry 签名公钥。选择 Experimental 后，由当前 dsh-docker 实例直接查询 npm。Stage-0 验证 `name@version:integrity` 的 Registry 签名、规范 tarball URL、版本递增关系和下载内容的 SHA-512，再签发 Experimental receipt。系统不会为每个实验版本运行 GitHub 发布工作流，也不存在 `experimental.json` 发布通道。
 
 系统每六小时带抖动检查一次，但不会自动下载或激活。可以使用设置中的“平台更新”页，或执行：
 
@@ -182,17 +185,24 @@ Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform channel experimental
+docker exec deepseek-harness dsh-platform retry
 docker exec deepseek-harness dsh-platform logs --source updater
 docker exec deepseek-harness dsh-platform rollback
+docker exec -it deepseek-harness dsh-platform return-stable
 ```
 
-`dsh` 是动态 shim，始终执行 current 可信 Runtime。紧急回滚只通过 CLI 提供。`dsh-platform trust status` 显示已接受的 generation。`dsh-platform trust reset` 只能在容器控制台使用：先停止服务，将其 platform-data Volume 挂到一个以 `dsh-platform` 为 entrypoint 的一次性容器，以交互式 TTY 执行 `trust reset` 并输入完整确认文本。该操作清除已接受的信任状态，但不会修改镜像内 Recovery Root。
+切换通道只修改本地 desired state，本身不会下载或激活。Stable 收敛到已签名的 Supported DSH 和 Environment；Experimental 会先收敛正式 Environment，再提供 Stage-0 已验证的最新上游 DSH。当前 DSH 领先 Latest Supported 时，完整 Runtime/Environment 组合会冻结，直到 Stable 追上。候选构建失败会生成版本 Hold，Runtime/Environment 组合失败会生成组合 Hold；`retry` 用于清除当前唯一的 Hold 或 Blocked 组合。
+
+Experimental Runtime 接触真实数据前，Updater 会停止 `dsh-runtime`，并为完整 `/home/node/.dsh` 创建经过校验的 tar 快照。随后才切换 Runtime、执行健康检查并进入观察期。失败或事务中断时，会在 DSH 重启前恢复 Runtime、Environment、System Plugin、receipt 和数据快照。`rollback` 恢复保留的 previous 完整状态。`return-stable` 只能交互执行，且仅在存在已验证的实验前恢复点时开放；确认界面会显示快照时间，并明确提示该时间之后的数据会丢失。
+
+`dsh` 是动态 shim，始终执行 current 可信 Runtime。`dsh-platform trust status` 显示已接受的 generation。`dsh-platform trust reset` 只能在容器控制台使用：先停止服务，将其 platform-data Volume 挂到一个以 `dsh-platform` 为 entrypoint 的一次性容器，以交互式 TTY 执行 `trust reset` 并输入完整确认文本。该操作清除已接受的信任状态，但不会修改镜像内 Recovery Root。
 
 日常轮换或 Release Key 泄露时，使用离线 Recovery Key 签署 generation+1：将原 next 提升为 current、吊销旧 current，并放入新的 next。吊销集合只能累积。只有 Recovery Root 本身失陷或密码学算法迁移时，才需要换镜像或显式 trust reset。Recovery 私钥绝不能进入 GitHub secrets；CI 只接收已签好的公开 keyring bundle 和受保护的 current Release 私钥。
 
 ## **发布自动化**
 
-`DSH Upstream Update` 每日及手动检查 npm `latest`，与 [`release/supported-target.json`](release/supported-target.json) 比较，在保持当前 Environment 不变的前提下创建或更新一个候选 PR。候选 CI 会验证 npm integrity，在镜像构建中应用当前 Environment，运行两套项目测试，并执行标准版与 devtools 容器 smoke。相关 job 不拥有 Docker、Release 或 Recovery 凭据；人工 Merge 始终是发布闸门。
+`DSH Upstream Update` 每日及手动检查 npm `latest`，与 [`release/supported-target.json`](release/supported-target.json) 比较，在保持当前 Environment 不变的前提下创建或更新一个用于晋升 Latest Supported 的候选 PR；它不是 Experimental 客户端更新链路。候选 CI 会验证 npm integrity，在镜像构建中应用当前 Environment，运行两套项目测试，并执行标准版与 devtools 容器 smoke。相关 job 不拥有 Docker、Release 或 Recovery 凭据；人工 Merge 始终是发布闸门。
 
 `Publish Latest Supported DSH` 只在 `main` 的 Supported Target 变更后运行，也可通过明确审批的手动任务触发。需要创建一个仅允许 `main` 部署的受保护 GitHub Environment：`production-release`，并配置：
 
