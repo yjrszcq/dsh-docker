@@ -30,9 +30,9 @@ jobs:
       current: ${{ steps.candidate.outputs.current }}
       upstream: ${{ steps.candidate.outputs.upstream }}
       environment: ${{ steps.candidate.outputs.environment }}
-      pull-request-url: ${{ steps.propose.outputs.pull-request-url }}
-      pull-request-number: ${{ steps.propose.outputs.pull-request-number }}
-      head-sha: ${{ steps.propose.outputs.head-sha }}
+      pull_request_url: ${{ steps.propose.outputs.pull_request_url }}
+      pull_request_number: ${{ steps.propose.outputs.pull_request_number }}
+      head_sha: ${{ steps.propose.outputs.head_sha }}
 
     steps:
       - name: Checkout protected branch
@@ -55,10 +55,31 @@ jobs:
       - name: Advance candidate Supported Target
         id: candidate
         env:
+          GH_TOKEN: ${{ github.token }}
           UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
         run: |
+          base_sha="$(git rev-parse HEAD)"
           current="$(jq -er '.latestSupportedDsh' "$SUPPORTED_TARGET")"
-          result="$(node container/platform/tools/supported-target.mjs advance \
+          trusted_platform="$RUNNER_TEMP/trusted-platform"
+          mkdir -p "$trusted_platform/tools"
+          cp -R container/platform/lib "$trusted_platform/lib"
+          cp container/platform/tools/supported-target.mjs "$trusted_platform/tools/supported-target.mjs"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          pr_number="$(gh pr list --state open --head "$CANDIDATE_BRANCH" --json number --jq '.[0].number // empty')"
+          replace_closed=false
+          if [ -n "$pr_number" ]; then
+            git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+            git switch --create "$CANDIDATE_BRANCH" --track "origin/$CANDIDATE_BRANCH"
+            git merge --no-edit "$base_sha"
+          else
+            if git ls-remote --exit-code --heads origin "$CANDIDATE_BRANCH" >/dev/null 2>&1; then
+              git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+              replace_closed=true
+            fi
+            git switch --create "$CANDIDATE_BRANCH" "$base_sha"
+          fi
+          result="$(node "$trusted_platform/tools/supported-target.mjs" advance \
             "$SUPPORTED_TARGET" "$ENVIRONMENT_DEFINITION" "$UPSTREAM_VERSION")"
           changed="$(jq -er '.changed' <<<"$result")"
           environment="$(jq -er '.target.environment' <<<"$result")"
@@ -66,6 +87,7 @@ jobs:
           printf 'current=%s\n' "$current" >> "$GITHUB_OUTPUT"
           printf 'upstream=%s\n' "$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           printf 'environment=%s\n' "$environment" >> "$GITHUB_OUTPUT"
+          printf 'replace_closed=%s\n' "$replace_closed" >> "$GITHUB_OUTPUT"
           {
             printf '### DSH upstream discovery\n\n'
             printf -- '- Latest Supported: `%s`\n' "$current"
@@ -83,16 +105,14 @@ jobs:
           UPSTREAM_VERSION: ${{ steps.candidate.outputs.upstream }}
           ENVIRONMENT_VERSION: ${{ steps.candidate.outputs.environment }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch --create "$CANDIDATE_BRANCH"
           git add -- "$SUPPORTED_TARGET"
           git commit -m "chore(dsh): validate ${UPSTREAM_VERSION}"
 
-          if git ls-remote --exit-code --heads origin "$CANDIDATE_BRANCH" >/dev/null 2>&1; then
-            git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+          if [ "${{ steps.candidate.outputs.replace_closed }}" = true ]; then
+            git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
           fi
-          git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
 
           body="$RUNNER_TEMP/dsh-candidate-pr.md"
           {
@@ -118,9 +138,9 @@ jobs:
               --body-file "$body"
             pr_url="$(gh pr view "$pr_number" --json url --jq .url)"
           fi
-          printf 'pull-request-url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
-          printf 'pull-request-number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
-          printf 'head-sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'pull_request_url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
+          printf 'pull_request_number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           printf 'Candidate PR: %s\n' "$pr_url" >> "$GITHUB_STEP_SUMMARY"
 
   validate-candidate:
@@ -131,7 +151,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/dsh-candidate-validation.yml
     with:
-      ref: ${{ needs.discover.outputs.head-sha }}
+      ref: ${{ needs.discover.outputs.head_sha }}
 
   report-validation:
     name: Report candidate validation
@@ -146,8 +166,8 @@ jobs:
       - name: Publish commit status and PR report
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ needs.discover.outputs.head-sha }}
-          PR_NUMBER: ${{ needs.discover.outputs.pull-request-number }}
+          HEAD_SHA: ${{ needs.discover.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.discover.outputs.pull_request_number }}
           VALIDATION_RESULT: ${{ needs.validate-candidate.result }}
           UPSTREAM_VERSION: ${{ needs.discover.outputs.upstream }}
           ENVIRONMENT_VERSION: ${{ needs.discover.outputs.environment }}
@@ -180,7 +200,7 @@ jobs:
       message: >-
         DSH ${{ needs.discover.outputs.current }} -> ${{ needs.discover.outputs.upstream }}.
         Environment ${{ needs.discover.outputs.environment }} remains unchanged.
-        Candidate PR: ${{ needs.discover.outputs.pull-request-url }}
+        Candidate PR: ${{ needs.discover.outputs.pull_request_url }}
       priority: 6
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
@@ -196,7 +216,7 @@ jobs:
       message: >-
         DSH ${{ needs.discover.outputs.upstream }} passed with Environment
         ${{ needs.discover.outputs.environment }}. Review and merge:
-        ${{ needs.discover.outputs.pull-request-url }}
+        ${{ needs.discover.outputs.pull_request_url }}
       priority: 7
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
