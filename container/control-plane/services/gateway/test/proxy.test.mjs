@@ -14,6 +14,9 @@ import {
   INTERNAL_AUTHORITY,
   upstreamRequestHeaders,
 } from '../lib/proxy.mjs'
+import { PlatformAccess } from '../lib/platform-access.mjs'
+
+const PLATFORM_ACCESS_ALLOWED = Object.freeze({ isAuthenticated: () => true })
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -224,6 +227,7 @@ test('bounded management and Console requests use the protected local socket ins
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     managementSocketPath: socketPath,
+    platformAccess: PLATFORM_ACCESS_ALLOWED,
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
@@ -334,6 +338,23 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
+  const unauthorized = netConnect(gatewayPort, '127.0.0.1')
+  await new Promise((resolve, reject) => {
+    unauthorized.once('connect', resolve)
+    unauthorized.once('error', reject)
+  })
+  unauthorized.write([
+    'GET /_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000/stream HTTP/1.1',
+    'Host: dsh.example',
+    'Origin: https://dsh.example',
+    'Connection: Upgrade',
+    'Upgrade: websocket',
+    '',
+    '',
+  ].join('\r\n'))
+  const unauthorizedResponse = await new Promise(resolve => unauthorized.once('data', data => resolve(data.toString())))
+  assert.match(unauthorizedResponse, /^HTTP\/1\.1 401 Unauthorized/)
+  unauthorized.destroy()
   const client = netConnect(gatewayPort, '127.0.0.1')
   try {
     await new Promise((resolve, reject) => {
@@ -402,9 +423,12 @@ test('only exact terminal WebSocket upgrades reach the Management Unix socket', 
   })
   const upstream = createServer((_incoming, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
+  const platformAccess = new PlatformAccess({ password: 'platform-secret' })
+  const platformSession = platformAccess.signIn('platform-secret')
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     managementSocketPath: socketPath,
+    platformAccess,
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
@@ -418,6 +442,7 @@ test('only exact terminal WebSocket upgrades reach the Management Unix socket', 
       'GET /_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000/stream HTTP/1.1',
       'Host: dsh.example',
       'Origin: https://dsh.example',
+      `Cookie: dsh_platform_session=${platformSession}`,
       'Connection: Upgrade',
       'Upgrade: websocket',
       'Sec-WebSocket-Key: dGVzdA==',

@@ -76,6 +76,7 @@ Common settings:
 | `DSH_TRUSTED_HOSTS` | Loopback only | Allowed browser-facing hosts |
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username |
 | `DSH_PROXY_PASSWORD` | Empty | HTTP Basic password; empty disables authentication |
+| `DSH_PLATFORM_PASSWORD` | Empty | Protects Platform Management when the gateway password is empty; empty uses temporary-key mode |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path |
 | `DSH_SUDO_ENABLED` | `true` | Compose-only passwordless sudo switch |
 
@@ -86,6 +87,12 @@ See the [complete configuration reference](docs/README.md#configuration) for all
 Open **Platform Management** in DSH settings or visit <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
 
 The standalone page remains available when DSH is down and includes User Plugin recovery and a container terminal.
+
+When the gateway password is empty, Platform Management uses its separate `DSH_PLATFORM_PASSWORD`. If that password is also empty, Platform Management stays locked until you create a temporary access key. The key expires after 10 minutes, and creating another immediately invalidates the previous key:
+
+```bash
+docker exec dsh-test dsh-platform access create
+```
 
 Useful commands:
 

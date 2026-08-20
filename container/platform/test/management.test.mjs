@@ -881,6 +881,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(pluginSource, /statusLoadRevision\.current \+= 1/)
   assert.match(pluginSource, /if \(statusLoad\.current !== undefined\) return statusLoad\.current/)
   assert.match(pluginSource, /while \(loadedRevision !== statusLoadRevision\.current\)/)
+  assert.match(pluginSource, /nextError\?\.statusCode === 401/)
+  assert.match(pluginSource, /href: '\/_dsh_platform\/auth\/\?next=\/_dsh_platform\/ui\/'/)
+  assert.match(pluginSource, /platformAuthRequired: '平台管理访问已锁定/)
+  assert.match(pluginSource, /platformAuthRequired: 'Platform Management is locked/)
   assert.match(script, /pluginRestartRequired: '需要重新启动 DSH'/)
   assert.match(script, /pluginRestartRequired: 'Restart DSH required'/)
   assert.match(script, /plugin\.description\?\.\[locale\]/)
@@ -944,6 +948,27 @@ test('CLI parser keeps rollback local and update wait behavior explicit', async 
     { method: 'POST', path: '/_dsh_platform/api/v1/rollback', body: { planId: 'plan-a' } },
   ])
   assert.match(output[0], /rollback-task/)
+})
+
+test('management CLI creates an ephemeral standalone console access key', async () => {
+  assert.deepEqual(parseCli(['access', 'create']), { command: 'access', operation: 'create' })
+  assert.throws(() => parseCli(['access']))
+  const calls = []
+  const output = []
+  assert.equal(await runCli({
+    argv: ['access', 'create'],
+    access: {
+      request: async (method, path) => {
+        calls.push([method, path])
+        return { key: 'dshp_example', expiresAt: '2026-08-21T00:10:00.000Z' }
+      },
+    },
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(calls, [['POST', '/v1/keys']])
+  assert.deepEqual(JSON.parse(output[0]), {
+    key: 'dshp_example', expiresAt: '2026-08-21T00:10:00.000Z',
+  })
 })
 
 test('update wait ignores a terminal state from an older task', async () => {

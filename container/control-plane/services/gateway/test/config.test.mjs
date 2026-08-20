@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import {
   loadConfig,
@@ -78,10 +81,24 @@ test('loadConfig owns only Gateway settings', async () => {
   })
   assert.equal(config.password, '')
   assert.equal(config.username, 'unused')
+  assert.equal(config.platformPassword, '')
   assert.equal(Object.hasOwn(config, 'workspace'), false)
   assert.equal(Object.hasOwn(config, 'telemetryDisabled'), false)
   await assert.rejects(() => loadConfig({
     DSH_PROXY_USERNAME: 'invalid:name',
     DSH_PROXY_PASSWORD: 'secret',
   }), UsageError)
+})
+
+test('loadConfig accepts exactly one platform password source', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-password-'))
+  const path = join(root, 'password')
+  await writeFile(path, 'secret from file\n')
+  assert.equal((await loadConfig({ DSH_PLATFORM_PASSWORD: 'direct' })).platformPassword, 'direct')
+  assert.equal((await loadConfig({ DSH_PLATFORM_PASSWORD_FILE: path })).platformPassword, 'secret from file')
+  await assert.rejects(loadConfig({
+    DSH_PLATFORM_PASSWORD: 'direct',
+    DSH_PLATFORM_PASSWORD_FILE: path,
+  }), UsageError)
+  await assert.rejects(loadConfig({ DSH_PLATFORM_PASSWORD_FILE: join(root, 'missing') }), UsageError)
 })

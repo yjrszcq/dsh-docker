@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { BASIC_AUTH_CHALLENGE, LoginRateLimiter } from '../lib/auth.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
 import { closeGatewayServer, createGatewayServer, HEALTH_PATH } from '../lib/proxy.mjs'
+import { PlatformAccess } from '../lib/platform-access.mjs'
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -162,6 +166,79 @@ test('password-protected WebSocket upgrades return an HTTP Basic challenge', asy
       client.destroy()
     }
   })
+})
+
+test('platform routes fail closed and accept a dedicated platform session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-auth-'))
+  const socketPath = join(root, 'management.sock')
+  const management = createServer((_incoming, response) => response.end('management'))
+  await new Promise((resolve, reject) => {
+    management.once('error', reject)
+    management.listen(socketPath, resolve)
+  })
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    managementSocketPath: socketPath,
+    platformAccess: new PlatformAccess({ password: 'platform secret' }),
+    upstreamPort: 1,
+  })
+  const port = await listen(gateway)
+  try {
+    const page = await request(port, {
+      path: '/_dsh_platform/ui/',
+      headers: { accept: 'text/html', host: '127.0.0.1' },
+    })
+    assert.equal(page.status, 303)
+    assert.match(page.headers.location, /^\/_dsh_platform\/auth\//)
+    assert.equal((await request(port, {
+      path: '/_dsh_platform/api/v1/status', headers: { host: '127.0.0.1' },
+    })).status, 401)
+
+    const login = await request(port, {
+      path: '/_dsh_platform/auth/session',
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
+      body: JSON.stringify({ credential: 'platform secret' }),
+    })
+    assert.equal(login.status, 200)
+    assert.match(login.headers['set-cookie'][0], /^dsh_platform_session=dshps_/)
+    assert.match(login.headers['set-cookie'][0], /HttpOnly; SameSite=Strict; Path=\/_dsh_platform\//)
+    const authenticated = await request(port, {
+      path: '/_dsh_platform/ui/',
+      headers: { cookie: login.headers['set-cookie'][0].split(';')[0], host: '127.0.0.1' },
+    })
+    assert.equal(authenticated.status, 200)
+    assert.equal(authenticated.body, 'management')
+  } finally {
+    await Promise.all([closeGatewayServer(gateway), close(management)])
+  }
+})
+
+test('Gateway Basic authentication replaces the dedicated platform session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-basic-'))
+  const socketPath = join(root, 'management.sock')
+  const management = createServer((_incoming, response) => response.end('management'))
+  await new Promise((resolve, reject) => {
+    management.once('error', reject)
+    management.listen(socketPath, resolve)
+  })
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    managementSocketPath: socketPath,
+    password: 'gateway secret',
+    upstreamPort: 1,
+  })
+  const port = await listen(gateway)
+  try {
+    const response = await request(port, {
+      path: '/_dsh_platform/api/v1/status',
+      headers: { authorization: authorization('ignored', 'gateway secret'), host: '127.0.0.1' },
+    })
+    assert.equal(response.status, 200)
+    assert.equal(response.body, 'management')
+  } finally {
+    await Promise.all([closeGatewayServer(gateway), close(management)])
+  }
 })
 
 test('login rate limiter resets windows and successful clients', () => {

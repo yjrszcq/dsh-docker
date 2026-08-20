@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access create|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -41,6 +41,9 @@ export function parseCli(argv) {
   }
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
+  }
+  if (command === 'access' && rest.length === 1 && rest[0] === 'create') {
+    return { command, operation: 'create' }
   }
   throw new Error(usage())
 }
@@ -110,6 +113,7 @@ export async function runCli({
   trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/run/dsh-platform/stage0-trust.sock'),
   reset = resetTrust,
   recovery = new LocalApiClient(process.env.DSH_PLATFORM_RECOVERY_SOCKET ?? '/run/dsh-platform/recovery.sock'),
+  access = new LocalApiClient(process.env.DSH_PLATFORM_GATEWAY_ACCESS_SOCKET ?? '/run/dsh-platform/gateway-access.sock'),
   recover = recoverImageBaseline,
   write = value => process.stdout.write(`${value}\n`),
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
@@ -117,6 +121,11 @@ export async function runCli({
   output = stdout,
 } = {}) {
   const parsed = parseCli(argv)
+  if (parsed.command === 'access') {
+    const value = await access.request('POST', '/v1/keys')
+    write(json(value))
+    return 0
+  }
   if (parsed.command === 'recover') {
     const value = await recover({ recovery, input, output })
     write(json(value))

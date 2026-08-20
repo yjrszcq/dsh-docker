@@ -27,6 +27,8 @@ This guide documents configuration, platform behavior, online updates, trust, re
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_PASSWORD` | Empty | Optional gateway password; empty disables authentication |
+| `DSH_PLATFORM_PASSWORD` | Empty | Platform Management password used when the gateway password is empty; empty selects temporary-key mode |
+| `DSH_PLATFORM_PASSWORD_FILE` | Empty | In-container password file path; mutually exclusive with `DSH_PLATFORM_PASSWORD` |
 | `DSH_PROXY_POLYFILL` | `true` | Inject the guarded `crypto.randomUUID` compatibility shim |
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
@@ -118,6 +120,16 @@ Official DSH classifies the browser from its public hostname and can disable Hos
 When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge. If `DSH_PROXY_USERNAME` is empty, Gateway ignores the submitted username and validates only the password. If both are set, both must match. A username cannot contain `:`.
 
 Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
+
+When `DSH_PROXY_PASSWORD` is empty, every external `/_dsh_platform/ui/*` route, management API, SSE stream, and terminal WebSocket is protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page, or point `DSH_PLATFORM_PASSWORD_FILE` at an in-container Docker Secret. The two settings are mutually exclusive. The DSH settings integration and standalone console share this session.
+
+When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
+
+```bash
+docker exec dsh-test dsh-platform access create
+```
+
+The command returns a random temporary key and expiry. It remains usable for 10 minutes; generating another produces a different key and immediately invalidates the prior key. A successful sign-in creates an HttpOnly, SameSite cookie scoped to `/_dsh_platform/`. Sessions expire after 30 minutes idle or eight hours total, and Gateway or container restart clears them. Neither temporary keys nor sessions are written to `/data/platform` or logs.
 
 ### Browser Compatibility
 

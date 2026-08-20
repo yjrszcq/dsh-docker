@@ -42,6 +42,7 @@ export class PlatformPaths {
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
+    this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
     this.recoverySocket = join(this.runRoot, 'recovery.sock')
   }
 }

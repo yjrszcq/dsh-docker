@@ -22,6 +22,7 @@ class FakeServer extends EventEmitter {
 
 const config = Object.freeze({
   password: '',
+  platformPassword: '',
   username: '',
   polyfill: true,
   trustedHosts: Object.freeze({ wildcard: false, authorities: Object.freeze([]) }),
@@ -30,12 +31,19 @@ const config = Object.freeze({
 test('gateway owns only its listener and forwards management socket configuration', async () => {
   const signalSource = new EventEmitter()
   const server = new FakeServer()
+  const accessServer = new FakeServer()
   let options
   const reports = []
   const running = runGateway(config, {
     externalHost: '127.0.0.1',
     externalPort: 8080,
     managementSocketPath: '/run/platform.sock',
+    gatewayAccessSocketPath: '/run/access.sock',
+    accessServerFactory: () => accessServer,
+    listenAccessServer: async (value, path) => {
+      value.listening = true
+      value.bound = path
+    },
     signalSource,
     report: (message, fields) => { reports.push({ message, fields }) },
     gatewayFactory: value => { options = value; return server },
@@ -43,10 +51,12 @@ test('gateway owns only its listener and forwards management socket configuratio
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(server.bound, { host: '127.0.0.1', port: 8080 })
   assert.equal(options.managementSocketPath, '/run/platform.sock')
+  assert.equal(accessServer.bound, '/run/access.sock')
   assert.equal(typeof options.platformStatus, 'function')
   signalSource.emit('SIGTERM')
   assert.equal(await running, 0)
   assert.equal(server.listening, false)
+  assert.equal(accessServer.listening, false)
   assert.deepEqual(reports.map(entry => entry.message), [
     'gateway.starting', 'gateway.ready', 'gateway.stopping', 'gateway.stopped',
   ])
@@ -55,10 +65,13 @@ test('gateway owns only its listener and forwards management socket configuratio
 
 test('gateway propagates listener failures without creating a DSH process', async () => {
   const server = new FakeServer()
+  const accessServer = new FakeServer()
   const reports = []
   server.listen = () => queueMicrotask(() => server.emit('error', new Error('bind failed')))
   await assert.rejects(runGateway(config, {
     gatewayFactory: () => server,
+    accessServerFactory: () => accessServer,
+    listenAccessServer: async () => {},
     signalSource: new EventEmitter(),
     report: (message, fields) => { reports.push({ message, fields }) },
   }), /bind failed/)

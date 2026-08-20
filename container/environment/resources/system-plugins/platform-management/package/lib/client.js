@@ -80,7 +80,11 @@ async function request(path, { method = 'GET', body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const value = await response.json()
-  if (!response.ok) throw new Error(value.error ?? `HTTP ${String(response.status)}`)
+  if (!response.ok) {
+    const error = new Error(value.error ?? `HTTP ${String(response.status)}`)
+    error.statusCode = response.status
+    throw error
+  }
   return value
 }
 
@@ -485,6 +489,7 @@ function PlatformManagement({ t }) {
   const [status, setStatus] = useState(null)
   const [plugins, setPlugins] = useState([])
   const [error, setError] = useState('')
+  const [authRequired, setAuthRequired] = useState(false)
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -509,9 +514,11 @@ function PlatformManagement({ t }) {
           setStatus(nextStatus)
           setPlugins(bundled.plugins ?? [])
           setError('')
+          setAuthRequired(false)
           setConnection('online')
         } catch (nextError) {
           setError(nextError instanceof Error ? nextError.message : String(nextError))
+          setAuthRequired(nextError?.statusCode === 401)
           setConnection('offline')
           value = undefined
         }
@@ -530,6 +537,7 @@ function PlatformManagement({ t }) {
       return true
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
+      setAuthRequired(nextError?.statusCode === 401)
       return false
     } finally {
       setActing(false)
@@ -672,6 +680,15 @@ function PlatformManagement({ t }) {
           h('span', { 'aria-hidden': 'true' }),
           t(connection))),
       h('p', { className: css.intro }, t('intro'))),
+
+    authRequired ? h('div', { className: css.authRequired, role: 'alert' },
+      h('span', null, t('platformAuthRequired')),
+      h('a', {
+        className: css.secondaryButton,
+        href: '/_dsh_platform/auth/?next=/_dsh_platform/ui/',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      }, t('platformSignIn'))) : null,
 
     h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
       ['updates', 'maintenance', 'plugins'].map(tab => h('button', {
@@ -832,6 +849,7 @@ export function apply(ctx) {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
       managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件',
+      platformAuthRequired: '平台管理访问已锁定，请先完成独立验证。', platformSignIn: '验证平台访问',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
@@ -853,6 +871,7 @@ export function apply(ctx) {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins',
+      platformAuthRequired: 'Platform Management is locked. Complete its separate sign-in first.', platformSignIn: 'Sign in to Platform Management',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',

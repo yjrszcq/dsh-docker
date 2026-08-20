@@ -6,6 +6,12 @@ import { join, resolve } from 'node:path'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
 import { BASIC_AUTH_CHALLENGE, createPasswordAccess } from './auth.mjs'
+import {
+  handlePlatformAuthRequest,
+  PLATFORM_AUTH_PREFIX,
+  PlatformAccess,
+  rejectPlatformAccess,
+} from './platform-access.mjs'
 import { availabilityPage, DshAvailability, probeDsh, stateMessage } from './availability.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
@@ -364,6 +370,7 @@ export function createGatewayServer({
   password = '',
   username = '',
   passwordAccess = createPasswordAccess(password, { username }),
+  platformAccess = new PlatformAccess(),
   report = async () => {},
   now = () => Date.now(),
   failureLogIntervalMs = 30_000,
@@ -393,7 +400,7 @@ export function createGatewayServer({
   }
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, systemPluginRoot, platformStatus,
-    availability, probe, isReady, passwordAccess, reportFailure, reportRecovered,
+    availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
   }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
@@ -418,6 +425,11 @@ export function createGatewayServer({
         return
       }
       if (options.passwordAccess.handleHttp(request, response)) return
+      if (pathname === PLATFORM_AUTH_PREFIX.slice(0, -1) || pathname.startsWith(PLATFORM_AUTH_PREFIX)) {
+        if (await handlePlatformAuthRequest(request, response, options.platformAccess, pathname, { report: record })) return
+        rejectHttp(response, 404, 'not found')
+        return
+      }
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (pathname === READINESS_PATH) {
         const ready = await options.probe()
@@ -430,6 +442,10 @@ export function createGatewayServer({
         return
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
+        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
+          rejectPlatformAccess(request, response)
+          return
+        }
         if (!isExternalConsoleRoute(request.method, pathname)) {
           rejectHttp(response, 404, 'not found')
           return
@@ -438,6 +454,10 @@ export function createGatewayServer({
         return
       }
       if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
+          rejectPlatformAccess(request, response)
+          return
+        }
         if (!isExternalManagementRoute(request.method, pathname)) {
           rejectHttp(response, 404, 'not found')
           return
@@ -464,6 +484,10 @@ export function createGatewayServer({
       }
       const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
       if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
+        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
+          rejectUpgrade(socket, 401, 'Unauthorized')
+          return
+        }
         upgradedSockets.add(socket)
         socket.once('close', () => upgradedSockets.delete(socket))
         proxyUpgrade(request, socket, head, { ...options, socketPath: options.managementSocketPath })
