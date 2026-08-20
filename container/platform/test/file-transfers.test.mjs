@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -48,6 +48,9 @@ test('uploads through sibling staging with reject, overwrite, and rename policie
   const renamed = await transfers.upload(Readable.from(['second']), path, { conflict: 'rename' })
   assert.equal(renamed.path, join(root, 'file (1).txt'))
   assert.equal(await readFile(renamed.path, 'utf8'), 'second')
+  await mkdir(join(root, 'directory'))
+  const directoryConflict = await transfers.upload(Readable.from(['safe']), join(root, 'directory'), { conflict: 'rename' })
+  assert.equal(directoryConflict.path, join(root, 'directory (1)'))
   const oldMode = (await stat(path)).mode & 0o777
   await transfers.upload(Readable.from(['replacement']), path, { conflict: 'overwrite' })
   assert.equal(await readFile(path, 'utf8'), 'replacement')

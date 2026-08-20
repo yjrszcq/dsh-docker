@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, lstat, readFile, readdir, readlink, realpath, stat } from 'node:fs/promises'
-import { basename, dirname, normalize, resolve, sep } from 'node:path'
+import { basename, dirname, normalize, resolve } from 'node:path'
 
 export const MAX_PATH_BYTES = 4096
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024
@@ -213,7 +213,6 @@ export class FileInventory {
 
   async content(value) {
     const path = normalizeAbsolutePath(value)
-    let handle
     try {
       const before = await stat(path, { bigint: true })
       if (!before.isFile()) throw new FileManagerError('path is not a regular file', 415, 'FILE_TYPE_UNSUPPORTED')
@@ -238,8 +237,6 @@ export class FileInventory {
       }
     } catch (error) {
       throw fileError(error)
-    } finally {
-      await handle?.close().catch(() => {})
     }
   }
 }
@@ -336,4 +333,4 @@ export class FileSearchManager {
   }
 }
 
-export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseLimit, MANAGED_ROOTS, sep })
+export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseLimit, MANAGED_ROOTS })

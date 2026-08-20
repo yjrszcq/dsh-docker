@@ -40,10 +40,10 @@ async function syncDirectory(path) {
   try { await handle.sync() } finally { await handle.close() }
 }
 
-async function existingMetadata(path) {
+async function existingMetadata(path, { requireFile = false } = {}) {
   try {
     const value = await stat(path, { bigint: true })
-    if (!value.isFile()) throw new FileManagerError('upload target is not a regular file', 415, 'FILE_TYPE_UNSUPPORTED')
+    if (requireFile && !value.isFile()) throw new FileManagerError('upload target is not a regular file', 415, 'FILE_TYPE_UNSUPPORTED')
     return value
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined
@@ -113,7 +113,7 @@ export class FileTransferManager {
     let handle
     let received = 0
     try {
-      const original = await existingMetadata(requestedPath)
+      const original = await existingMetadata(requestedPath, { requireFile: conflict === 'overwrite' })
       if (original !== undefined && conflict === 'reject') throw new FileManagerError('upload target already exists', 409, 'FILE_EXISTS')
       handle = await open(staging, 'wx', 0o600)
       for await (const chunk of input) {
