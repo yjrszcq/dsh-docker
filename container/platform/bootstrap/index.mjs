@@ -57,6 +57,13 @@ await linkSystemPluginScope({
   dshHome: process.env.DSH_HOME ?? '/data/dsh',
   viewRoot: join(paths.viewsRoot, 'system-plugins'),
 })
+const logs = new JsonlLogManager({
+  root: paths.logsRoot,
+  maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
+  retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
+  output: { stdout: process.stdout, stderr: process.stderr },
+})
+logs.on('error', error => console.error(error))
 const systemPluginSelections = new SystemPluginSelectionStore(join(paths.deploymentStateRoot, 'system-plugins.json'))
 const applySystemPluginSelection = async () => {
   const selected = await deployments.selected()
@@ -69,6 +76,9 @@ const applySystemPluginSelection = async () => {
   })
   await replaceSystemPluginView(paths, materialized.path)
   await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: materialized.path })
+  await logs.append('bootstrap', 'platform', 'system-plugin.view.applied', {
+    pluginCount: materialized.plugins.length,
+  })
   return materialized.plugins
 }
 const prepareSystemPluginSelection = async () => {
@@ -81,39 +91,50 @@ const prepareSystemPluginSelection = async () => {
     outputRoot: paths.systemPluginViewsRoot,
     selectionStore: systemPluginSelections,
   })
+  await logs.append('bootstrap', 'platform', 'system-plugin.view.prepared', {
+    pluginCount: materialized.plugins.length,
+  })
   return Object.freeze({
-    activate: () => replaceSystemPluginView(paths, materialized.path),
-    commit: () => pruneSystemPluginSelectionViews({
-      outputRoot: paths.systemPluginViewsRoot,
-      keepPath: materialized.path,
-    }),
+    activate: async () => {
+      await replaceSystemPluginView(paths, materialized.path)
+      await logs.append('bootstrap', 'platform', 'system-plugin.view.activated')
+    },
+    commit: async () => {
+      await pruneSystemPluginSelectionViews({
+        outputRoot: paths.systemPluginViewsRoot,
+        keepPath: materialized.path,
+      })
+      await logs.append('bootstrap', 'platform', 'system-plugin.view.committed')
+    },
     rollback: async () => {
       await replaceSystemPluginView(paths, previous)
       await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: previous })
+      await logs.append('bootstrap', 'platform', 'system-plugin.view.rolled-back', { level: 'warning' })
     },
   })
 }
-const logs = new JsonlLogManager({
-  root: paths.logsRoot,
-  maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
-  retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
-  output: { stdout: process.stdout, stderr: process.stderr },
-})
-logs.on('error', error => console.error(error))
 const capture = (child, source, declaration) => logs.capture(
   child,
   source,
   declaration,
   { acceptForwarded: source === 'platform-management' },
 )
+const reportLifecycle = (message, fields) => logs.append(
+  fields.componentId ?? 'bootstrap',
+  'platform',
+  message,
+  fields,
+)
 const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
   capture,
+  report: reportLifecycle,
 })
 const environment = new EnvironmentRunner({
   environmentRoot: join(paths.viewsRoot, 'environment'),
   capture,
+  report: reportLifecycle,
 })
 const runtime = new BootstrapRuntime({
   controlPlane,

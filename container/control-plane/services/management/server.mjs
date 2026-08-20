@@ -136,7 +136,9 @@ export function createManagementServer({
         async error => {
           const message = error instanceof Error ? error.message : 'System Plugin operation failed'
           publishPlugin({ status: 'failed', taskId, pluginId, action, error: message })
-          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, { error: message, taskId, pluginId }).catch(() => {})
+          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, {
+            error: message, level: 'error', taskId, pluginId,
+          }).catch(() => {})
         },
       )
       .finally(() => { pluginTask = undefined })
@@ -161,7 +163,7 @@ export function createManagementServer({
         async error => {
           const message = error instanceof Error ? error.message : 'DSH restart failed'
           publishRestart({ status: 'failed', taskId, error: message })
-          await logs.audit('dsh.restart.failed', { error: message, taskId }).catch(() => {})
+          await logs.audit('dsh.restart.failed', { error: message, level: 'error', taskId }).catch(() => {})
         },
       )
       .finally(() => { restartTask = undefined })
@@ -215,7 +217,7 @@ export function createManagementServer({
         void task.completion
           .then(
             () => logs.audit('update.completed', { taskId: task.taskId }),
-            error => logs.audit('update.failed', { error: error.message, taskId: task.taskId }),
+            error => logs.audit('update.failed', { error: error.message, level: 'error', taskId: task.taskId }),
           )
           .catch(() => {})
         await logs.audit('update.started', { taskId: task.taskId })
@@ -262,7 +264,7 @@ export function createManagementServer({
         })
         void task.completion
           .then(() => logs.audit(`${route}.completed`, { taskId: task.taskId }))
-          .catch(error => logs.audit(`${route}.failed`, { error: error.message, taskId: task.taskId }))
+          .catch(error => logs.audit(`${route}.failed`, { error: error.message, level: 'error', taskId: task.taskId }))
           .catch(() => {})
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && route === 'events') {

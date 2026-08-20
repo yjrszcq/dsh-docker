@@ -408,9 +408,10 @@ test('management discards unapplied System Plugin changes and clears restart sta
 
 test('management keeps the System Plugin restart marker when DSH restart fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-restart-failure-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
   const server = createManagementServer({
     coordinator: new Coordinator(),
-    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    logs,
     configureBundledPlugin: async () => {},
     restartDsh: async () => { throw new Error('restart failed') },
   })
@@ -436,6 +437,8 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
     }
     assert.equal(status.dshRestart.status, 'failed')
     assert.equal(status.systemPluginOperation.restartRequired, true)
+    await logs.queue
+    assert.equal((await logs.query({ sources: ['audit'] })).find(entry => entry.message === 'dsh.restart.failed').level, 'error')
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

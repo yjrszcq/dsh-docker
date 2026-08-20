@@ -135,16 +135,21 @@ export async function loadControlPlane(root) {
 }
 
 export class EnvironmentRunner {
-  constructor({ environmentRoot, spawnImpl = spawn, capture = defaultCapture, loader = loadEnvironment }) {
+  constructor({ environmentRoot, spawnImpl = spawn, capture = defaultCapture, loader = loadEnvironment, report = () => {} }) {
     this.environmentRoot = environmentRoot
     this.spawnImpl = spawnImpl
     this.capture = capture
     this.loader = loader
+    this.report = report
     this.running = []
     this.environment = undefined
     this.operation = Promise.resolve()
     this.stopping = false
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
+  }
+
+  emitLifecycle(message, fields = {}) {
+    void Promise.resolve(this.report(message, fields)).catch(() => {})
   }
 
   serialized(operation) {
@@ -191,46 +196,56 @@ export class EnvironmentRunner {
     if (this.running.some(running => running.component.id === component.id)) {
       throw new Error(`component ${component.id} is already running`)
     }
-    if (prepare) await this.phase(component, 'prepare')
-    await this.phase(component, 'preStart')
+    const startedAt = Date.now()
+    this.emitLifecycle('component.starting', { componentId: component.id, componentType: component.type })
     let running
-    if (component.type === 'service') {
-      const options = this.commandOptions(component)
-      const child = this.spawnImpl(component.command.executable, component.command.args, {
-        env: options.environment,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-      this.capture(child, component.id, component.logging)
-      await Promise.race([
-        once(child, 'spawn'),
-        once(child, 'error').then(([error]) => { throw error }),
-      ])
-      running = { component, child, ready: false }
-      child.once('exit', (code, signal) => {
-        if (running.ready && !this.stopping && this.running.includes(running)) {
-          this.resolveFatal(new Error(
-            `${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
-          ))
-        }
-      })
-    } else {
-      await runCommand(component.command, this.commandOptions(component))
-      running = { component, child: undefined }
-    }
-    this.running.push(running)
-    this.running.sort((left, right) => (
-      this.environment.components.indexOf(left.component) - this.environment.components.indexOf(right.component)
-    ))
     try {
+      if (prepare) await this.phase(component, 'prepare')
+      await this.phase(component, 'preStart')
+      if (component.type === 'service') {
+        const options = this.commandOptions(component)
+        const child = this.spawnImpl(component.command.executable, component.command.args, {
+          env: options.environment,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        this.capture(child, component.id, component.logging)
+        await Promise.race([
+          once(child, 'spawn'),
+          once(child, 'error').then(([error]) => { throw error }),
+        ])
+        running = { component, child, ready: false }
+        this.emitLifecycle('component.spawned', { componentId: component.id, pid: child.pid ?? null })
+        child.once('exit', (code, signal) => {
+          if (running.ready && !this.stopping && this.running.includes(running)) {
+            this.resolveFatal(new Error(
+              `${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
+            ))
+          }
+        })
+      } else {
+        await runCommand(component.command, this.commandOptions(component))
+        running = { component, child: undefined }
+      }
+      this.running.push(running)
+      this.running.sort((left, right) => (
+        this.environment.components.indexOf(left.component) - this.environment.components.indexOf(right.component)
+      ))
       await waitForHealth(component, running, this.commandOptions(component))
       await this.phase(component, 'postStart')
       if (running.child !== undefined && running.child.exitCode !== null) {
         throw new Error(`${component.id} exited before startup completed`)
       }
       running.ready = true
+      this.emitLifecycle('component.ready', { componentId: component.id, elapsedMs: Date.now() - startedAt })
       return running
     } catch (error) {
-      await this.stopComponentUnlocked(running).catch(() => {})
+      this.emitLifecycle('component.start.failed', {
+        componentId: component.id,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+        level: 'error',
+      })
+      if (running !== undefined) await this.stopComponentUnlocked(running).catch(() => {})
       throw error
     }
   }
@@ -238,6 +253,7 @@ export class EnvironmentRunner {
   async stopComponentUnlocked(running) {
     const { component, child } = running
     const failures = []
+    this.emitLifecycle('component.stopping', { componentId: component.id, pid: child?.pid ?? null })
     this.running = this.running.filter(value => value !== running)
     for (const phase of ['preStop', 'stop']) {
       try { await this.phase(component, phase) } catch (error) { failures.push(error) }
@@ -246,7 +262,15 @@ export class EnvironmentRunner {
       try { await terminate(child) } catch (error) { failures.push(error) }
     }
     try { await this.phase(component, 'postStop') } catch (error) { failures.push(error) }
-    if (failures.length > 0) throw new AggregateError(failures, `component ${component.id} shutdown failed`)
+    if (failures.length > 0) {
+      this.emitLifecycle('component.stop.failed', {
+        componentId: component.id,
+        errors: failures.map(error => error instanceof Error ? error.message : String(error)),
+        level: 'error',
+      })
+      throw new AggregateError(failures, `component ${component.id} shutdown failed`)
+    }
+    this.emitLifecycle('component.stopped', { componentId: component.id })
   }
 
   stop() {

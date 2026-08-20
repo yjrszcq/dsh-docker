@@ -99,7 +99,12 @@ test('runs components in manifest order and stop phases in reverse order', async
   }
   const second = component('second', append, 'oneshot', lifecycle('second'))
   second.command = command(append, [log, 'second:start'])
-  const runner = new EnvironmentRunner({ environmentRoot: await environment([first, second]), capture: () => {} })
+  const reports = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([first, second]),
+    capture: () => {},
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
   await runner.start()
   await runner.stop()
   const lines = (await readFile(log, 'utf8')).trim().split('\n')
@@ -108,6 +113,18 @@ test('runs components in manifest order and stop phases in reverse order', async
     'first:postStart', 'second:preStart', 'second:start', 'second:postStart',
   ])
   assert.deepEqual(lines.slice(8), ['second:preStop', 'second:postStop', 'first:preStop', 'first:postStop'])
+  assert.deepEqual(reports.map(report => [report.message, report.fields.componentId]), [
+    ['component.starting', 'first'],
+    ['component.spawned', 'first'],
+    ['component.ready', 'first'],
+    ['component.starting', 'second'],
+    ['component.ready', 'second'],
+    ['component.stopping', 'second'],
+    ['component.stopped', 'second'],
+    ['component.stopping', 'first'],
+    ['component.stopped', 'first'],
+  ])
+  assert.equal(reports.find(report => report.message === 'component.ready').fields.elapsedMs >= 0, true)
 })
 
 test('exec health probes use only their exit status and do not emit component logs', async () => {
@@ -140,15 +157,22 @@ test('stops already-started services when a later component fails', async () => 
   const failure = join(temp, 'failure.mjs')
   await writeFile(service, 'setInterval(() => {}, 1000)')
   await writeFile(failure, 'process.exit(9)')
+  const reports = []
   const runner = new EnvironmentRunner({
     environmentRoot: await environment([
       component('service', service, 'service'),
       component('failure', failure),
     ]),
     capture: () => {},
+    report: (message, fields) => { reports.push({ message, fields }) },
   })
   await assert.rejects(runner.start(), /failure command failed/)
   assert.deepEqual(runner.status().components, [])
+  const failureReport = reports.find(report => report.message === 'component.start.failed').fields
+  assert.equal(failureReport.componentId, 'failure')
+  assert.equal(failureReport.elapsedMs >= 0, true)
+  assert.match(failureReport.error, /failure command failed.*code=9/)
+  assert.equal(failureReport.level, 'error')
 })
 
 test('reports a service exit after readiness as a fatal Bootstrap condition', async () => {
