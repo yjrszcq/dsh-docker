@@ -109,6 +109,30 @@ test('management reports unpublished development metadata without an HTTP error'
   }
 })
 
+test('management separates a known Stable target from update availability', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-current-'))
+  const coordinator = new Coordinator()
+  coordinator.check = async () => ({
+    value: { targetSequence: 2, desired: { dsh: { version: 'rc.7' } } },
+    updateAvailable: false,
+  })
+  const server = createManagementServer({
+    coordinator,
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    assert.deepEqual(await new LocalApiClient(socketPath).request('POST', '/_dsh_platform/api/v1/check'), {
+      available: false,
+      targetSequence: 2,
+      desired: { dsh: { version: 'rc.7' } },
+    })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management records a completion audit for a successful update task', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-audit-'))
   const coordinator = new Coordinator()

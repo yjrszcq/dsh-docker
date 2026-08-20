@@ -577,10 +577,14 @@ test('keeps the official npm version visible when it is not newer', async () => 
   await coordinator.check()
   const status = await coordinator.publicStatus()
   assert.deepEqual(status.upstream, { version: '0.1.0-rc.7' })
+  assert.equal(status.update.updateAvailable, false)
 
   await channelState.setChannel('stable')
   await coordinator.check()
-  assert.deepEqual((await coordinator.publicStatus()).upstream, { version: '0.1.0-rc.7' })
+  const stableStatus = await coordinator.publicStatus()
+  assert.deepEqual(stableStatus.supported, { dsh: '0.1.0-rc.7', environment: 'env-1' })
+  assert.deepEqual(stableStatus.upstream, { version: '0.1.0-rc.7' })
+  assert.equal(stableStatus.update.updateAvailable, false)
 })
 
 test('does not misclassify a missing npm package as unpublished signed metadata', async () => {

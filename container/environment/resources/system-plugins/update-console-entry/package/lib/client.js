@@ -197,7 +197,7 @@ function UpdateConsoleEntry({ t }) {
           h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void checkUpdates() } },
             checkingUpdates ? h('span', { className: css.checkSpinner, 'aria-hidden': 'true' }) : null,
             checkingUpdates ? t('checking') : t('check')),
-          h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget || update.updateAvailable !== true, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
           rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
           rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null)),
       h('div', { className: css.updateState, 'aria-live': 'polite' },

@@ -39,6 +39,7 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /changeChannel[\s\S]*void checkUpdates\(\)/)
   assert.match(source, /metadataUnavailable/)
   assert.match(source, /hasSupportedTarget/)
+  assert.match(source, /update\.updateAvailable !== true/)
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)
   assert.doesNotMatch(source, /logs\/stream|运行详情|平台日志/)
   for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable']) {

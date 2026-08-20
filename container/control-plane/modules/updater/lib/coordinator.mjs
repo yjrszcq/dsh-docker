@@ -52,6 +52,7 @@ export class UpdateCoordinator extends EventEmitter {
       if (this.channelState !== undefined) {
         const plan = await this.desiredState()
         const rollbackPlan = await this.rollbackPlan()
+        const updateAvailable = ['stable', 'experimental'].includes(plan.action)
         await this.transition('idle', {
           available: {
             targetSequence: plan.target.targetSequence,
@@ -66,10 +67,11 @@ export class UpdateCoordinator extends EventEmitter {
           experimentalBlocked: plan.experimentalBlocked,
           holds: plan.holds,
           rollbackPlan,
+          updateAvailable,
           checkedAt: this.now().toISOString(),
           metadataUnavailable: false,
         })
-        return { value: plan.target }
+        return { value: plan.target, updateAvailable }
       }
       const target = await this.metadata.check()
       await this.transition('idle', {
@@ -92,6 +94,7 @@ export class UpdateCoordinator extends EventEmitter {
         await this.transition('idle', {
           metadataUnavailable: true,
           ...(upstream === null ? {} : { upstream }),
+          updateAvailable: false,
           checkedAt: this.now().toISOString(),
           error: null,
         })

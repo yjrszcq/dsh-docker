@@ -97,7 +97,7 @@ export function createManagementServer({
         send(response, 200, target.unavailable === true
           ? { available: false, upstream: target.upstream }
           : {
-              available: true,
+              available: target.updateAvailable ?? true,
               targetSequence: target.value.targetSequence,
               desired: target.value.desired,
             })
