@@ -41,6 +41,7 @@ test('gateway owns only its listener and forwards management socket configuratio
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(server.bound, { host: '127.0.0.1', port: 8080 })
   assert.equal(options.managementSocketPath, '/run/platform.sock')
+  assert.equal(typeof options.platformStatus, 'function')
   signalSource.emit('SIGTERM')
   assert.equal(await running, 0)
   assert.equal(server.listening, false)

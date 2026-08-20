@@ -9,7 +9,7 @@ import {
   recordsFromImageInventory,
 } from '../../lib/deployment-contracts.mjs'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
-import { writeDeploymentStatus } from '../../lib/deployment-status.mjs'
+import { readDeploymentStatus, writeDeploymentStatus } from '../../lib/deployment-status.mjs'
 import { replaceDeploymentView } from '../../lib/paths.mjs'
 import { hashTree } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
@@ -324,6 +324,7 @@ export class DeploymentManager {
       const from = await this.record(state.current)
       const previous = await this.record(state.previous)
       await this.writeActivation({ phase: 'prepared', from: from.id, to: previous.id })
+      await this.publishStatus({ operation: 'recovering' })
       let receiptsActive = false
       try {
         await this.select(previous.id)
@@ -338,9 +339,10 @@ export class DeploymentManager {
         return committed
       } catch (error) {
         if (receiptsActive) await activateReceipts(from.receiptTokens).catch(() => {})
-        await this.select(from.id)
+        await this.select(from.id).catch(() => {})
         await healthCheck().catch(() => {})
         await this.clearActivation().catch(() => {})
+        await this.publishStatus().catch(() => {})
         throw error
       }
     })
@@ -461,6 +463,7 @@ export class DeploymentManager {
     if (candidate.id === from.id) return state
     validateCandidate(from, candidate, false)
     await this.writeActivation({ phase: 'prepared', from: from.id, to: candidate.id })
+    await this.publishStatus({ operation: 'switching' })
     let receiptsActive = false
     try {
       await this.select(candidate.id)
@@ -474,10 +477,12 @@ export class DeploymentManager {
       await this.publishStatus()
       return committed
     } catch (error) {
+      await this.publishStatus({ operation: 'recovering' }).catch(() => {})
       if (receiptsActive) await activateReceipts(from.receiptTokens).catch(() => {})
       await this.select(from.id).catch(() => {})
       await healthCheck().catch(() => {})
       await this.clearActivation().catch(() => {})
+      await this.publishStatus().catch(() => {})
       throw error
     }
   }
@@ -526,6 +531,8 @@ export class DeploymentManager {
   }
 
   async recoverImageBaseline(value, { healthCheck, activateReceipts }) {
+    const previousStatus = await readDeploymentStatus(this.paths.deploymentStatusPath)
+    await this.publishStatus({ operation: 'recovering', recoveryMode: previousStatus.recoveryMode })
     const image = await this.repairImageRecord(value)
     await this.prepareView(image.id)
     const state = await this.state()
@@ -539,6 +546,9 @@ export class DeploymentManager {
       return committed
     } catch (error) {
       if (state.current !== null) await this.select(state.current).catch(() => {})
+      await this.publishStatus({
+        recoveryMode: error instanceof Error ? error.message : 'image baseline recovery failed',
+      }).catch(() => {})
       throw error
     }
   }
@@ -555,7 +565,7 @@ export class DeploymentManager {
     })
   }
 
-  async publishStatus({ plan = null, recoveryMode = null, currentId } = {}) {
+  async publishStatus({ plan = null, recoveryMode = null, currentId, operation = null } = {}) {
     const state = await this.state().catch(() => ({ current: null }))
     const selectedId = currentId === undefined ? state.current : currentId
     const current = selectedId === null
@@ -573,6 +583,7 @@ export class DeploymentManager {
       imageBehindCurrent: plan?.imageBehindCurrent
         ?? (current !== null && current.targetSequence > this.inventory.targetSequence),
       recoveryMode,
+      operation,
     })
     return writeDeploymentStatus(this.paths.deploymentStatusPath, value)
   }

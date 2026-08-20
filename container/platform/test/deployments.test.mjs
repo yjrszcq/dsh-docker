@@ -331,7 +331,10 @@ test('rolls back only the exact previous Deployment with receipts and health che
   const previous = await context.manager.record(before.previous)
   let healthChecks = 0
   const rolledBack = await context.manager.rollback({
-    healthCheck: async () => { healthChecks += 1 },
+    healthCheck: async () => {
+      healthChecks += 1
+      assert.equal(JSON.parse(await readFile(context.paths.deploymentStatusPath, 'utf8')).operation, 'recovering')
+    },
     activateReceipts: async tokens => active.push([...tokens]),
   })
   assert.equal(rolledBack.current, previous.id)
@@ -341,6 +344,7 @@ test('rolls back only the exact previous Deployment with receipts and health che
   assert.equal(await context.manager.activation(), undefined)
   const status = await context.manager.publishStatus()
   assert.equal(status.current.recordId, previous.id)
+  assert.equal(status.operation, null)
 })
 
 test('reports an image behind a newly activated Managed Deployment immediately', async () => {
@@ -369,6 +373,43 @@ test('restores the materialized previous Deployment when receipt activation fail
   assert.equal((await context.manager.record(state.current)).runtime.storage, 'store')
   assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:image')
   assert.equal(await context.manager.activation(), undefined)
+})
+
+test('publishes switching and recovering states around a failed atomic activation', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  await context.manager.publishStatus()
+  const candidate = await managedRecord(context, 'operation-status', 2, 'stable', '0.1.0-rc.2')
+  const observed = []
+  await assert.rejects(context.manager.activateManaged(candidate, {
+    healthCheck: async () => {
+      observed.push(JSON.parse(await readFile(context.paths.deploymentStatusPath, 'utf8')).operation)
+      if (observed.length === 1) throw new Error('candidate failed')
+    },
+    activateReceipts: async () => {},
+  }), /candidate failed/)
+  assert.deepEqual(observed, ['switching', 'recovering'])
+  assert.equal(JSON.parse(await readFile(context.paths.deploymentStatusPath, 'utf8')).operation, null)
+})
+
+test('turns a failed image recovery operation into an explicit recovery failure', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  await context.manager.publishStatus({ recoveryMode: 'current deployment failed' })
+  let operation
+  await assert.rejects(context.manager.recoverImageBaseline(context.image, {
+    healthCheck: async () => {
+      const status = JSON.parse(await readFile(context.paths.deploymentStatusPath, 'utf8'))
+      operation = status.operation
+      assert.equal(status.recoveryMode, 'current deployment failed')
+      throw new Error('image recovery health failed')
+    },
+    activateReceipts: async () => {},
+  }), /image recovery health failed/)
+  assert.equal(operation, 'recovering')
+  const failed = JSON.parse(await readFile(context.paths.deploymentStatusPath, 'utf8'))
+  assert.equal(failed.operation, null)
+  assert.equal(failed.recoveryMode, 'image recovery health failed')
 })
 
 test('finishes a journaled activation after receipts became active before restart', async () => {

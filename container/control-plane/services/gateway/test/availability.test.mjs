@@ -1,0 +1,172 @@
+import assert from 'node:assert/strict'
+import { createServer, request as httpRequest } from 'node:http'
+import { connect as netConnect } from 'node:net'
+import test from 'node:test'
+import { DshAvailability, availabilityPage } from '../lib/availability.mjs'
+import { closeGatewayServer, createGatewayServer, READINESS_PATH } from '../lib/proxy.mjs'
+import { parseTrustedHosts } from '../lib/config.mjs'
+
+async function listen(server) {
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  return server.address().port
+}
+
+function request(port, path = '/', { method = 'GET', accept = 'text/html', headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const outgoing = httpRequest({
+      hostname: '127.0.0.1', port, path, method,
+      headers: { host: 'dsh.example', accept, ...headers },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        headers: response.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }))
+    })
+    outgoing.once('error', reject)
+    outgoing.end()
+  })
+}
+
+async function unavailableGateway({ platform = {}, availability = new DshAvailability(), probe = async () => false } = {}) {
+  const placeholder = createServer()
+  const unavailablePort = await listen(placeholder)
+  await new Promise(resolve => placeholder.close(resolve))
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort: unavailablePort,
+    platformStatus: async () => platform,
+    availability,
+    probe,
+    probeIntervalMs: 60_000,
+  })
+  return { gateway, port: await listen(gateway) }
+}
+
+test('official-style holding page is self-contained and replaces the spinner with platform status', () => {
+  const page = availabilityPage('switching', { 'accept-language': 'zh-CN' })
+  assert.match(page, /HARNESS/)
+  assert.match(page, /正在切换 DeepSeek Harness 运行版本/)
+  assert.match(page, new RegExp(READINESS_PATH))
+  assert.doesNotMatch(page, /spinner|Loading plugins/)
+  assert.doesNotMatch(page, /letter-spacing:-/)
+})
+
+test('cold start serves a holding page while API and WebSocket-shaped HTTP requests receive 503', async () => {
+  const { gateway, port } = await unavailableGateway()
+  try {
+    const page = await request(port)
+    assert.equal(page.status, 200)
+    assert.match(page.body, /DeepSeek Harness is starting/)
+    assert.equal(page.headers['cache-control'], 'no-store')
+    assert.equal((await request(port, '/api/sessions', { accept: 'application/json' })).status, 503)
+    assert.equal((await request(port, '/', { method: 'POST', accept: 'text/html' })).status, 503)
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
+test('an unresponsive management service does not block the cold-start holding page', async () => {
+  const placeholder = createServer()
+  const unavailablePort = await listen(placeholder)
+  await new Promise(resolve => placeholder.close(resolve))
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort: unavailablePort,
+    platformStatus: () => new Promise(() => {}),
+    probe: async () => false,
+    probeIntervalMs: 60_000,
+  })
+  const port = await listen(gateway)
+  try {
+    const startedAt = Date.now()
+    const page = await request(port)
+    assert.equal(page.status, 200)
+    assert.match(page.body, /DeepSeek Harness is starting/)
+    assert.ok(Date.now() - startedAt < 1_000)
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
+test('platform switching, recovery, and startup failure select distinct page messages', async () => {
+  for (const [platform, expected] of [
+    [{ operation: 'switching' }, /Switching the DeepSeek Harness runtime/],
+    [{ operation: 'recovering' }, /Restoring DeepSeek Harness/],
+    [{ recoveryMode: 'candidate failed' }, /DeepSeek Harness could not start/],
+  ]) {
+    const { gateway, port } = await unavailableGateway({ platform })
+    try {
+      const page = await request(port)
+      assert.equal(page.status, 200)
+      assert.match(page.body, expected)
+      assert.equal((await request(port, '/api/status', { accept: 'application/json' })).status, 503)
+    } finally {
+      await closeGatewayServer(gateway)
+    }
+  }
+})
+
+test('WebSocket receives 503 during a classified DSH outage', async () => {
+  const { gateway, port } = await unavailableGateway({ platform: { operation: 'switching' } })
+  const socket = netConnect(port, '127.0.0.1')
+  try {
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve)
+      socket.once('error', reject)
+    })
+    socket.write('GET /events HTTP/1.1\r\nHost: dsh.example\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    const response = await new Promise((resolve, reject) => {
+      socket.once('data', data => resolve(data.toString('utf8')))
+      socket.once('error', reject)
+    })
+    assert.match(response, /^HTTP\/1\.1 503 Service Unavailable/)
+  } finally {
+    socket.destroy()
+    await closeGatewayServer(gateway)
+  }
+})
+
+test('one unexpected local failure remains 502 until repeated probes confirm unavailability', async () => {
+  let now = 0
+  const availability = new DshAvailability({ now: () => now, failures: 3, failureWindowMs: 1_500 })
+  availability.observe(true)
+  const context = await unavailableGateway({ availability })
+  try {
+    assert.equal((await request(context.port)).status, 502)
+    availability.observe(false)
+    now = 1_600
+    availability.observe(false)
+    const recovered = await request(context.port)
+    assert.equal(recovered.status, 200)
+    assert.match(recovered.body, /temporarily unavailable/)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})
+
+test('readiness immediately reports ready and clears confirmed failure state', async () => {
+  let ready = false
+  let now = 0
+  const availability = new DshAvailability({ now: () => now, failures: 1, failureWindowMs: 0 })
+  availability.observe(true)
+  availability.observe(false)
+  const context = await unavailableGateway({ availability, probe: async () => ready })
+  try {
+    const unavailable = await request(context.port, READINESS_PATH, { accept: 'application/json' })
+    assert.equal(unavailable.status, 503)
+    assert.equal(JSON.parse(unavailable.body).state, 'unavailable')
+    ready = true
+    const healthy = await request(context.port, READINESS_PATH, { accept: 'application/json' })
+    assert.equal(healthy.status, 200)
+    assert.deepEqual(JSON.parse(healthy.body), { ready: true, state: 'ready' })
+    assert.equal(availability.classify({}), 'unknown')
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})

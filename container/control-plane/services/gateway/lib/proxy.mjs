@@ -3,11 +3,13 @@ import { connect as netConnect } from 'node:net'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
 import { BASIC_AUTH_CHALLENGE, createPasswordAccess } from './auth.mjs'
+import { availabilityPage, DshAvailability, probeDsh, stateMessage } from './availability.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
 export const INTERNAL_PORT = 3079
 export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
+export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
@@ -18,6 +20,7 @@ const EXTERNAL_MANAGEMENT_ROUTES = new Map([
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
 const upgradedSocketsByServer = new WeakMap()
+const probeTimersByServer = new WeakMap()
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',
@@ -66,6 +69,36 @@ function rejectHttp(response, status, message) {
   }
   response.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' })
   response.end(`${message}\n`)
+}
+
+function sendJson(response, status, value) {
+  const body = Buffer.from(`${JSON.stringify(value)}\n`)
+  response.writeHead(status, {
+    'cache-control': 'no-store',
+    'content-length': String(body.byteLength),
+    'content-type': 'application/json; charset=utf-8',
+  })
+  response.end(body)
+}
+
+function isPageNavigation(request) {
+  const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+  return request.method === 'GET'
+    && !pathname.startsWith('/api/')
+    && typeof request.headers.accept === 'string'
+    && request.headers.accept.toLowerCase().includes('text/html')
+}
+
+function sendAvailabilityPage(request, response, state) {
+  const body = Buffer.from(availabilityPage(state, request.headers))
+  response.writeHead(200, {
+    'cache-control': 'no-store',
+    'content-length': String(body.byteLength),
+    'content-security-policy': "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+    'content-type': 'text/html; charset=utf-8',
+    'referrer-policy': 'no-referrer',
+  })
+  response.end(body)
 }
 
 function rejectUpgrade(socket, status, reason, headers = {}) {
@@ -117,6 +150,38 @@ function pipeHttpResponse(upstream, response) {
   upstream.pipe(response)
 }
 
+async function boundedPlatformStatus(platformStatus, timeoutMs = 250) {
+  let timer
+  try {
+    return await Promise.race([
+      platformStatus().catch(() => ({})),
+      new Promise(resolve => {
+        timer = setTimeout(() => resolve({}), timeoutMs)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function unavailableState(options) {
+  const platform = await boundedPlatformStatus(options.platformStatus)
+  return options.availability.classify(platform)
+}
+
+async function rejectDshFailure(request, response, options) {
+  options.availability.observe(false)
+  const state = await unavailableState(options)
+  if (state === 'unknown') {
+    rejectHttp(response, 502, 'bad gateway')
+  } else if (isPageNavigation(request)) {
+    sendAvailabilityPage(request, response, state)
+  } else {
+    rejectHttp(response, 503, stateMessage(state, request.headers))
+  }
+}
+
 function proxyHttp(request, response, options) {
   const upstream = httpRequest({
     ...(options.socketPath === undefined
@@ -127,6 +192,7 @@ function proxyHttp(request, response, options) {
     headers: upstreamRequestHeaders(request.headers),
   })
   upstream.on('response', (upstreamResponse) => {
+    if (options.trackDsh === true) options.availability.observe(true)
     if (options.polyfill && isInjectableHtml(request, upstreamResponse)) {
       void writeInjectedHtml(upstreamResponse, response).catch(() => {
         upstreamResponse.destroy()
@@ -136,7 +202,10 @@ function proxyHttp(request, response, options) {
     }
     pipeHttpResponse(upstreamResponse, response)
   })
-  upstream.on('error', () => rejectHttp(response, 502, 'bad gateway'))
+  upstream.on('error', () => {
+    if (options.trackDsh === true) void rejectDshFailure(request, response, options)
+    else rejectHttp(response, 502, 'bad gateway')
+  })
   request.on('aborted', () => upstream.destroy())
   response.on('close', () => upstream.destroy())
   request.pipe(upstream)
@@ -173,12 +242,19 @@ function proxyUpgrade(request, clientSocket, head, options) {
 
   upstreamSocket.once('connect', () => {
     connected = true
+    options.availability.observe(true)
     upstreamSocket.write(serializeUpgradeRequest(request, headers))
     if (head.length > 0) upstreamSocket.write(head)
     clientSocket.pipe(upstreamSocket).pipe(clientSocket)
   })
   upstreamSocket.once('error', () => {
-    if (!connected) rejectUpgrade(clientSocket, 502, 'Bad Gateway')
+    if (!connected) {
+      options.availability.observe(false)
+      void unavailableState(options).then(state => {
+        if (state === 'unknown') rejectUpgrade(clientSocket, 502, 'Bad Gateway')
+        else rejectUpgrade(clientSocket, 503, 'Service Unavailable')
+      })
+    }
     else clientSocket.destroy()
   })
   clientSocket.once('error', () => upstreamSocket.destroy())
@@ -191,12 +267,19 @@ export function createGatewayServer({
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
   managementSocketPath = '/run/dsh-platform/management.sock',
+  platformStatus = async () => ({}),
+  availability = new DshAvailability(),
+  probe = () => probeDsh({ host: upstreamHost, port: upstreamPort }),
+  probeIntervalMs = 750,
   isReady = () => true,
   password = '',
   username = '',
   passwordAccess = createPasswordAccess(password, { username }),
 }) {
-  const options = { trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, isReady, passwordAccess }
+  const options = {
+    trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, platformStatus,
+    availability, probe, isReady, passwordAccess,
+  }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
     void handleRequest(request, response)
@@ -219,6 +302,16 @@ export function createGatewayServer({
         return
       }
       if (options.passwordAccess.handleHttp(request, response)) return
+      if (pathname === READINESS_PATH) {
+        const ready = await options.probe()
+        options.availability.observe(ready)
+        if (ready) sendJson(response, 200, { ready: true, state: 'ready' })
+        else {
+          const state = await unavailableState(options)
+          sendJson(response, state === 'unknown' ? 502 : 503, { ready: false, state })
+        }
+        return
+      }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
         if (!isExternalConsoleRoute(request.method, pathname)) {
           rejectHttp(response, 404, 'not found')
@@ -235,7 +328,7 @@ export function createGatewayServer({
         proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
         return
       }
-      proxyHttp(request, response, options)
+      proxyHttp(request, response, { ...options, trackDsh: true })
     } catch {
       rejectHttp(response, 400, 'bad request')
     }
@@ -260,10 +353,21 @@ export function createGatewayServer({
     proxyUpgrade(request, socket, head, options)
   })
   upgradedSocketsByServer.set(server, upgradedSockets)
+  let probing = false
+  const probeTimer = setInterval(() => {
+    if (probing) return
+    probing = true
+    void options.probe().then(ready => options.availability.observe(ready), () => options.availability.observe(false))
+      .finally(() => { probing = false })
+  }, probeIntervalMs)
+  probeTimer.unref()
+  server.once('close', () => clearInterval(probeTimer))
+  probeTimersByServer.set(server, probeTimer)
   return server
 }
 
 export async function closeGatewayServer(server) {
+  clearInterval(probeTimersByServer.get(server))
   const closed = new Promise((resolve, reject) => {
     server.close(error => error === undefined ? resolve() : reject(error))
   })

@@ -1,4 +1,5 @@
 import { createGatewayServer, closeGatewayServer } from './proxy.mjs'
+import { LocalApiClient } from '../../../modules/updater/lib/client.mjs'
 
 export const EXTERNAL_HOST = '0.0.0.0'
 export const EXTERNAL_PORT = 3080
@@ -26,12 +27,14 @@ export async function runGateway(config, {
   externalPort = EXTERNAL_PORT,
   managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock',
 } = {}) {
+  const management = new LocalApiClient(managementSocketPath)
   const server = gatewayFactory({
     password: config.password,
     username: config.username,
     polyfill: config.polyfill,
     trustedHosts: config.trustedHosts,
     managementSocketPath,
+    platformStatus: () => management.request('GET', '/_dsh_platform/api/v1/status'),
   })
   let resolveSignal
   const receivedSignal = new Promise(resolve => { resolveSignal = resolve })
