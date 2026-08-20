@@ -62,9 +62,18 @@
 .tabs {
   display: flex;
   gap: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  touch-action: pan-x;
+  white-space: nowrap;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tabs::-webkit-scrollbar { display: none; }
@@ -79,6 +88,7 @@
   background: transparent;
   font: inherit;
   font-size: 13px;
+  scroll-snap-align: start;
   cursor: pointer;
 }
 
