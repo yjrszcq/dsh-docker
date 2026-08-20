@@ -2,7 +2,16 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { parseStable } from '../../../../platform/lib/contracts.mjs'
 import { compareDshVersions } from '../../../../platform/lib/supported-target.mjs'
 
+export class MetadataUnavailableError extends Error {
+  constructor() {
+    super('signed update metadata has not been published')
+    this.name = 'MetadataUnavailableError'
+    this.code = 'METADATA_UNAVAILABLE'
+  }
+}
+
 async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
+  if (response.status === 404) throw new MetadataUnavailableError()
   if (!response.ok) throw new Error(`${label} returned HTTP ${String(response.status)}`)
   const bytes = Buffer.from(await response.arrayBuffer())
   if (bytes.byteLength > maxBytes) throw new Error(`${label} exceeds the download limit`)
@@ -39,6 +48,7 @@ export class MetadataClient {
         await this.trust.acceptTarget(stable, JSON.parse(stableSignatureBytes.toString('utf8')))
         return Object.freeze({ bytes: stable, value: parseStable(stable) })
       } catch (error) {
+        if (error instanceof MetadataUnavailableError) throw error
         lastError = error
         if (attempt < this.attempts) await delay(this.retryMs)
       }
@@ -48,14 +58,21 @@ export class MetadataClient {
 }
 
 export class NpmRegistryClient {
-  constructor({ fetchImpl = fetch }) {
+  constructor({
+    fetchImpl = fetch,
+    registry = 'https://registry.npmjs.org/',
+    packageName = '@deepseek-ai/dsh',
+  }) {
     this.fetchImpl = fetchImpl
+    this.registry = registry
+    this.packageName = packageName
   }
 
-  async latest(stable) {
-    const policy = stable.officialDshPolicy
-    const packagePath = encodeURIComponent(policy.packageName)
-    const response = await this.fetchImpl(new URL(packagePath, policy.registry), {
+  async discover(policy = {}) {
+    const registry = policy.registry ?? this.registry
+    const packageName = policy.packageName ?? this.packageName
+    const packagePath = encodeURIComponent(packageName)
+    const response = await this.fetchImpl(new URL(packagePath, registry), {
       headers: { accept: 'application/vnd.npm.install-v1+json' },
       redirect: 'error',
     })
@@ -65,6 +82,12 @@ export class NpmRegistryClient {
     const latest = packument?.['dist-tags']?.latest
     const version = typeof latest === 'string' ? packument?.versions?.[latest]?.version : undefined
     if (version !== latest) throw new Error('npm packument has no coherent latest DSH version')
+    return Object.freeze({ version })
+  }
+
+  async latest(stable) {
+    const found = await this.discover(stable.officialDshPolicy)
+    const version = found.version
     return compareDshVersions(version, stable.desired.dsh.version) > 0 ? Object.freeze({ version }) : null
   }
 }

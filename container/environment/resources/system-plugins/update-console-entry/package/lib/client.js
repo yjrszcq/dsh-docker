@@ -105,6 +105,10 @@ function UpdateConsoleEntry({ t }) {
     }
   }, [act])
 
+  const changeChannel = useCallback(async channel => {
+    if (await act('channel', { method: 'PUT', body: { channel } })) void checkUpdates()
+  }, [act, checkUpdates])
+
   useEffect(() => {
     const stateEvents = new EventSource(`${API}/events`)
     stateEvents.addEventListener('state', () => { void refresh() })
@@ -127,6 +131,7 @@ function UpdateConsoleEntry({ t }) {
   const rollbackPlan = status?.rollbackPlan
   const busy = acting || !TERMINAL.has(update.status ?? 'idle')
   const updateActive = !TERMINAL.has(update.status ?? 'idle')
+  const hasSupportedTarget = status?.supported !== null && status?.supported !== undefined
   const updateStatus = STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
   const updateStatusClass = update.status === 'failed'
     ? css.statusFailed
@@ -172,7 +177,7 @@ function UpdateConsoleEntry({ t }) {
             type: 'button',
             'aria-pressed': status?.updateChannel === channel,
             disabled: busy,
-            onClick: () => { void act('channel', { method: 'PUT', body: { channel } }) },
+            onClick: () => { void changeChannel(channel) },
           }, channel === 'stable' ? 'Stable' : 'Experimental')))),
       h('div', { className: `${css.versions} ${status?.updateChannel === 'experimental' ? css.experimentalVersions : ''}` },
         h(VersionCell, { label: t('current'), version: status?.current?.dsh, detail: displayEnvironment(status?.current?.environment) }),
@@ -192,7 +197,7 @@ function UpdateConsoleEntry({ t }) {
           h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void checkUpdates() } },
             checkingUpdates ? h('span', { className: css.checkSpinner, 'aria-hidden': 'true' }) : null,
             checkingUpdates ? t('checking') : t('check')),
-          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
           rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
           rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null)),
       h('div', { className: css.updateState, 'aria-live': 'polite' },
@@ -204,6 +209,7 @@ function UpdateConsoleEntry({ t }) {
         update.error || update.outcome ? h('p', null, display(update.error ?? update.outcome)) : null,
         updateActive ? h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
           h('span', { style: { width: `${String(progress)}%` } })) : null),
+      update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
@@ -229,6 +235,7 @@ export function apply(ctx) {
       stable: 'Stable', experimental: 'Experimental', current: '当前版本', supported: '正式支持', upstream: '上游版本', officialNpm: '官方 npm',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚 previous', returnStable: '立即回 Stable', retry: '重试', progress: '更新进度',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
+      metadataUnavailable: '正式更新信息暂未发布，请稍后再试。',
       aheadOfStable: '当前版本领先正式支持版本，已冻结完整运行组合。', experimentalBlocked: '实验 DSH 与正式 Environment 组合不可用。',
       returnStableTitle: '恢复 Stable 状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -239,6 +246,7 @@ export function apply(ctx) {
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
+      metadataUnavailable: 'Signed update metadata has not been published yet. Try again later.',
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',

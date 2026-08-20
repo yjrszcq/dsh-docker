@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { JsonlLogManager } from '../../modules/log-manager/index.mjs'
 import { createManagementServer, listenManagement } from './server.mjs'
@@ -17,10 +18,13 @@ import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { readDeploymentStatus } from '../../../platform/lib/deployment-status.mjs'
+import { parseImageInventory } from '../../../platform/lib/deployment-contracts.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 const paths = new PlatformPaths(dataRoot, runRoot)
+const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
+const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const trust = new LocalApiClient(paths.trustSocket)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
@@ -52,6 +56,7 @@ const coordinator = new UpdateCoordinator({
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
   channelState: new ChannelStateStore(join(paths.updaterStateRoot, 'channel.json')),
   completeRecovery,
+  allowUnavailableMetadata: imageInventory.authority === 'development',
 })
 const server = createManagementServer({
   coordinator,

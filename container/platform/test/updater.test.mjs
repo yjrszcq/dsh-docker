@@ -9,11 +9,10 @@ import { canonicalJson } from '../lib/canonical-json.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { UpdateConflictError, UpdateCoordinator } from '../../control-plane/modules/updater/lib/coordinator.mjs'
-import { MetadataClient } from '../../control-plane/modules/updater/lib/metadata.mjs'
+import { MetadataClient, MetadataUnavailableError, NpmRegistryClient } from '../../control-plane/modules/updater/lib/metadata.mjs'
 import { TargetPreparer } from '../../control-plane/modules/updater/lib/preparer.mjs'
 import { UpdateStateStore } from '../../control-plane/modules/updater/lib/state.mjs'
 import { UpdateJournal } from '../../control-plane/modules/updater/lib/journal.mjs'
-import { NpmRegistryClient } from '../../control-plane/modules/updater/lib/metadata.mjs'
 import { reconcileRecoveredState, recoverInterruptedUpdate } from '../../control-plane/modules/updater/lib/recovery.mjs'
 import { PlatformActivator } from '../../control-plane/modules/updater/lib/activator.mjs'
 import { ChannelStateStore } from '../../control-plane/modules/updater/lib/channel-state.mjs'
@@ -203,6 +202,54 @@ test('coalesces overlapping metadata checks into one request', async () => {
   } } })
   await first
   assert.equal(state.value.status, 'idle')
+})
+
+test('reports unpublished metadata only for development images', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-development-metadata-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const channelState = new ChannelStateStore(join(root, 'state', 'channel.json'))
+  await channelState.setChannel('experimental')
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => { throw new MetadataUnavailableError() } },
+    npm: { discover: async () => ({ version: '0.1.0-rc.10' }) },
+    preparer: {}, activator: {}, state, channelState,
+    allowUnavailableMetadata: true,
+  })
+
+  assert.deepEqual(await coordinator.check(), {
+    unavailable: true,
+    upstream: { version: '0.1.0-rc.10' },
+  })
+  const persisted = await state.read()
+  assert.equal(persisted.status, 'idle')
+  assert.equal(persisted.error, null)
+  assert.equal(persisted.metadataUnavailable, true)
+  assert.deepEqual(persisted.upstream, { version: '0.1.0-rc.10' })
+})
+
+test('treats unpublished metadata as a formal image failure by default', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-formal-metadata-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => { throw new MetadataUnavailableError() } },
+    preparer: {}, activator: {}, state,
+  })
+
+  await assert.rejects(coordinator.check(), MetadataUnavailableError)
+  assert.equal((await state.read()).status, 'failed')
+})
+
+test('does not retry missing signed metadata files', async () => {
+  let requests = 0
+  const client = new MetadataClient({
+    baseUrl: 'https://metadata.example/',
+    trust: {},
+    attempts: 3,
+    retryMs: 1,
+    fetchImpl: async () => { requests += 1; return response('missing', 404) },
+  })
+  await assert.rejects(client.check(), MetadataUnavailableError)
+  assert.equal(requests, 2)
 })
 
 test('serializes one update task and persists success progress', async () => {
@@ -500,6 +547,7 @@ test('reads npm latest from the official packument without trusting it locally',
   const client = new NpmRegistryClient({ fetchImpl: async () => response(JSON.stringify({
     'dist-tags': { latest: candidate.version }, versions: { [candidate.version]: candidate },
   })) })
+  assert.deepEqual(await client.discover(), { version: candidate.version })
   const found = await client.latest({
     desired: { dsh: { version: '0.1.0-rc.7' } },
     officialDshPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },

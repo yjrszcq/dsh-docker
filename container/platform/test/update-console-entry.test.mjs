@@ -36,6 +36,9 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /new EventSource/)
   assert.match(source, /refresh\(\)\.then\(value => \{[\s\S]*void checkUpdates\(\)/)
   assert.match(source, /className: css\.checkSpinner/)
+  assert.match(source, /changeChannel[\s\S]*void checkUpdates\(\)/)
+  assert.match(source, /metadataUnavailable/)
+  assert.match(source, /hasSupportedTarget/)
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)
   assert.doesNotMatch(source, /logs\/stream|运行详情|平台日志/)
   for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable']) {
@@ -60,5 +63,7 @@ test('Update Console follows DSH settings tokens and responsive layout', async (
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.versions \{[\s\S]*grid-template-columns: repeat\(2,/)
   assert.match(style, /\.experimentalVersions \{ grid-template-columns: repeat\(3,/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actionHeading \{ align-items: flex-start; \}/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actions \{ width: 100%; justify-content: flex-start; \}/)
   assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b/i)
 })

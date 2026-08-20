@@ -89,6 +89,26 @@ test('management socket exposes status, check, update, logs, and local rollback'
   }
 })
 
+test('management reports unpublished development metadata without an HTTP error', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-unpublished-'))
+  const coordinator = new Coordinator()
+  coordinator.check = async () => ({ unavailable: true, upstream: { version: 'rc.10' } })
+  const server = createManagementServer({
+    coordinator,
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    assert.deepEqual(await new LocalApiClient(socketPath).request('POST', '/_dsh_platform/api/v1/check'), {
+      available: false,
+      upstream: { version: 'rc.10' },
+    })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management records a completion audit for a successful update task', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-audit-'))
   const coordinator = new Coordinator()
@@ -265,4 +285,5 @@ test('scheduler applies bounded jitter and performs checks without activating up
 test('management starts one metadata check before the first scheduled interval', async () => {
   const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
   assert.match(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
+  assert.match(source, /allowUnavailableMetadata: imageInventory\.authority === 'development'/)
 })

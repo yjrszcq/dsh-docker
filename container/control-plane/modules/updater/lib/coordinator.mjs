@@ -3,12 +3,14 @@ import { EventEmitter } from 'node:events'
 import { recoverInterruptedUpdate } from './recovery.mjs'
 import { planDesiredState } from './channel-state.mjs'
 import { compareDshVersions } from '../../../../platform/lib/supported-target.mjs'
+import { MetadataUnavailableError } from './metadata.mjs'
 
 export class UpdateConflictError extends Error {}
 
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery,
+    allowUnavailableMetadata = false,
     probationSeconds = 120,
     now = () => new Date(),
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
@@ -23,6 +25,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.snapshots = snapshots
     this.channelState = channelState
     this.completeRecovery = completeRecovery
+    this.allowUnavailableMetadata = allowUnavailableMetadata
     this.probationSeconds = probationSeconds
     this.now = now
     this.sleep = sleep
@@ -64,6 +67,7 @@ export class UpdateCoordinator extends EventEmitter {
           holds: plan.holds,
           rollbackPlan,
           checkedAt: this.now().toISOString(),
+          metadataUnavailable: false,
         })
         return { value: plan.target }
       }
@@ -76,9 +80,23 @@ export class UpdateCoordinator extends EventEmitter {
           dsh: target.value.desired.dsh.version,
         },
         checkedAt: new Date().toISOString(),
+        metadataUnavailable: false,
       })
       return target
     } catch (error) {
+      if (error instanceof MetadataUnavailableError && this.allowUnavailableMetadata) {
+        const local = await this.channelState?.read()
+        const upstream = local?.updateChannel === 'experimental' && this.npm !== undefined
+          ? await this.npm.discover().catch(() => null)
+          : null
+        await this.transition('idle', {
+          metadataUnavailable: true,
+          upstream,
+          checkedAt: this.now().toISOString(),
+          error: null,
+        })
+        return { unavailable: true, upstream }
+      }
       await this.transition('failed', { error: error instanceof Error ? error.message : 'update check failed' })
       throw error
     }

@@ -94,10 +94,13 @@ export function createManagementServer({
         send(response, 200, { ...(await coordinator.publicStatus()), ...(await platformStatus()) })
       } else if (request.method === 'POST' && route === 'check') {
         const target = await coordinator.check()
-        send(response, 200, {
-          targetSequence: target.value.targetSequence,
-          desired: target.value.desired,
-        })
+        send(response, 200, target.unavailable === true
+          ? { available: false, upstream: target.upstream }
+          : {
+              available: true,
+              targetSequence: target.value.targetSequence,
+              desired: target.value.desired,
+            })
       } else if (request.method === 'POST' && route === 'update') {
         const task = coordinator.startReconcile()
         void task.completion

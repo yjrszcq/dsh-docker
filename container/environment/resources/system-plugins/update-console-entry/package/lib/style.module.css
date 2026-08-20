@@ -264,11 +264,13 @@
 @media (max-width: 640px) {
   .root { gap: 16px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
+  .actionHeading { align-items: flex-start; }
   .versions { grid-template-columns: 1fr; }
   .versionCell + .versionCell { border-left: 0; border-top: 1px solid var(--dsw-alias-border-l2); }
   .segmented { width: 100%; }
   .segmented button { flex: 1; }
   .actions > button { flex: 1 1 calc(50% - 8px); }
+  .actions { width: 100%; justify-content: flex-start; }
 }
 
 @media (max-width: 480px) {
