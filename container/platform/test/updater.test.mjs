@@ -303,19 +303,48 @@ test('serializes one update task and persists success progress', async () => {
 test('persists a failed update without activating receipts and permits a later retry', async () => {
   const { root, metadata, objects, preparer } = await system()
   let fail = true
+  const reports = []
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
   const coordinator = new UpdateCoordinator({
     metadata,
     preparer,
     activator: { activate: async () => { if (fail) throw new Error('activation failed') } },
     state,
+    report: (message, fields) => { reports.push({ message, fields }) },
   })
   await assert.rejects(coordinator.start().completion, /activation failed/)
   assert.equal((await state.read()).status, 'failed')
   assert.equal((await objects.allReceipts()).every(receipt => receipt.status === 'staged'), true)
+  assert.equal(reports.some(entry => entry.message === 'update.stable.failed'
+    && entry.fields.error instanceof Error
+    && entry.fields.taskId !== undefined), true)
+  assert.equal(reports.some(entry => entry.message === 'update.phase.changed'
+    && entry.fields.status === 'failed'
+    && entry.fields.level === 'error'), true)
   fail = false
   await coordinator.start().completion
   assert.equal((await state.read()).status, 'success')
+})
+
+test('reports secondary cleanup failures without failing a successful update', async () => {
+  const { root, metadata, preparer } = await system()
+  const reports = []
+  const coordinator = new UpdateCoordinator({
+    metadata,
+    preparer,
+    activator: {
+      activate: async () => {},
+      currentDeployment: async () => ({ runtime: 'runtime-a' }),
+    },
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    automaticChecks: { clearSatisfied: async () => { throw new Error('notification state is read-only') } },
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+
+  assert.equal((await coordinator.start().completion).status, 'success')
+  const warning = reports.find(entry => entry.message === 'update.notifications.cleanup.failed')
+  assert.equal(warning.fields.level, 'warning')
+  assert.match(warning.fields.error.message, /read-only/)
 })
 
 test('treats Bootstrap-owned receipt activation failure as one failed switch', async () => {

@@ -98,6 +98,7 @@ export function createManagementServer({
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
   let server
+  const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
 
   const publishRestart = value => {
     restartState = Object.freeze({ ...restartState, ...value, updatedAt: new Date().toISOString() })
@@ -126,19 +127,17 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishPlugin({ status: 'running', taskId, pluginId, action, error: null })
     pluginTask = Promise.resolve()
-      .then(() => logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }).catch(() => {}))
+      .then(() => audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }))
       .then(() => recovery ? recoverBundledPlugin(pluginId, action) : configureBundledPlugin(pluginId, action))
       .then(
         async () => {
           publishPlugin({ status: 'success', taskId, pluginId, action, error: null, restartRequired: true })
-          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId }).catch(() => {})
+          await audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId })
         },
         async error => {
           const message = error instanceof Error ? error.message : 'System Plugin operation failed'
           publishPlugin({ status: 'failed', taskId, pluginId, action, error: message })
-          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, {
-            error: message, level: 'error', taskId, pluginId,
-          }).catch(() => {})
+          await audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, { error, taskId, pluginId })
         },
       )
       .finally(() => { pluginTask = undefined })
@@ -152,18 +151,18 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishRestart({ status: 'restarting', taskId, error: null })
     restartTask = Promise.resolve()
-      .then(() => logs.audit('dsh.restart.started', { taskId }).catch(() => {}))
+      .then(() => audit('dsh.restart.started', { taskId }))
       .then(() => restartDsh())
       .then(
         async () => {
           publishRestart({ status: 'success', taskId, error: null })
           publishPlugin({ restartRequired: false })
-          await logs.audit('dsh.restart.completed', { taskId }).catch(() => {})
+          await audit('dsh.restart.completed', { taskId })
         },
         async error => {
           const message = error instanceof Error ? error.message : 'DSH restart failed'
           publishRestart({ status: 'failed', taskId, error: message })
-          await logs.audit('dsh.restart.failed', { error: message, level: 'error', taskId }).catch(() => {})
+          await audit('dsh.restart.failed', { error, taskId })
         },
       )
       .finally(() => { restartTask = undefined })
@@ -172,8 +171,10 @@ export function createManagementServer({
   }
 
   server = createServer(async (request, response) => {
+    let pathname = 'invalid-url'
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
+      pathname = url.pathname
       if (await sendConsoleAsset(request, response, url.pathname, consoleRoot)) return
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
@@ -197,7 +198,7 @@ export function createManagementServer({
           throw new Error('settings document request is invalid')
         }
         const saved = await settingsDocument.write(body.content, body.revision)
-        await logs.audit('settings-document.saved', { revision: saved.revision }).catch(() => {})
+        await audit('settings-document.saved', { revision: saved.revision })
         send(response, 200, saved)
       } else if (request.method === 'POST' && route === 'check') {
         const body = await jsonBody(request)
@@ -216,11 +217,11 @@ export function createManagementServer({
         const task = coordinator.startReconcile()
         void task.completion
           .then(
-            () => logs.audit('update.completed', { taskId: task.taskId }),
-            error => logs.audit('update.failed', { error: error.message, level: 'error', taskId: task.taskId }),
+            () => audit('update.completed', { taskId: task.taskId }),
+            error => audit('update.failed', { error, taskId: task.taskId }),
           )
           .catch(() => {})
-        await logs.audit('update.started', { taskId: task.taskId })
+        await audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'POST' && route === 'restart-dsh') {
         const task = startRestart()
@@ -239,20 +240,28 @@ export function createManagementServer({
         if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
         const result = await discardBundledPluginChanges()
         publishPlugin({ restartRequired: false })
-        await logs.audit('system-plugin.changes.discarded')
+        await audit('system-plugin.changes.discarded')
         send(response, 200, result)
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
         const value = await coordinator.setChannel(body.channel)
+        await audit('update.channel.changed', { updateChannel: value.updateChannel })
         server.emit('management-state', value)
         send(response, 200, value)
       } else if (request.method === 'PUT' && route === 'automatic-check') {
         const value = await updateAutomaticCheck(await jsonBody(request))
+        await audit('update.automatic-check.configured', {
+          enabled: value.enabled,
+          intervalSeconds: value.intervalSeconds,
+          notificationsEnabled: value.notificationsEnabled,
+        })
         server.emit('management-state', value)
         send(response, 200, value)
       } else if (request.method === 'POST' && route === 'holds/retry') {
         const body = await jsonBody(request)
-        send(response, 200, await coordinator.retryHold(body.id))
+        const result = await coordinator.retryHold(body.id)
+        await audit('update.hold.retried', { holdId: body.id })
+        send(response, 200, result)
       } else if (request.method === 'GET' && route === 'rollback-plan') {
         send(response, 200, { plan: await coordinator.rollbackPlan() })
       } else if (request.method === 'POST' && ['rollback', 'return-stable'].includes(route)) {
@@ -263,8 +272,8 @@ export function createManagementServer({
           confirmDataLoss: body.confirmDataLoss,
         })
         void task.completion
-          .then(() => logs.audit(`${route}.completed`, { taskId: task.taskId }))
-          .catch(error => logs.audit(`${route}.failed`, { error: error.message, level: 'error', taskId: task.taskId }))
+          .then(() => audit(`${route}.completed`, { taskId: task.taskId }))
+          .catch(error => audit(`${route}.failed`, { error, taskId: task.taskId }))
           .catch(() => {})
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && route === 'events') {
@@ -299,7 +308,14 @@ export function createManagementServer({
         response.once('close', () => logs.off('entry', listener))
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
-      send(response, error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError ? 409 : 400, {
+      const conflict = error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError
+      await logs.diagnostic('platform-management', 'management.request.failed', {
+        error,
+        level: conflict ? 'warning' : 'error',
+        method: request.method ?? null,
+        pathname,
+      })
+      send(response, conflict ? 409 : 400, {
         error: error instanceof Error ? error.message : 'management request failed',
       })
     }

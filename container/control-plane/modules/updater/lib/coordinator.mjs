@@ -12,6 +12,7 @@ export class UpdateCoordinator extends EventEmitter {
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
     allowUnavailableMetadata = false,
     probationSeconds = 120,
+    report = async () => {},
     now = () => new Date(),
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   }) {
@@ -28,6 +29,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.automaticChecks = automaticChecks
     this.allowUnavailableMetadata = allowUnavailableMetadata
     this.probationSeconds = probationSeconds
+    this.report = report
     this.now = now
     this.sleep = sleep
     this.task = undefined
@@ -37,7 +39,28 @@ export class UpdateCoordinator extends EventEmitter {
   async transition(status, fields = {}) {
     const value = await this.state.write(status, fields)
     this.emit('state', value)
+    await this.record('update.phase.changed', {
+      status,
+      taskId: value.taskId ?? null,
+      progress: value.progress ?? null,
+      targetSequence: value.targetSequence ?? value.available?.targetSequence ?? null,
+      outcome: value.outcome ?? null,
+      ...(value.error === null || value.error === undefined ? {} : { error: value.error, level: 'error' }),
+    })
     return value
+  }
+
+  record(message, fields = {}) {
+    return Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
+  }
+
+  async bestEffort(message, operation, fallback, fields = {}) {
+    try {
+      return await operation()
+    } catch (error) {
+      await this.record(message, { ...fields, error, level: 'warning' })
+      return fallback
+    }
   }
 
   hasActiveTask() {
@@ -52,7 +75,7 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async runCheck(source) {
-    await this.transition('checking', { error: null })
+    await this.transition('checking', { checkSource: source, error: null })
     try {
       if (this.channelState !== undefined) {
         const plan = await this.desiredState()
@@ -105,7 +128,7 @@ export class UpdateCoordinator extends EventEmitter {
       if (error instanceof MetadataUnavailableError && this.allowUnavailableMetadata) {
         const local = await this.channelState?.read()
         const upstream = local?.updateChannel === 'experimental' && this.npm !== undefined
-          ? await this.npm.discover().catch(() => null)
+          ? await this.bestEffort('update.upstream-discovery.failed', () => this.npm.discover(), null, { checkSource: source })
           : null
         await this.transition('idle', {
           metadataUnavailable: true,
@@ -116,6 +139,7 @@ export class UpdateCoordinator extends EventEmitter {
         })
         return { unavailable: true, upstream }
       }
+      await this.record('update.check.failed', { error, checkSource: source })
       await this.transition('failed', { error: error instanceof Error ? error.message : 'update check failed' })
       throw error
     }
@@ -150,13 +174,16 @@ export class UpdateCoordinator extends EventEmitter {
     if (this.channelState === undefined) throw new Error('update channels are not configured')
     const result = await this.channelState.setChannel(updateChannel)
     if (updateChannel === 'stable') await this.automaticChecks?.clearUpstream()
+    await this.record('update.channel.changed', { updateChannel })
     return result
   }
 
   async retryHold(id) {
     if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
     if (this.channelState === undefined) throw new Error('update channels are not configured')
-    return this.channelState.retry(id)
+    const result = await this.channelState.retry(id)
+    await this.record('update.hold.retried', { holdId: id })
+    return result
   }
 
   rollbackPlan() {
@@ -184,10 +211,11 @@ export class UpdateCoordinator extends EventEmitter {
         ) throw new Error('no verified pre-Experimental Stable recovery point is available')
       }
       const result = await this.completeRecovery.restore(planId, options)
-      await this.clearSatisfiedNotifications().catch(() => {})
+      await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
     } catch (error) {
+      await this.record('update.rollback.failed', { error, taskId })
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'rollback failed' })
       throw error
     }
@@ -219,9 +247,11 @@ export class UpdateCoordinator extends EventEmitter {
     const [update, local, current, rollbackPlan, journal, automatic] = await Promise.all([
       this.state.read(),
       this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
-      this.activator.currentDeployment().catch(() => null),
-      this.rollbackPlan().catch(() => null),
-      this.journal?.read().catch(() => undefined),
+      this.bestEffort('update.status.current.failed', () => this.activator.currentDeployment(), null),
+      this.bestEffort('update.status.rollback-plan.failed', () => this.rollbackPlan(), null),
+      this.journal === undefined
+        ? Promise.resolve(undefined)
+        : this.bestEffort('update.status.journal.failed', () => this.journal.read(), undefined),
       this.automaticChecks?.read() ?? Promise.resolve(null),
     ])
     const returnStableAvailable = rollbackPlan !== null && rollbackPlan.snapshot !== null && update.supported?.dsh !== undefined
@@ -254,6 +284,7 @@ export class UpdateCoordinator extends EventEmitter {
         outcome: plan.action,
       })
     } catch (error) {
+      await this.record('update.reconcile.failed', { error, taskId })
       const current = await this.state.read()
       if (current.status !== 'failed') {
         await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update planning failed' })
@@ -271,9 +302,10 @@ export class UpdateCoordinator extends EventEmitter {
       await this.transition('validating', { taskId, progress: 70 })
       await this.transition('switching', { taskId, progress: 85 })
       await this.activator.activate(prepared)
-      await this.clearSatisfiedNotifications().catch(() => {})
+      await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
+      await this.record('update.stable.failed', { error, taskId })
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update failed' })
       throw error
     }
@@ -350,39 +382,52 @@ export class UpdateCoordinator extends EventEmitter {
       } while (true)
       await this.activator.commitExperimental(candidateRuntimeId)
       transaction = await this.journal.transition('committed')
-      await this.clearSatisfiedNotifications().catch(() => {})
-      await this.activator.cleanup?.().catch(() => {})
+      await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
+      if (this.activator.cleanup !== undefined) {
+        await this.bestEffort('update.assets.cleanup.failed', () => this.activator.cleanup(), undefined, { taskId })
+      }
       if (obsoleteSnapshotId !== null && obsoleteSnapshotId !== transaction.snapshotId) {
-        await this.snapshots.remove?.(obsoleteSnapshotId).catch(() => {})
+        if (this.snapshots.remove !== undefined) {
+          await this.bestEffort('update.snapshot.cleanup.failed', () => this.snapshots.remove(obsoleteSnapshotId), undefined, {
+            snapshotId: obsoleteSnapshotId,
+            taskId,
+          })
+        }
       }
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'
+      await this.record('update.experimental.failed', { error, failureClass, taskId })
       if (candidate !== undefined && this.channelState !== undefined) {
         if (failureClass === 'candidate') {
-          await this.channelState.addHold({ type: 'version', dshVersion: candidate.version, reason: message }).catch(() => {})
+          await this.bestEffort('update.hold.persist.failed', () => this.channelState.addHold({
+            type: 'version', dshVersion: candidate.version, reason: message,
+          }), undefined, { dshVersion: candidate.version, holdType: 'version', taskId })
         } else if (failureClass === 'combination') {
           const environmentVersion = transaction?.to.environment
-          if (environmentVersion !== undefined) await this.channelState.addHold({
+          if (environmentVersion !== undefined) await this.bestEffort('update.hold.persist.failed', () => this.channelState.addHold({
             type: 'combination', dshVersion: candidate.version, environmentVersion, reason: message,
-          }).catch(() => {})
+          }), undefined, { dshVersion: candidate.version, environmentVersion, holdType: 'combination', taskId })
         }
       }
-      transaction = await this.journal?.read().catch(() => transaction)
+      if (this.journal !== undefined) {
+        transaction = await this.bestEffort('update.journal.read.failed', () => this.journal.read(), transaction, { taskId })
+      }
       if (transaction !== undefined && !['committed', 'rolled-back', 'failed'].includes(transaction.phase)) {
         try {
           if (['snapshot-created', 'switched', 'probation', 'restoring-data'].includes(transaction.phase)) {
             if (transaction.phase !== 'restoring-data') transaction = await this.journal.transition('restoring-data', { error: message })
-            await this.activator.suspendDsh().catch(() => {})
+            await this.bestEffort('update.rollback.suspend.failed', () => this.activator.suspendDsh(), undefined, { taskId })
             await this.activator.restoreDeployment(transaction.from, { resume: false })
             if (transaction.snapshotId !== null) await this.snapshots.restore(transaction.snapshotId)
             await this.activator.resumeDsh()
             await this.journal.transition('rolled-back', { error: message })
           } else {
-            await this.activator.resumeDsh().catch(() => {})
+            await this.bestEffort('update.rollback.resume.failed', () => this.activator.resumeDsh(), undefined, { taskId })
             await this.journal.transition('failed', { error: message })
           }
         } catch (rollbackError) {
+          await this.record('update.experimental.rollback.failed', { error: rollbackError, taskId })
           const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : 'unknown error'
           message = `${message}; rollback failed: ${rollbackMessage}`
         }

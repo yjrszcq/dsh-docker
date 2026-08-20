@@ -1,7 +1,15 @@
 export class UpdateScheduler {
-  constructor({ check, intervalSeconds = 21_600, random = Math.random, setTimer = setTimeout, clearTimer = clearTimeout }) {
+  constructor({
+    check,
+    intervalSeconds = 21_600,
+    onError = async () => {},
+    random = Math.random,
+    setTimer = setTimeout,
+    clearTimer = clearTimeout,
+  }) {
     if (!Number.isSafeInteger(intervalSeconds) || intervalSeconds < 60) throw new Error('update interval must be at least 60 seconds')
     this.check = check
+    this.onError = onError
     this.intervalMs = intervalSeconds * 1_000
     this.random = random
     this.setTimer = setTimer
@@ -15,7 +23,11 @@ export class UpdateScheduler {
     const timer = this.setTimer(async () => {
       if (this.timer !== timer) return
       this.timer = undefined
-      try { await this.check() } catch {}
+      try {
+        await this.check()
+      } catch (error) {
+        await Promise.resolve().then(() => this.onError(error)).catch(() => {})
+      }
       if (this.enabled && this.timer === undefined) this.schedule()
     }, Math.round(this.intervalMs * jitter))
     this.timer = timer

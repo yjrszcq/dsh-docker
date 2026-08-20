@@ -84,6 +84,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal(coordinator.checkSource, 'page-open')
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/update'), { taskId: 'task-one' })
     await assert.rejects(client.request('POST', '/_dsh_platform/api/v1/update'), error => error.statusCode === 409)
+    const rejected = await logs.query({ sources: ['platform-management'] })
+    assert.equal(rejected.some(entry => entry.message === 'management.request.failed'
+      && entry.pathname === '/_dsh_platform/api/v1/update'
+      && entry.level === 'warning'), true)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/logs?source=gateway')).entries[0].message, 'ready')
     assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/channel', { channel: 'experimental' })).updateChannel, 'experimental')
     assert.deepEqual(await client.request('PUT', '/_dsh_platform/api/v1/automatic-check', {
@@ -93,6 +97,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
     coordinator.running = false
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/rollback', { planId: 'plan-a' }), { taskId: 'rollback-task' })
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'update.channel.changed' && entry.updateChannel === 'experimental'), true)
+    assert.equal(audit.some(entry => entry.message === 'update.automatic-check.configured' && entry.intervalSeconds === 21_600), true)
+    assert.equal(audit.some(entry => entry.message === 'update.hold.retried' && entry.holdId === 'hold-a'), true)
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
@@ -819,6 +827,23 @@ test('scheduler configuration during a running check does not revive an old time
   await running
   assert.equal(timers.length, 1)
   assert.equal(scheduler.timer, undefined)
+})
+
+test('scheduler reports a failed automatic check and continues scheduling', async () => {
+  const errors = []
+  const timers = []
+  const scheduler = new UpdateScheduler({
+    check: async () => { throw Object.assign(new Error('metadata offline'), { code: 'ENETDOWN' }) },
+    onError: error => { errors.push(error) },
+    intervalSeconds: 100,
+    setTimer: callback => { const timer = { callback, unref() {} }; timers.push(timer); return timer },
+    clearTimer: () => {},
+  })
+  scheduler.start()
+  await timers[0].callback()
+  assert.equal(errors[0].code, 'ENETDOWN')
+  assert.equal(timers.length, 2)
+  scheduler.stop()
 })
 
 test('management does not check metadata before the first scheduled interval', async () => {

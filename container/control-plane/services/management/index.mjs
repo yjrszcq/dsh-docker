@@ -35,7 +35,11 @@ const logs = new JsonlLogManager({
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
   output: { stdout: process.stdout, stderr: process.stderr },
 })
-logs.on('error', error => console.error(error))
+logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
+await logs.diagnostic('platform-management', 'management.starting', {
+  imageBuildId: imageInventory.imageBuildId,
+  targetSequence: imageInventory.targetSequence,
+})
 const metadata = new MetadataClient({
   baseUrl: process.env.DSH_UPDATE_METADATA_URL,
   trust,
@@ -62,10 +66,12 @@ const coordinator = new UpdateCoordinator({
   completeRecovery,
   automaticChecks,
   allowUnavailableMetadata: imageInventory.authority === 'development',
+  report: (message, fields) => logs.diagnostic('updater', message, fields),
 })
 const settingsDocument = new SettingsDocumentStore(process.env.DSH_HOME ?? '/data/dsh')
 const scheduler = new UpdateScheduler({
   check: () => coordinator.check('automatic'),
+  onError: error => logs.diagnostic('updater', 'update.automatic-check.failed', { error }),
 })
 const server = createManagementServer({
   coordinator,
@@ -88,18 +94,39 @@ const server = createManagementServer({
 })
 await listenManagement(server, paths.managementSocket)
 scheduler.configure((await automaticChecks.read()).automaticCheck)
-const { transaction, persisted } = await reconcileRecoveredState({ journal, state: coordinator.state })
+let recovered
+try {
+  recovered = await reconcileRecoveredState({ journal, state: coordinator.state })
+} catch (error) {
+  await logs.diagnostic('updater', 'update.recovery-state.failed', { error })
+  throw error
+}
+const { transaction, persisted } = recovered
 const journalOwnsState = transaction !== undefined && persisted.taskId === transaction.transactionId
 const resumeUpdate = !journalOwnsState && !['idle', 'success', 'failed'].includes(persisted.status)
 if (resumeUpdate) {
   setImmediate(() => {
-    try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
+    try {
+      const task = coordinator.start()
+      void logs.diagnostic('updater', 'update.resume.started', { taskId: task.taskId })
+      void task.completion.catch(error => logs.diagnostic('updater', 'update.resume.failed', { error, taskId: task.taskId }))
+    } catch (error) {
+      void logs.diagnostic('updater', 'update.resume.failed', { error })
+    }
   })
 }
+await logs.diagnostic('platform-management', 'management.ready', { resumedUpdate: resumeUpdate })
 
-const stop = () => {
+let stopping = false
+const stop = signal => {
+  if (stopping) return
+  stopping = true
   scheduler.stop()
-  server.close(() => process.exit(0))
+  void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(() => {
+    server.close(() => {
+      void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
+    })
+  })
 }
-process.once('SIGINT', stop)
-process.once('SIGTERM', stop)
+process.once('SIGINT', () => stop('SIGINT'))
+process.once('SIGTERM', () => stop('SIGTERM'))
