@@ -26,7 +26,7 @@ const TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
-    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件', terminalTab: '终端',
+    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件', terminalTab: '终端', filesTab: '文件管理',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
@@ -80,12 +80,21 @@ const COPY = Object.freeze({
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
+    files: '文件管理', filesDetail: '使用与 DSH 相同的容器权限查看和管理文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', parentDirectory: '上级目录', path: '路径',
+    filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
+    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileModified: '修改时间', fileMode: '权限', emptyDirectory: '此目录为空。', loadMore: '加载更多',
+    noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
+    newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', conflictMode: '目标已存在', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
+    operationComplete: '文件操作已完成', operationFailed: '文件操作失败', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
+    editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
+    fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
+    chooseConflict: '冲突策略：reject（拒绝）、overwrite（覆盖）或 rename（自动重命名）',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
   }),
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins', terminalTab: 'Terminal',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins', terminalTab: 'Terminal', filesTab: 'Files',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
@@ -139,6 +148,15 @@ const COPY = Object.freeze({
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
+    files: 'File management', filesDetail: 'View and manage files with the same container permissions as DSH.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', parentDirectory: 'Parent directory', path: 'Path',
+    filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
+    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileModified: 'Modified', fileMode: 'Mode', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
+    noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
+    newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', conflictMode: 'Destination exists', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
+    operationComplete: 'File operation completed', operationFailed: 'File operation failed', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
+    editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
+    fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
+    chooseConflict: 'Conflict policy: reject, overwrite, or rename',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
   }),
@@ -195,6 +213,19 @@ let terminalResizeFrame
 let terminalRestored = false
 let terminalLeaving = false
 let runtimeResetExpanded = false
+let filesLoaded = false
+let fileLoading = false
+let filePath = '/workspace'
+let fileListing = { revision: null, entries: [], nextCursor: null, total: 0 }
+let fileSort = 'name'
+let fileOrder = 'asc'
+let fileHistory = []
+let fileSelected = new Set()
+let fileClipboard = null
+let fileActiveTask = null
+let fileEditor = null
+let fileEditorOriginal = ''
+let fileEditorDirty = false
 const logEntries = []
 const logIdentities = new Set()
 let logDisplayLimit = (() => {
@@ -220,6 +251,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n)
   for (const node of document.querySelectorAll('[data-i18n-placeholder]')) node.placeholder = t(node.dataset.i18nPlaceholder)
   for (const node of document.querySelectorAll('[data-i18n-aria-label]')) node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel))
+  for (const node of document.querySelectorAll('[data-i18n-title]')) node.setAttribute('title', t(node.dataset.i18nTitle))
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
 }
 
@@ -235,6 +267,15 @@ function localTime(value) {
   if (!value) return '-'
   const date = new Date(value)
   return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')
+}
+
+function fileSize(value) {
+  const size = Number(value)
+  if (!Number.isFinite(size)) return '-'
+  if (size < 1024) return `${String(size)} B`
+  if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KiB`
+  if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)} MiB`
+  return `${(size / 1024 ** 3).toFixed(1)} GiB`
 }
 
 function updateOutcome(value) {
@@ -1189,7 +1230,255 @@ async function closeTerminalSession() {
   forgetTerminalSession('terminalClosed', 'closed')
 }
 
+function fileOperationMessage(value, failed = false) {
+  elements['file-operation'].hidden = value === ''
+  elements['file-operation'].textContent = value
+  elements['file-operation'].classList.toggle('failed', failed)
+}
+
+function selectedFileEntries() {
+  return fileListing.entries.filter(entry => fileSelected.has(entry.path))
+}
+
+function renderFileSelection() {
+  const count = fileSelected.size
+  elements['file-selection-count'].textContent = count === 0 ? t('noFilesSelected') : t('filesSelected', { count })
+  for (const id of ['file-copy', 'file-cut', 'file-rename', 'file-delete']) elements[id].disabled = count === 0 || fileActiveTask !== null
+  elements['file-rename'].disabled = count !== 1 || fileActiveTask !== null
+  elements['file-download'].disabled = count !== 1 || selectedFileEntries()[0]?.type !== 'file'
+  elements['file-paste'].disabled = fileClipboard === null || fileActiveTask !== null
+  elements['file-select-all'].checked = count > 0 && count === visibleFileEntries().length
+  elements['file-select-all'].indeterminate = count > 0 && count !== visibleFileEntries().length
+}
+
+function visibleFileEntries() {
+  const query = elements['file-search']?.value.trim().toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en-US') ?? ''
+  const hidden = elements['file-hidden']?.checked ?? true
+  return fileListing.entries.filter(entry => (hidden || !entry.name.startsWith('.')) && (query === '' || entry.name.toLocaleLowerCase().includes(query)))
+}
+
+function fileTypeMark(type) {
+  return { directory: '▣', file: '·', symlink: '↗', fifo: '│', socket: '◉', 'block-device': '◆', 'character-device': '◇' }[type] ?? '?'
+}
+
+function renderFiles() {
+  const values = visibleFileEntries()
+  elements['file-list'].replaceChildren()
+  elements['file-empty'].hidden = values.length !== 0 || fileLoading
+  elements['file-load-more'].hidden = fileListing.nextCursor === null || fileLoading
+  elements['file-managed-warning'].hidden = !fileListing.managed && !['/opt/dsh-platform', '/run/dsh-platform', '/data/platform/state', '/data/platform/store'].some(root => filePath === root || filePath.startsWith(`${root}/`))
+  for (const entry of values) {
+    const row = document.createElement('tr')
+    row.dataset.type = entry.type
+    row.classList.toggle('selected', fileSelected.has(entry.path))
+    const checkCell = document.createElement('td')
+    checkCell.className = 'file-check'
+    const check = document.createElement('input')
+    check.type = 'checkbox'
+    check.checked = fileSelected.has(entry.path)
+    check.setAttribute('aria-label', entry.name)
+    check.addEventListener('change', () => {
+      if (check.checked) fileSelected.add(entry.path); else fileSelected.delete(entry.path)
+      renderFiles()
+    })
+    checkCell.append(check)
+    const name = document.createElement('td')
+    const mark = document.createElement('span')
+    mark.className = 'file-type-mark'
+    mark.textContent = fileTypeMark(entry.type)
+    const label = document.createElement('strong')
+    label.textContent = entry.name
+    name.append(mark, label)
+    const size = document.createElement('td')
+    size.textContent = entry.type === 'directory' ? '-' : fileSize(entry.size)
+    const modified = document.createElement('td')
+    modified.textContent = localTime(entry.modifiedAt)
+    const mode = document.createElement('td')
+    mode.textContent = (entry.mode ?? 0).toString(8).padStart(3, '0')
+    row.append(checkCell, name, size, modified, mode)
+    row.addEventListener('click', event => {
+      if (event.target === check) return
+      if (fileSelected.has(entry.path)) fileSelected.delete(entry.path); else fileSelected.add(entry.path)
+      renderFiles()
+    })
+    row.addEventListener('dblclick', () => { if (entry.type === 'directory') void navigateFiles(entry.path); else if (entry.type === 'file') void openFileEditor(entry) })
+    elements['file-list'].append(row)
+  }
+  renderFileSelection()
+}
+
+async function navigateFiles(path, { history = true, append = false } = {}) {
+  if (fileLoading) return
+  fileLoading = true
+  clearError()
+  try {
+    const query = new URLSearchParams({ path, limit: '200', sort: fileSort, order: fileOrder })
+    if (append && fileListing.nextCursor !== null) query.set('cursor', fileListing.nextCursor)
+    const next = await api(`files/list?${query}`)
+    if (history && !append && filePath !== next.path) fileHistory.push(filePath)
+    filePath = next.path
+    elements['file-path'].value = filePath
+    fileSelected.clear()
+    fileListing = append ? { ...next, entries: [...fileListing.entries, ...next.entries] } : next
+    filesLoaded = true
+    renderFiles()
+  } catch (error) { showError(error) } finally {
+    fileLoading = false
+    renderFiles()
+  }
+}
+
+function updateEditorLines() {
+  const count = elements['file-editor-content'].value.split('\n').length
+  elements['file-editor-lines'].textContent = Array.from({ length: count }, (_, index) => String(index + 1)).join('\n')
+  elements['file-editor-lines'].scrollTop = elements['file-editor-content'].scrollTop
+}
+
+async function openFileEditor(entry) {
+  clearError()
+  try {
+    fileEditor = await api(`files/content?path=${encodeURIComponent(entry.path)}`)
+    fileEditorOriginal = fileEditor.content
+    fileEditorDirty = false
+    elements['file-editor-path'].textContent = fileEditor.path
+    elements['file-editor-content'].value = fileEditor.content
+    elements['file-editor-meta'].textContent = `${fileEditor.encoding} · ${fileSize(fileEditor.size)} · ${fileEditor.newline.toUpperCase()}`
+    updateEditorLines()
+    elements['file-editor-dialog'].showModal()
+    elements['file-editor-content'].focus()
+  } catch (error) { showError(error) }
+}
+
+async function saveFileEditor(saveAs = false) {
+  if (fileEditor === null) return
+  let path = fileEditor.path
+  let revision = fileEditor.revision
+  let create = false
+  if (saveAs) {
+    const value = window.prompt(t('enterName'), fileEditor.path)
+    if (value === null) return
+    path = value
+    revision = null
+    create = true
+  }
+  try {
+    const saved = await api('files/content', { method: 'PUT', body: { path, content: elements['file-editor-content'].value, revision, create } })
+    fileEditor = { ...fileEditor, ...saved, path, content: elements['file-editor-content'].value }
+    fileEditorOriginal = fileEditor.content
+    fileEditorDirty = false
+    elements['file-editor-path'].textContent = path
+    fileOperationMessage(t('fileSaved'))
+    await navigateFiles(filePath, { history: false })
+  } catch (error) {
+    if (error.statusCode === 409) fileOperationMessage(t('fileRevisionChanged'), true)
+    else showError(error)
+  }
+}
+
+function closeFileEditor() {
+  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return false
+  elements['file-editor-dialog'].close()
+  fileEditor = null
+  fileEditorDirty = false
+  return true
+}
+
+async function waitFileTask(taskId) {
+  fileActiveTask = taskId
+  elements['file-task-state'].hidden = false
+  renderFileSelection()
+  try {
+    for (;;) {
+      const task = await api(`files/tasks/${taskId}`)
+      elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation })
+      if (!['running'].includes(task.status)) {
+        if (task.status === 'success') fileOperationMessage(t('operationComplete'))
+        else fileOperationMessage(task.error ?? t('operationFailed'), true)
+        break
+      }
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+  } catch (error) { showError(error) } finally {
+    fileActiveTask = null
+    elements['file-task-state'].hidden = true
+    await navigateFiles(filePath, { history: false })
+  }
+}
+
+async function startFileTask(body) {
+  clearError()
+  try {
+    const task = await api('files/tasks', { method: 'POST', body })
+    void waitFileTask(task.taskId)
+  } catch (error) { showError(error) }
+}
+
+function sourceDescriptors() {
+  return selectedFileEntries().map(entry => ({ path: entry.path, revision: entry.revision }))
+}
+
+async function uploadFiles(files) {
+  let conflict = 'reject'
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index]
+    elements['file-task-state'].hidden = false
+    elements['file-task-label'].textContent = t('uploadProgress', { current: index + 1, total: files.length })
+    try {
+      await new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest()
+        request.open('POST', `${API}/files/upload?path=${encodeURIComponent(`${filePath}/${file.name}`)}&conflict=${conflict}`)
+        request.onload = () => {
+          if (request.status >= 200 && request.status < 300) return resolve()
+          const error = new Error(JSON.parse(request.responseText || '{}').error ?? `HTTP ${String(request.status)}`)
+          error.statusCode = request.status
+          reject(error)
+        }
+        request.onerror = () => reject(new Error(t('operationFailed')))
+        request.send(file)
+      })
+    } catch (error) {
+      if (error.statusCode === 409) {
+        const next = window.prompt(t('chooseConflict'), conflict)
+        if (['overwrite', 'rename'].includes(next)) { conflict = next; index -= 1; continue }
+      }
+      showError(error); break
+    }
+  }
+  elements['file-task-state'].hidden = true
+  await navigateFiles(filePath, { history: false })
+}
+
+async function recursiveFileSearch() {
+  const query = elements['file-search'].value.trim()
+  if (query === '') return
+  try {
+    const task = await api('files/tasks', { method: 'POST', body: { operation: 'search', path: filePath, revision: fileListing.revision, query } })
+    fileActiveTask = task.taskId
+    elements['file-task-state'].hidden = false
+    elements['file-task-label'].textContent = t('searchRunning')
+    for (;;) {
+      const state = await api(`files/tasks/${task.taskId}?limit=1000`)
+      if (state.status !== 'running') {
+        if (state.status === 'success') {
+          fileListing = { ...fileListing, entries: state.results, nextCursor: null, total: state.results.length }
+          elements['file-search'].value = ''
+          fileSelected.clear()
+          renderFiles()
+        } else fileOperationMessage(state.error ?? t('operationFailed'), true)
+        break
+      }
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  } catch (error) { showError(error) } finally { fileActiveTask = null; elements['file-task-state'].hidden = true }
+}
+
 function selectTab(tab) {
+  const current = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tab
+  if (current === 'files' && tab !== 'files') {
+    if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return
+    fileClipboard = null
+    fileSelected.clear()
+  }
   for (const button of tabButtons) {
     const active = button.dataset.tab === tab
     button.setAttribute('aria-selected', String(active))
@@ -1208,12 +1497,22 @@ function selectTab(tab) {
     void restoreTerminalSession()
     fitTerminal()
   }
+  if (tab === 'files' && !filesLoaded) void navigateFiles(filePath, { history: false })
 }
 
 function connectEvents() {
   eventSource?.close()
   eventSource = new EventSource(`${API}/events`)
-  eventSource.addEventListener('state', () => { void loadStatus() })
+  eventSource.addEventListener('state', event => {
+    try {
+      const value = JSON.parse(event.data)
+      if (value?.fileTask?.taskId === fileActiveTask) {
+        const task = value.fileTask
+        elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation })
+      }
+    } catch {}
+    void loadStatus()
+  })
   eventSource.onopen = () => setConnection('online')
   eventSource.onerror = () => setConnection('connecting')
 }
@@ -1284,6 +1583,94 @@ elements['cancel-user-plugin-changes'].addEventListener('click', () => {
 elements['apply-user-plugin-changes'].addEventListener('click', () => { void applyUserPluginDraft() })
 elements['new-terminal'].addEventListener('click', () => { void createTerminalSession() })
 elements['close-terminal'].addEventListener('click', () => { void closeTerminalSession() })
+elements['file-back'].addEventListener('click', () => {
+  const path = fileHistory.pop()
+  if (path !== undefined) void navigateFiles(path, { history: false })
+})
+elements['file-up'].addEventListener('click', () => {
+  const parent = filePath === '/' ? '/' : filePath.slice(0, filePath.lastIndexOf('/')) || '/'
+  void navigateFiles(parent)
+})
+elements['file-path'].addEventListener('keydown', event => { if (event.key === 'Enter') void navigateFiles(event.target.value) })
+elements['file-refresh'].addEventListener('click', () => { void navigateFiles(filePath, { history: false }) })
+for (const button of document.querySelectorAll('[data-file-location]')) button.addEventListener('click', () => { void navigateFiles(button.dataset.fileLocation) })
+for (const button of document.querySelectorAll('[data-file-sort]')) button.addEventListener('click', () => {
+  if (fileSort === button.dataset.fileSort) fileOrder = fileOrder === 'asc' ? 'desc' : 'asc'
+  else { fileSort = button.dataset.fileSort; fileOrder = 'asc' }
+  void navigateFiles(filePath, { history: false })
+})
+elements['file-search'].addEventListener('input', renderFiles)
+elements['file-hidden'].addEventListener('change', renderFiles)
+elements['file-search-recursive'].addEventListener('click', () => { void recursiveFileSearch() })
+elements['file-select-all'].addEventListener('change', event => {
+  fileSelected = event.target.checked ? new Set(visibleFileEntries().map(entry => entry.path)) : new Set()
+  renderFiles()
+})
+elements['file-load-more'].addEventListener('click', () => { void navigateFiles(filePath, { history: false, append: true }) })
+elements['file-new'].addEventListener('click', () => {
+  const kind = window.prompt(`${t('newFile')} / ${t('newDirectory')}`, 'file')
+  if (kind === null) return
+  const name = window.prompt(t('enterName'))
+  if (name === null || name.trim() === '') return
+  void startFileTask({ operation: kind.toLocaleLowerCase().startsWith('d') || kind.includes('目录') ? 'mkdir' : 'touch', destination: `${filePath}/${name}`, destinationRevision: fileListing.revision })
+})
+elements['file-upload'].addEventListener('click', () => elements['file-upload-input'].click())
+elements['file-upload-input'].addEventListener('change', event => {
+  const files = [...event.target.files]
+  event.target.value = ''
+  if (files.length > 0) void uploadFiles(files)
+})
+for (const type of ['dragenter', 'dragover']) elements['panel-files'].addEventListener(type, event => { event.preventDefault(); elements['panel-files'].classList.add('file-dragging') })
+for (const type of ['dragleave', 'drop']) elements['panel-files'].addEventListener(type, event => { event.preventDefault(); elements['panel-files'].classList.remove('file-dragging') })
+elements['panel-files'].addEventListener('drop', event => {
+  const files = [...event.dataTransfer.files]
+  if (files.length > 0) void uploadFiles(files)
+})
+elements['file-copy'].addEventListener('click', () => {
+  fileClipboard = { operation: 'copy', sources: sourceDescriptors() }
+  fileOperationMessage(t('clipboardCopy', { count: fileClipboard.sources.length }))
+  renderFileSelection()
+})
+elements['file-cut'].addEventListener('click', () => {
+  fileClipboard = { operation: 'move', sources: sourceDescriptors() }
+  fileOperationMessage(t('clipboardMove', { count: fileClipboard.sources.length }))
+  renderFileSelection()
+})
+elements['file-paste'].addEventListener('click', () => {
+  if (fileClipboard === null) return
+  const conflict = window.prompt(t('chooseConflict'), 'reject')
+  if (!['reject', 'overwrite', 'rename'].includes(conflict)) return
+  const body = { ...fileClipboard, destination: filePath, destinationRevision: fileListing.revision, conflict }
+  fileClipboard = null
+  void startFileTask(body)
+})
+elements['file-rename'].addEventListener('click', () => {
+  const entry = selectedFileEntries()[0]
+  if (entry === undefined) return
+  const name = window.prompt(t('enterName'), entry.name)
+  if (name === null || name === entry.name || name.trim() === '') return
+  void startFileTask({ operation: 'rename', sources: [{ path: entry.path, revision: entry.revision }], destination: `${filePath}/${name}`, destinationRevision: fileListing.revision })
+})
+elements['file-delete'].addEventListener('click', () => {
+  const sources = sourceDescriptors()
+  if (sources.length === 0 || !window.confirm(t('confirmDeleteFiles', { count: sources.length }))) return
+  void startFileTask({ operation: 'delete', sources })
+})
+elements['file-download'].addEventListener('click', () => {
+  const entry = selectedFileEntries()[0]
+  if (entry !== undefined) window.location.assign(`${API}/files/download?path=${encodeURIComponent(entry.path)}&revision=${encodeURIComponent(entry.revision)}`)
+})
+elements['file-task-cancel'].addEventListener('click', () => { if (fileActiveTask !== null) void api(`files/tasks/${fileActiveTask}`, { method: 'DELETE' }).catch(showError) })
+elements['file-editor-content'].addEventListener('input', () => {
+  fileEditorDirty = elements['file-editor-content'].value !== fileEditorOriginal
+  updateEditorLines()
+})
+elements['file-editor-content'].addEventListener('scroll', updateEditorLines)
+elements['file-editor-save'].addEventListener('click', () => { void saveFileEditor(false) })
+elements['file-editor-save-as'].addEventListener('click', () => { void saveFileEditor(true) })
+elements['file-editor-reload'].addEventListener('click', () => { if (fileEditor !== null) void openFileEditor(fileEditor) })
+elements['file-editor-close'].addEventListener('click', event => { event.preventDefault(); closeFileEditor() })
+elements['file-editor-dialog'].addEventListener('cancel', event => { event.preventDefault(); closeFileEditor() })
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })
@@ -1333,6 +1720,11 @@ window.addEventListener('beforeunload', () => {
   terminalSocket?.close()
   eventSource?.close()
   logSource?.close()
+})
+window.addEventListener('beforeunload', event => {
+  if (!fileEditorDirty) return
+  event.preventDefault()
+  event.returnValue = ''
 })
 
 applyTranslations()

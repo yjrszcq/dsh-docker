@@ -882,7 +882,7 @@ test('standalone console keeps localized feature parity on the shared Management
   const script = await readFile(new URL('app.js', publicRoot), 'utf8')
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/system-plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins', 'terminal']) {
+  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   for (const route of [
@@ -890,6 +890,7 @@ test('standalone console keeps localized feature parity on the shared Management
     'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
     'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
+    'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(script, /name === 'dsh_locale'/)
@@ -974,6 +975,16 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /terminalEmulator\.reset\(\)[\s\S]*new WebSocket/)
   assert.match(script, /terminalReconnectDeadline \?\?= Date\.now\(\) \+ 30_000/)
   assert.match(script, /terminalFit\.fit\(\)/)
+  assert.match(script, /filesTab: '文件管理'/)
+  assert.match(script, /filesTab: 'Files'/)
+  assert.match(script, /if \(tab === 'files' && !filesLoaded\) void navigateFiles/)
+  assert.match(script, /new XMLHttpRequest\(\)/)
+  assert.match(script, /fileClipboard = null/)
+  assert.match(script, /fileEditorDirty && !window\.confirm\(t\('unsavedFile'\)\)/)
+  assert.match(html, /id="file-editor-lines"/)
+  assert.match(style, /\.file-editor-frame \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\)/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.file-table thead th:nth-child/)
+  assert.doesNotMatch(pluginSource, /files\/list|filesTab|文件管理/)
   assert.match(style, /height: clamp\(260px, 52dvh, 420px\)/)
   assert.match(script, /userPluginsTab: '用户插件'/)
   assert.match(script, /userPluginsTab: 'User plugins'/)

@@ -166,6 +166,59 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
   outline-offset: 2px;
 }
 
+.file-section { gap: 14px; }
+#panel-files.file-dragging .file-browser { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file-heading-actions, .file-selection > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.file-pathbar { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 7px; }
+.file-pathbar input, .file-searchbar input {
+  min-width: 0;
+  height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-raised);
+  font: 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.file-searchbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.file-searchbar label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.file-task-state { display: flex; align-items: center; gap: 8px; min-height: 34px; color: var(--muted); font-size: 12px; }
+.file-task-state .spinner { margin: 0; }
+.file-task-state strong { min-width: 0; margin-right: auto; font-weight: 400; overflow-wrap: anywhere; }
+.file-browser { display: grid; grid-template-columns: 132px minmax(0, 1fr); min-height: 300px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.file-shortcuts { padding: 8px; border-right: 1px solid var(--border); background: var(--surface-raised); }
+.file-shortcuts button { display: block; width: 100%; padding: 7px 8px; overflow: hidden; border: 0; border-radius: 5px; color: var(--muted); background: transparent; font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: left; text-overflow: ellipsis; cursor: pointer; }
+.file-shortcuts button:hover { color: var(--text); background: var(--hover); }
+.file-main { min-width: 0; overflow-x: auto; }
+.file-table { width: 100%; min-width: 580px; border-collapse: collapse; table-layout: fixed; }
+.file-table th, .file-table td { height: 38px; padding: 7px 9px; overflow: hidden; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; line-height: 18px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.file-table th { height: 34px; background: var(--surface-raised); font-weight: 400; }
+.file-table th button { padding: 0; border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.file-table th:nth-child(2) { width: 45%; }
+.file-table th:nth-child(3) { width: 14%; }
+.file-table th:nth-child(4) { width: 25%; }
+.file-table th:nth-child(5) { width: 10%; }
+.file-table .file-check { width: 34px; padding-right: 2px; text-align: center; }
+.file-table tbody tr { cursor: default; }
+.file-table tbody tr:hover, .file-table tbody tr.selected { background: var(--hover); }
+.file-table td:nth-child(2) { color: var(--text); }
+.file-table td strong { font-weight: 500; }
+.file-type-mark { display: inline-block; width: 20px; color: var(--accent); text-align: center; }
+.file-load-more { display: flex !important; margin: 12px auto; }
+.file-selection { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; color: var(--muted); font-size: 12px; }
+.file-selection .danger-text { border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.file-editor-dialog { width: min(860px, calc(100% - 32px)); height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
+.file-editor-dialog::backdrop { background: rgb(0 0 0 / 48%); }
+.file-editor-dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; height: 100%; }
+.file-editor-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.file-editor-dialog h2 { margin: 0; font-size: 16px; line-height: 24px; }
+.file-editor-dialog header p, .file-editor-dialog form > p { margin: 2px 0 0; color: var(--muted); font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.file-editor-frame { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; margin: 14px 16px 8px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.file-editor-frame pre { min-width: 48px; height: 100%; margin: 0; overflow: hidden; padding: 12px 10px; border-right: 1px solid var(--border); color: var(--faint); background: var(--surface-raised); font: 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; user-select: none; }
+.file-editor-frame textarea { width: 100%; height: 100%; min-width: 0; min-height: 0; resize: none; padding: 12px 14px; border: 0; outline: none; color: var(--text); background: transparent; font: 13px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0; tab-size: 2; }
+.file-editor-dialog form > p { padding: 0 16px; }
+.file-editor-dialog .dialog-actions { padding: 10px 16px 14px; }
+
 .segmented {
   display: inline-flex;
   flex: none;
@@ -481,6 +534,25 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .terminal-actions { width: 100%; }
   .terminal-actions button { flex: 1; }
   .terminal-frame { height: clamp(260px, 48dvh, 360px); }
+  .file-heading-actions { width: 100%; }
+  .file-heading-actions button { flex: 1; }
+  .file-pathbar { grid-template-columns: auto auto minmax(0, 1fr); }
+  .file-pathbar #file-refresh { grid-column: 1 / -1; }
+  .file-searchbar { grid-template-columns: 1fr; }
+  .file-searchbar button { width: 100%; }
+  .file-browser { display: block; min-height: 260px; border: 0; background: transparent; }
+  .file-shortcuts { display: flex; gap: 6px; margin-bottom: 8px; padding: 0; overflow-x: auto; border: 0; background: transparent; }
+  .file-shortcuts button { width: auto; flex: none; border: 1px solid var(--border); }
+  .file-main { overflow: visible; border: 1px solid var(--border); border-radius: 8px; }
+  .file-table { min-width: 0; table-layout: auto; }
+  .file-table thead th:nth-child(n+3), .file-table tbody td:nth-child(n+3) { display: none; }
+  .file-table th:nth-child(2) { width: auto; }
+  .file-table tbody td:nth-child(2) { height: 48px; white-space: normal; overflow-wrap: anywhere; }
+  .file-selection { align-items: stretch; flex-direction: column; }
+  .file-selection > div { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .file-editor-dialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+  .file-editor-frame { margin: 10px 12px 6px; }
+  .file-editor-dialog header, .file-editor-dialog .dialog-actions { padding-right: 12px; padding-left: 12px; }
   .log-tools { width: 100%; flex-wrap: wrap; }
   .log-connection { margin-right: auto; }
   .log-filters { grid-template-columns: 1fr 1fr; }
