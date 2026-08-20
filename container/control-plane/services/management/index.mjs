@@ -29,6 +29,7 @@ import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/
 import { TerminalSessionManager } from './terminal/sessions.mjs'
 import { FileInventory, FileSearchManager } from '../../modules/file-manager/index.mjs'
 import { FileTransferManager } from '../../modules/file-manager/transfers.mjs'
+import { AtomicFileEditor } from '../../modules/file-manager/editor.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -129,6 +130,7 @@ const terminalSessions = new TerminalSessionManager({
 })
 const fileInventory = new FileInventory()
 const fileTransfers = new FileTransferManager()
+const fileEditor = new AtomicFileEditor()
 let server
 const fileTasks = new FileSearchManager({ onState: state => server?.emit('management-state', { fileTask: state }) })
 server = createManagementServer({
@@ -169,6 +171,7 @@ server = createManagementServer({
   fileInventory,
   fileTransfers,
   fileTasks,
+  fileEditor,
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)

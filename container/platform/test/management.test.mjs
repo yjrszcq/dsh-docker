@@ -19,6 +19,7 @@ import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugi
 import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
 import { FileInventory, FileSearchManager } from '../../control-plane/modules/file-manager/index.mjs'
 import { FileTransferManager } from '../../control-plane/modules/file-manager/transfers.mjs'
+import { AtomicFileEditor } from '../../control-plane/modules/file-manager/editor.mjs'
 
 class Coordinator extends EventEmitter {
   constructor() {
@@ -1252,7 +1253,7 @@ test('management exposes authenticated file inventory, search, upload, and range
   const fileTasks = new FileSearchManager({ onState: state => server?.emit('management-state', { fileTask: state }) })
   server = createManagementServer({
     coordinator: new Coordinator(), logs,
-    fileInventory: new FileInventory(), fileTransfers: new FileTransferManager(), fileTasks,
+    fileInventory: new FileInventory(), fileTransfers: new FileTransferManager(), fileTasks, fileEditor: new AtomicFileEditor(),
   })
   const socketPath = join(root, 'management.sock')
   await listenManagement(server, socketPath)
@@ -1263,7 +1264,13 @@ test('management exposes authenticated file inventory, search, upload, and range
     assert.deepEqual(listed.entries.map(entry => entry.name), ['alpha.txt'])
     const content = await client.request('GET', `${API_PREFIX}files/content?path=${encodeURIComponent(join(files, 'alpha.txt'))}`)
     assert.equal(content.content, '0123456789')
-    const search = await client.request('POST', `${API_PREFIX}files/tasks`, { operation: 'search', path: files, revision: listed.revision, query: 'alpha' })
+    const saved = await client.request('PUT', `${API_PREFIX}files/content`, {
+      path: join(files, 'alpha.txt'), content: 'edited', revision: content.revision,
+    })
+    assert.equal(saved.size, 6)
+    assert.equal(await readFile(join(files, 'alpha.txt'), 'utf8'), 'edited')
+    const refreshed = await client.request('GET', `${API_PREFIX}files/list?path=${encodedRoot}`)
+    const search = await client.request('POST', `${API_PREFIX}files/tasks`, { operation: 'search', path: files, revision: refreshed.revision, query: 'alpha' })
     await fileTasks.tasks.get(search.taskId).completion
     assert.equal((await client.request('GET', `${API_PREFIX}files/tasks/${search.taskId}`)).results[0].name, 'alpha.txt')
 

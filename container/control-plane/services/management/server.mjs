@@ -113,6 +113,7 @@ export function createManagementServer({
   fileInventory,
   fileTransfers,
   fileTasks,
+  fileEditor,
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
@@ -361,6 +362,14 @@ export function createManagementServer({
         const result = await fileInventory.content(url.searchParams.get('path'))
         await recordAudit('files.content.completed', { path: result.path, size: result.size })
         send(response, 200, result)
+      } else if (request.method === 'PUT' && route === 'files/content') {
+        if (fileEditor === undefined) throw new Error('file editing is not configured')
+        const body = await jsonBody(request, 2 * 1024 * 1024 + 8192)
+        if (body === null || typeof body !== 'object' || Array.isArray(body)
+          || Object.keys(body).some(key => !['path', 'content', 'revision', 'create'].includes(key))) throw new Error('file content request is invalid')
+        const saved = await fileEditor.write(body.path, body.content, body.revision, { create: body.create === true })
+        await recordAudit('files.content.saved', { path: saved.path, size: saved.size, managed: saved.managed })
+        send(response, body.create === true ? 201 : 200, saved)
       } else if (request.method === 'GET' && route === 'files/download') {
         if (fileTransfers === undefined) throw new Error('file transfers are not configured')
         const download = await fileTransfers.openDownload(url.searchParams.get('path'), {
