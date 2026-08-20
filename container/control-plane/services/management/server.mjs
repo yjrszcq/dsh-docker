@@ -95,7 +95,7 @@ export function createManagementServer({
   let restartTask
   let pluginTask
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
-  let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, updatedAt: null })
+  let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
   let server
 
   const publishRestart = value => {
@@ -128,7 +128,7 @@ export function createManagementServer({
       .then(() => recovery ? recoverBundledPlugin(pluginId, action) : configureBundledPlugin(pluginId, action))
       .then(
         async () => {
-          publishPlugin({ status: 'success', taskId, pluginId, action, error: null })
+          publishPlugin({ status: 'success', taskId, pluginId, action, error: null, restartRequired: true })
           await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId }).catch(() => {})
         },
         async error => {
@@ -153,6 +153,7 @@ export function createManagementServer({
       .then(
         async () => {
           publishRestart({ status: 'success', taskId, error: null })
+          publishPlugin({ restartRequired: false })
           await logs.audit('dsh.restart.completed', { taskId }).catch(() => {})
         },
         async error => {

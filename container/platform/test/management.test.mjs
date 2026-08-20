@@ -319,11 +319,57 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     finish()
     await new Promise(resolve => setImmediate(resolve))
     await logs.queue
-    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'success')
+    const changed = await client.request('GET', '/_dsh_platform/api/v1/status')
+    assert.equal(changed.systemPluginOperation.status, 'success')
+    assert.equal(changed.systemPluginOperation.restartRequired, true)
     assert.deepEqual(
       (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
       ['system-plugin.disable.started', 'system-plugin.disable.completed'],
     )
+    await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
+    let restarted
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      restarted = await client.request('GET', '/_dsh_platform/api/v1/status')
+      if (restarted.dshRestart.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(restarted.dshRestart.status, 'success')
+    assert.equal(restarted.systemPluginOperation.restartRequired, false)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management keeps the System Plugin restart marker when DSH restart fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-restart-failure-'))
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    configureBundledPlugin: async () => {},
+    restartDsh: async () => { throw new Error('restart failed') },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await client.request('POST', '/_dsh_platform/api/v1/bundled-plugins/action', {
+      id: 'diagnostics', action: 'disable',
+    })
+    let status
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', '/_dsh_platform/api/v1/status')
+      if (status.systemPluginOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(status.systemPluginOperation.restartRequired, true)
+    await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', '/_dsh_platform/api/v1/status')
+      if (status.dshRestart.status === 'failed') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(status.dshRestart.status, 'failed')
+    assert.equal(status.systemPluginOperation.restartRequired, true)
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
