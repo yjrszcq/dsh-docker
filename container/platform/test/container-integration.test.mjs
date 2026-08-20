@@ -83,6 +83,7 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
   assert.match(dockerfile, /util-linux/)
   assert.equal(ignore.split('\n').includes('**/node_modules'), true)
   assert.match(seed, /paths\.managementStateRoot/)
+  assert.match(seed, /paths\.managementStateRoot, paths\.fileTasksRoot/)
   assert.match(seed, /paths\.userPluginSnapshotsRoot/)
   assert.match(buildSeed, /file-manager/)
 })
