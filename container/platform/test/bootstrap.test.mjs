@@ -167,6 +167,31 @@ test('suspends, resumes, and restarts one service while keeping other Environmen
   await runner.stop()
 })
 
+test('retries a service restart after its first start attempt fails', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-restart-retry-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([component('dsh-runtime', service, 'service')]),
+    capture: () => {},
+  })
+  await runner.start()
+  const startComponent = runner.startComponentUnlocked.bind(runner)
+  let failStart = true
+  runner.startComponentUnlocked = async (...args) => {
+    if (failStart) {
+      failStart = false
+      throw new Error('restart failed')
+    }
+    return startComponent(...args)
+  }
+  await assert.rejects(runner.restart('dsh-runtime'), /restart failed/)
+  assert.deepEqual(runner.status().components, [])
+  await runner.restart('dsh-runtime')
+  assert.deepEqual(runner.status().components.map(value => value.id), ['dsh-runtime'])
+  await runner.stop()
+})
+
 test('Bootstrap control socket exposes component suspension, resumption, restart, and health', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-control-'))
   const calls = []
@@ -179,6 +204,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     restart: async id => { calls.push(['restart', id]); return {} },
   }
   const deployments = {
+    exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
   }
   const server = createBootstrapControl(runner, { deployments })

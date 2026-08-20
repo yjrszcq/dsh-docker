@@ -128,6 +128,16 @@ test('initializes an Image Deployment through one atomic runtime view', async ()
   assert.equal(status.recoveryMode, null)
 })
 
+test('updates a runtime operation without replacing deployment identity fields', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const before = await context.manager.publishStatus({ recoveryMode: 'diagnostic-state' })
+  const restarting = await context.manager.setOperation('restarting')
+  assert.deepEqual(restarting, { ...before, operation: 'restarting' })
+  const ready = await context.manager.setOperation(null)
+  assert.deepEqual(ready, before)
+})
+
 test('commits a complete managed Deployment only after candidate health succeeds', async () => {
   const context = await fixture()
   await context.manager.initialize(context.image)

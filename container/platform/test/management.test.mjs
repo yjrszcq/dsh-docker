@@ -132,6 +132,9 @@ test('management restarts only DSH as an audited task and excludes update activa
   try {
     const task = await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
     assert.equal(typeof task.taskId, 'string')
+    for (let attempt = 0; attempt < 100 && restarts === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
     assert.equal(restarts, 1)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).dshRestart.status, 'restarting')
     await assert.rejects(

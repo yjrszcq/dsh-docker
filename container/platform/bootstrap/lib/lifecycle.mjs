@@ -282,11 +282,13 @@ export class EnvironmentRunner {
 
   restart(componentId) {
     return this.serialized(async () => {
+      if (this.environment === undefined) throw new Error('Environment is not loaded')
       const running = this.running.find(value => value.component.id === componentId)
-      if (running === undefined) throw new Error(`component ${componentId} is not running`)
-      if (running.component.type !== 'service') throw new Error(`component ${componentId} is not a service`)
-      const component = running.component
-      await this.stopComponentUnlocked(running)
+      const component = running?.component
+        ?? this.environment.components.find(value => value.id === componentId)
+      if (component === undefined) throw new Error(`component ${componentId} does not exist`)
+      if (component.type !== 'service') throw new Error(`component ${componentId} is not a service`)
+      if (running !== undefined) await this.stopComponentUnlocked(running)
       await this.startComponentUnlocked(component, true)
       return this.status()
     })

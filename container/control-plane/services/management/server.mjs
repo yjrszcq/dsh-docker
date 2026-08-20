@@ -105,17 +105,17 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishRestart({ status: 'restarting', taskId, error: null })
     restartTask = Promise.resolve()
-      .then(() => logs.audit('dsh.restart.started', { taskId }))
+      .then(() => logs.audit('dsh.restart.started', { taskId }).catch(() => {}))
       .then(() => restartDsh())
       .then(
         async () => {
           publishRestart({ status: 'success', taskId, error: null })
-          await logs.audit('dsh.restart.completed', { taskId })
+          await logs.audit('dsh.restart.completed', { taskId }).catch(() => {})
         },
         async error => {
           const message = error instanceof Error ? error.message : 'DSH restart failed'
           publishRestart({ status: 'failed', taskId, error: message })
-          await logs.audit('dsh.restart.failed', { error: message, taskId })
+          await logs.audit('dsh.restart.failed', { error: message, taskId }).catch(() => {})
         },
       )
       .finally(() => { restartTask = undefined })

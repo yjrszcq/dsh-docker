@@ -73,15 +73,18 @@ export function createBootstrapControl(runner, { deployments, trust } = {}) {
         if (request.method === 'POST' && operation !== null) {
           const [componentId, action] = operation.slice(1)
           if (componentId === 'dsh-runtime' && action === 'restart' && deployments !== undefined) {
-            await deployments.setOperation('restarting')
-            try {
-              const status = await runner.restart(componentId)
-              await deployments.setOperation(null)
-              send(response, 200, status)
-            } catch (error) {
-              await deployments.setOperation('restart-failed').catch(() => {})
-              throw error
-            }
+            const status = await deployments.exclusive(async () => {
+              await deployments.setOperation('restarting')
+              try {
+                const value = await runner.restart(componentId)
+                await deployments.setOperation(null)
+                return value
+              } catch (error) {
+                await deployments.setOperation('restart-failed').catch(() => {})
+                throw error
+              }
+            })
+            send(response, 200, status)
           } else send(response, 200, await runner[action](componentId))
         } else send(response, 404, { error: 'not found' })
       }
