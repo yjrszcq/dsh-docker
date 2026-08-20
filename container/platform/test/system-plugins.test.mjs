@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
-import { linkSystemPluginScope, reconcileSystemPlugins } from '../../control-plane/modules/system-plugin-manager/index.mjs'
+import {
+  linkSystemPluginScope,
+  listBundledSystemPlugins,
+  rebuildBundledSystemPluginView,
+  reconcileSystemPlugins,
+} from '../../control-plane/modules/system-plugin-manager/index.mjs'
+import { createHash } from 'node:crypto'
+import { hashTree } from '../lib/tree-hash.mjs'
 
 async function archive(root, id, patch) {
   const source = join(root, `source-${id}`, 'package')
@@ -87,4 +94,63 @@ test('links only the reserved System Plugin package scope into DSH profiles', as
   const link = await linkSystemPluginScope({ dshHome, viewRoot })
   assert.equal(await readlink(link), join(viewRoot, 'packages'))
   assert.equal(await linkSystemPluginScope({ dshHome, viewRoot }), link)
+})
+
+test('rebuilds a bundled System Plugin view only from the current Environment artifacts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-system-plugin-repair-'))
+  const environment = join(root, 'environment')
+  const artifact = await archive(root, 'platform-management', [{
+    insert: [{ id: 'dsh-docker.platform-management.plugin', name: '@dsh-docker/platform-management' }],
+  }])
+  const bytes = await readFile(artifact)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  await mkdir(join(environment, 'artifacts'), { recursive: true })
+  await cp(artifact, join(environment, 'artifacts', 'system-plugin-platform-management'))
+  await writeFile(join(environment, 'environment.manifest.json'), JSON.stringify({
+    schema: 1,
+    manifestType: 'environment',
+    version: '2026.08.20.1',
+    keyringGeneration: 1,
+    targetSequence: 1,
+    issuedAt: '2026-08-20T00:00:00.000Z',
+    artifacts: [{
+      id: 'system-plugin-platform-management',
+      mediaType: 'application/vnd.dsh-platform.system-plugin.v1+tar+gzip',
+      sha256,
+      size: bytes.byteLength,
+      url: 'https://example.invalid/system-plugin-platform-management',
+    }],
+    bootstrapApi: 1,
+    components: [],
+    patches: [],
+    systemPlugins: [{ id: 'platform-management', sha256 }],
+  }))
+  const initialRoot = join(root, 'initial')
+  const initial = await reconcileSystemPlugins({
+    root: initialRoot,
+    environmentVersion: 'fixture',
+    plugins: [{ id: 'platform-management', sha256 }],
+    artifactPath: () => artifact,
+  })
+  const expectedSha256 = await hashTree(initial)
+  const rebuilt = await rebuildBundledSystemPluginView({
+    environmentRoot: environment,
+    outputRoot: join(root, 'views'),
+    expectedSha256,
+    requestedPluginId: 'platform-management',
+  })
+  assert.equal(await hashTree(rebuilt), expectedSha256)
+  assert.deepEqual(await listBundledSystemPlugins({ environmentRoot: environment, viewRoot: rebuilt }), [{
+    id: 'platform-management',
+    artifactId: 'system-plugin-platform-management',
+    sha256,
+    installed: true,
+    reason: null,
+  }])
+  await assert.rejects(rebuildBundledSystemPluginView({
+    environmentRoot: environment,
+    outputRoot: join(root, 'views'),
+    expectedSha256,
+    requestedPluginId: 'unknown',
+  }), /not bundled/)
 })

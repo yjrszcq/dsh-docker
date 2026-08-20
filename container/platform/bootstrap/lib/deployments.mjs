@@ -10,7 +10,7 @@ import {
 } from '../../lib/deployment-contracts.mjs'
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
 import { readDeploymentStatus, writeDeploymentStatus } from '../../lib/deployment-status.mjs'
-import { replaceDeploymentView } from '../../lib/paths.mjs'
+import { replaceDeploymentView, replaceSystemPluginView } from '../../lib/paths.mjs'
 import { hashTree } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
@@ -202,6 +202,7 @@ export class DeploymentManager {
   async select(recordId) {
     const candidate = await this.prepareView(recordId)
     await replaceDeploymentView(this.paths, candidate.view)
+    await replaceSystemPluginView(this.paths)
     return candidate
   }
 

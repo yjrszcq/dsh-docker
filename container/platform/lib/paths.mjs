@@ -33,6 +33,7 @@ export class PlatformPaths {
     this.downloadsRoot = join(this.cacheRoot, 'downloads')
     this.viewsRoot = join(this.runRoot, 'views')
     this.deploymentViewsRoot = join(this.runRoot, 'deployments')
+    this.systemPluginViewsRoot = join(this.runRoot, 'system-plugin-views')
     this.deploymentView = join(this.runRoot, 'deployment')
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
@@ -70,6 +71,7 @@ export async function resetRuntimeLayout(paths) {
   await rm(paths.runRoot, { recursive: true, force: true })
   await mkdir(paths.viewsRoot, { recursive: true })
   await mkdir(paths.deploymentViewsRoot, { recursive: true })
+  await mkdir(paths.systemPluginViewsRoot, { recursive: true })
   for (const name of ['environment', 'runtime', 'system-plugins']) {
     await symlink(join('..', 'deployment', name), join(paths.viewsRoot, name), 'dir')
   }
@@ -99,4 +101,12 @@ export async function replaceDeploymentView(paths, target) {
   await symlink(resolve(target), temporary, 'dir')
   await rename(temporary, paths.deploymentView)
   return paths.deploymentView
+}
+
+export async function replaceSystemPluginView(paths, target = join(paths.deploymentView, 'system-plugins')) {
+  const path = join(paths.viewsRoot, 'system-plugins')
+  const temporary = join(paths.viewsRoot, `.system-plugins.${randomUUID()}.tmp`)
+  await symlink(resolve(target), temporary, 'dir')
+  await rename(temporary, path)
+  return path
 }

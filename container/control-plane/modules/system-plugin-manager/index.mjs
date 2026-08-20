@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
+import { artifactForReference, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
+import { hashTree } from '../../../platform/lib/tree-hash.mjs'
 
 function run(command, args) {
   return new Promise((resolveRun, reject) => {
@@ -104,6 +106,84 @@ export async function reconcileSystemPlugins({ root, environmentVersion, plugins
   } catch (error) {
     await rm(staging, { recursive: true, force: true })
     throw error
+  }
+}
+
+async function readOverlay(root) {
+  const patch = JSON.parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'))
+  if (!Array.isArray(patch)) throw new Error('System Plugin overlay patch must be an array')
+  return patch
+}
+
+export async function listBundledSystemPlugins({ environmentRoot, viewRoot }) {
+  const manifest = parseEnvironmentManifest(await readFile(join(resolve(environmentRoot), 'environment.manifest.json')))
+  const overlay = await readOverlay(resolve(viewRoot)).catch(() => [])
+  const moduleNames = new Set(overlay.flatMap(entry => (
+    Array.isArray(entry?.insert) ? entry.insert.map(row => row?.name).filter(Boolean) : []
+  )))
+  const result = []
+  for (const reference of manifest.systemPlugins) {
+    const descriptor = artifactForReference(manifest, reference)
+    let installed = false
+    let reason = null
+    try {
+      const metadata = JSON.parse(await readFile(join(resolve(viewRoot), 'packages', reference.id, 'package.json'), 'utf8'))
+      const packageName = validatePackage(metadata, reference.id)
+      installed = moduleNames.has(packageName)
+      if (!installed) reason = 'plugin loader entry is absent'
+    } catch (error) {
+      reason = error instanceof Error ? error.message : 'plugin package is unavailable'
+    }
+    result.push(Object.freeze({
+      id: reference.id,
+      artifactId: descriptor.id,
+      sha256: descriptor.sha256,
+      installed,
+      reason,
+    }))
+  }
+  return Object.freeze(result)
+}
+
+export async function rebuildBundledSystemPluginView({
+  environmentRoot,
+  outputRoot,
+  expectedSha256,
+  requestedPluginId,
+}) {
+  const source = resolve(environmentRoot)
+  const manifest = parseEnvironmentManifest(await readFile(join(source, 'environment.manifest.json')))
+  if (!manifest.systemPlugins.some(plugin => plugin.id === requestedPluginId)) {
+    throw new Error(`System Plugin ${requestedPluginId} is not bundled by the current Environment`)
+  }
+  const root = resolve(outputRoot)
+  const destination = join(root, expectedSha256)
+  try {
+    const details = await lstat(destination)
+    if (!details.isDirectory() || details.isSymbolicLink() || await hashTree(destination) !== expectedSha256) {
+      throw new Error('existing System Plugin repair view conflicts with the current Deployment')
+    }
+    return destination
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+
+  const buildRoot = join(root, `.build.${randomUUID()}.tmp`)
+  await mkdir(root, { recursive: true })
+  try {
+    const built = await reconcileSystemPlugins({
+      root: buildRoot,
+      environmentVersion: expectedSha256,
+      plugins: manifest.systemPlugins,
+      artifactPath: reference => join(source, 'artifacts', artifactForReference(manifest, reference).id),
+    })
+    if (await hashTree(built) !== expectedSha256) {
+      throw new Error('rebuilt System Plugin view differs from the current Deployment Record')
+    }
+    await rename(built, destination)
+    return destination
+  } finally {
+    await rm(buildRoot, { recursive: true, force: true })
   }
 }
 

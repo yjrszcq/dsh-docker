@@ -50,5 +50,6 @@ test('rebuilds only the ephemeral run directory', async () => {
   assert.equal(await readlink(join(paths.viewsRoot, 'runtime')), join('..', 'deployment', 'runtime'))
   assert.equal(await readlink(join(paths.viewsRoot, 'environment')), join('..', 'deployment', 'environment'))
   assert.equal(await readlink(join(paths.viewsRoot, 'system-plugins')), join('..', 'deployment', 'system-plugins'))
+  assert.equal((await lstat(paths.systemPluginViewsRoot)).isDirectory(), true)
   assert.equal(await readFile(join(paths.updaterStateRoot, 'sentinel'), 'utf8'), 'persistent')
 })
