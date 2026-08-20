@@ -420,6 +420,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /NOTICE_PREFIX = 'dsh-platform:console-update-notice'/)
   assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)
   assert.match(style, /\.tabs \{[\s\S]*overflow-x: auto/)
+  assert.match(style, /\.topbar-inner \{[\s\S]*width: min\(780px, calc\(100% - 40px\)\)/)
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.log-list \{[\s\S]*max-height: min\(320px, 42dvh\)/)
 })

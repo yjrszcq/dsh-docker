@@ -33,7 +33,7 @@ button { letter-spacing: 0; }
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  width: min(880px, calc(100% - 40px));
+  width: min(780px, calc(100% - 40px));
   min-height: 64px;
   margin: 0 auto;
 }

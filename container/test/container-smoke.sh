@@ -119,6 +119,43 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
 
+recovery_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"id":"platform-management","action":"uninstall"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/recovery-action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$recovery_task" \
+    '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.2
+done
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  | rg --fixed-strings 'Standalone console' >/dev/null
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
+  | jq -e '.plugins[0] | (.installed | not) and (.enabled | not) and .protected' >/dev/null
+
+recovery_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"id":"platform-management","action":"install"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/recovery-action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$recovery_task" \
+    '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.2
+done
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
+  | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
+
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
