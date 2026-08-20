@@ -27,6 +27,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.now = now
     this.sleep = sleep
     this.task = undefined
+    this.checkTask = undefined
   }
 
   async transition(status, fields = {}) {
@@ -35,8 +36,14 @@ export class UpdateCoordinator extends EventEmitter {
     return value
   }
 
-  async check() {
-    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+  check() {
+    if (this.task !== undefined) return Promise.reject(new UpdateConflictError('an update task is already running'))
+    if (this.checkTask !== undefined) return this.checkTask
+    this.checkTask = this.runCheck().finally(() => { this.checkTask = undefined })
+    return this.checkTask
+  }
+
+  async runCheck() {
     await this.transition('checking', { error: null })
     try {
       if (this.channelState !== undefined) {

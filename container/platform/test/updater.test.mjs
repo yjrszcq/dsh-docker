@@ -174,6 +174,37 @@ test('constructs Pristine DSH only from a receipt-backed archive', async () => {
   assert.equal(JSON.parse(await readFile(join(pristine, 'package.json'), 'utf8')).version, '0.1.0-rc.8')
 })
 
+test('coalesces overlapping metadata checks into one request', async () => {
+  let checks = 0
+  let complete
+  const state = {
+    value: { status: 'idle', progress: 0 },
+    async read() { return this.value },
+    async write(status, fields) { this.value = { ...this.value, ...fields, status }; return this.value },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: {
+      check: () => {
+        checks += 1
+        return new Promise(resolve => { complete = resolve })
+      },
+    },
+    state,
+    preparer: {},
+    activator: {},
+  })
+  const first = coordinator.check()
+  const second = coordinator.check()
+  assert.equal(first, second)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(checks, 1)
+  complete({ value: { targetSequence: 1, desired: {
+    bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: 'rc.1' },
+  } } })
+  await first
+  assert.equal(state.value.status, 'idle')
+})
+
 test('serializes one update task and persists success progress', async () => {
   const { root, metadata, preparer } = await system()
   let activated

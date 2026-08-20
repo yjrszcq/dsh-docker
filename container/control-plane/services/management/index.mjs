@@ -69,10 +69,13 @@ const scheduler = new UpdateScheduler({
 scheduler.start()
 const { transaction, persisted } = await reconcileRecoveredState({ journal, state: coordinator.state })
 const journalOwnsState = transaction !== undefined && persisted.taskId === transaction.transactionId
-if (!journalOwnsState && !['idle', 'success', 'failed'].includes(persisted.status)) {
+const resumeUpdate = !journalOwnsState && !['idle', 'success', 'failed'].includes(persisted.status)
+if (resumeUpdate) {
   setImmediate(() => {
     try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
   })
+} else {
+  setImmediate(() => { coordinator.check().catch(() => {}) })
 }
 
 const stop = () => {

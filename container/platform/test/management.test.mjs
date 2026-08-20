@@ -261,3 +261,8 @@ test('scheduler applies bounded jitter and performs checks without activating up
   assert.equal(checks, 1)
   scheduler.stop()
 })
+
+test('management starts one metadata check before the first scheduled interval', async () => {
+  const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
+  assert.match(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
+})

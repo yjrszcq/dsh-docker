@@ -179,6 +179,23 @@
 .secondaryButton:hover:not(:disabled),
 .smallButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
 
+.checkSpinner {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-right: 7px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: checkSpin .75s linear infinite;
+}
+
+@keyframes checkSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .checkSpinner { animation-duration: 1.5s; }
+}
+
 .dangerButton {
   background: transparent;
   color: var(--dsw-alias-state-error-primary);
