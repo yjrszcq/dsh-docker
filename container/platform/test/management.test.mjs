@@ -909,6 +909,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function connectLogs\(\) \{\s*if \(logSource !== undefined\) return/)
   assert.match(script, /logIdentities\.has\(identity\)/)
   assert.match(script, /function scheduleLogRender\(\)/)
+  assert.match(script, /maintenance: '重启 DSH'/)
+  assert.match(script, /maintenance: 'Restart DSH'/)
   assert.match(script, /TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'/)
   assert.match(script, /sessionStorage\.setItem\(TERMINAL_SESSION_KEY, value\)/)
   assert.match(script, /new WebSocket\(terminalWebSocketUrl\(sessionId\)\)/)

@@ -277,6 +277,8 @@
 .secondaryButton:hover:not(:disabled),
 .smallButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
 
+a.secondaryButton { text-decoration: none; }
+
 .checkSpinner {
   box-sizing: border-box;
   width: 14px;
