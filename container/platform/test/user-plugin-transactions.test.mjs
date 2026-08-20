@@ -95,6 +95,19 @@ test('atomically applies ordered enable and disable actions around one DSH pause
   assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['pause', 'restart'])
 })
 
+test('records every disabled plugin position from the original Bundle order', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const transaction = manager(value)
+  await transaction.value.apply({
+    taskId: 'task-disable-order', revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }, { name: 'beta', action: 'disable' }],
+  })
+  assert.deepEqual((await value.selectionStore.read()).disabled, [
+    { name: 'alpha', index: 0 }, { name: 'beta', index: 1 },
+  ])
+})
+
 test('restores the full Profile when an exact uninstall command fails before commit', async () => {
   const value = await fixture()
   const beforeBytes = await readFile(join(value.profileRoot, 'package.json'))
@@ -199,7 +212,50 @@ test('recovers an interrupted pre-commit mutation from its persisted snapshot', 
   assert.equal(recovered.recoveryResult, 'success')
   assert.match(await readFile(join(value.profileRoot, 'package.json'), 'utf8'), /dsh-profile-web/)
   await assert.rejects(lstat(value.selectionPath), { code: 'ENOENT' })
-  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['restart'])
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['pause', 'restart'])
+})
+
+test('restores an interrupted pre-commit Profile before Bootstrap starts DSH', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  await value.journal.begin({
+    taskId: 'task-prestart-restore', revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+    selection: await value.selectionStore.snapshot(),
+  })
+  await value.journal.transition('paused')
+  await value.snapshots.create('task-prestart-restore')
+  await value.journal.transition('snapshotted', { snapshotId: 'task-prestart-restore' })
+  await value.journal.transition('mutating')
+  await writeFile(join(value.profileRoot, 'package.json'), '{}\n')
+  const transaction = manager(value)
+  const recovered = await transaction.value.recoverBeforeDshStart()
+  assert.equal(recovered.phase, 'failed')
+  assert.equal(recovered.recoveryResult, 'success')
+  assert.match(await readFile(join(value.profileRoot, 'package.json'), 'utf8'), /dsh-profile-web/)
+  assert.deepEqual(transaction.calls, [])
+})
+
+test('lets Bootstrap start a committed Profile once and then finalizes the journal', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  await value.journal.begin({
+    taskId: 'task-prestart-committed', revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+    selection: await value.selectionStore.snapshot(),
+  })
+  await value.journal.transition('paused')
+  await value.snapshots.create('task-prestart-committed')
+  await value.journal.transition('snapshotted', { snapshotId: 'task-prestart-committed' })
+  await value.journal.transition('mutating')
+  await value.journal.transition('committed')
+  const transaction = manager(value)
+  const pending = await transaction.value.recoverBeforeDshStart()
+  assert.equal(pending.phase, 'restarting')
+  assert.deepEqual(transaction.calls, [])
+  const completed = await transaction.value.completeDshStartup({ healthy: true })
+  assert.equal(completed.phase, 'completed')
+  await assert.rejects(lstat(value.snapshots.path('task-prestart-committed')), { code: 'ENOENT' })
 })
 
 test('restores platform selection state when final Profile validation fails', async () => {

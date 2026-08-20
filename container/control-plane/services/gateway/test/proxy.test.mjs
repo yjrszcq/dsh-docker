@@ -236,6 +236,8 @@ test('bounded management and Console requests use the protected local socket ins
       ['GET', '/_dsh_platform/api/v1/rollback-plan'],
       ['GET', '/_dsh_platform/api/v1/bundled-plugins'],
       ['GET', '/_dsh_platform/api/v1/settings-document'],
+      ['GET', '/_dsh_platform/api/v1/user-plugins'],
+      ['GET', '/_dsh_platform/api/v1/user-plugins/task/123e4567-e89b-42d3-a456-426614174000'],
       ['POST', '/_dsh_platform/api/v1/holds/retry'],
       ['POST', '/_dsh_platform/api/v1/rollback'],
       ['POST', '/_dsh_platform/api/v1/return-stable'],
@@ -243,6 +245,7 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/action'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/toggle'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/recovery-action'],
+      ['POST', '/_dsh_platform/api/v1/user-plugins/apply'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],
       ['PUT', '/_dsh_platform/api/v1/settings-document'],
@@ -254,6 +257,7 @@ test('bounded management and Console requests use the protected local socket ins
       if (method !== 'HEAD') assert.equal(JSON.parse(proxied.body).path, path)
     }
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/user-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal(upstreamRequests, 0)
   } finally {

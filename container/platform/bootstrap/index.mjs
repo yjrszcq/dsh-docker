@@ -261,6 +261,7 @@ const recoveryMode = recoveryReason === null ? null : {
   failedRecordId: imagePlan?.target ?? null,
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
+runtime.markStartupComplete()
 await logs.diagnostic('bootstrap', 'platform.ready', { recoveryMode: recoveryMode !== null })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 process.on('message', message => {

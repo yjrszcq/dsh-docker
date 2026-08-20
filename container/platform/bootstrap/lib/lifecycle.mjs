@@ -370,7 +370,7 @@ export class EnvironmentRunner {
 
   restart(componentId, { beforeStart, recoverStart = false, onStartFailure } = {}) {
     return this.serialized(async () => {
-      if (this.environment === undefined) throw new Error('Environment is not loaded')
+      if (this.environment === undefined) this.environment = await this.loader(this.environmentRoot)
       const running = this.running.find(value => value.component.id === componentId)
       const component = running?.component
         ?? this.environment.components.find(value => value.id === componentId)

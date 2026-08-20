@@ -16,8 +16,8 @@ export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
-  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard'])],
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document', 'user-plugins'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'user-plugins/apply'])],
   ['PUT', new Set(['channel', 'automatic-check', 'settings-document'])],
 ])
 
@@ -282,7 +282,9 @@ function proxyHttp(request, response, options) {
 
 function isExternalManagementRoute(method, pathname) {
   if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
-  return EXTERNAL_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(pathname.slice(MANAGEMENT_PREFIX.length)) ?? false
+  const route = pathname.slice(MANAGEMENT_PREFIX.length)
+  if (method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) return true
+  return EXTERNAL_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(route) ?? false
 }
 
 function isExternalConsoleRoute(method, pathname) {

@@ -21,6 +21,11 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { readDeploymentStatus } from '../../../platform/lib/deployment-status.mjs'
 import { parseImageInventory } from '../../../platform/lib/deployment-contracts.mjs'
 import { SettingsDocumentStore } from './settings-document.mjs'
+import { UserPluginInventory } from '../../modules/user-plugin-manager/index.mjs'
+import { UserPluginJournal } from '../../modules/user-plugin-manager/journal.mjs'
+import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots.mjs'
+import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
+import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/transaction.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -29,6 +34,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
+const dshHome = process.env.DSH_HOME ?? '/data/dsh'
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -49,7 +55,7 @@ const activator = new PlatformActivator({ dataRoot, runRoot, stage0: trust })
 const journal = new UpdateJournal(join(paths.updaterStateRoot, 'transaction.json'))
 const snapshots = new PersistentStateSnapshots({
   root: paths.snapshotsRoot,
-  sourceRoot: process.env.DSH_HOME ?? '/data/dsh',
+  sourceRoot: dshHome,
 })
 const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
 const automaticChecks = new AutomaticCheckStateStore(join(paths.updaterStateRoot, 'automatic-check.json'))
@@ -68,7 +74,40 @@ const coordinator = new UpdateCoordinator({
   allowUnavailableMetadata: imageInventory.authority === 'development',
   report: (message, fields) => logs.diagnostic('updater', message, fields),
 })
-const settingsDocument = new SettingsDocumentStore(process.env.DSH_HOME ?? '/data/dsh')
+const settingsDocument = new SettingsDocumentStore(dshHome)
+const listBundledPlugins = async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins
+const userPluginInventory = new UserPluginInventory({
+  dshHome,
+  selectionPath: paths.userPluginStatePath,
+  systemPluginNames: async () => (await listBundledPlugins()).map(plugin => `@dsh-docker/${plugin.id}`),
+})
+const userPluginTransactions = new UserPluginTransactionManager({
+  inventory: userPluginInventory,
+  selectionStore: new UserPluginSelectionStore(paths.userPluginStatePath),
+  snapshots: new UserPluginSnapshots({
+    root: paths.userPluginSnapshotsRoot,
+    profileRoot: join(dshHome, 'profiles', 'web'),
+  }),
+  journal: new UserPluginJournal(paths.userPluginJournalPath),
+  pauseDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/pause'),
+  restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
+  report: (message, fields) => logs.diagnostic('user-plugin-manager', message, fields),
+})
+const initialUserPluginTransaction = await userPluginTransactions.recoverBeforeDshStart()
+if (initialUserPluginTransaction !== undefined) {
+  await logs.diagnostic('user-plugin-manager', 'user-plugin.startup-state.reconciled', {
+    taskId: initialUserPluginTransaction.taskId,
+    phase: initialUserPluginTransaction.phase,
+    recoveryResult: initialUserPluginTransaction.recoveryResult,
+  })
+}
+const waitForBootstrapStartup = async () => {
+  for (;;) {
+    const status = await bootstrap.status()
+    if (status.startupComplete === true) return status
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+}
 const scheduler = new UpdateScheduler({
   check: () => coordinator.check('automatic'),
   onError: error => logs.diagnostic('updater', 'update.automatic-check.failed', { error }),
@@ -81,10 +120,23 @@ const server = createManagementServer({
     trust: await trust.status(),
   }),
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
-  listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
+  listBundledPlugins,
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
   discardBundledPluginChanges: () => bootstrap.request('POST', '/v1/system-plugins/discard'),
+  listUserPlugins: () => userPluginInventory.read(),
+  validateUserPluginActions: value => userPluginTransactions.validate(value),
+  applyUserPluginActions: value => userPluginTransactions.apply(value),
+  initialUserPluginTransaction,
+  recoverUserPluginTransaction: initialUserPluginTransaction?.phase === 'restarting' ? async () => {
+    const status = await waitForBootstrapStartup()
+    const health = await bootstrap.request('GET', '/v1/health')
+    const dsh = health.components?.find(component => component.id === 'dsh-runtime')
+    return userPluginTransactions.completeDshStartup({
+      healthy: status.recoveryMode === null && dsh?.healthy === true,
+      error: status.recoveryMode,
+    })
+  } : undefined,
   settingsDocument,
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)

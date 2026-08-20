@@ -11,6 +11,7 @@ export class BootstrapRuntime {
     this.environment = environment
     this.fatal = controlPlane.fatal
     this.recoveryMode = null
+    this.startupComplete = false
     this.recovery = Promise.resolve()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
@@ -135,6 +136,8 @@ export class BootstrapRuntime {
   }
   health() { return this.environment.health() }
 
+  markStartupComplete() { this.startupComplete = true }
+
   enterRecovery(error) {
     this.recoveryMode = error instanceof Error ? error.message : String(error)
   }
@@ -145,6 +148,7 @@ export class BootstrapRuntime {
       ...environment,
       controlPlane: this.controlPlane.status().components,
       recoveryMode: this.recoveryMode,
+      startupComplete: this.startupComplete,
     })
   }
 }

@@ -89,14 +89,32 @@ export function createManagementServer({
   configureBundledPlugin = async () => { throw new Error('System Plugin management is not configured') },
   recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
   discardBundledPluginChanges = async () => { throw new Error('System Plugin draft management is not configured') },
+  listUserPlugins = async () => { throw new Error('User Plugin inventory is not configured') },
+  validateUserPluginActions = async () => { throw new Error('User Plugin recovery is not configured') },
+  applyUserPluginActions = async () => { throw new Error('User Plugin recovery is not configured') },
+  recoverUserPluginTransaction,
+  initialUserPluginTransaction,
   settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
   let restartTask
   let pluginTask
+  let userPluginTask
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
+  let userPluginState = Object.freeze(initialUserPluginTransaction === undefined
+    ? { status: 'idle', taskId: null, phase: null, error: null, updatedAt: null }
+    : {
+        status: initialUserPluginTransaction.phase === 'completed' ? 'success'
+          : initialUserPluginTransaction.phase === 'failed' ? 'failed' : 'running',
+        taskId: initialUserPluginTransaction.taskId,
+        phase: initialUserPluginTransaction.phase,
+        error: initialUserPluginTransaction.error,
+        updatedAt: initialUserPluginTransaction.updatedAt,
+      })
+  const userPluginTasks = new Map()
+  if (userPluginState.taskId !== null) userPluginTasks.set(userPluginState.taskId, userPluginState)
   let server
   const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
 
@@ -110,9 +128,58 @@ export function createManagementServer({
     server.emit('management-state', pluginState)
   }
 
+  const publishUserPlugin = value => {
+    userPluginState = Object.freeze({ ...userPluginState, ...value, updatedAt: new Date().toISOString() })
+    if (userPluginState.taskId !== null) {
+      userPluginTasks.set(userPluginState.taskId, userPluginState)
+      while (userPluginTasks.size > 32) userPluginTasks.delete(userPluginTasks.keys().next().value)
+    }
+    server.emit('management-state', userPluginState)
+  }
+
   const requireRuntimeIdle = () => {
     if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
+    if (userPluginTask !== undefined) throw new UpdateConflictError('a User Plugin operation is already running')
+  }
+
+  const startUserPluginAction = async body => {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).sort().join(',') !== 'actions,profile,revision'
+      || body.profile !== 'web') throw new Error('User Plugin request is invalid')
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const validated = await validateUserPluginActions({ revision: body.revision, actions: body.actions })
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    publishUserPlugin({ status: 'running', taskId, phase: 'validated', error: null })
+    userPluginTask = Promise.resolve()
+      .then(() => audit('user-plugin.apply.started', { taskId, actions: validated.actions }))
+      .then(() => applyUserPluginActions({
+        taskId,
+        revision: validated.revision,
+        actions: validated.actions,
+        onProgress: state => publishUserPlugin({ phase: state.phase }),
+      }))
+      .then(
+        async () => {
+          publishUserPlugin({ status: 'success', taskId, phase: 'completed', error: null })
+          publishPlugin({ restartRequired: false })
+          await audit('user-plugin.apply.completed', { taskId })
+        },
+        async error => {
+          const journal = error?.journal
+          publishUserPlugin({
+            status: 'failed', taskId, phase: journal?.phase ?? userPluginState.phase,
+            error: error instanceof Error ? error.message : 'User Plugin operation failed',
+          })
+          await audit('user-plugin.apply.failed', { error, taskId })
+        },
+      )
+      .finally(() => { userPluginTask = undefined })
+    userPluginTask.catch(() => {})
+    return { taskId }
   }
 
   const startPluginAction = (pluginId, action, { recovery = false, toggleOnly = false } = {}) => {
@@ -184,9 +251,23 @@ export function createManagementServer({
           ...(await platformStatus()),
           dshRestart: restartState,
           systemPluginOperation: pluginState,
+          userPluginOperation: userPluginState,
         })
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
+      } else if (request.method === 'GET' && route === 'user-plugins') {
+        send(response, 200, await listUserPlugins())
+      } else if (request.method === 'POST' && route === 'user-plugins/apply') {
+        send(response, 202, await startUserPluginAction(await jsonBody(request)))
+      } else if (request.method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) {
+        const taskId = route.slice('user-plugins/task/'.length)
+        const task = userPluginTasks.get(taskId)
+        if (task === undefined) {
+          const error = new Error('User Plugin task was not found')
+          error.statusCode = 404
+          throw error
+        }
+        send(response, 200, task)
       } else if (request.method === 'GET' && route === 'settings-document') {
         if (settingsDocument === undefined) throw new Error('settings document editing is not configured')
         send(response, 200, await settingsDocument.read())
@@ -309,16 +390,40 @@ export function createManagementServer({
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
       const conflict = error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError
+        || error?.code === 'REVISION_CONFLICT'
       await logs.diagnostic('platform-management', 'management.request.failed', {
         error,
         level: conflict ? 'warning' : 'error',
         method: request.method ?? null,
         pathname,
       })
-      send(response, conflict ? 409 : 400, {
+      send(response, conflict ? 409 : (error?.statusCode ?? 400), {
         error: error instanceof Error ? error.message : 'management request failed',
       })
     }
+  })
+  if (recoverUserPluginTransaction !== undefined) server.once('listening', () => {
+    userPluginTask = Promise.resolve()
+      .then(() => recoverUserPluginTransaction())
+      .then(async state => {
+        if (state === undefined) return
+        publishUserPlugin({
+          status: state.phase === 'completed' ? 'success' : 'failed',
+          taskId: state.taskId,
+          phase: state.phase,
+          error: state.error,
+        })
+        await audit('user-plugin.recovery.completed', {
+          taskId: state.taskId,
+          phase: state.phase,
+          recoveryResult: state.recoveryResult,
+        })
+      }, async error => {
+        publishUserPlugin({ status: 'failed', phase: 'recovery', error: error instanceof Error ? error.message : String(error) })
+        await audit('user-plugin.recovery.failed', { error })
+      })
+      .finally(() => { userPluginTask = undefined })
+    userPluginTask.catch(() => {})
   })
   return server
 }

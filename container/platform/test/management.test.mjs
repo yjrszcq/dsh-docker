@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { request as httpRequest } from 'node:http'
-import { lstat, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -12,6 +12,11 @@ import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.m
 import { UpdateConflictError } from '../../control-plane/modules/updater/lib/coordinator.mjs'
 import { UpdateScheduler } from '../../control-plane/modules/updater/lib/scheduler.mjs'
 import { SettingsDocumentStore } from '../../control-plane/services/management/settings-document.mjs'
+import { UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
+import { UserPluginJournal } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
+import { UserPluginSnapshots } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
+import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugin-manager/state.mjs'
+import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
 
 class Coordinator extends EventEmitter {
   constructor() {
@@ -279,6 +284,199 @@ test('management rejects DSH restart while an update task is active', async () =
       new LocalApiClient(socketPath).request('POST', '/_dsh_platform/api/v1/restart-dsh'),
       error => error.statusCode === 409,
     )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management exposes recoverable User Plugin tasks under the shared runtime mutex', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-user-plugins-'))
+  const coordinator = new Coordinator()
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let finish
+  const completion = new Promise(resolve => { finish = resolve })
+  const calls = []
+  const inventory = {
+    schema: 1,
+    profile: 'web',
+    revision: `sha256:${'a'.repeat(64)}`,
+    plugins: [{ name: 'faulty-plugin', enabled: true, damaged: false }],
+  }
+  const server = createManagementServer({
+    coordinator,
+    logs,
+    listUserPlugins: async () => inventory,
+    validateUserPluginActions: async value => {
+      calls.push(['validate', value])
+      if (value.revision !== inventory.revision) {
+        const error = new Error('revision changed')
+        error.code = 'REVISION_CONFLICT'
+        throw error
+      }
+      return value
+    },
+    applyUserPluginActions: async value => {
+      calls.push(['apply', value.taskId, value.revision, value.actions])
+      value.onProgress({ phase: 'paused' })
+      await completion
+      value.onProgress({ phase: 'completed' })
+    },
+  })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    assert.deepEqual(await client.request('GET', `${API_PREFIX}user-plugins`), inventory)
+    const request = {
+      profile: 'web', revision: inventory.revision,
+      actions: [{ name: 'faulty-plugin', action: 'disable' }],
+    }
+    const started = await client.request('POST', `${API_PREFIX}user-plugins/apply`, request)
+    assert.match(started.taskId, /^[0-9a-f-]{36}$/)
+    let status
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.userPluginOperation.phase === 'paused') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(status.userPluginOperation.status, 'running')
+    assert.equal(status.userPluginOperation.phase, 'paused')
+    assert.equal((await client.request('GET', `${API_PREFIX}user-plugins/task/${started.taskId}`)).status, 'running')
+    for (const [path, body] of [
+      ['restart-dsh', undefined],
+      ['update', undefined],
+      ['bundled-plugins/action', { id: 'diagnostics', action: 'disable' }],
+      ['user-plugins/apply', request],
+    ]) {
+      await assert.rejects(client.request('POST', `${API_PREFIX}${path}`, body), error => error.statusCode === 409)
+    }
+    finish()
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.userPluginOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(status.userPluginOperation.phase, 'completed')
+    assert.equal((await client.request('GET', `${API_PREFIX}user-plugins/task/${started.taskId}`)).status, 'success')
+    assert.deepEqual(calls[0], ['validate', { revision: inventory.revision, actions: request.actions }])
+    assert.deepEqual(calls[1].slice(0, 3), ['apply', started.taskId, inventory.revision])
+    await assert.rejects(client.request('POST', `${API_PREFIX}user-plugins/apply`, {
+      ...request, revision: `sha256:${'b'.repeat(64)}`,
+    }), error => error.statusCode === 409)
+    await assert.rejects(
+      client.request('GET', `${API_PREFIX}user-plugins/task/123e4567-e89b-42d3-a456-426614174000`),
+      error => error.statusCode === 404,
+    )
+    await logs.queue
+    assert.deepEqual((await logs.query({ sources: ['audit'] })).map(entry => entry.message), [
+      'user-plugin.apply.started', 'user-plugin.apply.completed',
+    ])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management resumes a persisted User Plugin transaction after its socket is available', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-user-plugin-resume-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let recover
+  const recovery = new Promise(resolve => { recover = resolve })
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    recoverUserPluginTransaction: async () => recovery,
+  })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await assert.rejects(client.request('POST', `${API_PREFIX}restart-dsh`), error => error.statusCode === 409)
+    recover({
+      taskId: 'resume-task', phase: 'failed', error: 'interrupted change restored', recoveryResult: 'success',
+    })
+    let status
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.userPluginOperation.taskId === 'resume-task') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(status.userPluginOperation.status, 'failed')
+    assert.equal(status.userPluginOperation.error, 'interrupted change restored')
+    await logs.queue
+    assert.equal((await logs.query({ sources: ['audit'] })).at(-1).message, 'user-plugin.recovery.completed')
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('standalone Management disables a startup-faulting Bundle while DSH is already down', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-fault-plugin-'))
+  const dshHome = join(root, 'dsh')
+  const profileRoot = join(dshHome, 'profiles/web')
+  const pluginRoot = join(profileRoot, 'node_modules/startup-fault')
+  const selectionPath = join(root, 'platform/state/management/user-plugins.json')
+  await mkdir(pluginRoot, { recursive: true })
+  await writeFile(join(profileRoot, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-web',
+    dependencies: { 'startup-fault': '1.0.0' },
+    dsh: { profile: { bundles: ['startup-fault'] } },
+  }))
+  await writeFile(join(profileRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+  await writeFile(join(pluginRoot, 'package.json'), JSON.stringify({
+    name: 'startup-fault', version: '1.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }))
+  await writeFile(join(pluginRoot, 'cordis.patch.yml'), '- insert: [{ id: startup-fault, name: startup-fault }]\n')
+  const inventory = new UserPluginInventory({ dshHome, selectionPath })
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let paused = 0
+  let restarted = 0
+  const transactions = new UserPluginTransactionManager({
+    inventory,
+    selectionStore: new UserPluginSelectionStore(selectionPath),
+    snapshots: new UserPluginSnapshots({ root: join(root, 'platform/store/snapshots/user-plugins'), profileRoot }),
+    journal: new UserPluginJournal(join(root, 'platform/state/management/user-plugin-transaction.json')),
+    pauseDsh: async () => { paused += 1 },
+    restartDsh: async () => {
+      restarted += 1
+      const manifest = JSON.parse(await readFile(join(profileRoot, 'package.json'), 'utf8'))
+      if (manifest.dsh.profile.bundles.includes('startup-fault')) throw new Error('startup-fault crashed DSH')
+    },
+    report: (message, fields) => logs.diagnostic('user-plugin-manager', message, fields),
+  })
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    platformStatus: async () => ({ recoveryMode: 'startup-fault crashed DSH' }),
+    listUserPlugins: () => inventory.read(),
+    validateUserPluginActions: value => transactions.validate(value),
+    applyUserPluginActions: value => transactions.apply(value),
+  })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const listed = await client.request('GET', `${API_PREFIX}user-plugins`)
+    assert.deepEqual(listed.plugins.map(plugin => [plugin.name, plugin.enabled]), [['startup-fault', true]])
+    assert.equal((await client.request('GET', `${API_PREFIX}status`)).recoveryMode, 'startup-fault crashed DSH')
+    const task = await client.request('POST', `${API_PREFIX}user-plugins/apply`, {
+      profile: 'web', revision: listed.revision,
+      actions: [{ name: 'startup-fault', action: 'disable' }],
+    })
+    let state
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      state = await client.request('GET', `${API_PREFIX}user-plugins/task/${task.taskId}`)
+      if (state.status !== 'running') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(state.status, 'success')
+    assert.equal(paused, 1)
+    assert.equal(restarted, 1)
+    const manifest = JSON.parse(await readFile(join(profileRoot, 'package.json'), 'utf8'))
+    assert.deepEqual(manifest.dsh.profile.bundles, [])
+    await logs.queue
+    assert.deepEqual((await logs.query({ sources: ['user-plugin-manager'] })).map(entry => entry.message), [
+      'user-plugin.transaction.started', 'user-plugin.transaction.completed',
+    ])
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

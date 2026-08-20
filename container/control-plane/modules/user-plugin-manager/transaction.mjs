@@ -58,13 +58,14 @@ async function mutateProfile({ inventory, selectionStore, actions, runPlugin }) 
   const manifestPath = join(inventory.profileRoot, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
   const bundles = [...(manifest.dsh?.profile?.bundles ?? [])]
+  const originalBundles = [...bundles]
   const selection = await selectionStore.read()
   const disabled = new Map(selection.disabled.map(entry => [entry.name, entry.index]))
   for (const { name, action } of actions) {
     if (action === 'disable') {
       const index = bundles.indexOf(name)
       if (index !== -1) {
-        disabled.set(name, index)
+        disabled.set(name, originalBundles.indexOf(name))
         for (let found = bundles.indexOf(name); found !== -1; found = bundles.indexOf(name)) bundles.splice(found, 1)
       }
     } else if (action === 'enable') {
@@ -110,16 +111,23 @@ export class UserPluginTransactionManager {
     return Promise.resolve().then(() => this.report(messageValue, fields)).catch(() => {})
   }
 
-  async apply({ taskId = randomUUID(), revision, actions }) {
+  async validate({ revision, actions }) {
     const current = await this.inventory.read()
     if (revision !== current.revision) {
       const error = new Error('User Plugin inventory revision has changed')
       error.code = 'REVISION_CONFLICT'
       throw error
     }
-    const normalized = validateActions(current, actions)
+    return Object.freeze({ revision, actions: validateActions(current, actions) })
+  }
+
+  async apply({ taskId = randomUUID(), revision, actions, onProgress = () => {} }) {
+    const validated = await this.validate({ revision, actions })
+    const normalized = validated.actions
+    const publishProgress = state => { try { onProgress(state) } catch {} }
     const selectionBefore = await this.selectionStore.snapshot()
     let state = await this.journal.begin({ taskId, revision, actions: normalized, selection: selectionBefore })
+    publishProgress(state)
     let paused = false
     let snapshotCreated = false
     await this.record('user-plugin.transaction.started', { taskId, actions: normalized })
@@ -127,10 +135,13 @@ export class UserPluginTransactionManager {
       await this.pauseDsh()
       paused = true
       state = await this.journal.transition('paused')
+      publishProgress(state)
       await this.snapshots.create(taskId)
       snapshotCreated = true
       state = await this.journal.transition('snapshotted', { snapshotId: taskId })
+      publishProgress(state)
       state = await this.journal.transition('mutating')
+      publishProgress(state)
       const result = await mutateProfile({
         inventory: this.inventory,
         selectionStore: this.selectionStore,
@@ -138,9 +149,12 @@ export class UserPluginTransactionManager {
         runPlugin: this.runPlugin,
       })
       state = await this.journal.transition('committed')
+      publishProgress(state)
       state = await this.journal.transition('restarting')
+      publishProgress(state)
       await this.restartDsh()
       state = await this.journal.transition('completed')
+      publishProgress(state)
       await this.snapshots.remove(taskId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', { taskId, error }))
       await this.record('user-plugin.transaction.completed', { taskId })
       return Object.freeze({ taskId, status: 'success', inventory: result })
@@ -162,27 +176,30 @@ export class UserPluginTransactionManager {
           await this.journal.transition('failed', { recoveryResult: 'success' })
           await this.snapshots.remove(snapshotId)
         } catch (recoveryError) {
-          await this.journal.transition('failed', {
+          const aggregate = new AggregateError([error, recoveryError], 'User Plugin transaction and recovery failed')
+          aggregate.journal = await this.journal.transition('failed', {
             error: `${message(error)}; recovery failed: ${message(recoveryError)}`,
             recoveryResult: 'failed',
           }).catch(() => {})
-          throw new AggregateError([error, recoveryError], 'User Plugin transaction and recovery failed')
+          throw aggregate
         }
       } else if (paused) {
         try {
           await this.restartDsh()
           await this.journal.transition('failed', { error: message(error), recoveryResult: 'success' })
         } catch (recoveryError) {
-          await this.journal.transition('failed', {
+          const aggregate = new AggregateError([error, recoveryError], 'User Plugin transaction and recovery failed')
+          aggregate.journal = await this.journal.transition('failed', {
             error: `${message(error)}; recovery failed: ${message(recoveryError)}`,
             recoveryResult: 'failed',
           }).catch(() => {})
-          throw new AggregateError([error, recoveryError], 'User Plugin transaction and recovery failed')
+          throw aggregate
         }
       } else {
         await this.journal.transition('failed', { error: message(error) }).catch(() => {})
       }
       await this.record('user-plugin.transaction.failed', { taskId, error, committed })
+      if (error !== null && typeof error === 'object') error.journal = await this.journal.read().catch(() => undefined)
       throw error
     }
   }
@@ -213,6 +230,7 @@ export class UserPluginTransactionManager {
       }
     }
     if (state.phase === 'validated') return this.journal.transition('failed', { error: 'transaction interrupted before DSH pause' })
+    await this.pauseDsh()
     if (state.phase === 'paused') {
       try {
         await this.restartDsh()
@@ -237,6 +255,59 @@ export class UserPluginTransactionManager {
     } catch (error) {
       return this.journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
     }
+  }
+
+  async recoverBeforeDshStart() {
+    let state = await this.journal.read()
+    if (state === undefined) return undefined
+    if (['completed', 'failed'].includes(state.phase)) {
+      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId)
+      return state
+    }
+    if (state.phase === 'validated') {
+      return this.journal.transition('failed', {
+        error: 'transaction interrupted before DSH pause', recoveryResult: 'success',
+      })
+    }
+    if (state.phase === 'paused') {
+      return this.journal.transition('failed', {
+        error: 'transaction interrupted before snapshot', recoveryResult: 'success',
+      })
+    }
+    if (['committed', 'restarting'].includes(state.phase)) {
+      if (state.phase === 'committed') state = await this.journal.transition('restarting')
+      return state
+    }
+    try {
+      if (state.phase !== 'restoring') state = await this.journal.transition('restoring', {
+        error: state.error ?? 'transaction interrupted before commit',
+      })
+      await this.snapshots.restore(state.snapshotId)
+      await this.selectionStore.restore({
+        present: state.selectionPresent,
+        state: { schema: 1, disabled: state.previousDisabled },
+      })
+      const failed = await this.journal.transition('failed', { recoveryResult: 'success' })
+      await this.snapshots.remove(state.snapshotId)
+      return failed
+    } catch (error) {
+      return this.journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
+    }
+  }
+
+  async completeDshStartup({ healthy, error = null }) {
+    const state = await this.journal.read()
+    if (state === undefined || state.phase !== 'restarting') return state
+    const next = healthy
+      ? await this.journal.transition('completed')
+      : await this.journal.transition('failed', { error: error ?? 'DSH failed to start after the committed User Plugin change' })
+    if (state.snapshotId !== null) {
+      await this.snapshots.remove(state.snapshotId).catch(cleanupError => this.record('user-plugin.snapshot.cleanup.failed', {
+        taskId: state.taskId,
+        error: cleanupError,
+      }))
+    }
+    return next
   }
 }
 
