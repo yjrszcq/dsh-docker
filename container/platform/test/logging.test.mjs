@@ -31,6 +31,16 @@ test('assigns default levels and accepts only explicit supported levels', async 
   await assert.rejects(logs.append('component', 'stdout', 'invalid', { level: 'fatal' }), /log level is invalid/)
 })
 
+test('applies an explicit shared-reader mode to newly created and rotated log files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-mode-'))
+  const logs = new JsonlLogManager({ root, fileMode: 0o640, rotateBytes: 1_024 })
+  await logs.append('stage0', 'platform', 'first')
+  assert.equal((await stat(join(root, 'stage0.jsonl'))).mode & 0o777, 0o640)
+  await logs.append('stage0', 'platform', 'x'.repeat(1_000))
+  await logs.append('stage0', 'platform', 'rotated')
+  assert.equal((await stat(join(root, 'stage0.jsonl'))).mode & 0o777, 0o640)
+})
+
 test('rotates files and enforces the aggregate byte budget', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-log-rotation-'))
   const logs = new JsonlLogManager({ root, maxBytes: 70_000, rotateBytes: 10_000 })

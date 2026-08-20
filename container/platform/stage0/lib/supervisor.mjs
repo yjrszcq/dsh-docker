@@ -58,7 +58,7 @@ export class BootstrapSupervisor {
   }
 
   emit(message, fields = {}) {
-    void Promise.resolve(this.report(message, fields)).catch(() => {})
+    void Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
   }
 
   rejectRequests(error) {

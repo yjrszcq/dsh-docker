@@ -32,6 +32,8 @@ const logs = new JsonlLogManager({
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
   output: { stdout: process.stdout, stderr: process.stderr },
+  fileMode: process.getuid?.() === 0 ? 0o640 : 0o600,
+  fileGid: process.getgid?.() === 0 ? 1000 : undefined,
 })
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 const startup = async (phase, operation) => {

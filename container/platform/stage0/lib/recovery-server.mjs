@@ -19,6 +19,7 @@ function send(response, status, value) {
 }
 
 export function createRecoveryServer({ inventory, deployments, supervisor, report = async () => {} }) {
+  const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
   return createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/v1/status') {
@@ -34,13 +35,13 @@ export function createRecoveryServer({ inventory, deployments, supervisor, repor
       } else if (request.method === 'POST' && request.url === '/v1/recover-image-baseline') {
         const value = await body(request)
         if (value.confirm !== inventory.imageBuildId) throw new Error('image baseline recovery confirmation is invalid')
-        await report('image-baseline.requested', { imageBuildId: inventory.imageBuildId })
+        await record('image-baseline.requested', { imageBuildId: inventory.imageBuildId })
         const slots = await supervisor.recoverImageBaseline()
-        await report('image-baseline.recovered', { imageBuildId: inventory.imageBuildId })
+        await record('image-baseline.recovered', { imageBuildId: inventory.imageBuildId })
         send(response, 200, { status: 'recovered', slots })
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
-      await report('recovery.request.failed', { error, method: request.method ?? null, pathname: request.url ?? null })
+      await record('recovery.request.failed', { error, method: request.method ?? null, pathname: request.url ?? null })
       send(response, 400, { error: error instanceof Error ? error.message : 'recovery failed' })
     }
   })

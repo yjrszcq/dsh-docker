@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { appendFile, chmod, chown, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const SOURCE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
@@ -63,17 +63,24 @@ export class JsonlLogManager extends EventEmitter {
     rotateBytes = 10 * 1024 * 1024,
     now = () => new Date(),
     output,
+    fileMode = 0o600,
+    fileUid,
+    fileGid,
   }) {
     super()
     if (!Number.isSafeInteger(maxBytes) || maxBytes < MAX_ENTRY_BYTES) throw new Error('log maxBytes is invalid')
     if (!Number.isSafeInteger(retentionDays) || retentionDays < 1) throw new Error('log retentionDays is invalid')
     if (!Number.isSafeInteger(rotateBytes) || rotateBytes < 1_024) throw new Error('log rotateBytes is invalid')
+    if (!Number.isSafeInteger(fileMode) || fileMode < 0 || fileMode > 0o777) throw new Error('log fileMode is invalid')
     this.root = root
     this.maxBytes = maxBytes
     this.retentionMs = retentionDays * 86_400_000
     this.rotateBytes = rotateBytes
     this.now = now
     this.output = output
+    this.fileMode = fileMode
+    this.fileUid = fileUid
+    this.fileGid = fileGid
     this.queue = Promise.resolve()
   }
 
@@ -109,11 +116,21 @@ export class JsonlLogManager extends EventEmitter {
       if (line.byteLength > MAX_ENTRY_BYTES) throw new Error('log entry exceeds 64 KiB')
       await mkdir(this.root, { recursive: true })
       const path = this.currentPath(source)
-      const size = await stat(path).then(value => value.size, error => error?.code === 'ENOENT' ? 0 : Promise.reject(error))
+      let exists = true
+      const size = await stat(path).then(value => value.size, error => {
+        if (error?.code !== 'ENOENT') throw error
+        exists = false
+        return 0
+      })
       if (size > 0 && size + line.byteLength > this.rotateBytes) {
         await rename(path, join(this.root, `${source}.${Date.now()}.${randomUUID()}.jsonl`))
+        exists = false
       }
-      await appendFile(path, line, { mode: 0o600 })
+      await appendFile(path, line, { mode: this.fileMode })
+      if (!exists) {
+        if (this.fileUid !== undefined || this.fileGid !== undefined) await chown(path, this.fileUid ?? -1, this.fileGid ?? -1)
+        await chmod(path, this.fileMode)
+      }
       this.emit('entry', Object.freeze(entry))
       this.mirror(entry)
       await this.pruneUnlocked()

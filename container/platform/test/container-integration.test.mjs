@@ -15,6 +15,8 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /managed by the platform/)
   assert.match(script, /\.dshRestart\.taskId == \$task and \.dshRestart\.status == "success"/)
   assert.match(script, /stage0_pid/)
+  assert.match(script, /\.source == "stage0" and \.message == "stage0\.ready"/)
+  assert.match(script, /\.source == "bootstrap" and \.message == "platform\.ready"/)
   assert.match(script, /dsh_pid/)
   assert.match(script, /kill -9 "\$dsh_pid"/)
   assert.match(script, /\.recoveryMode != null/)

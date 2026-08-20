@@ -50,11 +50,17 @@ docker run --detach --name "$container" \
 startup_one="$(wait_platform_ready)"
 attempt=0
 until docker logs "$container" 2>&1 \
-  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform ready"' >/dev/null; do
+  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform.ready"' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 50 ] || exit 1
   sleep 0.2
 done
+docker logs "$container" 2>&1 \
+  | rg '"source":"stage0".*"stream":"platform".*"message":"stage0.ready"' >/dev/null
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?limit=5000' \
+  | jq -e 'any(.entries[]; .source == "stage0" and .message == "stage0.ready")
+    and any(.entries[]; .source == "bootstrap" and .message == "platform.ready")' >/dev/null
 
 docker exec "$container" sh -c '
   set -eu
