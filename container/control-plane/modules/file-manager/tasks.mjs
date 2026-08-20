@@ -131,7 +131,8 @@ export class FileTaskManager {
       schema: 1, taskId: randomUUID(), operation: input.operation, status: 'running', phase: 'validating',
       sources, destination, destinationRevision: input.destinationRevision ?? null, conflict, managed,
       processedBytes: 0, totalBytes: 0, processedEntries: 0, totalEntries: 0, currentPath: null,
-      published: [], staging: [], hidden: [], error: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
+      published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
+      error: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
     }
     this.tasks.set(task.taskId, task)
     this.activeMutation = task
@@ -154,7 +155,6 @@ export class FileTaskManager {
     if (task.status !== 'running') throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
     if (['destination-committed', 'source-hidden', 'cleaning'].includes(task.phase)) throw new FileManagerError('file task passed its cancellation boundary', 409, 'FILE_TASK_COMMITTED')
     task.cancelRequested = true
-    void this.#persist(task)
     this.#publish(task)
     return publicTask(task)
   }
@@ -207,10 +207,17 @@ export class FileTaskManager {
     const source = task.sources[0].path
     if (dirname(source) !== dirname(task.destination)) throw new FileManagerError('rename destination must use the same directory')
     const destination = await uniqueDestination(task.destination, task.conflict)
+    task.currentSource = source
+    task.currentDestination = destination
+    await this.#phase(task, 'move-prepared')
     if (task.conflict === 'overwrite' && await exists(destination)) await rm(destination, { recursive: true })
     await rename(source, destination)
     task.published.push(destination)
+    await this.#phase(task, 'destination-committed')
     await syncDirectory(dirname(destination))
+    task.currentSource = null
+    task.currentDestination = null
+    await this.#phase(task, 'mutating')
   }
 
   async #copy(task, move) {
@@ -219,12 +226,18 @@ export class FileTaskManager {
       const destination = await uniqueDestination(join(task.destination, cleanName(source.path)), task.conflict)
       if (source.path === destination || destination.startsWith(`${source.path}/`)) throw new FileManagerError('directory cannot be copied into itself')
       if (move) {
+        task.currentSource = source.path
+        task.currentDestination = destination
+        await this.#phase(task, 'move-prepared')
         try {
           if (task.conflict === 'overwrite' && await exists(destination)) await rm(destination, { recursive: true })
           await rename(source.path, destination)
           task.published.push(destination)
+          await this.#phase(task, 'destination-committed')
           task.processedEntries += 1
-          await this.#persist(task)
+          task.currentSource = null
+          task.currentDestination = null
+          await this.#phase(task, 'mutating')
           continue
         } catch (error) {
           if (error?.code !== 'EXDEV') throw error
@@ -233,6 +246,8 @@ export class FileTaskManager {
       const staging = join(dirname(destination), `.dsh-file-task-${task.taskId}-${randomUUID()}.tmp`)
       task.staging.push(staging)
       task.currentPath = source.path
+      task.currentSource = source.path
+      task.currentDestination = destination
       await this.#persist(task)
       await copyEntry(source.path, staging)
       if (task.cancelRequested) throw new Error('file task cancelled')
@@ -244,7 +259,9 @@ export class FileTaskManager {
       if (move) await rm(source.path, { recursive: true })
       task.processedEntries += 1
       task.processedBytes = Math.min(task.totalBytes, task.processedBytes + (await treeMetrics(destination)).bytes)
-      await this.#persist(task)
+      task.currentSource = null
+      task.currentDestination = null
+      await this.#phase(task, 'mutating')
     }
   }
 
@@ -273,8 +290,15 @@ export class FileTaskManager {
       task.hidden = []
       task.status = 'success'
       await this.#phase(task, 'completed')
-    } else if (task.operation === 'move' && task.phase === 'destination-committed') {
-      for (const source of task.sources) if (await exists(source.path)) await rm(source.path, { recursive: true })
+    } else if (['move', 'rename'].includes(task.operation) && task.phase === 'destination-committed') {
+      if (task.currentSource !== null && await exists(task.currentSource)) await rm(task.currentSource, { recursive: true })
+      task.status = 'success'
+      await this.#phase(task, 'completed')
+    } else if (['move', 'rename'].includes(task.operation) && task.phase === 'move-prepared'
+      && task.currentSource !== null && task.currentDestination !== null
+      && !await exists(task.currentSource) && await exists(task.currentDestination)) {
+      task.published ??= []
+      if (!task.published.includes(task.currentDestination)) task.published.push(task.currentDestination)
       task.status = 'success'
       await this.#phase(task, 'completed')
     } else {

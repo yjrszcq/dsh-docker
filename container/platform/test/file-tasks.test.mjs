@@ -95,6 +95,46 @@ test('recovers committed deletes and marks uncommitted tasks interrupted', async
   assert.equal(await stat(staging).then(() => true, error => error.code !== 'ENOENT'), false)
 })
 
+test('move recovery cleans only the source bound to the committed destination', async () => {
+  const { files, tasks } = await setup('dsh-file-move-recovery-')
+  const committedSource = join(files, 'committed-source')
+  const untouchedSource = join(files, 'untouched-source')
+  const destination = join(files, 'destination')
+  await writeFile(committedSource, 'old duplicate')
+  await writeFile(untouchedSource, 'must remain')
+  await writeFile(destination, 'committed')
+  const task = {
+    schema: 1, taskId: '33333333-3333-4333-8333-333333333333', operation: 'move', status: 'running', phase: 'destination-committed',
+    sources: [{ path: committedSource, revision: 'old' }, { path: untouchedSource, revision: 'untouched' }],
+    destination: files, currentSource: committedSource, currentDestination: destination,
+    managed: false, hidden: [], staging: [], published: [destination], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }
+  await writeFile(join(tasks, `${task.taskId}.json`), JSON.stringify(task))
+  const recovered = new FileTaskManager({ root: tasks })
+  await recovered.initialize()
+  assert.equal(recovered.get(task.taskId).status, 'success')
+  assert.equal(await stat(committedSource).then(() => true, error => error.code !== 'ENOENT'), false)
+  assert.equal(await readFile(untouchedSource, 'utf8'), 'must remain')
+})
+
+test('move recovery recognizes an atomic rename completed before its journal commit', async () => {
+  const { files, tasks } = await setup('dsh-file-rename-recovery-')
+  const source = join(files, 'source')
+  const destination = join(files, 'destination')
+  await writeFile(destination, 'moved')
+  const task = {
+    schema: 1, taskId: '44444444-4444-4444-8444-444444444444', operation: 'move', status: 'running', phase: 'move-prepared',
+    sources: [{ path: source, revision: 'old' }], destination: files,
+    currentSource: source, currentDestination: destination, managed: false, hidden: [], staging: [], published: [],
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }
+  await writeFile(join(tasks, `${task.taskId}.json`), JSON.stringify(task))
+  const recovered = new FileTaskManager({ root: tasks })
+  await recovered.initialize()
+  assert.equal(recovered.get(task.taskId).status, 'success')
+  assert.deepEqual(recovered.get(task.taskId).published, [destination])
+})
+
 test('managed mutations expose a lease and reject active platform work', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-managed-tasks-'))
   const manager = new FileTaskManager({ root: join(root, 'tasks'), platformBusy: () => true })
