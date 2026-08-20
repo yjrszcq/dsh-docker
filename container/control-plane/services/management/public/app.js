@@ -170,6 +170,7 @@ let userPluginSubmitting = false
 let userPluginFeedback = null
 let eventSource
 let logSource
+let logRenderFrame
 let autoScroll = true
 let reminder
 let terminalRuntime
@@ -188,6 +189,7 @@ let terminalResizeFrame
 let terminalRestored = false
 let terminalLeaving = false
 const logEntries = []
+const logIdentities = new Set()
 let logDisplayLimit = (() => {
   const value = Number(storageValue(LOG_DISPLAY_LIMIT_KEY))
   return LOG_DISPLAY_LIMITS.includes(value) ? value : DEFAULT_LOG_DISPLAY_LIMIT
@@ -900,14 +902,25 @@ function renderLogs() {
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
 }
 
+function scheduleLogRender() {
+  if (logRenderFrame !== undefined) return
+  logRenderFrame = window.requestAnimationFrame(() => {
+    logRenderFrame = undefined
+    renderLogs()
+  })
+}
+
 function appendLog(entry) {
   const identity = JSON.stringify(entry)
   const timestamp = Date.parse(entry.timestamp)
   if ((logClearCutoff !== null && Number.isFinite(timestamp) && timestamp <= Date.parse(logClearCutoff))
-    || logEntries.some(item => item.identity === identity)) return
+    || logIdentities.has(identity)) return
   logEntries.push({ identity, value: entry })
-  if (logEntries.length > LOG_STREAM_LIMIT) logEntries.splice(0, logEntries.length - LOG_STREAM_LIMIT)
-  renderLogs()
+  logIdentities.add(identity)
+  if (logEntries.length > LOG_STREAM_LIMIT) {
+    for (const removed of logEntries.splice(0, logEntries.length - LOG_STREAM_LIMIT)) logIdentities.delete(removed.identity)
+  }
+  scheduleLogRender()
 }
 
 function terminalTheme() {
@@ -1155,6 +1168,9 @@ function selectTab(tab) {
     button.tabIndex = active ? 0 : -1
     elements[`panel-${button.dataset.tab}`].hidden = !active
   }
+  if (tab === 'maintenance') {
+    connectLogs()
+  }
   if (tab === 'maintenance' && autoScroll) {
     window.requestAnimationFrame(() => {
       elements['log-list'].scrollTop = elements['log-list'].scrollHeight
@@ -1172,8 +1188,10 @@ function connectEvents() {
   eventSource.addEventListener('state', () => { void loadStatus() })
   eventSource.onopen = () => setConnection('online')
   eventSource.onerror = () => setConnection('connecting')
+}
 
-  logSource?.close()
+function connectLogs() {
+  if (logSource !== undefined) return
   logSource = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
   logSource.addEventListener('log', event => {
     try { appendLog(JSON.parse(event.data)) } catch {}
@@ -1261,6 +1279,7 @@ elements['clear-logs'].addEventListener('click', () => {
   logClearCutoff = new Date(latest).toISOString()
   try { window.sessionStorage.setItem(LOG_CLEAR_CUTOFF_KEY, logClearCutoff) } catch {}
   logEntries.length = 0
+  logIdentities.clear()
   renderLogs()
 })
 elements['reminder-later'].addEventListener('click', () => {
