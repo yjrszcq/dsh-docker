@@ -135,7 +135,7 @@ test('passes a platform-management envelope through without persisting it twice'
   )
   assert.deepEqual(await logs.query({ sources: ['audit'] }), [])
   const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
-  assert.match(bootstrap, /acceptForwarded: source === 'platform-management'/)
+  assert.match(bootstrap, /acceptForwarded: \['gateway', 'platform-management'\]\.includes\(source\)/)
 })
 
 test('records bounded structured error diagnostics in JSONL and container output', async () => {

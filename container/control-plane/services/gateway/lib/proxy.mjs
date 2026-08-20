@@ -173,23 +173,41 @@ async function writeInjectedHtml(upstream, response) {
   response.end(body)
 }
 
-function pipeHttpResponse(upstream, response) {
+function pipeHttpResponse(upstream, response, onError = () => {}) {
   response.writeHead(
     upstream.statusCode ?? 502,
     upstream.statusMessage,
     proxyResponseHeaders(upstream.headers),
   )
-  upstream.on('error', () => response.destroy())
+  upstream.on('error', error => {
+    onError(error)
+    response.destroy()
+  })
   upstream.pipe(response)
 }
 
-async function boundedPlatformStatus(platformStatus, timeoutMs = 250) {
+function requestContext(request) {
+  let pathname = 'invalid-url'
+  try { pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname } catch {}
+  return { method: request.method ?? null, pathname }
+}
+
+async function boundedPlatformStatus(platformStatus, options, timeoutMs = 250) {
   let timer
   try {
     return await Promise.race([
-      platformStatus().catch(() => ({})),
+      Promise.resolve().then(() => platformStatus()).then(value => {
+        options.reportRecovered('platform-status', 'gateway.platform-status.recovered', { upstream: 'management' })
+        return value
+      }, error => {
+        options.reportFailure('platform-status', 'gateway.platform-status.failed', { error, upstream: 'management' })
+        return {}
+      }),
       new Promise(resolve => {
-        timer = setTimeout(() => resolve({}), timeoutMs)
+        timer = setTimeout(() => {
+          options.reportFailure('platform-status', 'gateway.platform-status.timed-out', { timeoutMs, upstream: 'management' })
+          resolve({})
+        }, timeoutMs)
         timer.unref()
       }),
     ])
@@ -199,7 +217,7 @@ async function boundedPlatformStatus(platformStatus, timeoutMs = 250) {
 }
 
 async function unavailableState(options) {
-  const platform = await boundedPlatformStatus(options.platformStatus)
+  const platform = await boundedPlatformStatus(options.platformStatus, options)
   return options.availability.classify(platform)
 }
 
@@ -216,6 +234,8 @@ async function rejectDshFailure(request, response, options) {
 }
 
 function proxyHttp(request, response, options) {
+  const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
+  const context = requestContext(request)
   const upstream = httpRequest({
     ...(options.socketPath === undefined
       ? { hostname: options.upstreamHost, port: options.upstreamPort }
@@ -225,17 +245,33 @@ function proxyHttp(request, response, options) {
     headers: upstreamRequestHeaders(request.headers),
   })
   upstream.on('response', (upstreamResponse) => {
+    options.reportRecovered(`${upstreamType}-http`, 'gateway.upstream.recovered', { upstream: upstreamType })
     if (options.trackDsh === true) options.availability.observe(true)
     if (options.polyfill && isInjectableHtml(request, upstreamResponse)) {
-      void writeInjectedHtml(upstreamResponse, response).catch(() => {
+      void writeInjectedHtml(upstreamResponse, response).catch(error => {
+        options.reportFailure('dsh-injection', 'gateway.response-injection.failed', {
+          ...context,
+          error,
+          upstream: 'dsh',
+        })
         upstreamResponse.destroy()
         rejectHttp(response, 502, 'bad gateway')
       })
       return
     }
-    pipeHttpResponse(upstreamResponse, response)
+    pipeHttpResponse(upstreamResponse, response, error => options.reportFailure(`${upstreamType}-response`, 'gateway.upstream-response.failed', {
+      ...context,
+      error,
+      level: 'warning',
+      upstream: upstreamType,
+    }))
   })
-  upstream.on('error', () => {
+  upstream.on('error', error => {
+    options.reportFailure(`${upstreamType}-http`, 'gateway.upstream.failed', {
+      ...context,
+      error,
+      upstream: upstreamType,
+    })
     if (options.trackDsh === true) void rejectDshFailure(request, response, options)
     else rejectHttp(response, 502, 'bad gateway')
   })
@@ -267,6 +303,7 @@ function serializeUpgradeRequest(request, headers) {
 }
 
 function proxyUpgrade(request, clientSocket, head, options) {
+  const context = requestContext(request)
   const headers = upstreamRequestHeaders(request.headers)
   headers.connection = 'Upgrade'
   headers.upgrade = request.headers.upgrade ?? 'websocket'
@@ -275,12 +312,19 @@ function proxyUpgrade(request, clientSocket, head, options) {
 
   upstreamSocket.once('connect', () => {
     connected = true
+    options.reportRecovered('dsh-websocket', 'gateway.websocket.recovered', { upstream: 'dsh' })
     options.availability.observe(true)
     upstreamSocket.write(serializeUpgradeRequest(request, headers))
     if (head.length > 0) upstreamSocket.write(head)
     clientSocket.pipe(upstreamSocket).pipe(clientSocket)
   })
-  upstreamSocket.once('error', () => {
+  upstreamSocket.once('error', error => {
+    options.reportFailure('dsh-websocket', connected ? 'gateway.websocket.disconnected' : 'gateway.websocket.failed', {
+      ...context,
+      error,
+      level: connected ? 'warning' : 'error',
+      upstream: 'dsh',
+    })
     if (!connected) {
       options.availability.observe(false)
       void unavailableState(options).then(state => {
@@ -309,10 +353,36 @@ export function createGatewayServer({
   password = '',
   username = '',
   passwordAccess = createPasswordAccess(password, { username }),
+  report = async () => {},
+  now = () => Date.now(),
+  failureLogIntervalMs = 30_000,
 }) {
+  const failures = new Map()
+  const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
+  const reportFailure = (key, message, fields) => {
+    const timestamp = now()
+    const previous = failures.get(key)
+    if (previous !== undefined && timestamp - previous.lastReportedAt < failureLogIntervalMs) {
+      previous.suppressedCount += 1
+      return
+    }
+    const suppressedCount = previous?.suppressedCount ?? 0
+    failures.set(key, { firstFailureAt: previous?.firstFailureAt ?? timestamp, lastReportedAt: timestamp, suppressedCount: 0 })
+    void record(message, { ...fields, ...(suppressedCount === 0 ? {} : { suppressedCount }) })
+  }
+  const reportRecovered = (key, message, fields) => {
+    const failure = failures.get(key)
+    if (failure === undefined) return
+    failures.delete(key)
+    void record(message, {
+      ...fields,
+      outageMs: Math.max(0, now() - failure.firstFailureAt),
+      suppressedCount: failure.suppressedCount,
+    })
+  }
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, systemPluginRoot, platformStatus,
-    availability, probe, isReady, passwordAccess,
+    availability, probe, isReady, passwordAccess, reportFailure, reportRecovered,
   }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
@@ -365,35 +435,51 @@ export function createGatewayServer({
         return
       }
       proxyHttp(request, response, { ...options, trackDsh: true })
-    } catch {
+    } catch (error) {
+      reportFailure('gateway-request', 'gateway.request.failed', { ...requestContext(request), error })
       rejectHttp(response, 400, 'bad request')
     }
   }
   server.on('upgrade', (request, socket, head) => {
-    const trust = inspectExternalRequest(request.headers, options.trustedHosts)
-    if (!trust.accepted) {
-      rejectUpgrade(socket, 403, 'Forbidden')
-      return
-    }
-    if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
-      rejectUpgrade(socket, 401, 'Unauthorized', { 'WWW-Authenticate': BASIC_AUTH_CHALLENGE })
-      return
-    }
-    const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
-    if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+    try {
+      const trust = inspectExternalRequest(request.headers, options.trustedHosts)
+      if (!trust.accepted) {
+        rejectUpgrade(socket, 403, 'Forbidden')
+        return
+      }
+      if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
+        rejectUpgrade(socket, 401, 'Unauthorized', { 'WWW-Authenticate': BASIC_AUTH_CHALLENGE })
+        return
+      }
+      const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+      if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+        rejectUpgrade(socket, 400, 'Bad Request')
+        return
+      }
+      upgradedSockets.add(socket)
+      socket.once('close', () => upgradedSockets.delete(socket))
+      proxyUpgrade(request, socket, head, options)
+    } catch (error) {
+      reportFailure('gateway-upgrade', 'gateway.upgrade-request.failed', { ...requestContext(request), error })
       rejectUpgrade(socket, 400, 'Bad Request')
-      return
     }
-    upgradedSockets.add(socket)
-    socket.once('close', () => upgradedSockets.delete(socket))
-    proxyUpgrade(request, socket, head, options)
   })
   upgradedSocketsByServer.set(server, upgradedSockets)
   let probing = false
   const probeTimer = setInterval(() => {
     if (probing) return
     probing = true
-    void options.probe().then(ready => options.availability.observe(ready), () => options.availability.observe(false))
+    void options.probe().then(ready => {
+      const wasReady = options.availability.everReady
+      options.availability.observe(ready)
+      if (ready) reportRecovered('dsh-probe', 'gateway.dsh.recovered', { upstream: 'dsh' })
+      else if (wasReady && options.availability.consecutiveFailures >= options.availability.failures) {
+        reportFailure('dsh-probe', 'gateway.dsh.unavailable', { level: 'warning', upstream: 'dsh' })
+      }
+    }, error => {
+      options.availability.observe(false)
+      reportFailure('dsh-probe', 'gateway.dsh.probe.failed', { error, level: 'warning', upstream: 'dsh' })
+    })
       .finally(() => { probing = false })
   }, probeIntervalMs)
   probeTimer.unref()

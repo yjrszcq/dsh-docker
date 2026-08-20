@@ -26,7 +26,9 @@ export async function runGateway(config, {
   externalHost = EXTERNAL_HOST,
   externalPort = EXTERNAL_PORT,
   managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock',
+  report = async () => {},
 } = {}) {
+  const record = (message, fields = {}) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
   const management = new LocalApiClient(managementSocketPath)
   const server = gatewayFactory({
     password: config.password,
@@ -35,23 +37,37 @@ export async function runGateway(config, {
     trustedHosts: config.trustedHosts,
     managementSocketPath,
     platformStatus: () => management.request('GET', '/_dsh_platform/api/v1/status'),
+    report: record,
   })
   let resolveSignal
   const receivedSignal = new Promise(resolve => { resolveSignal = resolve })
-  const onSignal = () => resolveSignal()
-  signalSource.once('SIGINT', onSignal)
-  signalSource.once('SIGTERM', onSignal)
+  const onSignal = signal => resolveSignal(signal)
+  const onSigint = () => onSignal('SIGINT')
+  const onSigterm = () => onSignal('SIGTERM')
+  signalSource.once('SIGINT', onSigint)
+  signalSource.once('SIGTERM', onSigterm)
   try {
+    await record('gateway.starting', { externalHost, externalPort })
     await listen(server, externalPort, externalHost)
+    await record('gateway.ready', { externalHost, externalPort })
     const serverFailed = new Promise((_, reject) => server.once('error', reject))
-    await Promise.race([receivedSignal, serverFailed])
+    const signal = await Promise.race([receivedSignal, serverFailed])
+    await record('gateway.stopping', { signal })
     await closeGatewayServer(server)
+    await record('gateway.stopped')
     return 0
   } catch (error) {
-    if (server.listening) await closeGatewayServer(server).catch(() => {})
+    await record('gateway.fatal', { error })
+    if (server.listening) {
+      try {
+        await closeGatewayServer(server)
+      } catch (closeError) {
+        await record('gateway.stop.failed', { error: closeError, cause: error instanceof Error ? error.message : String(error) })
+      }
+    }
     throw error
   } finally {
-    signalSource.off('SIGINT', onSignal)
-    signalSource.off('SIGTERM', onSignal)
+    signalSource.off('SIGINT', onSigint)
+    signalSource.off('SIGTERM', onSigterm)
   }
 }

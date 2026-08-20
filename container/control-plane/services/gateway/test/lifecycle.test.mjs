@@ -31,11 +31,13 @@ test('gateway owns only its listener and forwards management socket configuratio
   const signalSource = new EventEmitter()
   const server = new FakeServer()
   let options
+  const reports = []
   const running = runGateway(config, {
     externalHost: '127.0.0.1',
     externalPort: 8080,
     managementSocketPath: '/run/platform.sock',
     signalSource,
+    report: (message, fields) => { reports.push({ message, fields }) },
     gatewayFactory: value => { options = value; return server },
   })
   await new Promise(resolve => setImmediate(resolve))
@@ -45,13 +47,21 @@ test('gateway owns only its listener and forwards management socket configuratio
   signalSource.emit('SIGTERM')
   assert.equal(await running, 0)
   assert.equal(server.listening, false)
+  assert.deepEqual(reports.map(entry => entry.message), [
+    'gateway.starting', 'gateway.ready', 'gateway.stopping', 'gateway.stopped',
+  ])
+  assert.equal(reports[2].fields.signal, 'SIGTERM')
 })
 
 test('gateway propagates listener failures without creating a DSH process', async () => {
   const server = new FakeServer()
+  const reports = []
   server.listen = () => queueMicrotask(() => server.emit('error', new Error('bind failed')))
   await assert.rejects(runGateway(config, {
     gatewayFactory: () => server,
     signalSource: new EventEmitter(),
+    report: (message, fields) => { reports.push({ message, fields }) },
   }), /bind failed/)
+  assert.equal(reports.some(entry => entry.message === 'gateway.fatal'
+    && entry.fields.error.message === 'bind failed'), true)
 })

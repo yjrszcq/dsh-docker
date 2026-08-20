@@ -132,6 +132,52 @@ test('health endpoint reports gateway readiness without touching upstream', asyn
   })
 })
 
+test('classifies, redacts, rate-limits, and closes an upstream outage', async () => {
+  const reservation = createServer()
+  const upstreamPort = await listen(reservation)
+  await close(reservation)
+  const reports = []
+  let now = 1_000
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    probeIntervalMs: 1_000_000,
+    now: () => now,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  const gatewayPort = await listen(gateway)
+  try {
+    await request(gatewayPort, '/private?token=must-not-appear', { host: '127.0.0.1' })
+    await request(gatewayPort, '/second?secret=must-not-appear', { host: '127.0.0.1' })
+    await new Promise(resolve => setImmediate(resolve))
+    const failures = reports.filter(entry => entry.message === 'gateway.upstream.failed')
+    assert.equal(failures.length, 1)
+    assert.equal(failures[0].fields.upstream, 'dsh')
+    assert.equal(failures[0].fields.pathname, '/private')
+    assert.equal(failures[0].fields.error.code, 'ECONNREFUSED')
+    assert.doesNotMatch(JSON.stringify(reports), /must-not-appear|token|secret/)
+
+    const upstream = createServer((_incoming, response) => response.end('ready'))
+    await new Promise((resolve, reject) => {
+      upstream.once('error', reject)
+      upstream.listen(upstreamPort, '127.0.0.1', resolve)
+    })
+    try {
+      now += 5_000
+      assert.equal((await request(gatewayPort, '/', { host: '127.0.0.1' })).status, 200)
+      await new Promise(resolve => setImmediate(resolve))
+      const recovered = reports.find(entry => entry.message === 'gateway.upstream.recovered')
+      assert.equal(recovered.fields.upstream, 'dsh')
+      assert.equal(recovered.fields.suppressedCount, 1)
+      assert.equal(recovered.fields.outageMs, 5_000)
+    } finally {
+      await close(upstream)
+    }
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
 test('serves trusted System Plugin bundles across DSH restart and uninstall races', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-system-plugin-'))
   const packageRoot = join(root, 'settings-document-editor')

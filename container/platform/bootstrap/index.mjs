@@ -129,7 +129,7 @@ const capture = (child, source, declaration) => logs.capture(
   child,
   source,
   declaration,
-  { acceptForwarded: source === 'platform-management' },
+  { acceptForwarded: ['gateway', 'platform-management'].includes(source) },
 )
 const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
 const controlPlane = new EnvironmentRunner({
