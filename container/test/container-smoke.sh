@@ -60,7 +60,8 @@ docker logs "$container" 2>&1 \
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?limit=5000' \
   | jq -e 'any(.entries[]; .source == "stage0" and .message == "stage0.ready")
-    and any(.entries[]; .source == "bootstrap" and .message == "platform.ready")' >/dev/null
+    and any(.entries[]; .source == "bootstrap" and .message == "platform.ready")
+    and any(.entries[]; .source == "gateway" and .message == "gateway.ready")' >/dev/null
 
 docker exec "$container" sh -c '
   set -eu
@@ -286,6 +287,18 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 [ "$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
 [ "$(docker inspect --format '{{.RestartCount}}' "$container")" = 0 ]
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
+  | jq -e 'any(.entries[]; .message == "gateway.upstream.failed" and .upstream == "dsh")' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.1
+done
+docker logs "$container" 2>&1 \
+  | rg '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
 restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
@@ -299,6 +312,18 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   sleep 0.1
 done
 docker exec "$container" curl --fail --silent http://127.0.0.1:3079/ >/dev/null
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
+  | jq -e 'any(.entries[]; .message == "gateway.upstream.recovered" and .upstream == "dsh")' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.1
+done
+docker logs "$container" 2>&1 \
+  | rg '"source":"gateway".*"message":"gateway.upstream.recovered"' >/dev/null
 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \

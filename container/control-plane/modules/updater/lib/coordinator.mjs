@@ -34,6 +34,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.sleep = sleep
     this.task = undefined
     this.checkTask = undefined
+    this.reportTimes = new Map()
   }
 
   async transition(status, fields = {}) {
@@ -54,11 +55,16 @@ export class UpdateCoordinator extends EventEmitter {
     return Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
   }
 
-  async bestEffort(message, operation, fallback, fields = {}) {
+  async bestEffort(message, operation, fallback, fields = {}, cooldownMs = 0) {
     try {
       return await operation()
     } catch (error) {
-      await this.record(message, { ...fields, error, level: 'warning' })
+      const timestamp = this.now().valueOf()
+      const previous = this.reportTimes.get(message)
+      if (cooldownMs === 0 || previous === undefined || timestamp - previous >= cooldownMs) {
+        this.reportTimes.set(message, timestamp)
+        await this.record(message, { ...fields, error, level: 'warning' })
+      }
       return fallback
     }
   }
@@ -247,11 +253,11 @@ export class UpdateCoordinator extends EventEmitter {
     const [update, local, current, rollbackPlan, journal, automatic] = await Promise.all([
       this.state.read(),
       this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
-      this.bestEffort('update.status.current.failed', () => this.activator.currentDeployment(), null),
-      this.bestEffort('update.status.rollback-plan.failed', () => this.rollbackPlan(), null),
+      this.bestEffort('update.status.current.failed', () => this.activator.currentDeployment(), null, {}, 60_000),
+      this.bestEffort('update.status.rollback-plan.failed', () => this.rollbackPlan(), null, {}, 60_000),
       this.journal === undefined
         ? Promise.resolve(undefined)
-        : this.bestEffort('update.status.journal.failed', () => this.journal.read(), undefined),
+        : this.bestEffort('update.status.journal.failed', () => this.journal.read(), undefined, {}, 60_000),
       this.automaticChecks?.read() ?? Promise.resolve(null),
     ])
     const returnStableAvailable = rollbackPlan !== null && rollbackPlan.snapshot !== null && update.supported?.dsh !== undefined

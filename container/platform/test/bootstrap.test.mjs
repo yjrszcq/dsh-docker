@@ -315,6 +315,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
         throw error
       }
     },
+    record: async (message, fields) => { calls.push(['report', message, fields.pathname ?? null]) },
   }
   const deployments = {
     exclusive: operation => operation(),
@@ -389,7 +390,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       }
     }
     await assert.rejects(client.request('POST', '/v1/components/dsh-runtime/restart'), /overlay failed/)
-    assert.deepEqual(calls.slice(-7), [
+    assert.deepEqual(calls.slice(-8), [
       ['operation', 'restarting'],
       ['prepare-system-plugins-failed'],
       ['restart', 'dsh-runtime'],
@@ -397,6 +398,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['rollback-system-plugins'],
       ['restart-recovered', 'dsh-runtime'],
       ['operation', 'restart-failed'],
+      ['report', 'bootstrap.request.failed', '/v1/components/dsh-runtime/restart'],
     ])
   } finally {
     await new Promise(resolve => server.close(resolve))
@@ -504,6 +506,35 @@ test('isolates an unexpected Environment exit and keeps the Control Plane availa
   await runtime.restart('dsh-runtime')
   assert.equal(runtime.status().recoveryMode, null)
   await runtime.stop()
+})
+
+test('reports secondary failures while isolating an unexpected Environment exit', async () => {
+  let emitEnvironmentFatal
+  const reports = []
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => {},
+      stop: async () => {},
+      status: () => ({ components: [] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      onFatal: listener => { emitEnvironmentFatal = listener; return () => {} },
+      start: async () => {},
+      stop: async () => { throw new Error('environment cleanup failed') },
+      status: () => ({ environmentVersion: 'env-1', components: [] }),
+    },
+    onEnvironmentFatal: async () => { throw new Error('status publication failed') },
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  await runtime.start()
+  emitEnvironmentFatal(new Error('dsh-runtime crashed'))
+  await runtime.recovery
+  assert.equal(reports.some(entry => entry.message === 'environment.recovery-report.failed'
+    && entry.fields.error.message === 'status publication failed'), true)
+  assert.equal(reports.some(entry => entry.message === 'environment.recovery-stop.failed'
+    && entry.fields.error.message === 'environment cleanup failed'), true)
 })
 
 test('validates mandatory Patches before every operation that starts DSH', async () => {

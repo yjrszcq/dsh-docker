@@ -21,8 +21,9 @@ function send(response, status, value) {
 
 export function createBootstrapControl(runner, { deployments, trust, systemPlugins } = {}) {
   return createServer(async (request, response) => {
+    let pathname = 'invalid-url'
     try {
-      const pathname = new URL(request.url ?? '/', 'http://bootstrap.internal').pathname
+      pathname = new URL(request.url ?? '/', 'http://bootstrap.internal').pathname
       if (request.method === 'GET' && pathname === '/v1/status') send(response, 200, {
         ...runner.status(),
         bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? '1.0.0',
@@ -95,11 +96,25 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
                   beforeStart: () => transaction?.activate?.(),
                   onStartFailure: () => transaction?.rollback?.(),
                 })
-                await transaction?.commit?.().catch(error => console.error(error))
+                if (transaction?.commit !== undefined) {
+                  try {
+                    await transaction.commit()
+                  } catch (error) {
+                    await runner.record?.('system-plugin.view.commit.failed', { error, level: 'warning' })
+                  }
+                }
                 await deployments.publishStatus()
                 return value
               } catch (error) {
-                await deployments.setOperation('restart-failed').catch(() => {})
+                try {
+                  await deployments.setOperation('restart-failed')
+                } catch (statusError) {
+                  await runner.record?.('deployment.status.failed', {
+                    error: statusError,
+                    level: 'warning',
+                    originalError: error instanceof Error ? error.message : String(error),
+                  })
+                }
                 throw error
               }
             })
@@ -108,6 +123,11 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         } else send(response, 404, { error: 'not found' })
       }
     } catch (error) {
+      await runner.record?.('bootstrap.request.failed', {
+        error,
+        method: request.method ?? null,
+        pathname,
+      })
       send(response, 500, { error: error instanceof Error ? error.message : 'Bootstrap operation failed' })
     }
   })

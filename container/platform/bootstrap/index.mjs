@@ -153,6 +153,7 @@ const runtime = new BootstrapRuntime({
     })
   },
   prepareDeployment: applySystemPluginSelection,
+  report: reportLifecycle,
   onEnvironmentFatal: async error => {
     const state = await deployments.state().catch(() => ({ current: null }))
     const reason = error instanceof Error ? error.message : String(error)

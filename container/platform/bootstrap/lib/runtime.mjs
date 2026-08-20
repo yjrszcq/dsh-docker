@@ -5,6 +5,7 @@ export class BootstrapRuntime {
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
     onEnvironmentFatal = async () => {},
+    report = async () => {},
   }) {
     this.controlPlane = controlPlane
     this.environment = environment
@@ -14,11 +15,20 @@ export class BootstrapRuntime {
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
     this.onEnvironmentFatal = onEnvironmentFatal
+    this.report = report
     const handleEnvironmentFatal = error => {
       this.recoveryMode = error instanceof Error ? error.message : String(error)
       this.recovery = this.recovery.then(async () => {
-        await Promise.resolve(this.onEnvironmentFatal(error)).catch(() => {})
-        await this.environment.stop().catch(() => {})
+        try {
+          await this.onEnvironmentFatal(error)
+        } catch (reportError) {
+          await this.record('environment.recovery-report.failed', { error: reportError, originalError: String(error) })
+        }
+        try {
+          await this.environment.stop()
+        } catch (stopError) {
+          await this.record('environment.recovery-stop.failed', { error: stopError, originalError: String(error) })
+        }
       })
     }
     if (typeof environment.onFatal === 'function') {
@@ -26,6 +36,22 @@ export class BootstrapRuntime {
     } else {
       void environment.fatal.then(handleEnvironmentFatal)
       this.offEnvironmentFatal = undefined
+    }
+  }
+
+  record(message, fields = {}) {
+    return Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
+  }
+
+  async stopControlPlane(phase, cause) {
+    try {
+      await this.controlPlane.stop()
+    } catch (error) {
+      await this.record('control-plane.cleanup.failed', {
+        error,
+        phase,
+        originalError: cause instanceof Error ? cause.message : String(cause),
+      })
     }
   }
 
@@ -45,7 +71,7 @@ export class BootstrapRuntime {
           this.recoveryMode = failure.message
           return this.status()
         }
-        await this.controlPlane.stop().catch(() => {})
+        await this.stopControlPlane('fallback-resolution', failure)
         throw failure
       }
       if (retry === true) {
@@ -57,14 +83,14 @@ export class BootstrapRuntime {
           const failure = new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
           if (allowRecovery) this.recoveryMode = failure.message
           else {
-            await this.controlPlane.stop().catch(() => {})
+            await this.stopControlPlane('fallback-start', failure)
             throw failure
           }
         }
       } else if (allowRecovery) {
         this.recoveryMode = error instanceof Error ? error.message : 'Deployment failed to start'
       } else {
-        await this.controlPlane.stop().catch(() => {})
+        await this.stopControlPlane('environment-start', error)
         throw error
       }
     }

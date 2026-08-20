@@ -162,7 +162,7 @@ export class EnvironmentRunner {
   }
 
   emitLifecycle(message, fields = {}) {
-    void Promise.resolve(this.report(message, fields)).catch(() => {})
+    void Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
   }
 
   serialized(operation) {
@@ -200,7 +200,15 @@ export class EnvironmentRunner {
       }
       return this.status()
     } catch (error) {
-      await this.stopUnlocked().catch(() => {})
+      try {
+        await this.stopUnlocked()
+      } catch (cleanupError) {
+        this.emitLifecycle('environment.cleanup.failed', {
+          error: cleanupError,
+          level: 'warning',
+          originalError: error instanceof Error ? error.message : String(error),
+        })
+      }
       throw error
     }
   }
@@ -264,7 +272,18 @@ export class EnvironmentRunner {
         error: error instanceof Error ? error.message : String(error),
         level: 'error',
       })
-      if (running !== undefined) await this.stopComponentUnlocked(running).catch(() => {})
+      if (running !== undefined) {
+        try {
+          await this.stopComponentUnlocked(running)
+        } catch (cleanupError) {
+          this.emitLifecycle('component.cleanup.failed', {
+            componentId: component.id,
+            error: cleanupError,
+            level: 'warning',
+            originalError: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
       throw error
     }
   }
