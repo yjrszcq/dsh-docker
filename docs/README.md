@@ -135,6 +135,8 @@ The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runt
 
 The standalone console also lists System Plugins bundled by the current Environment. A user can reinstall one from the current Deployment's local trusted Environment Artifact, including the `platform-management` DSH integration if it was disabled or uninstalled. The platform rebuilds and verifies the complete System Plugin Set against the Deployment Record content hash, then restarts only DSH. This operation never contacts GitHub or npm and never copies files from a built Runtime. A missing plugin does not trigger automatic reinstallation.
 
+The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
+
 New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
 
 ```bash

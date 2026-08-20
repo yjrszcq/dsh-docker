@@ -1,0 +1,10 @@
+[
+  {
+    "insert": [
+      {
+        "id": "dsh-docker.settings-document-editor.plugin",
+        "name": "@dsh-docker/settings-document-editor"
+      }
+    ]
+  }
+]

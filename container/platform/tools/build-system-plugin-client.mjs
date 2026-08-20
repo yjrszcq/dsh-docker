@@ -21,7 +21,10 @@ function cssModule(source, namespace) {
 
 export async function buildSystemPluginClient({ sourcePath, stylePath, pluginId }) {
   let source = await readFile(sourcePath, 'utf8')
-  const style = cssModule(await readFile(stylePath, 'utf8'), 'dshPlatform')
+  const namespace = pluginId === '@dsh-docker/platform-management'
+    ? 'dshPlatform'
+    : `dsh${pluginId.split('/').at(-1).split('-').map(part => part[0].toUpperCase() + part.slice(1)).join('')}`
+  const style = cssModule(await readFile(stylePath, 'utf8'), namespace)
   source = replaceOnce(
     source,
     /^import React, \{ useCallback, useEffect, useRef, useState \} from 'react'\n/m,

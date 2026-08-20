@@ -99,7 +99,29 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "enabled":true,
     "protected":true,
     "reason":null
+  },{
+    "id":"settings-document-editor",
+    "artifactId":"system-plugin-settings-document-editor",
+    "sha256":.plugins[1].sha256,
+    "installed":true,
+    "enabled":true,
+    "protected":false,
+    "reason":null
   }]' >/dev/null
+settings_document="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document)"
+[ "$(echo "$settings_document" | jq -r .exists)" = false ]
+settings_revision="$(echo "$settings_document" | jq -r .revision)"
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' --request PUT \
+  --data "$(jq -nc --arg revision "$settings_revision" '{content:"{}\n",revision:$revision}')" \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document \
+  | jq -e '.content == "{}\n" and .exists == true' >/dev/null
+docker exec "$container" sh -c '
+  [ "$(cat /data/dsh/settings.yaml)" = "{}" ]
+  [ "$(stat -c %U /data/dsh/settings.yaml)" = node ]
+  rg --fixed-strings "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
+'
 plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"platform-management","action":"uninstall"}' \
