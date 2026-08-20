@@ -110,6 +110,30 @@ test('runs components in manifest order and stop phases in reverse order', async
   assert.deepEqual(lines.slice(8), ['second:preStop', 'second:postStop', 'first:preStop', 'first:postStop'])
 })
 
+test('exec health probes use only their exit status and do not emit component logs', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-health-output-'))
+  const service = join(temp, 'service.mjs')
+  const health = join(temp, 'health.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  await writeFile(health, 'console.log(JSON.stringify({ noisy: true }, null, 2))')
+  const candidate = component('service', service, 'service')
+  candidate.health = {
+    type: 'exec',
+    command: command(health),
+    intervalSeconds: 1,
+    timeoutSeconds: 5,
+  }
+  let captures = 0
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate]),
+    capture: () => { captures += 1 },
+  })
+  await runner.start()
+  assert.equal((await runner.health()).healthy, true)
+  assert.equal(captures, 1)
+  await runner.stop()
+})
+
 test('stops already-started services when a later component fails', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-failure-'))
   const service = join(temp, 'service.mjs')

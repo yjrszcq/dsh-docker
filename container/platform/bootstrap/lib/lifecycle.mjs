@@ -27,13 +27,17 @@ function terminate(child, graceMs = 5_000) {
   })
 }
 
-function runCommand(spec, options) {
+function runCommand(spec, options, captureOutput = true) {
   return new Promise((resolveCommand, reject) => {
     const child = options.spawnImpl(spec.executable, spec.args, {
       env: options.environment,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    options.capture(child, options.componentId, options.logging)
+    if (captureOutput) options.capture(child, options.componentId, options.logging)
+    else {
+      child.stdout?.resume()
+      child.stderr?.resume()
+    }
     const timer = setTimeout(() => child.kill('SIGKILL'), spec.timeoutSeconds * 1000)
     child.once('error', reject)
     child.once('exit', (code, signal) => {
@@ -63,7 +67,7 @@ async function waitForHealth(component, running, options) {
     if (running?.child.exitCode !== null) throw new Error(`${component.id} exited before health check passed`)
     const healthy = component.health.type === 'http'
       ? await probeHttp(component.health)
-      : await runCommand(component.health.command, options).then(() => true, () => false)
+      : await runCommand(component.health.command, options, false).then(() => true, () => false)
     if (healthy) return
     await delay(component.health.intervalSeconds * 1000)
   }
@@ -303,7 +307,7 @@ export class EnvironmentRunner {
           ? running.child === undefined || running.child.exitCode === null
           : component.health.type === 'http'
             ? await probeHttp(component.health)
-            : await runCommand(component.health.command, this.commandOptions(component)).then(() => true, () => false)
+            : await runCommand(component.health.command, this.commandOptions(component), false).then(() => true, () => false)
         return { id: component.id, running: true, healthy }
       }))
       return { healthy: components.length > 0 && components.every(component => component.healthy), components }
