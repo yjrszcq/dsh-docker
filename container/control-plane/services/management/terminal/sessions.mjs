@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { WebSocketServer } from 'ws'
@@ -226,7 +227,7 @@ export class TerminalSessionManager {
   } = {}) {
     this.helperPath = resolve(helperPath)
     this.cwd = resolve(cwd)
-    this.env = { ...env, DSH_HOME: dshHome }
+    this.env = { ...env, HOME: userInfo().homedir, DSH_HOME: dshHome }
     this.python = python
     this.reconnectMs = reconnectMs
     this.report = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})

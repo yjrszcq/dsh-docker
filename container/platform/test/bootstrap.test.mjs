@@ -324,7 +324,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
   const deployments = {
     exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
-    publishStatus: async () => { calls.push(['status', 'published']) },
+    publishStatus: async options => { calls.push(['status', 'published', options ?? null]) },
   }
   const systemPlugins = {
     prepare: async () => {
@@ -383,7 +383,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['restart', 'dsh-runtime'],
       ['activate-system-plugins'],
       ['commit-system-plugins'],
-      ['status', 'published'],
+      ['status', 'published', null],
     ])
     systemPlugins.prepare = async () => {
       calls.push(['prepare-system-plugins-failed'])
@@ -403,7 +403,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['activate-system-plugins-failed'],
       ['rollback-system-plugins'],
       ['restart-recovered', 'dsh-runtime'],
-      ['operation', 'restart-failed'],
+      ['status', 'published', { operation: 'restart-failed', recoveryMode: 'overlay failed' }],
       ['report', 'bootstrap.request.failed', '/v1/components/dsh-runtime/restart'],
     ])
   } finally {
@@ -514,6 +514,33 @@ test('isolates an unexpected Environment exit and keeps the Control Plane availa
 
   await runtime.restart('dsh-runtime')
   assert.equal(runtime.status().recoveryMode, null)
+  await runtime.stop()
+})
+
+test('enters recovery mode when an explicit DSH resume or restart fails', async () => {
+  const environment = {
+    fatal: new Promise(() => {}),
+    onFatal: () => () => {},
+    start: async () => {},
+    stop: async () => {},
+    resume: async () => { throw new Error('DSH resume failed') },
+    restart: async () => { throw new Error('DSH restart failed') },
+    status: () => ({ environmentVersion: '2026.08.20.1', components: [] }),
+  }
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => {},
+      stop: async () => {},
+      status: () => ({ components: [{ id: 'platform-management' }] }),
+    },
+    environment,
+  })
+  await runtime.start()
+  await assert.rejects(runtime.resume('dsh-runtime'), /DSH resume failed/)
+  assert.equal(runtime.status().recoveryMode, 'DSH resume failed')
+  await assert.rejects(runtime.restart('dsh-runtime'), /DSH restart failed/)
+  assert.equal(runtime.status().recoveryMode, 'DSH restart failed')
   await runtime.stop()
 })
 

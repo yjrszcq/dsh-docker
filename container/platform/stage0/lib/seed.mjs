@@ -70,10 +70,11 @@ export async function provisionPlatformSeed(seedRoot, dataRoot) {
   ])).filter(Boolean)
   if (process.getuid?.() === 0) {
     const writableRoots = [
-      paths.deploymentStateRoot, paths.updaterStateRoot,
+      paths.deploymentStateRoot, paths.updaterStateRoot, paths.managementStateRoot,
       paths.environmentsRoot, join(paths.environmentsRoot, 'versions'),
       paths.pristineRoot, paths.runtimesRoot, join(paths.runtimesRoot, 'versions'), paths.systemPluginsRoot,
-      join(paths.systemPluginsRoot, 'versions'), paths.snapshotsRoot, paths.cacheRoot, paths.downloadsRoot, paths.logsRoot,
+      join(paths.systemPluginsRoot, 'versions'), paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
+      paths.cacheRoot, paths.downloadsRoot, paths.logsRoot,
     ]
     await Promise.all(writableRoots.map(path => lchown(path, 1000, 1000)))
   }

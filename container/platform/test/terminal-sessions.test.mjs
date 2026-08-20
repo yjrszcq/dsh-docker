@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { request as httpRequest } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import WebSocket from '../../control-plane/services/management/node_modules/ws/wrapper.mjs'
@@ -104,7 +104,7 @@ test('terminal HTTP and WebSocket lifecycle provides a real bounded PTY', async 
     first.socket.send(JSON.stringify({ type: 'resize', cols: 101, rows: 37 }))
     first.socket.send(JSON.stringify({
       type: 'input',
-      data: "printf '\\033[31mred\\033[0m\\n'; printf '中文✓\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'dsh=%s\\n' \"$DSH_HOME\"; printf 'uid=%s\\n' \"$(id -u)\"; printf 'gids=%s\\n' \"$(id -G)\"; printf 'path=%s\\n' \"$PATH\"; stty size; printf 'command-complete\\n'\n",
+      data: "printf '\\033[31mred\\033[0m\\n'; printf '中文✓\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'home=%s\\n' \"$HOME\"; printf 'dsh=%s\\n' \"$DSH_HOME\"; printf 'uid=%s\\n' \"$(id -u)\"; printf 'gids=%s\\n' \"$(id -G)\"; printf 'path=%s\\n' \"$PATH\"; stty size; printf 'command-complete\\n'\n",
     }))
     let initial
     try {
@@ -116,6 +116,7 @@ test('terminal HTTP and WebSocket lifecycle provides a real bounded PTY', async 
     assert.match(initial.output, /\x1b\[31mred\x1b\[0m/)
     assert.match(initial.output, /中文✓/)
     assert.match(initial.output, new RegExp(`cwd=${value.workspace.replaceAll('/', '\\/')}`))
+    assert.match(initial.output, new RegExp(`home=${userInfo().homedir.replaceAll('/', '\\/')}`))
     assert.match(initial.output, new RegExp(`dsh=${value.dshHome.replaceAll('/', '\\/')}`))
     assert.match(initial.output, new RegExp(`uid=${String(process.getuid())}`))
     for (const group of process.getgroups()) assert.match(initial.output, new RegExp(`gids=[^\\r\\n]*\\b${String(group)}\\b`))

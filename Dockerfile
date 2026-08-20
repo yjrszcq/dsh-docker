@@ -50,6 +50,7 @@ RUN apt-get update \
         ripgrep \
         sudo \
         tini \
+        util-linux \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
     && npm install --global "pnpm@${PNPM_VERSION}" \

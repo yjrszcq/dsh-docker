@@ -117,22 +117,32 @@ export class BootstrapRuntime {
   suspend(componentId) { return this.environment.suspend(componentId) }
   pause(componentId) { return this.environment.pause(componentId, { allowMissing: componentId === 'dsh-runtime' }) }
   async resume(componentId, options) {
-    if (componentId === 'dsh-runtime') {
-      if (options?.skipValidation !== true) await this.validateDeployment()
-      if (options?.skipPreparation !== true) await this.prepareDeployment()
+    try {
+      if (componentId === 'dsh-runtime') {
+        if (options?.skipValidation !== true) await this.validateDeployment()
+        if (options?.skipPreparation !== true) await this.prepareDeployment()
+      }
+      const status = await this.environment.resume(componentId)
+      if (componentId === 'dsh-runtime') this.recoveryMode = null
+      return status
+    } catch (error) {
+      if (componentId === 'dsh-runtime') this.enterRecovery(error)
+      throw error
     }
-    const status = await this.environment.resume(componentId)
-    if (componentId === 'dsh-runtime') this.recoveryMode = null
-    return status
   }
   async restart(componentId, options) {
-    if (componentId === 'dsh-runtime') {
-      if (options?.skipValidation !== true) await this.validateDeployment()
-      if (options?.skipPreparation !== true) await this.prepareDeployment()
+    try {
+      if (componentId === 'dsh-runtime') {
+        if (options?.skipValidation !== true) await this.validateDeployment()
+        if (options?.skipPreparation !== true) await this.prepareDeployment()
+      }
+      const status = await this.environment.restart(componentId, options)
+      if (componentId === 'dsh-runtime') this.recoveryMode = null
+      return status
+    } catch (error) {
+      if (componentId === 'dsh-runtime') this.enterRecovery(error)
+      throw error
     }
-    const status = await this.environment.restart(componentId, options)
-    if (componentId === 'dsh-runtime') this.recoveryMode = null
-    return status
   }
   health() { return this.environment.health() }
 

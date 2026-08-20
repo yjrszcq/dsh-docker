@@ -107,7 +107,11 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
                 return value
               } catch (error) {
                 try {
-                  await deployments.setOperation('restart-failed')
+                  await deployments.publishStatus({
+                    operation: 'restart-failed',
+                    recoveryMode: runner.status().recoveryMode
+                      ?? (error instanceof Error ? error.message : String(error)),
+                  })
                 } catch (statusError) {
                   await runner.record?.('deployment.status.failed', {
                     error: statusError,

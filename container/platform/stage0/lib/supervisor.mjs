@@ -11,6 +11,24 @@ function timeout(milliseconds, message) {
   })
 }
 
+export function bootstrapLaunchCommand({ node, script, uid, gid }) {
+  if (uid === undefined && gid === undefined) return { executable: node, args: [script] }
+  if (!Number.isInteger(uid) || uid < 0 || !Number.isInteger(gid) || gid < 0) {
+    throw new Error('Bootstrap UID and GID must be non-negative integers')
+  }
+  return {
+    executable: '/usr/bin/setpriv',
+    args: [
+      `--reuid=${String(uid)}`,
+      `--regid=${String(gid)}`,
+      '--keep-groups',
+      '--',
+      node,
+      script,
+    ],
+  }
+}
+
 export async function terminateChild(child, graceMs = 5_000) {
   if (child.exitCode !== null || child.signalCode !== null) return
   const exited = once(child, 'exit')
@@ -75,7 +93,13 @@ export class BootstrapSupervisor {
       targetSequence: resolved.record.targetSequence,
     })
     if (this.paths !== undefined) await replaceRuntimeView(this.paths, 'bootstrap', resolved.path)
-    const child = this.spawnImpl(this.node, [join(resolved.path, this.entrypoint)], {
+    const command = bootstrapLaunchCommand({
+      node: this.node,
+      script: join(resolved.path, this.entrypoint),
+      uid: this.uid,
+      gid: this.gid,
+    })
+    const child = this.spawnImpl(command.executable, command.args, {
       env: {
         ...process.env,
         DSH_PLATFORM_DATA: this.dataRoot,
@@ -84,8 +108,6 @@ export class BootstrapSupervisor {
         DSH_BOOTSTRAP_VERSION: resolved.record.version,
       },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
-      uid: this.uid,
-      gid: this.gid,
     })
     this.child = child
     const ready = new Promise((resolve, reject) => {

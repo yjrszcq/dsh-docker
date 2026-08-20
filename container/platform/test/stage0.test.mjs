@@ -6,7 +6,7 @@ import { request } from 'node:http'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { BootstrapManager } from '../stage0/lib/slots.mjs'
-import { BootstrapSupervisor } from '../stage0/lib/supervisor.mjs'
+import { BootstrapSupervisor, bootstrapLaunchCommand } from '../stage0/lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
 import { createRecoveryServer, listenRecovery } from '../stage0/lib/recovery-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
@@ -75,6 +75,37 @@ async function storeBootstrap(manager, version, sequence, behavior) {
   }
   return manager.writeRecord({ ...content, id: deriveRecordId('bootstrap-record', content) })
 }
+
+test('preserves container supplementary groups while lowering Bootstrap privileges', () => {
+  assert.deepEqual(bootstrapLaunchCommand({
+    node: '/usr/local/bin/node',
+    script: '/opt/bootstrap/index.mjs',
+  }), {
+    executable: '/usr/local/bin/node',
+    args: ['/opt/bootstrap/index.mjs'],
+  })
+  assert.deepEqual(bootstrapLaunchCommand({
+    node: '/usr/local/bin/node',
+    script: '/opt/bootstrap/index.mjs',
+    uid: 1000,
+    gid: 1000,
+  }), {
+    executable: '/usr/bin/setpriv',
+    args: [
+      '--reuid=1000',
+      '--regid=1000',
+      '--keep-groups',
+      '--',
+      '/usr/local/bin/node',
+      '/opt/bootstrap/index.mjs',
+    ],
+  })
+  assert.throws(() => bootstrapLaunchCommand({
+    node: '/usr/local/bin/node',
+    script: '/opt/bootstrap/index.mjs',
+    uid: 1000,
+  }), /UID and GID/)
+})
 
 test('tracks immutable Bootstrap Records in one generation-based slots file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-records-'))

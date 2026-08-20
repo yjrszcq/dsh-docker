@@ -40,6 +40,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 docker run --detach --name "$container" \
+  --group-add dsh-sudo-true \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
@@ -325,6 +326,17 @@ done
 docker logs "$container" 2>&1 \
   | rg '"source":"gateway".*"message":"gateway.upstream.recovered"' >/dev/null
 
+docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
+  < container/test/standalone-recovery-smoke.mjs \
+  | jq -e '.faultNames == ["smoke-fault-one","smoke-fault-two"]' >/dev/null
+docker logs "$container" 2>&1 \
+  | rg '"source":"terminal".*"message":"terminal.session.created"' >/dev/null
+docker logs "$container" 2>&1 \
+  | rg '"source":"audit".*"message":"user-plugin.apply.failed"' >/dev/null
+docker logs "$container" 2>&1 \
+  | rg '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
+docker exec "$container" curl --fail --silent --noproxy '*' http://127.0.0.1:3079/ >/dev/null
+
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
@@ -393,6 +405,7 @@ fi
 
 cleanup
 docker run --detach --name "$container" \
+  --group-add dsh-sudo-true \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
