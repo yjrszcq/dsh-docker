@@ -23,6 +23,7 @@ async function archive(root, id, patch) {
     name: `@dsh-docker/${id}`,
     type: 'module',
     main: 'plugin.mjs',
+    dshDocker: { description: { zh: `${id} 功能`, en: `${id} feature` } },
   }))
   await writeFile(join(source, 'cordis.patch.json'), JSON.stringify(patch))
   await writeFile(join(source, 'plugin.mjs'), `export const id = ${JSON.stringify(id)}\n`)
@@ -212,10 +213,10 @@ test('persists install and enable selection while protecting Platform Management
   })
   const store = new SystemPluginSelectionStore(join(root, 'state', 'system-plugins.json'))
   const pluginIds = artifacts.map(artifact => artifact.pluginId)
-  const initial = await listManagedSystemPlugins({ environmentRoot: environment, selectionStore: store })
-  assert.deepEqual(initial.map(plugin => [plugin.id, plugin.installed, plugin.enabled, plugin.protected]), [
-    ['platform-management', true, true, true],
-    ['diagnostics', true, true, false],
+  const initial = await listManagedSystemPlugins({ environmentRoot: environment, sourceRoot: source, selectionStore: store })
+  assert.deepEqual(initial.map(plugin => [plugin.id, plugin.description, plugin.installed, plugin.enabled, plugin.protected]), [
+    ['platform-management', { zh: 'platform-management 功能', en: 'platform-management feature' }, true, true, true],
+    ['diagnostics', { zh: 'diagnostics 功能', en: 'diagnostics feature' }, true, true, false],
   ])
 
   await assert.rejects(store.configure(pluginIds, 'platform-management', 'uninstall'), /managed by the platform/)
@@ -244,7 +245,7 @@ test('persists install and enable selection while protecting Platform Management
     selectionStore: store,
   })
   await assert.rejects(lstat(join(deleted.path, 'packages', 'diagnostics')), error => error.code === 'ENOENT')
-  assert.deepEqual((await listManagedSystemPlugins({ environmentRoot: environment, selectionStore: store }))
+  assert.deepEqual((await listManagedSystemPlugins({ environmentRoot: environment, sourceRoot: source, selectionStore: store }))
     .map(plugin => [plugin.id, plugin.installed, plugin.enabled]), [
       ['platform-management', true, true],
       ['diagnostics', false, false],

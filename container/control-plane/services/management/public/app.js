@@ -47,9 +47,10 @@ const COPY = Object.freeze({
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
     recoveryAvailable: '可离线恢复', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用',
-    installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置并重启 DSH',
-    pluginActionInstall: '正在安装并重启 DSH', pluginActionUninstall: '正在卸载并重启 DSH',
-    pluginActionEnable: '正在启用并重启 DSH', pluginActionDisable: '正在禁用并重启 DSH', pluginActionComplete: '插件操作完成',
+    installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
+    pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
+    pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
+    pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
     stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
     upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -85,9 +86,10 @@ const COPY = Object.freeze({
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the DSH Platform Management integration.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
     recoveryAvailable: 'Offline recovery', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled',
-    installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings and restarting DSH',
-    pluginActionInstall: 'Installing and restarting DSH', pluginActionUninstall: 'Uninstalling and restarting DSH',
-    pluginActionEnable: 'Enabling and restarting DSH', pluginActionDisable: 'Disabling and restarting DSH', pluginActionComplete: 'Plugin operation completed',
+    installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
+    pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
+    pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
+    pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
     stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
     upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
@@ -231,9 +233,8 @@ function renderHolds(values, busy) {
   }
 }
 
-function pluginState(plugin) {
-  const current = !plugin.installed ? t('notInstalled') : plugin.enabled ? t('pluginEnabled') : t('pluginDisabled')
-  return plugin.protected ? `${t('managementIntegration')} ${current}` : current
+function pluginDescription(plugin) {
+  return plugin.description?.[locale] ?? plugin.id
 }
 
 function pluginButton(label, plugin, action, busy, className = 'secondary') {
@@ -262,7 +263,7 @@ function renderBundledPlugins(values, busy) {
     const name = document.createElement('strong')
     name.textContent = `@dsh-docker/${plugin.id}`
     const state = document.createElement('span')
-    state.textContent = pluginState(plugin)
+    state.textContent = pluginDescription(plugin)
     identity.append(name, state)
     if (plugin.protected) {
       const badge = document.createElement('span')
@@ -380,9 +381,12 @@ function render(next) {
   elements['restart-state'].hidden = restart.status === 'idle'
   elements['restart-state'].textContent = restart.status === 'restarting'
     ? t('restarting') : restart.status === 'success' ? t('restartComplete') : restart.status === 'failed' ? t('restartFailed') : ''
-  elements['plugin-operation'].hidden = pluginOperation.status === 'idle'
+  elements['plugin-operation'].hidden = !['running', 'failed'].includes(pluginOperation.status)
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
-    ? t('pluginActionWorking') : pluginOperation.status === 'success' ? t('pluginActionComplete') : localizedError(pluginOperation.error ?? '')
+    ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
+  elements['plugin-restart-required'].hidden = pluginOperation.restartRequired !== true
+  elements['plugin-restart-dsh'].disabled = busy
+  elements['plugin-restart-dsh'].textContent = restart.status === 'restarting' ? t('restarting') : t('restartDsh')
   renderBundledPlugins(plugins, busy)
   renderReminder(next)
 }
@@ -663,6 +667,7 @@ elements['automatic-enabled'].addEventListener('change', event => { void saveAut
 elements['automatic-interval'].addEventListener('change', event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) })
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })

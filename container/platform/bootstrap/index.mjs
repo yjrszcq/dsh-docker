@@ -109,6 +109,7 @@ const systemPlugins = {
     if (resolved === null) return []
     return listManagedSystemPlugins({
       environmentRoot: resolved.paths.environment,
+      sourceRoot: resolved.paths['system-plugins'],
       selectionStore: systemPluginSelections,
     })
   },
@@ -118,21 +119,17 @@ const systemPlugins = {
     const before = await systemPlugins.list()
     const pluginIds = before.map(plugin => plugin.id)
     const previousSelection = await systemPluginSelections.read(pluginIds)
-    await deployments.setOperation('restarting')
     try {
       await systemPluginSelections[recovery ? 'recover' : 'configure'](pluginIds, pluginId, action)
-      await runtime.restart('dsh-runtime')
-      await deployments.setOperation(null)
+      await applySystemPluginSelection()
       return systemPlugins.list()
     } catch (error) {
       try {
         await systemPluginSelections.write(pluginIds, previousSelection)
-        await runtime.restart('dsh-runtime')
+        await applySystemPluginSelection()
       } catch (rollbackError) {
-        await deployments.setOperation('restart-failed').catch(() => {})
         throw new AggregateError([error, rollbackError], 'System Plugin operation and rollback failed')
       }
-      await deployments.setOperation(null).catch(() => {})
       throw error
     }
   }),

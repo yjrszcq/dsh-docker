@@ -441,6 +441,22 @@
   font-size: 12px;
   line-height: 18px;
 }
+
+.pluginRestartNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-state-warn-border);
+  border-radius: 8px;
+  background: var(--dsw-alias-state-warn-bg);
+}
+
+.pluginRestartNotice div { min-width: 0; }
+.pluginRestartNotice strong { font-size: 13px; line-height: 20px; }
+.pluginRestartNotice p { margin: 2px 0 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.pluginRestartNotice button { flex: none; }
 .emptyPlugins { margin: 0; padding: 24px 12px; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 13px; }
 
 .logSection { gap: 10px; }
@@ -626,6 +642,9 @@
   .settingRow { align-items: flex-start; }
   .pluginRow { grid-template-columns: 1fr; align-items: stretch; }
   .pluginActions { justify-content: space-between; }
+  .pluginActions .toggle { width: auto; }
+  .pluginRestartNotice { align-items: stretch; flex-direction: column; }
+  .pluginRestartNotice button { width: 100%; }
   .managedBadge { justify-self: start; }
   .logFilters { grid-template-columns: 1fr 1fr; }
   .logTools { width: 100%; flex-wrap: wrap; }

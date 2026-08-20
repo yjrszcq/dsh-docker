@@ -361,7 +361,7 @@ function UpdateReminder({ t }) {
       h('button', { type: 'button', onClick: () => dismiss(true) }, t('dismissVersion'))))
 }
 
-function SystemPluginManager({ plugins, operation, busy, error, onAction, t }) {
+function SystemPluginManager({ plugins, operation, busy, error, onAction, onRestart, restartBusy, t }) {
   const operationBusy = operation?.status === 'running'
   const operationLabel = {
     install: 'pluginActionInstall',
@@ -374,20 +374,26 @@ function SystemPluginManager({ plugins, operation, busy, error, onAction, t }) {
       h('div', null,
         h('h3', { id: 'system-plugins-title' }, t('systemPlugins')),
         h('p', null, t('systemPluginsDetail')))),
+    operation?.restartRequired ? h('div', { className: css.pluginRestartNotice, role: 'status' },
+      h('div', null,
+        h('strong', null, t('pluginRestartRequired')),
+        h('p', null, t('pluginRestartRequiredDetail'))),
+      h('button', {
+        type: 'button',
+        className: css.primaryButton,
+        disabled: busy,
+        onClick: onRestart,
+      }, restartBusy ? t('restarting') : t('restartDsh'))) : null,
     h('div', { className: css.pluginList },
       plugins.length === 0
         ? h('p', { className: css.emptyPlugins }, t('noSystemPlugins'))
         : plugins.map(plugin => {
             const isActive = operationBusy && operation.pluginId === plugin.id
-            const state = plugin.protected
-              ? t('platformManaged')
-              : !plugin.installed
-                ? t('notInstalled')
-                : plugin.enabled ? t('pluginEnabled') : t('pluginDisabled')
+            const description = plugin.description?.[t('localeCode')] ?? plugin.id
             return h('article', { className: css.pluginRow, key: plugin.id },
               h('div', { className: css.pluginIdentity },
                 h('strong', null, `@dsh-docker/${plugin.id}`),
-                h('span', null, state)),
+                h('span', null, description)),
               plugin.protected
                 ? h('span', { className: css.managedBadge }, t('managed'))
                 : h('div', { className: css.pluginActions },
@@ -721,6 +727,8 @@ function PlatformManagement({ t }) {
       busy,
       error,
       onAction: (id, action) => { void manageSystemPlugin(id, action) },
+      onRestart: () => { void restartDsh() },
+      restartBusy,
       t,
     })))
 }
@@ -745,7 +753,7 @@ export function apply(ctx) {
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       maintenance: '运行维护', maintenanceDetail: '仅重新启动 DSH，容器和平台管理服务保持运行。', restartDsh: '重新启动 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '网页更新提醒', updateNotificationsDetail: '仅自动检查发现新版本时提醒。',
-      systemPlugins: '系统插件', systemPluginsDetail: '管理当前环境提供的 DSH Docker 系统插件。卸载后仍可从本地可信副本重新安装。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置并重启 DSH', pluginActionInstall: '正在安装并重启 DSH', pluginActionUninstall: '正在卸载并重启 DSH', pluginActionEnable: '正在启用并重启 DSH', pluginActionDisable: '正在禁用并重启 DSH',
+      systemPlugins: '系统插件', systemPluginsDetail: '管理当前环境提供的 DSH Docker 系统插件。卸载后仍可从本地可信副本重新安装。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -766,7 +774,7 @@ export function apply(ctx) {
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       maintenance: 'Runtime maintenance', maintenanceDetail: 'Restart DSH only. The container and platform management services remain running.', restartDsh: 'Restart DSH', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Web update notifications', updateNotificationsDetail: 'Shown only when an automatic check finds a new version.',
-      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage DSH Docker System Plugins provided by the current Environment. Uninstalled plugins can be reinstalled from the trusted local copy.', noSystemPlugins: 'The current Environment provides no System Plugins.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings and restarting DSH', pluginActionInstall: 'Installing and restarting DSH', pluginActionUninstall: 'Uninstalling and restarting DSH', pluginActionEnable: 'Enabling and restarting DSH', pluginActionDisable: 'Disabling and restarting DSH',
+      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage DSH Docker System Plugins provided by the current Environment. Uninstalled plugins can be reinstalled from the trusted local copy.', noSystemPlugins: 'The current Environment provides no System Plugins.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',

@@ -8,6 +8,12 @@
     "./client": "./lib/client.bundle.js",
     "./package.json": "./package.json"
   },
+  "dshDocker": {
+    "description": {
+      "zh": "在浏览器中查看和编辑 DSH 设置文件。",
+      "en": "View and edit the DSH settings document in the browser."
+    }
+  },
   "dsh": {
     "client": {
       "inject": [

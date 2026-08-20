@@ -238,17 +238,32 @@ async function pluginCatalog(environmentRoot) {
   }
 }
 
-export async function listManagedSystemPlugins({ environmentRoot, selectionStore }) {
+export async function listManagedSystemPlugins({ environmentRoot, sourceRoot, selectionStore }) {
   const catalog = await pluginCatalog(environmentRoot)
   const selection = await selectionStore.read(catalog.plugins.map(plugin => plugin.id))
-  return Object.freeze(catalog.plugins.map(({ id, descriptor }) => Object.freeze({
-    id,
-    artifactId: descriptor.id,
-    sha256: descriptor.sha256,
-    installed: selection[id].installed,
-    enabled: selection[id].enabled,
-    protected: selection[id].protected,
-    reason: null,
+  return Object.freeze(await Promise.all(catalog.plugins.map(async ({ id, descriptor }) => {
+    const metadata = JSON.parse(await readFile(join(resolve(sourceRoot), 'packages', id, 'package.json'), 'utf8'))
+    validatePackage(metadata, id)
+    let description = null
+    const value = metadata.dshDocker?.description
+    if (value !== undefined) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)
+        || typeof value.zh !== 'string' || typeof value.en !== 'string'
+        || value.zh.length === 0 || value.en.length === 0 || value.zh.length > 240 || value.en.length > 240) {
+        throw new Error(`System Plugin ${id} description is invalid`)
+      }
+      description = Object.freeze({ zh: value.zh, en: value.en })
+    }
+    return Object.freeze({
+      id,
+      artifactId: descriptor.id,
+      sha256: descriptor.sha256,
+      description,
+      installed: selection[id].installed,
+      enabled: selection[id].enabled,
+      protected: selection[id].protected,
+      reason: null,
+    })
   })))
 }
 
@@ -279,7 +294,7 @@ export async function materializeSystemPluginSelection({
     }
     await writeFile(join(staging, 'cordis.patch.yml'), canonicalJson(patches), { flag: 'wx' })
     await rename(staging, destination)
-    return Object.freeze({ path: destination, plugins: await listManagedSystemPlugins({ environmentRoot, selectionStore }) })
+    return Object.freeze({ path: destination, plugins: await listManagedSystemPlugins({ environmentRoot, sourceRoot, selectionStore }) })
   } catch (error) {
     await rm(staging, { recursive: true, force: true })
     throw error
