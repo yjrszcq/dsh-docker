@@ -194,3 +194,18 @@ test('terminal sessions enforce dimensions, message size, expiry, and exact IDs'
     await value.close()
   }
 })
+
+test('terminal shutdown waits for every helper process to close', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-terminal-shutdown-'))
+  const workspace = join(root, 'workspace')
+  const dshHome = join(root, 'dsh')
+  await mkdir(workspace)
+  await mkdir(dshHome)
+  const terminalSessions = new TerminalSessionManager({ cwd: workspace, dshHome })
+  const created = terminalSessions.create()
+  const session = terminalSessions.sessions.get(created.sessionId)
+  assert.equal(session.child.exitCode, null)
+  await terminalSessions.shutdown()
+  assert.equal(terminalSessions.sessions.size, 0)
+  assert.equal(session.child.exitCode !== null || session.child.signalCode !== null, true)
+})

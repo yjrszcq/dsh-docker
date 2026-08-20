@@ -2,7 +2,7 @@ import { FitAddon } from './vendor/addon-fit.mjs'
 import { Terminal } from './vendor/xterm.mjs'
 
 const API = '/_dsh_platform/api/v1'
-const TERMINAL = new Set(['idle', 'success', 'failed'])
+const UPDATE_TERMINAL_STATES = new Set(['idle', 'success', 'failed'])
 const STATUS_LABELS = Object.freeze({
   idle: 'statusIdle',
   checking: 'statusChecking',
@@ -275,7 +275,7 @@ async function api(path, { method = 'GET', body } = {}) {
 function runtimeBusy(next = status) {
   const update = next?.update ?? {}
   return (acting && !checking)
-    || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
+    || (!UPDATE_TERMINAL_STATES.has(update.status ?? 'idle') && update.status !== 'checking')
     || next?.systemPluginOperation?.status === 'running'
     || next?.userPluginOperation?.status === 'running'
     || next?.dshRestart?.status === 'restarting'
@@ -508,7 +508,7 @@ function render(next) {
   const restart = next.dshRestart ?? {}
   const pluginOperation = next.systemPluginOperation ?? {}
   const busy = runtimeBusy(next)
-  const updateActive = !TERMINAL.has(update.status ?? 'idle')
+  const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
   const checkingUpdates = checking || update.status === 'checking'
   if (restart.status === 'success' && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
@@ -1192,5 +1192,5 @@ if (window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1') {
   }
 }
 const initial = await loadStatus()
-if (TERMINAL.has(initial?.update?.status ?? 'idle')) void checkUpdates('page-open')
+if (UPDATE_TERMINAL_STATES.has(initial?.update?.status ?? 'idle')) void checkUpdates('page-open')
 window.setInterval(() => { void loadStatus() }, 15_000)

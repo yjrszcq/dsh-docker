@@ -56,6 +56,7 @@ class TerminalSession extends EventEmitter {
       env: { ...env, TERM: 'xterm-256color' },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+    this.childClosed = new Promise(resolveClosed => this.child.once('close', resolveClosed))
     this.child.stdout.on('data', chunk => this.consume(chunk))
     this.child.stderr.on('data', chunk => this.report('terminal.helper.stderr', {
       sessionId: this.id,
@@ -64,8 +65,10 @@ class TerminalSession extends EventEmitter {
     }))
     this.child.once('error', error => this.fail(error))
     this.child.once('exit', (code, signal) => {
-      for (const timer of this.terminationTimers) clearTimeout(timer)
       if (this.status === 'running') this.finish({ code, signal })
+    })
+    this.child.once('close', () => {
+      for (const timer of this.terminationTimers) clearTimeout(timer)
     })
     this.scheduleExpiry()
   }
@@ -193,11 +196,21 @@ class TerminalSession extends EventEmitter {
         this.terminationTimers.push(timer)
       }
     }
-    this.child.stdin.destroy()
+    this.child.stdin.end()
     for (const socket of this.connections) socket.close(1001, 'terminal session closed')
     this.connections.clear()
     void this.report('terminal.session.closed', { reason, sessionId: this.id })
     this.emit('terminal-close')
+  }
+
+  async stop(reason) {
+    this.terminate(reason)
+    let timeout
+    await Promise.race([
+      this.childClosed,
+      new Promise(resolveTimeout => { timeout = setTimeout(resolveTimeout, 5_000) }),
+    ])
+    clearTimeout(timeout)
   }
 }
 
@@ -264,7 +277,7 @@ export class TerminalSessionManager {
   }
 
   async shutdown() {
-    for (const session of [...this.sessions.values()]) session.terminate('management-stopping')
+    await Promise.all([...this.sessions.values()].map(session => session.stop('management-stopping')))
     this.webSockets.close()
   }
 }

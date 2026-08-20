@@ -660,6 +660,41 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
   }
 })
 
+test('management audit failures do not block a completed System Plugin operation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-audit-failure-'))
+  let configured = false
+  const logs = {
+    diagnostic: () => { throw new Error('audit storage unavailable') },
+    query: async () => [],
+    on: () => {},
+    off: () => {},
+  }
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    configureBundledPlugin: async () => { configured = true },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await client.request('POST', `${API_PREFIX}bundled-plugins/action`, {
+      id: 'diagnostics', action: 'disable',
+    })
+    let status
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.systemPluginOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(configured, true)
+    assert.equal(status.systemPluginOperation.status, 'success')
+    assert.equal(status.systemPluginOperation.restartRequired, true)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management exposes a dedicated recovery action only for Platform Management', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-recovery-'))
   const calls = []
