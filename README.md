@@ -86,7 +86,7 @@ See the [complete configuration reference](docs/README.md#configuration) for all
 
 Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
 
-The standalone page remains available when DSH is down and includes User Plugin recovery and a container terminal.
+The standalone page remains available when DSH is down and includes User Plugin recovery, file management, and a container terminal.
 
 When the gateway password is empty, DSH Management Console uses its separate `DSH_PLATFORM_PASSWORD`. If that password is also empty, the console stays locked until you create a temporary access key. The key expires after 10 minutes, and creating another immediately invalidates the previous key:
 
