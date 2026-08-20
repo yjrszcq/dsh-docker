@@ -363,6 +363,35 @@ docker exec "$container" sh -c '
   rg --fixed-strings "exec /run/dsh-platform/views/runtime/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
 
+docker exec "$container" sh -c 'printf runtime-reset-smoke > /data/dsh/runtime-reset-sentinel'
+docker exec "$container" cp /data/platform/state/deployments/slots.json /tmp/slots-before-runtime-reset.json
+runtime_hash="$(docker exec "$container" sha256sum /run/dsh-platform/views/runtime/package/package.json | cut -d ' ' -f 1)"
+docker exec "$container" sh -c 'printf "\ncorrupt-runtime-smoke" >> /run/dsh-platform/views/runtime/package/package.json'
+runtime_reset_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --request POST \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/runtime/reset | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$runtime_reset_task" '.runtimeReset.taskId == $task and .runtimeReset.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 150 ]; then
+    docker logs "$container" >&2
+    echo "Runtime reset did not complete" >&2
+    exit 1
+  fi
+  sleep 0.2
+done
+[ "$(docker exec "$container" sha256sum /run/dsh-platform/views/runtime/package/package.json | cut -d ' ' -f 1)" = "$runtime_hash" ]
+[ "$(docker exec "$container" cat /data/dsh/runtime-reset-sentinel)" = runtime-reset-smoke ]
+docker exec "$container" jq -e --slurpfile before /tmp/slots-before-runtime-reset.json \
+  '.generation == ($before[0].generation + 1) and .previous == $before[0].previous' \
+  /data/platform/state/deployments/slots.json >/dev/null
+docker exec "$container" dsh-platform status \
+  | jq -e '.current.source == "managed" and .recoveryMode == null' >/dev/null
+docker logs "$container" 2>&1 | rg '"source":"audit".*"message":"runtime.reset.started"' >/dev/null
+docker logs "$container" 2>&1 | rg '"source":"audit".*"message":"runtime.reset.completed"' >/dev/null
+
 stage0_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$')"
 bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')"
 management_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')"

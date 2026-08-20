@@ -41,6 +41,12 @@ export async function verifyPatchSet(dshRoot, patchPaths) {
 }
 
 export async function verifyRuntimePatches({ runtimeRoot, environmentRoot }) {
+  const patchSet = await loadEnvironmentPatchSet(environmentRoot)
+  await verifyPatchSet(join(resolve(runtimeRoot), 'package'), patchSet.paths)
+  return patchSet.ids
+}
+
+export async function loadEnvironmentPatchSet(environmentRoot) {
   const environment = resolve(environmentRoot)
   const manifest = parseEnvironmentManifest(await readFile(join(environment, 'environment.manifest.json')))
   const paths = []
@@ -54,8 +60,10 @@ export async function verifyRuntimePatches({ runtimeRoot, environmentRoot }) {
     }
     paths.push(path)
   }
-  await verifyPatchSet(join(resolve(runtimeRoot), 'package'), paths)
-  return Object.freeze(manifest.patches.map(reference => reference.id))
+  return Object.freeze({
+    ids: Object.freeze(manifest.patches.map(reference => reference.id)),
+    paths: Object.freeze(paths),
+  })
 }
 
 export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patchPaths }) {

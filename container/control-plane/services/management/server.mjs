@@ -90,6 +90,7 @@ export function createManagementServer({
   logs,
   platformStatus = async () => ({}),
   restartDsh = async () => { throw new Error('DSH restart is not configured') },
+  resetRuntime = async () => { throw new Error('Runtime reset is not configured') },
   listBundledPlugins = async () => [],
   configureBundledPlugin = async () => { throw new Error('System Plugin management is not configured') },
   recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
@@ -111,9 +112,11 @@ export function createManagementServer({
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
   let restartTask
+  let runtimeResetTask
   let pluginTask
   let userPluginTask
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
+  let runtimeResetState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
   let userPluginState = Object.freeze(initialUserPluginTransaction === undefined
     ? { status: 'idle', taskId: null, phase: null, error: null, updatedAt: null }
@@ -136,6 +139,11 @@ export function createManagementServer({
     server.emit('management-state', restartState)
   }
 
+  const publishRuntimeReset = value => {
+    runtimeResetState = Object.freeze({ ...runtimeResetState, ...value, updatedAt: new Date().toISOString() })
+    server.emit('management-state', runtimeResetState)
+  }
+
   const publishPlugin = value => {
     pluginState = Object.freeze({ ...pluginState, ...value, updatedAt: new Date().toISOString() })
     server.emit('management-state', pluginState)
@@ -152,6 +160,7 @@ export function createManagementServer({
 
   const requireRuntimeIdle = () => {
     if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
+    if (runtimeResetTask !== undefined) throw new UpdateConflictError('the DSH Runtime is already resetting')
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
     if (userPluginTask !== undefined) throw new UpdateConflictError('a User Plugin operation is already running')
   }
@@ -250,6 +259,31 @@ export function createManagementServer({
     return { taskId }
   }
 
+  const startRuntimeReset = () => {
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    publishRuntimeReset({ status: 'resetting', taskId, error: null })
+    runtimeResetTask = Promise.resolve()
+      .then(() => recordAudit('runtime.reset.started', { taskId }))
+      .then(() => resetRuntime())
+      .then(
+        async () => {
+          await recordAudit('runtime.reset.completed', { taskId })
+          publishRuntimeReset({ status: 'success', taskId, error: null })
+          publishPlugin({ restartRequired: false })
+        },
+        async error => {
+          const message = error instanceof Error ? error.message : 'Runtime reset failed'
+          await recordAudit('runtime.reset.failed', { error, taskId })
+          publishRuntimeReset({ status: 'failed', taskId, error: message })
+        },
+      )
+      .finally(() => { runtimeResetTask = undefined })
+    runtimeResetTask.catch(() => {})
+    return { taskId }
+  }
+
   server = createServer(async (request, response) => {
     let pathname = 'invalid-url'
     try {
@@ -266,6 +300,7 @@ export function createManagementServer({
           ...(await coordinator.publicStatus()),
           ...(await platformStatus()),
           dshRestart: restartState,
+          runtimeReset: runtimeResetState,
           systemPluginOperation: pluginState,
           userPluginOperation: userPluginState,
         })
@@ -328,6 +363,9 @@ export function createManagementServer({
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'POST' && route === 'restart-dsh') {
         const task = startRestart()
+        send(response, 202, task)
+      } else if (request.method === 'POST' && route === 'runtime/reset') {
+        const task = startRuntimeReset()
         send(response, 202, task)
       } else if (request.method === 'POST' && route === 'bundled-plugins/action') {
         const body = await jsonBody(request)

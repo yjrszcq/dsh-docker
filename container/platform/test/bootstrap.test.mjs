@@ -325,6 +325,12 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
     publishStatus: async options => { calls.push(['status', 'published', options ?? null]) },
+    resetCurrentRuntime: async ({ pauseDsh, restartDsh }) => {
+      calls.push(['runtime-reset'])
+      await pauseDsh()
+      await restartDsh()
+      return { recordId: 'repaired' }
+    },
   }
   const systemPlugins = {
     prepare: async () => {
@@ -384,6 +390,12 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['activate-system-plugins'],
       ['commit-system-plugins'],
       ['status', 'published', null],
+    ])
+    assert.equal((await client.request('POST', '/v1/deployments/runtime/reset')).recordId, 'repaired')
+    assert.deepEqual(calls.slice(-3), [
+      ['runtime-reset'],
+      ['pause', 'dsh-runtime'],
+      ['restart', 'dsh-runtime'],
     ])
     systemPlugins.prepare = async () => {
       calls.push(['prepare-system-plugins-failed'])

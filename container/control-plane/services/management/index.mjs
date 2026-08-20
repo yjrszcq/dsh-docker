@@ -133,6 +133,7 @@ const server = createManagementServer({
     trust: await trust.status(),
   }),
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
+  resetRuntime: () => bootstrap.request('POST', '/v1/deployments/runtime/reset'),
   listBundledPlugins,
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),

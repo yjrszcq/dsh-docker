@@ -14,6 +14,7 @@ import { replaceDeploymentView, replaceSystemPluginView } from '../../lib/paths.
 import { hashTree } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
+import { buildRuntime, loadEnvironmentPatchSet } from '../../../control-plane/modules/patch-manager/index.mjs'
 
 const KINDS = Object.freeze(['environment', 'pristine', 'runtime', 'system-plugins'])
 
@@ -69,6 +70,25 @@ async function readOptional(path) {
 
 async function exists(path) {
   return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+}
+
+async function replaceRuntimeDirectory(staging, destination) {
+  const backup = `${destination}.${randomUUID()}.reset-backup`
+  const hadDestination = await exists(destination)
+  if (hadDestination) await rename(destination, backup)
+  try {
+    await rename(staging, destination)
+  } catch (error) {
+    if (hadDestination) await rename(backup, destination).catch(() => {})
+    throw error
+  }
+  return Object.freeze({
+    commit: () => hadDestination ? rm(backup, { recursive: true, force: true }) : Promise.resolve(),
+    rollback: async () => {
+      await rm(destination, { recursive: true, force: true })
+      if (hadDestination) await rename(backup, destination)
+    },
+  })
 }
 
 export class DeploymentManager {
@@ -472,6 +492,81 @@ export class DeploymentManager {
       await this.select(materialized.id)
       await this.commit(materialized.id, state.previous)
       return materialized
+    })
+  }
+
+  async resetCurrentRuntime({ pauseDsh, restartDsh }) {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.current === null) throw new TrustError('no current Deployment exists')
+      const current = await this.record(state.current)
+      const [pristineRoot, environmentRoot] = await Promise.all([
+        this.resolveReference(current.pristine),
+        this.resolveReference(current.environment),
+      ])
+      const patchSet = await loadEnvironmentPatchSet(environmentRoot)
+      const stagingId = `runtime-reset-${randomUUID()}`
+      const staging = join(this.paths.runtimesRoot, stagingId)
+      const destinationId = current.runtime.storage === 'store'
+        ? current.runtime.id
+        : `reset-${current.runtime.sha256}`
+      const destination = join(this.paths.runtimesRoot, destinationId)
+      let replacement
+      let paused = false
+      await this.publishStatus({ operation: 'resetting-runtime' })
+      try {
+        await buildRuntime({
+          pristineRoot,
+          versionsRoot: this.paths.runtimesRoot,
+          runtimeId: stagingId,
+          patchPaths: patchSet.paths,
+        })
+        const sha256 = await hashTree(staging)
+        if (sha256 !== current.runtime.sha256) {
+          throw new TrustError('rebuilt Runtime differs from the current Deployment Record')
+        }
+
+        await pauseDsh()
+        paused = true
+        replacement = await replaceRuntimeDirectory(staging, destination)
+        const runtime = Object.freeze({
+          storage: 'store', kind: 'runtime', id: destinationId, sha256,
+        })
+        const content = {
+          schema: 1,
+          authority: current.authority,
+          targetSequence: current.targetSequence,
+          dshVersion: current.dshVersion,
+          environmentVersion: current.environmentVersion,
+          environment: current.environment,
+          pristine: current.pristine,
+          runtime,
+          systemPlugins: current.systemPlugins,
+          receiptTokens: [...current.receiptTokens],
+          snapshotId: current.snapshotId,
+        }
+        const repaired = current.runtime.storage === 'store'
+          ? current
+          : await this.writeRecord({ ...content, id: deriveRecordId('deployment-record', content) })
+        await this.select(repaired.id)
+        await restartDsh()
+        const slots = repaired.id === current.id
+          ? state
+          : await this.commit(repaired.id, state.previous)
+        await replacement.commit()
+        await this.publishStatus({ recoveryMode: null })
+        return Object.freeze({ recordId: repaired.id, slots })
+      } catch (error) {
+        if (replacement !== undefined) await replacement.rollback().catch(() => {})
+        if (paused) {
+          await this.select(current.id).catch(() => {})
+          await restartDsh().catch(() => {})
+        }
+        await this.publishStatus({ operation: 'runtime-reset-failed' }).catch(() => {})
+        throw error
+      } finally {
+        await rm(staging, { recursive: true, force: true })
+      }
     })
   }
 

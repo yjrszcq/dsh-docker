@@ -144,6 +144,8 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
+独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
+
 独立控制台还列出当前 Environment 随附的 System Plugins。用户可以从当前 Deployment 的本地可信 Environment Artifact 重新安装其中一个插件，包括被禁用或卸载的 `platform-management` DSH 集成；平台会重建并校验完整 System Plugin Set，要求内容 Hash 与 Deployment Record 一致，然后只重启 DSH。这个操作不访问 GitHub 或 npm，也不从已构建 Runtime 复制文件。插件缺失不会自动触发重新安装。
 
 ### 独立恢复工具

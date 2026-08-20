@@ -79,6 +79,11 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         send(response, 200, await deployments.cancelCandidate())
       } else if (request.method === 'POST' && pathname === '/v1/platform/gc' && deployments !== undefined) {
         send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments }).collect())
+      } else if (request.method === 'POST' && pathname === '/v1/deployments/runtime/reset' && deployments !== undefined) {
+        send(response, 200, await deployments.resetCurrentRuntime({
+          pauseDsh: () => runner.pause('dsh-runtime'),
+          restartDsh: () => runner.restart('dsh-runtime'),
+        }))
       }
       else {
         const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(pause|suspend|resume|restart)$/.exec(pathname)

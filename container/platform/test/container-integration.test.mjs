@@ -25,6 +25,8 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /gateway\.upstream\.failed/)
   assert.match(script, /gateway\.upstream\.recovered/)
   assert.match(script, /standalone-recovery-smoke\.mjs/)
+  assert.match(script, /runtime\.reset\.completed/)
+  assert.match(script, /runtime-reset-sentinel/)
   assert.match(script, /terminal\.session\.created/)
   assert.match(script, /user-plugin\.apply\.failed/)
   assert.match(script, /user-plugin\.apply\.completed/)

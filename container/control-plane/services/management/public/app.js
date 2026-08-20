@@ -47,6 +47,9 @@ const COPY = Object.freeze({
     maintenance: '重启 DSH', maintenanceDetail: '仅重新启动 DSH，容器和平台管理服务保持运行。', restartDsh: '重新启动 DSH',
     restarting: '正在重新启动 DSH', restartComplete: 'DSH 已重新启动', restartFailed: 'DSH 重启失败',
     restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，此独立控制台保持可用。', confirmRestart: '确认重启',
+    runtimeReset: '重置运行时', runtimeResetDetail: '从已验证的 DSH 原始文件和当前平台补丁重新构建运行时，不会删除配置、会话、用户插件或工作区。',
+    cancelRuntimeReset: '取消重置', runtimeResetConfirmTitle: '重置当前运行时', runtimeResetWarning: 'DSH 会短暂停止，当前版本和用户数据保持不变。', confirmRuntimeReset: '重置并重启 DSH',
+    runtimeResetting: '正在重置运行时', runtimeResetComplete: '运行时已重置并重新启动 DSH', runtimeResetFailed: '运行时重置失败',
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
     logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
@@ -103,6 +106,9 @@ const COPY = Object.freeze({
     maintenance: 'Restart DSH', maintenanceDetail: 'Restart DSH only. The container and platform management services remain running.', restartDsh: 'Restart DSH',
     restarting: 'Restarting DSH', restartComplete: 'DSH restarted', restartFailed: 'DSH restart failed',
     restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This standalone console remains available.', confirmRestart: 'Restart',
+    runtimeReset: 'Reset runtime', runtimeResetDetail: 'Rebuild the runtime from verified DSH files and current platform patches without deleting configuration, sessions, user plugins, or workspaces.',
+    cancelRuntimeReset: 'Cancel reset', runtimeResetConfirmTitle: 'Reset the current runtime', runtimeResetWarning: 'DSH stops briefly. The current version and user data remain unchanged.', confirmRuntimeReset: 'Reset and restart DSH',
+    runtimeResetting: 'Resetting runtime', runtimeResetComplete: 'Runtime reset and DSH restarted', runtimeResetFailed: 'Runtime reset failed',
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
     logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
@@ -188,6 +194,7 @@ let terminalResizeObserver
 let terminalResizeFrame
 let terminalRestored = false
 let terminalLeaving = false
+let runtimeResetExpanded = false
 const logEntries = []
 const logIdentities = new Set()
 let logDisplayLimit = (() => {
@@ -286,6 +293,14 @@ function runtimeBusy(next = status) {
     || next?.systemPluginOperation?.status === 'running'
     || next?.userPluginOperation?.status === 'running'
     || next?.dshRestart?.status === 'restarting'
+    || next?.runtimeReset?.status === 'resetting'
+}
+
+function setRuntimeResetExpanded(expanded) {
+  runtimeResetExpanded = expanded
+  elements['runtime-reset-confirmation'].hidden = !expanded
+  elements['runtime-reset'].setAttribute('aria-expanded', String(expanded))
+  elements['runtime-reset'].textContent = t(expanded ? 'cancelRuntimeReset' : 'runtimeReset')
 }
 
 function holdReason(hold) {
@@ -513,6 +528,7 @@ function render(next) {
   rollbackPlan = next.rollbackPlan
   const update = next.update ?? {}
   const restart = next.dshRestart ?? {}
+  const runtimeReset = next.runtimeReset ?? {}
   const pluginOperation = next.systemPluginOperation ?? {}
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
@@ -585,6 +601,18 @@ function render(next) {
   elements['restart-state'].hidden = restart.status === 'idle'
   elements['restart-state'].textContent = restart.status === 'restarting'
     ? t('restarting') : restart.status === 'success' ? t('restartComplete') : restart.status === 'failed' ? t('restartFailed') : ''
+  elements['runtime-reset'].disabled = busy
+  elements['confirm-runtime-reset'].disabled = busy
+  elements['runtime-reset'].textContent = runtimeReset.status === 'resetting'
+    ? t('runtimeResetting') : t(runtimeResetExpanded ? 'cancelRuntimeReset' : 'runtimeReset')
+  elements['runtime-reset-state'].hidden = runtimeReset.status === 'idle'
+  elements['runtime-reset-state'].textContent = runtimeReset.status === 'resetting'
+    ? t('runtimeResetting')
+    : runtimeReset.status === 'success'
+      ? t('runtimeResetComplete')
+      : runtimeReset.status === 'failed'
+        ? `${t('runtimeResetFailed')}: ${localizedError(runtimeReset.error ?? '')}`
+        : ''
   elements['plugin-operation'].hidden = !['running', 'failed'].includes(pluginOperation.status)
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
@@ -1242,6 +1270,12 @@ elements['automatic-interval'].addEventListener('change', event => { void saveAu
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
+elements['cancel-runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(false))
+elements['confirm-runtime-reset'].addEventListener('click', async () => {
+  setRuntimeResetExpanded(false)
+  await act('runtime/reset', { method: 'POST' })
+})
 elements['cancel-user-plugin-changes'].addEventListener('click', () => {
   userPluginDraft.clear()
   userPluginFeedback = null

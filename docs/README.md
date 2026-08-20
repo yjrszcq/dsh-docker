@@ -144,6 +144,8 @@ Automatic checks default to every six hours with jitter and can be disabled or r
 
 The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
+The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
+
 The standalone console also lists System Plugins bundled by the current Environment. A user can reinstall one from the current Deployment's local trusted Environment Artifact, including the `platform-management` DSH integration if it was disabled or uninstalled. The platform rebuilds and verifies the complete System Plugin Set against the Deployment Record content hash, then restarts only DSH. This operation never contacts GitHub or npm and never copies files from a built Runtime. A missing plugin does not trigger automatic reinstallation.
 
 ### Standalone Recovery Tools

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,6 +16,7 @@ import {
 } from '../lib/deployment-contracts.mjs'
 import { PlatformPaths, preparePersistentLayout, resetRuntimeLayout } from '../lib/paths.mjs'
 import { hashTree } from '../lib/tree-hash.mjs'
+import { buildRuntime } from '../../control-plane/modules/patch-manager/index.mjs'
 
 const kinds = ['environment', 'pristine', 'runtime', 'system-plugins']
 
@@ -60,6 +62,83 @@ async function fixture({
   await resetRuntimeLayout(paths)
   const manager = new DeploymentManager({ paths, seedRoot, inventory })
   return { root, seedRoot, paths, inventory, manager, image: recordsFromImageInventory(inventory).deployment }
+}
+
+async function repairableFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-reset-'))
+  const paths = new PlatformPaths(join(root, 'data'), join(root, 'run'))
+  const seedRoot = join(root, 'seed')
+  const pristineRoot = join(seedRoot, 'pristine', 'dsh')
+  const environmentRoot = join(seedRoot, 'environments', 'environment')
+  const runtimeRoot = join(seedRoot, 'runtimes', 'dsh')
+  const systemPluginsRoot = join(seedRoot, 'system-plugins', 'environment')
+  await mkdir(join(pristineRoot, 'lib'), { recursive: true })
+  await mkdir(join(environmentRoot, 'artifacts'), { recursive: true })
+  await mkdir(systemPluginsRoot, { recursive: true })
+  await writeFile(join(pristineRoot, 'lib', 'bin.js'), '#!/usr/bin/env node\n')
+  const patch = [
+    "import { readFile, writeFile } from 'node:fs/promises'",
+    "import { join } from 'node:path'",
+    "export async function applyPatch(root) { await writeFile(join(root, 'patched.txt'), 'patched\\n') }",
+    "export async function verifyPatch(root) { if (await readFile(join(root, 'patched.txt'), 'utf8') !== 'patched\\n') throw new Error('patch missing') }",
+    '',
+  ].join('\n')
+  const patchBytes = Buffer.from(patch)
+  const patchSha256 = createHash('sha256').update(patchBytes).digest('hex')
+  await writeFile(join(environmentRoot, 'artifacts', 'runtime-patch'), patchBytes)
+  await writeFile(join(environmentRoot, 'environment.manifest.json'), JSON.stringify({
+    schema: 1,
+    manifestType: 'environment',
+    version: '2026.08.20.1',
+    keyringGeneration: 1,
+    targetSequence: 1,
+    issuedAt: '2026-08-20T00:00:00.000Z',
+    artifacts: [{
+      id: 'runtime-patch',
+      mediaType: 'text/javascript',
+      sha256: patchSha256,
+      size: patchBytes.byteLength,
+      url: 'https://example.invalid/runtime-patch',
+    }],
+    bootstrapApi: 1,
+    components: [],
+    patches: [{ id: 'runtime-patch', sha256: patchSha256 }],
+    systemPlugins: [],
+  }))
+  await buildRuntime({
+    pristineRoot,
+    versionsRoot: join(seedRoot, 'runtimes'),
+    runtimeId: 'dsh',
+    patchPaths: [join(environmentRoot, 'artifacts', 'runtime-patch')],
+  })
+  const assets = {
+    environment: { id: 'environment', sha256: await hashTree(environmentRoot) },
+    pristine: { id: 'dsh', sha256: await hashTree(pristineRoot) },
+    runtime: { id: 'dsh', sha256: await hashTree(runtimeRoot) },
+    systemPlugins: { id: 'environment', sha256: await hashTree(systemPluginsRoot) },
+  }
+  const content = {
+    schema: 1,
+    authority: 'development',
+    platformRevision: 'runtime-reset-fixture',
+    targetSequence: 0,
+    bootstrapApi: 1,
+    updateApi: 1,
+    bootstrap: { version: '1.0.0', id: 'bootstrap', sha256: 'a'.repeat(64) },
+    deployment: {
+      id: 'image-deployment-runtime-reset',
+      dshVersion: '0.1.0-rc.1',
+      environmentVersion: '2026.08.20.1',
+      ...assets,
+    },
+  }
+  const inventory = parseImageInventory({ ...content, imageBuildId: deriveImageBuildId(content) })
+  await preparePersistentLayout(paths)
+  await resetRuntimeLayout(paths)
+  const manager = new DeploymentManager({ paths, seedRoot, inventory })
+  const image = recordsFromImageInventory(inventory).deployment
+  await manager.initialize(image)
+  return { root, paths, seedRoot, manager, image, environmentRoot }
 }
 
 async function managedRecord(
@@ -135,6 +214,59 @@ test('initializes an Image Deployment through one atomic runtime view', async ()
   assert.equal(status.current.recordId, context.image.id)
   assert.equal(status.current.source, 'image')
   assert.equal(status.recoveryMode, null)
+})
+
+test('rebuilds image and managed Runtime bytes without changing versions or previous Deployment', async () => {
+  const context = await repairableFixture()
+  await writeFile(join(context.seedRoot, 'runtimes', 'dsh', 'package', 'patched.txt'), 'corrupt\n')
+  let pauses = 0
+  let restarts = 0
+  const reset = () => context.manager.resetCurrentRuntime({
+    pauseDsh: async () => { pauses += 1 },
+    restartDsh: async () => {
+      restarts += 1
+      assert.equal(await readFile(join(context.paths.viewsRoot, 'runtime', 'package', 'patched.txt'), 'utf8'), 'patched\n')
+    },
+  })
+  const first = await reset()
+  assert.notEqual(first.recordId, context.image.id)
+  assert.equal(first.slots.previous, null)
+  const repaired = await context.manager.record(first.recordId)
+  assert.equal(repaired.runtime.storage, 'store')
+  assert.equal(repaired.dshVersion, context.image.dshVersion)
+  assert.equal(repaired.environmentVersion, context.image.environmentVersion)
+
+  const managedRuntime = join(context.paths.runtimesRoot, repaired.runtime.id)
+  await writeFile(join(managedRuntime, 'package', 'patched.txt'), 'corrupt-again\n')
+  const second = await reset()
+  assert.equal(second.recordId, first.recordId)
+  assert.equal(second.slots.previous, null)
+  assert.equal(await hashTree(managedRuntime), repaired.runtime.sha256)
+  assert.equal(pauses, 2)
+  assert.equal(restarts, 2)
+
+  await writeFile(join(managedRuntime, 'package', 'patched.txt'), 'runtime-before-failed-reset\n')
+  let failedResetRestarts = 0
+  await assert.rejects(context.manager.resetCurrentRuntime({
+    pauseDsh: async () => { pauses += 1 },
+    restartDsh: async () => {
+      failedResetRestarts += 1
+      const content = await readFile(join(context.paths.viewsRoot, 'runtime', 'package', 'patched.txt'), 'utf8')
+      if (failedResetRestarts === 1) {
+        assert.equal(content, 'patched\n')
+        throw new Error('repaired Runtime failed to start')
+      }
+      assert.equal(content, 'runtime-before-failed-reset\n')
+    },
+  }), /repaired Runtime failed to start/)
+  assert.equal(failedResetRestarts, 2)
+  assert.equal(await readFile(join(managedRuntime, 'package', 'patched.txt'), 'utf8'), 'runtime-before-failed-reset\n')
+  assert.deepEqual(await context.manager.state(), second.slots)
+
+  await writeFile(join(context.environmentRoot, 'artifacts', 'runtime-patch'), 'corrupt artifact\n')
+  await assert.rejects(reset(), /differs from the Environment Manifest/)
+  assert.equal(pauses, 3)
+  assert.equal(restarts, 2)
 })
 
 test('updates a runtime operation without replacing deployment identity fields', async () => {

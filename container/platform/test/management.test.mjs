@@ -289,6 +289,53 @@ test('management rejects DSH restart while an update task is active', async () =
   }
 })
 
+test('management resets the current Runtime as an audited exclusive task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-runtime-reset-'))
+  const coordinator = new Coordinator()
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let finishReset
+  const completion = new Promise(resolve => { finishReset = resolve })
+  let resets = 0
+  const server = createManagementServer({
+    coordinator,
+    logs,
+    resetRuntime: async () => {
+      resets += 1
+      await completion
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const task = await client.request('POST', '/_dsh_platform/api/v1/runtime/reset')
+    assert.equal(typeof task.taskId, 'string')
+    for (let attempt = 0; attempt < 100 && resets === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(resets, 1)
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).runtimeReset.status, 'resetting')
+    for (const path of ['runtime/reset', 'restart-dsh', 'update']) {
+      await assert.rejects(
+        client.request('POST', `/_dsh_platform/api/v1/${path}`),
+        error => error.statusCode === 409,
+      )
+    }
+    finishReset()
+    await new Promise(resolve => setImmediate(resolve))
+    await logs.queue
+    const status = await client.request('GET', '/_dsh_platform/api/v1/status')
+    assert.equal(status.runtimeReset.status, 'success')
+    assert.equal(status.runtimeReset.taskId, task.taskId)
+    assert.deepEqual(
+      (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
+      ['runtime.reset.started', 'runtime.reset.completed'],
+    )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management exposes recoverable User Plugin tasks under the shared runtime mutex', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-user-plugins-'))
   const coordinator = new Coordinator()
@@ -837,7 +884,7 @@ test('standalone console keeps localized feature parity on the shared Management
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
-    'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action',
+    'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
     'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
@@ -876,6 +923,13 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(html, /id="upstream-version" hidden/)
   assert.match(html, /id="update"[^>]*disabled/)
   assert.match(html, /id="plugin-restart-dsh"/)
+  assert.match(html, /id="runtime-reset"[^>]*aria-controls="runtime-reset-confirmation"[^>]*aria-expanded="false"/)
+  assert.match(html, /id="runtime-reset-confirmation"[^>]*hidden/)
+  assert.match(script, /runtimeReset: '重置运行时'/)
+  assert.match(script, /runtimeReset: 'Reset runtime'/)
+  assert.match(script, /function setRuntimeResetExpanded\(expanded\)/)
+  assert.match(script, /await act\('runtime\/reset', \{ method: 'POST' \}\)/)
+  assert.match(script, /next\?\.runtimeReset\?\.status === 'resetting'/)
   assert.equal(html.indexOf('id="plugin-restart-required"') < html.indexOf('id="bundled-plugins"'), true)
   assert.match(script, /plugins\.some\(plugin => plugin\.pendingRestart\)/)
   assert.match(pluginSource, /statusLoadRevision\.current \+= 1/)
@@ -939,6 +993,14 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(style, /\.plugin-actions \.toggle \{ width: auto; \}/)
   assert.match(style, /\.user-plugin-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.user-plugin-row \{ grid-template-columns: 1fr/)
+})
+
+test('production Management wires Runtime reset to the Bootstrap control boundary', async () => {
+  const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
+  const serverStart = source.indexOf('const server = createManagementServer({')
+  assert.notEqual(serverStart, -1)
+  const serverSource = source.slice(serverStart)
+  assert.match(serverSource, /resetRuntime: \(\) => bootstrap\.request\('POST', '\/v1\/deployments\/runtime\/reset'\)/)
 })
 
 test('CLI parser keeps rollback local and update wait behavior explicit', async () => {
