@@ -27,7 +27,7 @@ const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
 const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
 const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
 const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
-const DEFAULT_LOG_DISPLAY_LIMIT = 1_000
+const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
 
 export const inject = ['slots', 'locale']

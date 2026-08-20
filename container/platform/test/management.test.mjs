@@ -597,7 +597,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'/)
   assert.match(script, /sessionStorage\.setItem\(LOG_CLEAR_CUTOFF_KEY, logClearCutoff\)/)
   assert.match(script, /timestamp <= Date\.parse\(logClearCutoff\)/)
-  assert.match(script, /DEFAULT_LOG_DISPLAY_LIMIT = 1_000/)
+  assert.match(script, /DEFAULT_LOG_DISPLAY_LIMIT = 500/)
   assert.match(script, /limitProcessedLogEntries\(logEntries, logDisplayLimit\)/)
   assert.match(script, /writeStorage\(LOG_DISPLAY_LIMIT_KEY, String\(value\)\)/)
   assert.match(html, /id="log-limit"/)
