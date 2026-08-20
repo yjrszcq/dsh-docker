@@ -190,7 +190,7 @@ test('management edits only the fixed settings document with optimistic revision
   }
 })
 
-test('settings document editing rejects symbolic links and oversized content', async () => {
+test('settings document editing rejects symbolic links, invalid UTF-8, and oversized content', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-settings-unsafe-'))
   const dshHome = join(root, 'dsh')
   await import('node:fs/promises').then(({ mkdir }) => mkdir(dshHome))
@@ -200,6 +200,8 @@ test('settings document editing rejects symbolic links and oversized content', a
   const store = new SettingsDocumentStore(dshHome, { maxBytes: 8 })
   await assert.rejects(store.read(), /regular file/)
   await import('node:fs/promises').then(({ rm }) => rm(join(dshHome, 'settings.yaml')))
+  await writeFile(join(dshHome, 'settings.yaml'), Buffer.from([0xc3, 0x28]))
+  await assert.rejects(store.read(), /not valid UTF-8/)
   await assert.rejects(store.write('123456789', '0'.repeat(64)), /too large/)
   assert.equal(await readFile(target, 'utf8'), 'outside: true\n')
 })
