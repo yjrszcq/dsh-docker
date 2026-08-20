@@ -17,6 +17,8 @@ import { UserPluginJournal } from '../../control-plane/modules/user-plugin-manag
 import { UserPluginSnapshots } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
+import { FileInventory, FileSearchManager } from '../../control-plane/modules/file-manager/index.mjs'
+import { FileTransferManager } from '../../control-plane/modules/file-manager/transfers.mjs'
 
 class Coordinator extends EventEmitter {
   constructor() {
@@ -997,7 +999,7 @@ test('standalone console keeps localized feature parity on the shared Management
 
 test('production Management wires Runtime reset to the Bootstrap control boundary', async () => {
   const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
-  const serverStart = source.indexOf('const server = createManagementServer({')
+  const serverStart = source.indexOf('server = createManagementServer({')
   assert.notEqual(serverStart, -1)
   const serverSource = source.slice(serverStart)
   assert.match(serverSource, /resetRuntime: \(\) => bootstrap\.request\('POST', '\/v1\/deployments\/runtime\/reset'\)/)
@@ -1238,4 +1240,68 @@ test('management does not check metadata before the first scheduled interval', a
   assert.doesNotMatch(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
   assert.match(source, /check: \(\) => coordinator\.check\('automatic'\)/)
   assert.match(source, /allowUnavailableMetadata: imageInventory\.authority === 'development'/)
+})
+
+test('management exposes authenticated file inventory, search, upload, and ranged download primitives', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-files-'))
+  const files = join(root, 'files')
+  await mkdir(files)
+  await writeFile(join(files, 'alpha.txt'), '0123456789')
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let server
+  const fileTasks = new FileSearchManager({ onState: state => server?.emit('management-state', { fileTask: state }) })
+  server = createManagementServer({
+    coordinator: new Coordinator(), logs,
+    fileInventory: new FileInventory(), fileTransfers: new FileTransferManager(), fileTasks,
+  })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const encodedRoot = encodeURIComponent(files)
+    const listed = await client.request('GET', `${API_PREFIX}files/list?path=${encodedRoot}`)
+    assert.deepEqual(listed.entries.map(entry => entry.name), ['alpha.txt'])
+    const content = await client.request('GET', `${API_PREFIX}files/content?path=${encodeURIComponent(join(files, 'alpha.txt'))}`)
+    assert.equal(content.content, '0123456789')
+    const search = await client.request('POST', `${API_PREFIX}files/tasks`, { operation: 'search', path: files, revision: listed.revision, query: 'alpha' })
+    await fileTasks.tasks.get(search.taskId).completion
+    assert.equal((await client.request('GET', `${API_PREFIX}files/tasks/${search.taskId}`)).results[0].name, 'alpha.txt')
+
+    const uploadPath = join(files, 'uploaded.txt')
+    const uploaded = await new Promise((resolve, reject) => {
+      const request = httpRequest({
+        socketPath, method: 'POST',
+        path: `${API_PREFIX}files/upload?path=${encodeURIComponent(uploadPath)}&conflict=reject`,
+        headers: { 'content-length': '8' },
+      }, response => {
+        const chunks = []
+        response.on('data', chunk => chunks.push(chunk))
+        response.on('end', () => resolve({ status: response.statusCode, value: JSON.parse(Buffer.concat(chunks)) }))
+      })
+      request.once('error', reject)
+      request.end('uploaded')
+    })
+    assert.equal(uploaded.status, 201)
+    assert.equal(await readFile(uploadPath, 'utf8'), 'uploaded')
+    const downloaded = await new Promise((resolve, reject) => {
+      const request = httpRequest({
+        socketPath, method: 'GET',
+        path: `${API_PREFIX}files/download?path=${encodeURIComponent(uploadPath)}&revision=${encodeURIComponent(uploaded.value.revision)}`,
+        headers: { range: 'bytes=2-5' },
+      }, response => {
+        const chunks = []
+        response.on('data', chunk => chunks.push(chunk))
+        response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString() }))
+      })
+      request.once('error', reject)
+      request.end()
+    })
+    assert.deepEqual(downloaded, { status: 206, body: 'load' })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'files.upload.completed' && entry.size === 8), true)
+    assert.equal(audit.some(entry => entry.message === 'files.download.completed'), true)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
 })

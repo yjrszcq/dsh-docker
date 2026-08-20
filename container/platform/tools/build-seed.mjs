@@ -79,7 +79,7 @@ if (imageInput !== undefined) {
   for (const directory of ['bootstrap', 'lib']) {
     await cp(join(platformRoot, directory), join(bootstrapRoot, 'platform', directory), { recursive: true })
   }
-  for (const directory of ['log-manager', 'patch-manager', 'system-plugin-manager', 'updater', 'user-plugin-manager']) {
+  for (const directory of ['file-manager', 'log-manager', 'patch-manager', 'system-plugin-manager', 'updater', 'user-plugin-manager']) {
     await cp(
       join(containerRoot, 'control-plane', 'modules', directory),
       join(bootstrapRoot, 'control-plane', 'modules', directory),

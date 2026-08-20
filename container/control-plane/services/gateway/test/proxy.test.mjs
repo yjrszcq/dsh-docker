@@ -241,6 +241,13 @@ test('bounded management and Console requests use the protected local socket ins
       ['GET', '/_dsh_platform/api/v1/bundled-plugins'],
       ['GET', '/_dsh_platform/api/v1/settings-document'],
       ['GET', '/_dsh_platform/api/v1/user-plugins'],
+      ['GET', '/_dsh_platform/api/v1/files/list'],
+      ['GET', '/_dsh_platform/api/v1/files/stat'],
+      ['GET', '/_dsh_platform/api/v1/files/content'],
+      ['GET', '/_dsh_platform/api/v1/files/download'],
+      ['GET', '/_dsh_platform/api/v1/files/tasks'],
+      ['GET', '/_dsh_platform/api/v1/files/tasks/123e4567-e89b-42d3-a456-426614174000'],
+      ['DELETE', '/_dsh_platform/api/v1/files/tasks/123e4567-e89b-42d3-a456-426614174000'],
       ['GET', '/_dsh_platform/api/v1/user-plugins/task/123e4567-e89b-42d3-a456-426614174000'],
       ['GET', '/_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000'],
       ['DELETE', '/_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000'],
@@ -254,6 +261,8 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/recovery-action'],
       ['POST', '/_dsh_platform/api/v1/user-plugins/apply'],
       ['POST', '/_dsh_platform/api/v1/terminal/sessions'],
+      ['POST', '/_dsh_platform/api/v1/files/upload'],
+      ['POST', '/_dsh_platform/api/v1/files/tasks'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],
       ['PUT', '/_dsh_platform/api/v1/settings-document'],
@@ -267,6 +276,7 @@ test('bounded management and Console requests use the protected local socket ins
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/user-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/terminal/sessions/not-a-uuid', { host: 'dsh.example' })).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/files/tasks/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal(upstreamRequests, 0)
   } finally {

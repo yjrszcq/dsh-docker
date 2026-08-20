@@ -10,6 +10,7 @@ export const CONSOLE_PREFIX = '/_dsh_platform/ui/'
 const MAX_BODY_BYTES = 16 * 1024
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
+const FILE_TASK_ROUTE = /^files\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const CONSOLE_ASSETS = new Map([
   ['', ['public', 'index.html', 'text/html; charset=utf-8']],
   ['app.js', ['public', 'app.js', 'text/javascript; charset=utf-8']],
@@ -38,6 +39,7 @@ async function jsonBody(request, maxBytes = MAX_BODY_BYTES) {
 }
 
 function send(response, status, value) {
+  if (response.headersSent) return response.destroy()
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   response.end(`${JSON.stringify(value)}\n`)
 }
@@ -108,6 +110,9 @@ export function createManagementServer({
     close: () => { throw new Error('terminal sessions are not configured') },
     upgrade: (_request, socket) => socket.destroy(),
   },
+  fileInventory,
+  fileTransfers,
+  fileTasks,
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
@@ -338,6 +343,64 @@ export function createManagementServer({
         const saved = await settingsDocument.write(body.content, body.revision)
         await audit('settings-document.saved', { revision: saved.revision })
         send(response, 200, saved)
+      } else if (request.method === 'GET' && route === 'files/list') {
+        if (fileInventory === undefined) throw new Error('file management is not configured')
+        const result = await fileInventory.list(url.searchParams.get('path'), {
+          cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit'),
+          sort: url.searchParams.get('sort') ?? 'name', order: url.searchParams.get('order') ?? 'asc',
+        })
+        await recordAudit('files.list.completed', { path: result.path, entries: result.entries.length })
+        send(response, 200, result)
+      } else if (request.method === 'GET' && route === 'files/stat') {
+        if (fileInventory === undefined) throw new Error('file management is not configured')
+        const result = await fileInventory.stat(url.searchParams.get('path'))
+        await recordAudit('files.stat.completed', { path: result.path, type: result.type })
+        send(response, 200, result)
+      } else if (request.method === 'GET' && route === 'files/content') {
+        if (fileInventory === undefined) throw new Error('file management is not configured')
+        const result = await fileInventory.content(url.searchParams.get('path'))
+        await recordAudit('files.content.completed', { path: result.path, size: result.size })
+        send(response, 200, result)
+      } else if (request.method === 'GET' && route === 'files/download') {
+        if (fileTransfers === undefined) throw new Error('file transfers are not configured')
+        const download = await fileTransfers.openDownload(url.searchParams.get('path'), {
+          revision: url.searchParams.get('revision') ?? undefined,
+          range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+        })
+        await recordAudit('files.download.started', { path: download.path, revision: download.revision })
+        await fileTransfers.sendDownload(response, download)
+        await recordAudit('files.download.completed', { path: download.path, revision: download.revision })
+      } else if (request.method === 'POST' && route === 'files/upload') {
+        if (fileTransfers === undefined) throw new Error('file transfers are not configured')
+        const lengthHeader = request.headers['content-length']
+        const contentLength = lengthHeader === undefined ? undefined : Number(lengthHeader)
+        if (contentLength !== undefined && (!Number.isSafeInteger(contentLength) || contentLength < 0)) throw new Error('Content-Length is invalid')
+        const path = url.searchParams.get('path')
+        await recordAudit('files.upload.started', { path })
+        const result = await fileTransfers.upload(request, path, {
+          conflict: url.searchParams.get('conflict') ?? 'reject', contentLength,
+        })
+        await recordAudit('files.upload.completed', { path: result.path, size: result.size })
+        send(response, 201, result)
+      } else if (request.method === 'POST' && route === 'files/tasks') {
+        if (fileTasks === undefined) throw new Error('file tasks are not configured')
+        const body = await jsonBody(request)
+        if (body?.operation !== 'search') throw new Error('file task operation is invalid')
+        const task = fileTasks.start({ path: body.path, revision: body.revision, query: body.query })
+        await recordAudit('files.search.started', { path: task.path, taskId: task.taskId })
+        send(response, 202, task)
+      } else if (request.method === 'GET' && route === 'files/tasks') {
+        if (fileTasks === undefined) throw new Error('file tasks are not configured')
+        send(response, 200, { tasks: fileTasks.list() })
+      } else if (request.method === 'GET' && FILE_TASK_ROUTE.test(route)) {
+        if (fileTasks === undefined) throw new Error('file tasks are not configured')
+        const taskId = FILE_TASK_ROUTE.exec(route)[1]
+        send(response, 200, fileTasks.get(taskId, { cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit') }))
+      } else if (request.method === 'DELETE' && FILE_TASK_ROUTE.test(route)) {
+        if (fileTasks === undefined) throw new Error('file tasks are not configured')
+        const task = fileTasks.cancel(FILE_TASK_ROUTE.exec(route)[1])
+        await recordAudit('files.task.cancel-requested', { operation: task.operation, taskId: task.taskId })
+        send(response, 202, task)
       } else if (request.method === 'POST' && route === 'check') {
         const body = await jsonBody(request)
         const source = body.source ?? 'manual'
