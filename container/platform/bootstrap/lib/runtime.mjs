@@ -1,16 +1,23 @@
 export class BootstrapRuntime {
-  constructor({ controlPlane, environment, validateDeployment = async () => {} }) {
+  constructor({
+    controlPlane,
+    environment,
+    validateDeployment = async () => {},
+    prepareDeployment = async () => {},
+  }) {
     this.controlPlane = controlPlane
     this.environment = environment
     this.fatal = Promise.race([controlPlane.fatal, environment.fatal])
     this.recoveryMode = null
     this.validateDeployment = validateDeployment
+    this.prepareDeployment = prepareDeployment
   }
 
   async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
     await this.controlPlane.start()
     try {
       await this.validateDeployment()
+      await this.prepareDeployment()
       await this.environment.start()
     } catch (error) {
       let retry
@@ -28,6 +35,7 @@ export class BootstrapRuntime {
       if (retry === true) {
         try {
           await this.validateDeployment()
+          await this.prepareDeployment()
           await this.environment.start()
         } catch (fallbackError) {
           const failure = new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
@@ -56,16 +64,23 @@ export class BootstrapRuntime {
 
   async reload() {
     await this.validateDeployment()
+    await this.prepareDeployment()
     return this.environment.reload()
   }
   suspend(componentId) { return this.environment.suspend(componentId) }
-  async resume(componentId) {
-    if (componentId === 'dsh-runtime') await this.validateDeployment()
+  async resume(componentId, options) {
+    if (componentId === 'dsh-runtime') {
+      if (options?.skipValidation !== true) await this.validateDeployment()
+      if (options?.skipPreparation !== true) await this.prepareDeployment()
+    }
     return this.environment.resume(componentId)
   }
-  async restart(componentId) {
-    if (componentId === 'dsh-runtime') await this.validateDeployment()
-    return this.environment.restart(componentId)
+  async restart(componentId, options) {
+    if (componentId === 'dsh-runtime') {
+      if (options?.skipValidation !== true) await this.validateDeployment()
+      if (options?.skipPreparation !== true) await this.prepareDeployment()
+    }
+    return this.environment.restart(componentId, options)
   }
   health() { return this.environment.health() }
 

@@ -146,7 +146,7 @@ try {
     '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
     '-czf', bootstrapPath, '-C', containerRoot,
     'platform/bootstrap', 'platform/lib',
-    'control-plane/definition.json', 'control-plane/hooks/recovery',
+    'control-plane/definition.json', 'control-plane/hooks/recovery', 'control-plane/hooks/dsh-web-ready.mjs',
     'control-plane/services/gateway', 'control-plane/modules/log-manager',
     'control-plane/services/management', 'control-plane/modules/patch-manager',
     'control-plane/modules/system-plugin-manager', 'control-plane/modules/updater',

@@ -165,6 +165,26 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   await runner.stop()
 })
 
+test('contains a service exit during readiness inside the startup operation', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-startup-exit-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'process.exit(1)')
+  const candidate = component('candidate', service, 'service')
+  candidate.health = {
+    type: 'http', host: '127.0.0.1', port: 1, path: '/', intervalSeconds: 1, timeoutSeconds: 1,
+  }
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate]),
+    capture: () => {},
+  })
+  await assert.rejects(runner.start(), /exited before health check passed/)
+  const outcome = await Promise.race([
+    runner.fatal.then(() => 'fatal'),
+    new Promise(resolve => setTimeout(() => resolve('contained'), 20)),
+  ])
+  assert.equal(outcome, 'contained')
+})
+
 test('suspends, resumes, and restarts one service while keeping other Environment components running', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-suspend-'))
   const service = join(temp, 'service.mjs')
@@ -216,6 +236,35 @@ test('retries a service restart after its first start attempt fails', async () =
   await runner.stop()
 })
 
+test('restores a service after a transactional restart candidate fails', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-restart-recovery-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([component('dsh-runtime', service, 'service')]),
+    capture: () => {},
+  })
+  await runner.start()
+  const startComponent = runner.startComponentUnlocked.bind(runner)
+  let candidate = true
+  runner.startComponentUnlocked = async (...args) => {
+    if (candidate) {
+      candidate = false
+      throw new Error('candidate failed')
+    }
+    return startComponent(...args)
+  }
+  const changes = []
+  await assert.rejects(runner.restart('dsh-runtime', {
+    recoverStart: true,
+    beforeStart: async () => { changes.push('activate') },
+    onStartFailure: async () => { changes.push('rollback') },
+  }), /candidate failed/)
+  assert.deepEqual(changes, ['activate', 'rollback'])
+  assert.deepEqual(runner.status().components.map(value => value.id), ['dsh-runtime'])
+  await runner.stop()
+})
+
 test('Bootstrap control socket exposes component suspension, resumption, restart, and health', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-control-'))
   const calls = []
@@ -225,14 +274,31 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     health: async () => ({ healthy: true, components: [] }),
     suspend: async id => { calls.push(['suspend', id]); return {} },
     resume: async id => { calls.push(['resume', id]); return {} },
-    restart: async id => { calls.push(['restart', id]); return {} },
+    restart: async (id, options = {}) => {
+      calls.push(['restart', id])
+      try {
+        await options.beforeStart?.()
+        return {}
+      } catch (error) {
+        await options.onStartFailure?.(error)
+        if (options.recoverStart) calls.push(['restart-recovered', id])
+        throw error
+      }
+    },
   }
   const deployments = {
     exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
   }
   const systemPlugins = {
-    apply: async () => { calls.push(['apply-system-plugins']) },
+    prepare: async () => {
+      calls.push(['prepare-system-plugins'])
+      return {
+        activate: async () => { calls.push(['activate-system-plugins']) },
+        commit: async () => { calls.push(['commit-system-plugins']) },
+        rollback: async () => { calls.push(['rollback-system-plugins']) },
+      }
+    },
     list: async () => [{ id: 'platform-management', installed: true }],
     configure: async (id, action) => {
       calls.push(['configure', id, action])
@@ -267,18 +333,30 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['suspend', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],
-      ['apply-system-plugins'],
+      ['prepare-system-plugins'],
       ['restart', 'dsh-runtime'],
+      ['activate-system-plugins'],
+      ['commit-system-plugins'],
       ['operation', null],
     ])
-    systemPlugins.apply = async () => {
-      calls.push(['apply-system-plugins-failed'])
-      throw new Error('overlay failed')
+    systemPlugins.prepare = async () => {
+      calls.push(['prepare-system-plugins-failed'])
+      return {
+        activate: async () => {
+          calls.push(['activate-system-plugins-failed'])
+          throw new Error('overlay failed')
+        },
+        rollback: async () => { calls.push(['rollback-system-plugins']) },
+      }
     }
     await assert.rejects(client.request('POST', '/v1/components/dsh-runtime/restart'), /overlay failed/)
-    assert.deepEqual(calls.slice(-3), [
+    assert.deepEqual(calls.slice(-7), [
       ['operation', 'restarting'],
-      ['apply-system-plugins-failed'],
+      ['prepare-system-plugins-failed'],
+      ['restart', 'dsh-runtime'],
+      ['activate-system-plugins-failed'],
+      ['rollback-system-plugins'],
+      ['restart-recovered', 'dsh-runtime'],
       ['operation', 'restart-failed'],
     ])
   } finally {

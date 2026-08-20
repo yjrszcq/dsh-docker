@@ -127,6 +127,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   for (const name of [
     'platform/bootstrap/index.mjs',
     'control-plane/definition.json',
+    'control-plane/hooks/dsh-web-ready.mjs',
     'control-plane/hooks/recovery/index.mjs',
     'control-plane/services/gateway/index.mjs',
     'control-plane/services/management/index.mjs',

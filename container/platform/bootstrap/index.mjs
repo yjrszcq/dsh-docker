@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { EnvironmentRunner, loadControlPlane } from './lib/lifecycle.mjs'
 import { BootstrapRuntime } from './lib/runtime.mjs'
@@ -70,6 +70,28 @@ const applySystemPluginSelection = async () => {
   await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: materialized.path })
   return materialized.plugins
 }
+const prepareSystemPluginSelection = async () => {
+  const previous = await realpath(join(paths.systemPluginViewsRoot, 'current'))
+  const selected = await deployments.selected()
+  if (selected === null) throw new Error('no Deployment is selected')
+  const materialized = await materializeSystemPluginSelection({
+    environmentRoot: selected.paths.environment,
+    sourceRoot: selected.paths['system-plugins'],
+    outputRoot: paths.systemPluginViewsRoot,
+    selectionStore: systemPluginSelections,
+  })
+  return Object.freeze({
+    activate: () => replaceSystemPluginView(paths, materialized.path),
+    commit: () => pruneSystemPluginSelectionViews({
+      outputRoot: paths.systemPluginViewsRoot,
+      keepPath: materialized.path,
+    }),
+    rollback: async () => {
+      await replaceSystemPluginView(paths, previous)
+      await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: previous })
+    },
+  })
+}
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -100,8 +122,8 @@ const runtime = new BootstrapRuntime({
       runtimeRoot: join(paths.viewsRoot, 'runtime'),
       environmentRoot: join(paths.viewsRoot, 'environment'),
     })
-    await applySystemPluginSelection()
   },
+  prepareDeployment: applySystemPluginSelection,
 })
 const systemPlugins = {
   list: async () => {
@@ -131,7 +153,7 @@ const systemPlugins = {
       throw error
     }
   }),
-  apply: applySystemPluginSelection,
+  prepare: prepareSystemPluginSelection,
 }
 systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
 systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)

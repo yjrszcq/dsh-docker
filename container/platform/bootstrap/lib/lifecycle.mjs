@@ -71,6 +71,9 @@ async function waitForHealth(component, running, options) {
     if (healthy) return
     await delay(component.health.intervalSeconds * 1000)
   }
+  if (running?.child !== undefined && running.child.exitCode !== null) {
+    throw new Error(`${component.id} exited before health check passed`)
+  }
   throw new Error(`${component.id} health check timed out`)
 }
 
@@ -202,9 +205,9 @@ export class EnvironmentRunner {
         once(child, 'spawn'),
         once(child, 'error').then(([error]) => { throw error }),
       ])
-      running = { component, child }
+      running = { component, child, ready: false }
       child.once('exit', (code, signal) => {
-        if (!this.stopping && this.running.includes(running)) {
+        if (running.ready && !this.stopping && this.running.includes(running)) {
           this.resolveFatal(new Error(
             `${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
           ))
@@ -221,6 +224,10 @@ export class EnvironmentRunner {
     try {
       await waitForHealth(component, running, this.commandOptions(component))
       await this.phase(component, 'postStart')
+      if (running.child !== undefined && running.child.exitCode !== null) {
+        throw new Error(`${component.id} exited before startup completed`)
+      }
+      running.ready = true
       return running
     } catch (error) {
       await this.stopComponentUnlocked(running).catch(() => {})
@@ -284,7 +291,7 @@ export class EnvironmentRunner {
     })
   }
 
-  restart(componentId) {
+  restart(componentId, { beforeStart, recoverStart = false, onStartFailure } = {}) {
     return this.serialized(async () => {
       if (this.environment === undefined) throw new Error('Environment is not loaded')
       const running = this.running.find(value => value.component.id === componentId)
@@ -293,8 +300,19 @@ export class EnvironmentRunner {
       if (component === undefined) throw new Error(`component ${componentId} does not exist`)
       if (component.type !== 'service') throw new Error(`component ${componentId} is not a service`)
       if (running !== undefined) await this.stopComponentUnlocked(running)
-      await this.startComponentUnlocked(component, true)
-      return this.status()
+      try {
+        await beforeStart?.()
+        await this.startComponentUnlocked(component, true)
+        return this.status()
+      } catch (error) {
+        const failures = [error]
+        try { await onStartFailure?.(error) } catch (recoveryError) { failures.push(recoveryError) }
+        if (recoverStart && failures.length === 1) {
+          try { await this.startComponentUnlocked(component, true) } catch (recoveryError) { failures.push(recoveryError) }
+        }
+        if (failures.length > 1) throw new AggregateError(failures, `component ${componentId} restart recovery failed`)
+        throw error
+      }
     })
   }
 

@@ -11,7 +11,11 @@
   "lifecycle": {
     "prepare": null,
     "preStart": null,
-    "postStart": null,
+    "postStart": {
+      "executable": "/usr/local/bin/node",
+      "args": ["/run/dsh-platform/views/bootstrap/control-plane/hooks/dsh-web-ready.mjs"],
+      "timeoutSeconds": 30
+    },
     "preStop": null,
     "stop": null,
     "postStop": null
