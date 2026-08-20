@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Platform Management</title>
-  <link rel="stylesheet" href="./vendor/xterm.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -142,7 +141,7 @@
         <div class="terminal-status" id="terminal-status" data-state="idle" role="status" aria-live="polite"><span aria-hidden="true"></span><strong data-i18n="terminalIdle">No active session</strong></div>
         <div id="terminal-frame" class="terminal-frame">
           <div id="terminal-screen" aria-label="Container terminal" data-i18n-aria-label="terminalScreen"></div>
-          <p id="terminal-placeholder" data-i18n="terminalPlaceholder">Start a session to open an interactive Bash shell.</p>
+          <p id="terminal-placeholder"><span id="terminal-loader" class="terminal-loader" aria-hidden="true" hidden></span><span id="terminal-placeholder-label" data-i18n="terminalPlaceholder">Start a session to open an interactive Bash shell.</span></p>
         </div>
       </section>
     </div>

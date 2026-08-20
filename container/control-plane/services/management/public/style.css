@@ -341,6 +341,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .terminal-status[data-state="connected"] > span { background: var(--success); }
 .terminal-status[data-state="connecting"] > span,
 .terminal-status[data-state="reconnecting"] > span,
+.terminal-status[data-state="loading"] > span,
 .terminal-status[data-state="starting"] > span { background: var(--warning); }
 .terminal-status[data-state="failed"] { color: var(--danger); }
 .terminal-status[data-state="failed"] > span { background: var(--danger); }
@@ -362,8 +363,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .terminal-frame > p {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin: 0;
   padding: 24px;
   color: var(--muted);
@@ -371,6 +375,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
   font-size: 13px;
   line-height: 20px;
 }
+.terminal-loader {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: terminal-spin 0.8s linear infinite;
+}
+@keyframes terminal-spin { to { transform: rotate(360deg); } }
 
 .log-section { gap: 10px; }
 .log-tools { display: flex; align-items: center; gap: 8px; }

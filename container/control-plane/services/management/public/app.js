@@ -1,6 +1,3 @@
-import { FitAddon } from './vendor/addon-fit.mjs'
-import { Terminal } from './vendor/xterm.mjs'
-
 const API = '/_dsh_platform/api/v1'
 const UPDATE_TERMINAL_STATES = new Set(['idle', 'success', 'failed'])
 const STATUS_LABELS = Object.freeze({
@@ -76,7 +73,7 @@ const COPY = Object.freeze({
     stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
     upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
     terminal: '容器终端', terminalDetail: '打开交互式容器 Shell；仅重新启动 DSH 时终端会话保持运行。',
-    newTerminal: '新建会话', closeTerminal: '关闭会话', terminalIdle: '没有活动会话', terminalStarting: '正在创建会话',
+    newTerminal: '新建会话', closeTerminal: '关闭会话', terminalIdle: '没有活动会话', terminalLoading: '正在加载终端组件', terminalLoadFailed: '终端组件加载失败，请重试', terminalStarting: '正在创建会话',
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
@@ -132,7 +129,7 @@ const COPY = Object.freeze({
     stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
     upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
     terminal: 'Container terminal', terminalDetail: 'Open an interactive container shell that remains running when only DSH restarts.',
-    newTerminal: 'New session', closeTerminal: 'Close session', terminalIdle: 'No active session', terminalStarting: 'Creating session',
+    newTerminal: 'New session', closeTerminal: 'Close session', terminalIdle: 'No active session', terminalLoading: 'Loading terminal components', terminalLoadFailed: 'Terminal components failed to load. Try again.', terminalStarting: 'Creating session',
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
@@ -175,6 +172,10 @@ let eventSource
 let logSource
 let autoScroll = true
 let reminder
+let terminalRuntime
+let terminalRuntimeLoad
+let terminalStyleLoad
+let terminalRestore
 let terminalEmulator
 let terminalFit
 let terminalSocket
@@ -920,10 +921,54 @@ function setTerminalStatus(key, state, values = {}) {
   elements['terminal-status'].dataset.state = state
   elements['terminal-status'].querySelector('strong').textContent = t(key, values)
   const active = terminalSessionId !== undefined
-  elements['new-terminal'].disabled = active || state === 'starting'
+  elements['new-terminal'].disabled = active || ['loading', 'starting'].includes(state)
   elements['close-terminal'].disabled = !active
   elements['terminal-frame'].classList.toggle('active', active)
   elements['terminal-placeholder'].hidden = active
+}
+
+function setTerminalPlaceholder(key, loading = false) {
+  elements['terminal-placeholder-label'].textContent = t(key)
+  elements['terminal-loader'].hidden = !loading
+}
+
+function loadTerminalStyles() {
+  if (terminalStyleLoad !== undefined) return terminalStyleLoad
+  const stylesheet = document.createElement('link')
+  stylesheet.rel = 'stylesheet'
+  stylesheet.href = './vendor/xterm.css'
+  terminalStyleLoad = new Promise((resolve, reject) => {
+    stylesheet.addEventListener('load', resolve, { once: true })
+    stylesheet.addEventListener('error', () => {
+      stylesheet.remove()
+      terminalStyleLoad = undefined
+      reject(new Error('terminal stylesheet failed to load'))
+    }, { once: true })
+    document.head.append(stylesheet)
+  })
+  return terminalStyleLoad
+}
+
+async function loadTerminalRuntime() {
+  if (terminalRuntime !== undefined) return terminalRuntime
+  if (terminalRuntimeLoad === undefined) {
+    setTerminalStatus('terminalLoading', 'loading')
+    setTerminalPlaceholder('terminalLoading', true)
+    terminalRuntimeLoad = Promise.all([
+      import('./vendor/xterm.mjs'),
+      import('./vendor/addon-fit.mjs'),
+      loadTerminalStyles(),
+    ]).then(([xterm, fit]) => Object.freeze({ Terminal: xterm.Terminal, FitAddon: fit.FitAddon }))
+  }
+  try {
+    terminalRuntime = await terminalRuntimeLoad
+    return terminalRuntime
+  } catch (error) {
+    terminalRuntimeLoad = undefined
+    setTerminalStatus('terminalLoadFailed', 'failed')
+    setTerminalPlaceholder('terminalLoadFailed')
+    throw error
+  }
 }
 
 function saveTerminalSession(value) {
@@ -966,8 +1011,9 @@ function fitTerminal() {
   })
 }
 
-function initializeTerminal() {
+async function initializeTerminal() {
   if (terminalEmulator !== undefined) return
+  const { Terminal, FitAddon } = await loadTerminalRuntime()
   terminalFit = new FitAddon()
   terminalEmulator = new Terminal({
     cursorBlink: true,
@@ -988,6 +1034,7 @@ function initializeTerminal() {
   terminalResizeObserver.observe(elements['terminal-frame'])
   const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
   colorScheme.addEventListener('change', () => { terminalEmulator.options.theme = terminalTheme() })
+  setTerminalPlaceholder('terminalPlaceholder')
   fitTerminal()
 }
 
@@ -1051,33 +1098,43 @@ function connectTerminal({ reconnect = false } = {}) {
   })
 }
 
-async function restoreTerminalSession() {
-  if (terminalRestored) return
-  terminalRestored = true
-  initializeTerminal()
-  const sessionId = storedTerminalSession()
-  if (sessionId === undefined) return setTerminalStatus('terminalIdle', 'idle')
-  saveTerminalSession(sessionId)
-  try {
-    await api(`terminal/sessions/${sessionId}`)
-    connectTerminal()
-  } catch (error) {
-    if (error.statusCode === 404) forgetTerminalSession()
-    else setTerminalStatus('terminalFailed', 'failed')
-  }
+function restoreTerminalSession() {
+  if (terminalRestored) return Promise.resolve()
+  if (terminalRestore !== undefined) return terminalRestore
+  terminalRestore = (async () => {
+    try {
+      await initializeTerminal()
+    } catch {
+      return
+    }
+    terminalRestored = true
+    const sessionId = storedTerminalSession()
+    if (sessionId === undefined) return setTerminalStatus('terminalIdle', 'idle')
+    saveTerminalSession(sessionId)
+    try {
+      await api(`terminal/sessions/${sessionId}`)
+      connectTerminal()
+    } catch (error) {
+      if (error.statusCode === 404) forgetTerminalSession()
+      else setTerminalStatus('terminalFailed', 'failed')
+    }
+  })().finally(() => { terminalRestore = undefined })
+  return terminalRestore
 }
 
 async function createTerminalSession() {
-  initializeTerminal()
-  setTerminalStatus('terminalStarting', 'starting')
   try {
+    await initializeTerminal()
+    setTerminalStatus('terminalStarting', 'starting')
     fitTerminal()
     const session = await api('terminal/sessions', { method: 'POST', body: terminalDimensions() })
     saveTerminalSession(session.sessionId)
     connectTerminal()
   } catch (error) {
-    forgetTerminalSession('terminalFailed', 'failed')
-    showError(error)
+    if (terminalEmulator !== undefined) {
+      forgetTerminalSession('terminalFailed', 'failed')
+      showError(error)
+    }
   }
 }
 
