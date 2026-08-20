@@ -42,14 +42,14 @@
         <div class="section-heading">
           <div><h2 id="channel-title" data-i18n="channel">Update channel</h2><p data-i18n="channelDetail">Experimental updates DSH only; the platform Environment remains on the supported release.</p></div>
           <div class="segmented" role="group" aria-label="Update channel" data-i18n-aria-label="channel">
-            <button type="button" data-channel="stable" data-i18n="stable">Stable</button>
+            <button type="button" data-channel="stable" aria-pressed="true" data-i18n="stable">Stable</button>
             <button type="button" data-channel="experimental" data-i18n="experimental">Experimental</button>
           </div>
         </div>
         <div class="versions" id="versions">
           <div><span data-i18n="current">Current</span><strong id="current-dsh">-</strong><small id="current-env">-</small></div>
           <div><span data-i18n="supported">Supported</span><strong id="supported-dsh">-</strong><small id="supported-env">-</small></div>
-          <div id="upstream-version"><span data-i18n="upstream">Upstream</span><strong id="upstream-dsh">-</strong><small data-i18n="officialNpm">Official npm</small></div>
+          <div id="upstream-version" hidden><span data-i18n="upstream">Upstream</span><strong id="upstream-dsh">-</strong><small data-i18n="officialNpm">Official npm</small></div>
         </div>
         <p id="notice" class="message notice" hidden></p>
       </section>
@@ -59,7 +59,7 @@
           <div><h2 id="actions-title" data-i18n="actions">Update actions</h2><p id="checked-at" data-i18n="notChecked">Not checked yet</p></div>
           <div class="actions">
             <button type="button" id="check" class="secondary"><span id="check-spinner" class="spinner" aria-hidden="true" hidden></span><span id="check-label" data-i18n="check">Check for updates</span></button>
-            <button type="button" id="update" class="primary" data-i18n="updateSupported">Update to latest supported</button>
+            <button type="button" id="update" class="primary" data-i18n="updateSupported" disabled>Update to latest supported</button>
             <button type="button" id="rollback" class="secondary" data-i18n="rollback" hidden>Roll back previous</button>
             <button type="button" id="return-stable" class="danger-text" data-i18n="returnStable" hidden>Return to Stable now</button>
           </div>

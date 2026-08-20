@@ -160,11 +160,14 @@ const tabButtons = [...document.querySelectorAll('[data-tab]')]
 let status
 let plugins = []
 let userPluginInventory = { revision: null, plugins: [] }
+let inventoriesLoaded = false
 const userPluginDraft = new Map()
 let rollbackPlan
-let loading = false
+let statusLoad
+let inventoryLoad
 let checking = false
 let acting = false
+let discardingPluginDraft = false
 let userPluginSubmitting = false
 let userPluginFeedback = null
 let eventSource
@@ -582,30 +585,69 @@ function render(next) {
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
   elements['plugin-restart-required'].hidden = !plugins.some(plugin => plugin.pendingRestart)
-  elements['plugin-restart-dsh'].disabled = busy
+  const pluginBusy = busy || discardingPluginDraft
+  elements['plugin-restart-dsh'].disabled = pluginBusy
   elements['plugin-restart-dsh'].textContent = restart.status === 'restarting' ? t('restarting') : t('restartDsh')
-  renderBundledPlugins(plugins, busy)
-  renderUserPlugins(busy)
+  if (inventoriesLoaded) {
+    renderBundledPlugins(plugins, pluginBusy)
+    renderUserPlugins(busy)
+  }
   renderReminder(next)
 }
 
-async function loadStatus() {
-  if (loading) return status
-  loading = true
+function loadInventories() {
+  if (inventoryLoad !== undefined) return inventoryLoad
+  inventoryLoad = (async () => {
+    try {
+      const [bundled, users] = await Promise.all([api('bundled-plugins'), api('user-plugins')])
+      plugins = bundled.plugins ?? []
+      userPluginInventory = users
+      inventoriesLoaded = true
+      if (status !== undefined) render(status)
+    } catch {
+      // Bootstrap-backed inventories can lag the Management service during startup.
+    }
+  })().finally(() => { inventoryLoad = undefined })
+  return inventoryLoad
+}
+
+function loadStatus() {
+  if (statusLoad !== undefined) return statusLoad
+  statusLoad = (async () => {
+    try {
+      const next = await api('status')
+      render(next)
+      clearError()
+      setConnection('online')
+      void loadInventories()
+      return next
+    } catch (error) {
+      showError(error)
+      setConnection('offline')
+      return undefined
+    }
+  })().finally(() => { statusLoad = undefined })
+  return statusLoad
+}
+
+async function discardSystemPluginDraft() {
+  if (window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) !== '1') return
+  discardingPluginDraft = true
+  if (status !== undefined) render(status)
   try {
-    const [next, bundled, users] = await Promise.all([api('status'), api('bundled-plugins'), api('user-plugins')])
-    plugins = bundled.plugins ?? []
-    userPluginInventory = users
-    render(next)
-    clearError()
-    setConnection('online')
-    return next
-  } catch (error) {
-    showError(error)
-    setConnection('offline')
-    return undefined
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      try {
+        await api('bundled-plugins/discard', { method: 'POST' })
+        window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+        await Promise.all([loadStatus(), loadInventories()])
+        return
+      } catch {
+        await new Promise(resolve => window.setTimeout(resolve, 100))
+      }
+    }
   } finally {
-    loading = false
+    discardingPluginDraft = false
+    if (status !== undefined) render(status)
   }
 }
 
@@ -1180,17 +1222,9 @@ applyTranslations()
 selectTab('updates')
 renderLogs()
 connectEvents()
-if (window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1') {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      await api('bundled-plugins/discard', { method: 'POST' })
-      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-      break
-    } catch {
-      await new Promise(resolve => window.setTimeout(resolve, 100))
-    }
-  }
-}
-const initial = await loadStatus()
-if (UPDATE_TERMINAL_STATES.has(initial?.update?.status ?? 'idle')) void checkUpdates('page-open')
+void (async () => {
+  const initial = await loadStatus()
+  await discardSystemPluginDraft()
+  if (initial !== undefined && UPDATE_TERMINAL_STATES.has(initial.update?.status ?? 'idle')) void checkUpdates('page-open')
+})()
 window.setInterval(() => { void loadStatus() }, 15_000)
