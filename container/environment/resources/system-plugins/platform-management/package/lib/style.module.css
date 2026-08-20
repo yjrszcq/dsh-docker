@@ -1,10 +1,16 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   width: 100%;
-  max-width: 720px;
+  max-width: 760px;
   color: var(--dsw-alias-label-primary);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .sectionHeading {
@@ -28,7 +34,13 @@
   font-weight: 600;
 }
 
-.intro,
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .sectionHeading p {
   margin: 2px 0 0;
   font-size: 13px;
@@ -61,7 +73,8 @@
 
 .tabs {
   display: flex;
-  gap: 24px;
+  align-items: flex-end;
+  gap: 22px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -72,6 +85,7 @@
   touch-action: pan-x;
   white-space: nowrap;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
+  margin-top: 2px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -81,37 +95,47 @@
 .tabs button {
   position: relative;
   flex: none;
-  min-height: 36px;
-  padding: 0 2px;
+  padding: 7px 1px 9px;
   border: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-tertiary);
   background: transparent;
   font: inherit;
   font-size: 13px;
+  line-height: 20px;
   scroll-snap-align: start;
   cursor: pointer;
 }
 
-.tabs button:hover { color: var(--dsw-alias-label-primary); }
+.tabs button:hover,
 .tabs button[aria-selected='true'] {
   color: var(--dsw-alias-label-primary);
-  font-weight: 600;
 }
 
-.tabs button[aria-selected='true']::after {
+.tabs button[aria-selected='true']::after,
+.tabs button:focus-visible::after {
   position: absolute;
   right: 0;
   bottom: -1px;
   left: 0;
   height: 2px;
+  border-radius: 2px 2px 0 0;
   background: var(--dsw-alias-label-primary);
   content: '';
+}
+
+.tabs button:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .tabPanel {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
+  padding-top: 2px;
 }
 
 .tabPanel[hidden] { display: none; }
@@ -412,8 +436,6 @@
 .reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 @media (max-width: 640px) {
-  .root { gap: 16px; }
-  .tabs { gap: 20px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .actionHeading { align-items: flex-start; }
   .versions { grid-template-columns: 1fr; }
