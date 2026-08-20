@@ -14,7 +14,7 @@ export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh'])],
   ['PUT', new Set(['channel'])],
 ])
 

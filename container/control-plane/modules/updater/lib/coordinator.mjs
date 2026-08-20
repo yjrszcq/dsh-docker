@@ -39,6 +39,10 @@ export class UpdateCoordinator extends EventEmitter {
     return value
   }
 
+  hasActiveTask() {
+    return this.task !== undefined
+  }
+
   check() {
     if (this.task !== undefined) return Promise.reject(new UpdateConflictError('an update task is already running'))
     if (this.checkTask !== undefined) return this.checkTask

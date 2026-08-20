@@ -54,6 +54,7 @@ export class BootstrapRuntime {
   reload() { return this.environment.reload() }
   suspend(componentId) { return this.environment.suspend(componentId) }
   resume(componentId) { return this.environment.resume(componentId) }
+  restart(componentId) { return this.environment.restart(componentId) }
   health() { return this.environment.health() }
 
   status() {

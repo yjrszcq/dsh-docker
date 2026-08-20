@@ -69,9 +69,20 @@ export function createBootstrapControl(runner, { deployments, trust } = {}) {
         send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments }).collect())
       }
       else {
-        const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume)$/.exec(pathname)
+        const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume|restart)$/.exec(pathname)
         if (request.method === 'POST' && operation !== null) {
-          send(response, 200, await runner[operation[2]](operation[1]))
+          const [componentId, action] = operation.slice(1)
+          if (componentId === 'dsh-runtime' && action === 'restart' && deployments !== undefined) {
+            await deployments.setOperation('restarting')
+            try {
+              const status = await runner.restart(componentId)
+              await deployments.setOperation(null)
+              send(response, 200, status)
+            } catch (error) {
+              await deployments.setOperation('restart-failed').catch(() => {})
+              throw error
+            }
+          } else send(response, 200, await runner[action](componentId))
         } else send(response, 404, { error: 'not found' })
       }
     } catch (error) {

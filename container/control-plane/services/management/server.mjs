@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { UpdateConflictError } from '../../modules/updater/lib/coordinator.mjs'
@@ -82,16 +83,58 @@ export function createManagementServer({
   coordinator,
   logs,
   platformStatus = async () => ({}),
+  restartDsh = async () => { throw new Error('DSH restart is not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
-  return createServer(async (request, response) => {
+  let restartTask
+  let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
+  let server
+
+  const publishRestart = value => {
+    restartState = Object.freeze({ ...restartState, ...value, updatedAt: new Date().toISOString() })
+    server.emit('management-state', restartState)
+  }
+
+  const requireRuntimeIdle = () => {
+    if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
+  }
+
+  const startRestart = () => {
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    publishRestart({ status: 'restarting', taskId, error: null })
+    restartTask = Promise.resolve()
+      .then(() => logs.audit('dsh.restart.started', { taskId }))
+      .then(() => restartDsh())
+      .then(
+        async () => {
+          publishRestart({ status: 'success', taskId, error: null })
+          await logs.audit('dsh.restart.completed', { taskId })
+        },
+        async error => {
+          const message = error instanceof Error ? error.message : 'DSH restart failed'
+          publishRestart({ status: 'failed', taskId, error: message })
+          await logs.audit('dsh.restart.failed', { error: message, taskId })
+        },
+      )
+      .finally(() => { restartTask = undefined })
+    restartTask.catch(() => {})
+    return { taskId }
+  }
+
+  server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
       if (await sendConsoleAsset(request, response, url.pathname, consoleRoot)) return
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {
-        send(response, 200, { ...(await coordinator.publicStatus()), ...(await platformStatus()) })
+        send(response, 200, {
+          ...(await coordinator.publicStatus()),
+          ...(await platformStatus()),
+          dshRestart: restartState,
+        })
       } else if (request.method === 'POST' && route === 'check') {
         const target = await coordinator.check()
         send(response, 200, target.unavailable === true
@@ -102,6 +145,7 @@ export function createManagementServer({
               desired: target.value.desired,
             })
       } else if (request.method === 'POST' && route === 'update') {
+        requireRuntimeIdle()
         const task = coordinator.startReconcile()
         void task.completion
           .then(
@@ -111,6 +155,9 @@ export function createManagementServer({
           .catch(() => {})
         await logs.audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
+      } else if (request.method === 'POST' && route === 'restart-dsh') {
+        const task = startRestart()
+        send(response, 202, task)
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
         send(response, 200, await coordinator.setChannel(body.channel))
@@ -120,6 +167,7 @@ export function createManagementServer({
       } else if (request.method === 'GET' && route === 'rollback-plan') {
         send(response, 200, { plan: await coordinator.rollbackPlan() })
       } else if (request.method === 'POST' && ['rollback', 'return-stable'].includes(route)) {
+        requireRuntimeIdle()
         const body = await jsonBody(request)
         const task = coordinator.startCompleteRollback(body.planId, {
           requireConfirmation: route === 'return-stable',
@@ -139,7 +187,11 @@ export function createManagementServer({
         event(response, 'state', await coordinator.state.read())
         const listener = value => event(response, 'state', value)
         coordinator.on('state', listener)
-        response.once('close', () => coordinator.off('state', listener))
+        server.on('management-state', listener)
+        response.once('close', () => {
+          coordinator.off('state', listener)
+          server.off('management-state', listener)
+        })
       } else if (request.method === 'GET' && route === 'logs') {
         send(response, 200, { entries: await logs.query(logOptions(url)) })
       } else if (request.method === 'GET' && route === 'logs/stream') {
@@ -159,6 +211,7 @@ export function createManagementServer({
       })
     }
   })
+  return server
 }
 
 export async function listenManagement(server, socketPath) {

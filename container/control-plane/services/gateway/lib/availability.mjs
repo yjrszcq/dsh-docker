@@ -6,6 +6,7 @@ const RECOVERING_STATES = new Set(['restoring-data'])
 const COPY = Object.freeze({
   en: Object.freeze({
     starting: 'DeepSeek Harness is starting',
+    restarting: 'DeepSeek Harness is restarting',
     switching: 'Switching the DeepSeek Harness runtime',
     recovering: 'Restoring DeepSeek Harness',
     failed: 'DeepSeek Harness could not start',
@@ -13,6 +14,7 @@ const COPY = Object.freeze({
   }),
   zh: Object.freeze({
     starting: 'DeepSeek Harness 正在启动',
+    restarting: 'DeepSeek Harness 正在重新启动',
     switching: '正在切换 DeepSeek Harness 运行版本',
     recovering: '平台正在恢复 DeepSeek Harness',
     failed: 'DeepSeek Harness 启动失败',
@@ -42,6 +44,8 @@ export class DshAvailability {
   }
 
   classify(platform = {}) {
+    if (platform.operation === 'restart-failed') return 'failed'
+    if (platform.operation === 'restarting') return 'restarting'
     if (platform.operation === 'recovering') return 'recovering'
     if (platform.operation === 'switching') return 'switching'
     const updateState = platform.update?.status

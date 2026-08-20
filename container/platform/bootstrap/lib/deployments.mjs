@@ -587,4 +587,12 @@ export class DeploymentManager {
     })
     return writeDeploymentStatus(this.paths.deploymentStatusPath, value)
   }
+
+  async setOperation(operation) {
+    const status = await readDeploymentStatus(this.paths.deploymentStatusPath)
+    return writeDeploymentStatus(this.paths.deploymentStatusPath, Object.freeze({
+      ...status,
+      operation,
+    }))
+  }
 }

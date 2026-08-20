@@ -26,6 +26,7 @@ const paths = new PlatformPaths(dataRoot, runRoot)
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const trust = new LocalApiClient(paths.trustSocket)
+const bootstrap = new LocalApiClient(paths.bootstrapSocket)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -65,6 +66,7 @@ const server = createManagementServer({
     ...await readDeploymentStatus(paths.deploymentStatusPath),
     trust: await trust.status(),
   }),
+  restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
 })
 await listenManagement(server, paths.managementSocket)
 const scheduler = new UpdateScheduler({

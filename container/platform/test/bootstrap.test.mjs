@@ -141,7 +141,7 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   await runner.stop()
 })
 
-test('suspends and resumes one service while keeping other Environment components running', async () => {
+test('suspends, resumes, and restarts one service while keeping other Environment components running', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-suspend-'))
   const service = join(temp, 'service.mjs')
   await writeFile(service, 'setInterval(() => {}, 1000)')
@@ -158,11 +158,16 @@ test('suspends and resumes one service while keeping other Environment component
   assert.equal((await runner.health()).healthy, false)
   await runner.resume('dsh-runtime')
   assert.deepEqual(runner.status().components.map(value => value.id), ['dsh-runtime', 'platform-management'])
+  const managementPid = runner.status().components.find(value => value.id === 'platform-management').pid
+  const firstDshPid = runner.status().components.find(value => value.id === 'dsh-runtime').pid
+  await runner.restart('dsh-runtime')
+  assert.notEqual(runner.status().components.find(value => value.id === 'dsh-runtime').pid, firstDshPid)
+  assert.equal(runner.status().components.find(value => value.id === 'platform-management').pid, managementPid)
   assert.equal((await runner.health()).healthy, true)
   await runner.stop()
 })
 
-test('Bootstrap control socket exposes component suspension, resumption, and health', async () => {
+test('Bootstrap control socket exposes component suspension, resumption, restart, and health', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-control-'))
   const calls = []
   const runner = {
@@ -171,8 +176,12 @@ test('Bootstrap control socket exposes component suspension, resumption, and hea
     health: async () => ({ healthy: true, components: [] }),
     suspend: async id => { calls.push(['suspend', id]); return {} },
     resume: async id => { calls.push(['resume', id]); return {} },
+    restart: async id => { calls.push(['restart', id]); return {} },
   }
-  const server = createBootstrapControl(runner)
+  const deployments = {
+    setOperation: async operation => { calls.push(['operation', operation]) },
+  }
+  const server = createBootstrapControl(runner, { deployments })
   const socket = join(root, 'run', 'bootstrap.sock')
   await listenBootstrapControl(server, socket)
   const client = new LocalApiClient(socket)
@@ -180,7 +189,14 @@ test('Bootstrap control socket exposes component suspension, resumption, and hea
     assert.equal((await client.request('GET', '/v1/health')).healthy, true)
     await client.request('POST', '/v1/components/dsh-runtime/suspend')
     await client.request('POST', '/v1/components/dsh-runtime/resume')
-    assert.deepEqual(calls, [['suspend', 'dsh-runtime'], ['resume', 'dsh-runtime']])
+    await client.request('POST', '/v1/components/dsh-runtime/restart')
+    assert.deepEqual(calls, [
+      ['suspend', 'dsh-runtime'],
+      ['resume', 'dsh-runtime'],
+      ['operation', 'restarting'],
+      ['restart', 'dsh-runtime'],
+      ['operation', null],
+    ])
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
@@ -207,6 +223,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     reload: async () => { calls.push(`${name}:reload`); return status },
     suspend: async id => { calls.push(`${name}:suspend:${id}`); return status },
     resume: async id => { calls.push(`${name}:resume:${id}`); return status },
+    restart: async id => { calls.push(`${name}:restart:${id}`); return status },
     health: async () => ({ healthy: true, components: status.components }),
     status: () => status,
   })
@@ -223,6 +240,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   await runtime.start()
   await runtime.suspend('dsh-runtime')
   await runtime.resume('dsh-runtime')
+  await runtime.restart('dsh-runtime')
   await runtime.reload()
   assert.equal((await runtime.health()).healthy, true)
   assert.deepEqual(runtime.status().controlPlane, [{ id: 'gateway' }])
@@ -233,6 +251,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     'environment:start',
     'environment:suspend:dsh-runtime',
     'environment:resume:dsh-runtime',
+    'environment:restart:dsh-runtime',
     'environment:reload',
     'environment:stop',
     'control:stop',

@@ -23,6 +23,8 @@ class Coordinator extends EventEmitter {
     return { update: this.value, updateChannel: 'experimental', holds: [], experimentalBlocked: null, rollbackPlan: { planId: 'plan-a' } }
   }
 
+  hasActiveTask() { return this.running === true }
+
   async check() {
     return { value: { targetSequence: 2, desired: { dsh: { version: 'rc.8' } } } }
   }
@@ -104,6 +106,73 @@ test('management reports unpublished development metadata without an HTTP error'
       available: false,
       upstream: { version: 'rc.10' },
     })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management restarts only DSH as an audited task and excludes update activation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-restart-'))
+  const coordinator = new Coordinator()
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let finishRestart
+  const restartCompletion = new Promise(resolve => { finishRestart = resolve })
+  let restarts = 0
+  const server = createManagementServer({
+    coordinator,
+    logs,
+    restartDsh: async () => {
+      restarts += 1
+      await restartCompletion
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const task = await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
+    assert.equal(typeof task.taskId, 'string')
+    assert.equal(restarts, 1)
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).dshRestart.status, 'restarting')
+    await assert.rejects(
+      client.request('POST', '/_dsh_platform/api/v1/restart-dsh'),
+      error => error.statusCode === 409,
+    )
+    await assert.rejects(
+      client.request('POST', '/_dsh_platform/api/v1/update'),
+      error => error.statusCode === 409,
+    )
+    finishRestart()
+    await new Promise(resolve => setImmediate(resolve))
+    await logs.queue
+    const status = await client.request('GET', '/_dsh_platform/api/v1/status')
+    assert.equal(status.dshRestart.status, 'success')
+    assert.equal(status.dshRestart.taskId, task.taskId)
+    assert.deepEqual(
+      (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
+      ['dsh.restart.started', 'dsh.restart.completed'],
+    )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management rejects DSH restart while an update task is active', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-restart-conflict-'))
+  const coordinator = new Coordinator()
+  coordinator.running = true
+  const server = createManagementServer({
+    coordinator,
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    restartDsh: async () => {},
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    await assert.rejects(
+      new LocalApiClient(socketPath).request('POST', '/_dsh_platform/api/v1/restart-dsh'),
+      error => error.statusCode === 409,
+    )
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

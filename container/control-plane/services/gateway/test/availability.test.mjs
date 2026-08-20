@@ -65,6 +65,13 @@ test('holding pages prefer the last DSH locale cookie over browser language', ()
   assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), /平台正在恢复/)
 })
 
+test('intentional DSH restarts have explicit holding and failure states', () => {
+  const availability = new DshAvailability()
+  assert.equal(availability.classify({ operation: 'restarting' }), 'restarting')
+  assert.equal(availability.classify({ operation: 'restart-failed' }), 'failed')
+  assert.match(availabilityPage('restarting', { 'accept-language': 'zh-CN' }), /正在重新启动/)
+})
+
 test('cold start serves a holding page while API and WebSocket-shaped HTTP requests receive 503', async () => {
   const { gateway, port } = await unavailableGateway()
   try {
