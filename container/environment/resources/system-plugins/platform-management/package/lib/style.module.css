@@ -430,14 +430,6 @@
   color: var(--dsw-alias-state-warn-label);
   font-weight: 500;
 }
-.pluginInstallHint {
-  margin: -2px 0 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-.pluginInstallHint a { color: var(--dsw-alias-state-business-primary); text-decoration: none; }
-.pluginInstallHint a:hover { text-decoration: underline; }
 .managedBadge {
   padding: 3px 9px;
   border-radius: 12px;
