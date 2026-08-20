@@ -1,10 +1,21 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { artifactForReference, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
 import { hashTree } from '../../../platform/lib/tree-hash.mjs'
+
+const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
+const SELECTION_SCHEMA = 1
+export const PROTECTED_SYSTEM_PLUGIN_IDS = Object.freeze(['platform-management'])
+
+function assertPluginId(pluginId) {
+  if (typeof pluginId !== 'string' || !PLUGIN_ID_PATTERN.test(pluginId)) {
+    throw new Error('System Plugin ID is invalid')
+  }
+  return pluginId
+}
 
 function run(command, args) {
   return new Promise((resolveRun, reject) => {
@@ -113,6 +124,166 @@ async function readOverlay(root) {
   const patch = JSON.parse(await readFile(join(root, 'cordis.patch.yml'), 'utf8'))
   if (!Array.isArray(patch)) throw new Error('System Plugin overlay patch must be an array')
   return patch
+}
+
+function defaultSelection(pluginIds, protectedIds) {
+  return Object.fromEntries(pluginIds.map(id => [id, {
+    installed: true,
+    enabled: true,
+    protected: protectedIds.has(id),
+  }]))
+}
+
+function validateSelectionDocument(value, pluginIds, protectedIds) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || value.schema !== SELECTION_SCHEMA
+    || value.plugins === null || typeof value.plugins !== 'object' || Array.isArray(value.plugins)) {
+    throw new Error('System Plugin selection state is invalid')
+  }
+  const selection = defaultSelection(pluginIds, protectedIds)
+  for (const id of pluginIds) {
+    const saved = value.plugins[id]
+    if (saved === undefined) continue
+    if (saved === null || typeof saved !== 'object' || Array.isArray(saved)
+      || typeof saved.installed !== 'boolean' || typeof saved.enabled !== 'boolean') {
+      throw new Error(`System Plugin ${id} selection state is invalid`)
+    }
+    if (saved.enabled && !saved.installed) {
+      throw new Error(`System Plugin ${id} cannot be enabled while it is not installed`)
+    }
+    if (!protectedIds.has(id)) {
+      selection[id] = { installed: saved.installed, enabled: saved.enabled, protected: false }
+    }
+  }
+  return selection
+}
+
+export class SystemPluginSelectionStore {
+  constructor(path, { protectedIds = PROTECTED_SYSTEM_PLUGIN_IDS } = {}) {
+    this.path = resolve(path)
+    this.protectedIds = new Set(protectedIds)
+  }
+
+  async read(pluginIds) {
+    const ids = pluginIds.map(assertPluginId)
+    let value
+    try {
+      value = JSON.parse(await readFile(this.path, 'utf8'))
+    } catch (error) {
+      if (error?.code === 'ENOENT') return defaultSelection(ids, this.protectedIds)
+      throw error
+    }
+    return validateSelectionDocument(value, ids, this.protectedIds)
+  }
+
+  async write(pluginIds, selection) {
+    const ids = pluginIds.map(assertPluginId)
+    const normalized = validateSelectionDocument({ schema: SELECTION_SCHEMA, plugins: selection }, ids, this.protectedIds)
+    const document = {
+      schema: SELECTION_SCHEMA,
+      plugins: Object.fromEntries(ids.map(id => [id, {
+        installed: normalized[id].installed,
+        enabled: normalized[id].enabled,
+      }])),
+    }
+    await mkdir(dirname(this.path), { recursive: true })
+    const temporary = `${this.path}.${randomUUID()}.tmp`
+    try {
+      await writeFile(temporary, `${canonicalJson(document)}\n`, { flag: 'wx', mode: 0o600 })
+      await rename(temporary, this.path)
+    } finally {
+      await rm(temporary, { force: true })
+    }
+    return normalized
+  }
+
+  async configure(pluginIds, pluginId, action) {
+    const ids = pluginIds.map(assertPluginId)
+    assertPluginId(pluginId)
+    if (!ids.includes(pluginId)) throw new Error(`System Plugin ${pluginId} is not provided by the current Environment`)
+    if (this.protectedIds.has(pluginId)) throw new Error(`System Plugin ${pluginId} is managed by the platform and cannot be changed`)
+    if (!['install', 'delete', 'enable', 'disable'].includes(action)) {
+      throw new Error('System Plugin action is invalid')
+    }
+    const selection = await this.read(ids)
+    const current = selection[pluginId]
+    if (action === 'install') selection[pluginId] = { ...current, installed: true, enabled: true }
+    else if (action === 'delete') selection[pluginId] = { ...current, installed: false, enabled: false }
+    else if (action === 'enable') {
+      if (!current.installed) throw new Error(`System Plugin ${pluginId} must be installed before it can be enabled`)
+      selection[pluginId] = { ...current, enabled: true }
+    } else selection[pluginId] = { ...current, enabled: false }
+    return this.write(ids, selection)
+  }
+}
+
+async function pluginCatalog(environmentRoot) {
+  const root = resolve(environmentRoot)
+  const manifest = parseEnvironmentManifest(await readFile(join(root, 'environment.manifest.json')))
+  return {
+    root,
+    plugins: manifest.systemPlugins.map(reference => ({
+      id: reference.id,
+      descriptor: artifactForReference(manifest, reference),
+    })),
+  }
+}
+
+export async function listManagedSystemPlugins({ environmentRoot, selectionStore }) {
+  const catalog = await pluginCatalog(environmentRoot)
+  const selection = await selectionStore.read(catalog.plugins.map(plugin => plugin.id))
+  return Object.freeze(catalog.plugins.map(({ id, descriptor }) => Object.freeze({
+    id,
+    artifactId: descriptor.id,
+    sha256: descriptor.sha256,
+    installed: selection[id].installed,
+    enabled: selection[id].enabled,
+    protected: selection[id].protected,
+    reason: null,
+  })))
+}
+
+export async function materializeSystemPluginSelection({
+  environmentRoot,
+  sourceRoot,
+  outputRoot,
+  selectionStore,
+}) {
+  const catalog = await pluginCatalog(environmentRoot)
+  const pluginIds = catalog.plugins.map(plugin => plugin.id)
+  const selection = await selectionStore.read(pluginIds)
+  const root = resolve(outputRoot)
+  const staging = join(root, `.selection.${randomUUID()}.tmp`)
+  const destination = join(root, `selection-${randomUUID()}`)
+  const patches = []
+  await mkdir(join(staging, 'packages'), { recursive: true })
+  try {
+    for (const { id } of catalog.plugins) {
+      if (!selection[id].installed) continue
+      const packageRoot = join(resolve(sourceRoot), 'packages', id)
+      const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+      const packageName = validatePackage(metadata, id)
+      const patch = JSON.parse(await readFile(join(packageRoot, 'cordis.patch.json'), 'utf8'))
+      const validatedPatch = validatePatch(patch, id, packageName)
+      await symlink(packageRoot, join(staging, 'packages', id), 'dir')
+      if (selection[id].enabled) patches.push(...validatedPatch)
+    }
+    await writeFile(join(staging, 'cordis.patch.yml'), canonicalJson(patches), { flag: 'wx' })
+    await rename(staging, destination)
+    return Object.freeze({ path: destination, plugins: await listManagedSystemPlugins({ environmentRoot, selectionStore }) })
+  } catch (error) {
+    await rm(staging, { recursive: true, force: true })
+    throw error
+  }
+}
+
+export async function pruneSystemPluginSelectionViews({ outputRoot, keepPath }) {
+  const root = resolve(outputRoot)
+  const keep = resolve(keepPath)
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.name.startsWith('selection-')) continue
+    const candidate = join(root, entry.name)
+    if (candidate !== keep) await rm(candidate, { recursive: true, force: true })
+  }
 }
 
 export async function listBundledSystemPlugins({ environmentRoot, viewRoot }) {

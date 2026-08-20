@@ -31,9 +31,9 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
       else if (request.method === 'GET' && pathname === '/v1/health') send(response, 200, await runner.health())
       else if (request.method === 'GET' && pathname === '/v1/system-plugins' && systemPlugins !== undefined) {
         send(response, 200, { plugins: await systemPlugins.list() })
-      } else if (request.method === 'POST' && pathname === '/v1/system-plugins/reinstall' && systemPlugins !== undefined) {
+      } else if (request.method === 'POST' && pathname === '/v1/system-plugins/action' && systemPlugins !== undefined) {
         const body = await jsonBody(request)
-        send(response, 200, { plugins: await systemPlugins.reinstall(body.id) })
+        send(response, 200, { plugins: await systemPlugins.configure(body.id, body.action) })
       }
       else if (request.method === 'GET' && pathname === '/v1/deployments/current' && deployments !== undefined) {
         const state = await deployments.state()

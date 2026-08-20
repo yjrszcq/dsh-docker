@@ -163,7 +163,7 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/rollback'],
       ['POST', '/_dsh_platform/api/v1/return-stable'],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
-      ['POST', '/_dsh_platform/api/v1/bundled-plugins/reinstall'],
+      ['POST', '/_dsh_platform/api/v1/bundled-plugins/action'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],
       ['GET', '/_dsh_platform/ui/'],

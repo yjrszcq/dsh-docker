@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -7,8 +7,11 @@ import test from 'node:test'
 import {
   linkSystemPluginScope,
   listBundledSystemPlugins,
+  listManagedSystemPlugins,
+  materializeSystemPluginSelection,
   rebuildBundledSystemPluginView,
   reconcileSystemPlugins,
+  SystemPluginSelectionStore,
 } from '../../control-plane/modules/system-plugin-manager/index.mjs'
 import { createHash } from 'node:crypto'
 import { hashTree } from '../lib/tree-hash.mjs'
@@ -161,4 +164,90 @@ test('rebuilds a bundled System Plugin view only from the current Environment ar
     expectedSha256,
     requestedPluginId: 'unknown',
   }), /not bundled/)
+})
+
+test('persists install and enable selection while protecting Platform Management', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-system-plugin-selection-'))
+  const environment = join(root, 'environment')
+  const definitions = [
+    ['platform-management', '1'],
+    ['diagnostics', '2'],
+  ]
+  const artifacts = []
+  await mkdir(join(environment, 'artifacts'), { recursive: true })
+  for (const [id] of definitions) {
+    const artifact = await archive(root, id, [{
+      insert: [{ id: `dsh-docker.${id}.plugin`, name: `@dsh-docker/${id}` }],
+    }])
+    const bytes = await readFile(artifact)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const artifactId = `system-plugin-${id}`
+    await cp(artifact, join(environment, 'artifacts', artifactId))
+    artifacts.push({ id: artifactId, sha256, size: bytes.byteLength, pluginId: id, path: artifact })
+  }
+  await writeFile(join(environment, 'environment.manifest.json'), JSON.stringify({
+    schema: 1,
+    manifestType: 'environment',
+    version: '2026.08.20.1',
+    keyringGeneration: 1,
+    targetSequence: 1,
+    issuedAt: '2026-08-20T00:00:00.000Z',
+    artifacts: artifacts.map(artifact => ({
+      id: artifact.id,
+      mediaType: 'application/vnd.dsh-platform.system-plugin.v1+tar+gzip',
+      sha256: artifact.sha256,
+      size: artifact.size,
+      url: `https://example.invalid/${artifact.id}`,
+    })),
+    bootstrapApi: 1,
+    components: [],
+    patches: [],
+    systemPlugins: artifacts.map(artifact => ({ id: artifact.pluginId, sha256: artifact.sha256 })),
+  }))
+  const source = await reconcileSystemPlugins({
+    root: join(root, 'source'),
+    environmentVersion: 'fixture',
+    plugins: artifacts.map(artifact => ({ id: artifact.pluginId, sha256: artifact.sha256 })),
+    artifactPath: reference => artifacts.find(artifact => artifact.pluginId === reference.id).path,
+  })
+  const store = new SystemPluginSelectionStore(join(root, 'state', 'system-plugins.json'))
+  const pluginIds = artifacts.map(artifact => artifact.pluginId)
+  const initial = await listManagedSystemPlugins({ environmentRoot: environment, selectionStore: store })
+  assert.deepEqual(initial.map(plugin => [plugin.id, plugin.installed, plugin.enabled, plugin.protected]), [
+    ['platform-management', true, true, true],
+    ['diagnostics', true, true, false],
+  ])
+
+  await assert.rejects(store.configure(pluginIds, 'platform-management', 'delete'), /managed by the platform/)
+  await store.configure(pluginIds, 'diagnostics', 'disable')
+  const disabled = await materializeSystemPluginSelection({
+    environmentRoot: environment,
+    sourceRoot: source,
+    outputRoot: join(root, 'views'),
+    selectionStore: store,
+  })
+  assert.equal((await lstat(join(disabled.path, 'packages', 'diagnostics'))).isSymbolicLink(), true)
+  assert.deepEqual(JSON.parse(await readFile(join(disabled.path, 'cordis.patch.yml'), 'utf8'))
+    .flatMap(entry => entry.insert).map(row => row.name), ['@dsh-docker/platform-management'])
+
+  await store.configure(pluginIds, 'diagnostics', 'delete')
+  const deleted = await materializeSystemPluginSelection({
+    environmentRoot: environment,
+    sourceRoot: source,
+    outputRoot: join(root, 'views'),
+    selectionStore: store,
+  })
+  await assert.rejects(lstat(join(deleted.path, 'packages', 'diagnostics')), error => error.code === 'ENOENT')
+  assert.deepEqual((await listManagedSystemPlugins({ environmentRoot: environment, selectionStore: store }))
+    .map(plugin => [plugin.id, plugin.installed, plugin.enabled]), [
+      ['platform-management', true, true],
+      ['diagnostics', false, false],
+    ])
+
+  await store.configure(pluginIds, 'diagnostics', 'install')
+  assert.deepEqual((await new SystemPluginSelectionStore(join(root, 'state', 'system-plugins.json')).read(pluginIds)).diagnostics, {
+    installed: true,
+    enabled: true,
+    protected: false,
+  })
 })

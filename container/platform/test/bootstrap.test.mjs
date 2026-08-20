@@ -233,8 +233,8 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
   }
   const systemPlugins = {
     list: async () => [{ id: 'platform-management', installed: true }],
-    reinstall: async id => {
-      calls.push(['reinstall', id])
+    configure: async (id, action) => {
+      calls.push(['configure', id, action])
       return [{ id, installed: true }]
     },
   }
@@ -247,14 +247,14 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     assert.deepEqual((await client.request('GET', '/v1/system-plugins')).plugins, [{
       id: 'platform-management', installed: true,
     }])
-    assert.deepEqual((await client.request('POST', '/v1/system-plugins/reinstall', {
-      id: 'platform-management',
-    })).plugins, [{ id: 'platform-management', installed: true }])
+    assert.deepEqual((await client.request('POST', '/v1/system-plugins/action', {
+      id: 'diagnostics', action: 'disable',
+    })).plugins, [{ id: 'diagnostics', installed: true }])
     await client.request('POST', '/v1/components/dsh-runtime/suspend')
     await client.request('POST', '/v1/components/dsh-runtime/resume')
     await client.request('POST', '/v1/components/dsh-runtime/restart')
     assert.deepEqual(calls, [
-      ['reinstall', 'platform-management'],
+      ['configure', 'diagnostics', 'disable'],
       ['suspend', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],

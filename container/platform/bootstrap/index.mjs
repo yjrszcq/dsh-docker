@@ -12,8 +12,10 @@ import { DeploymentManager, DeploymentResolutionError } from './lib/deployments.
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import {
   linkSystemPluginScope,
-  listBundledSystemPlugins,
-  rebuildBundledSystemPluginView,
+  listManagedSystemPlugins,
+  materializeSystemPluginSelection,
+  pruneSystemPluginSelectionViews,
+  SystemPluginSelectionStore,
 } from '../../control-plane/modules/system-plugin-manager/index.mjs'
 import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
@@ -54,6 +56,20 @@ await linkSystemPluginScope({
   dshHome: process.env.DSH_HOME ?? '/data/dsh',
   viewRoot: join(paths.viewsRoot, 'system-plugins'),
 })
+const systemPluginSelections = new SystemPluginSelectionStore(join(paths.deploymentStateRoot, 'system-plugins.json'))
+const applySystemPluginSelection = async () => {
+  const selected = await deployments.selected()
+  if (selected === null) return []
+  const materialized = await materializeSystemPluginSelection({
+    environmentRoot: selected.paths.environment,
+    sourceRoot: selected.paths['system-plugins'],
+    outputRoot: paths.systemPluginViewsRoot,
+    selectionStore: systemPluginSelections,
+  })
+  await replaceSystemPluginView(paths, materialized.path)
+  await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: materialized.path })
+  return materialized.plugins
+}
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -79,37 +95,44 @@ const environment = new EnvironmentRunner({
 const runtime = new BootstrapRuntime({
   controlPlane,
   environment,
-  validateDeployment: () => verifyRuntimePatches({
-    runtimeRoot: join(paths.viewsRoot, 'runtime'),
-    environmentRoot: join(paths.viewsRoot, 'environment'),
-  }),
+  validateDeployment: async () => {
+    await verifyRuntimePatches({
+      runtimeRoot: join(paths.viewsRoot, 'runtime'),
+      environmentRoot: join(paths.viewsRoot, 'environment'),
+    })
+    await applySystemPluginSelection()
+  },
 })
 const systemPlugins = {
   list: async () => {
     const resolved = await deployments.selected()
     if (resolved === null) return []
-    return listBundledSystemPlugins({
+    return listManagedSystemPlugins({
       environmentRoot: resolved.paths.environment,
-      viewRoot: join(paths.viewsRoot, 'system-plugins'),
+      selectionStore: systemPluginSelections,
     })
   },
-  reinstall: pluginId => deployments.exclusive(async () => {
+  configure: (pluginId, action) => deployments.exclusive(async () => {
     const resolved = await deployments.selected()
     if (resolved === null) throw new Error('no Deployment is selected')
+    const before = await systemPlugins.list()
+    const pluginIds = before.map(plugin => plugin.id)
+    const previousSelection = await systemPluginSelections.read(pluginIds)
     await deployments.setOperation('restarting')
     try {
-      const repaired = await rebuildBundledSystemPluginView({
-        environmentRoot: resolved.paths.environment,
-        outputRoot: paths.systemPluginViewsRoot,
-        expectedSha256: resolved.record.systemPlugins.sha256,
-        requestedPluginId: pluginId,
-      })
-      await replaceSystemPluginView(paths, repaired)
+      await systemPluginSelections.configure(pluginIds, pluginId, action)
       await runtime.restart('dsh-runtime')
       await deployments.setOperation(null)
       return systemPlugins.list()
     } catch (error) {
-      await deployments.setOperation('restart-failed').catch(() => {})
+      try {
+        await systemPluginSelections.write(pluginIds, previousSelection)
+        await runtime.restart('dsh-runtime')
+      } catch (rollbackError) {
+        await deployments.setOperation('restart-failed').catch(() => {})
+        throw new AggregateError([error, rollbackError], 'System Plugin operation and rollback failed')
+      }
+      await deployments.setOperation(null).catch(() => {})
       throw error
     }
   }),

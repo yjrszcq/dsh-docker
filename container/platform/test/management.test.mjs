@@ -226,8 +226,8 @@ test('management rejects DSH restart while an update task is active', async () =
   }
 })
 
-test('management reinstalls a bundled plugin as an audited task and excludes runtime changes', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-reinstall-'))
+test('management changes a bundled plugin as an audited task and excludes runtime changes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-action-'))
   const coordinator = new Coordinator()
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   let finish
@@ -236,9 +236,9 @@ test('management reinstalls a bundled plugin as an audited task and excludes run
   const server = createManagementServer({
     coordinator,
     logs,
-    listBundledPlugins: async () => [{ id: 'platform-management', installed: true }],
-    reinstallBundledPlugin: async id => {
-      calls.push(id)
+    listBundledPlugins: async () => [{ id: 'diagnostics', installed: true, enabled: true, protected: false }],
+    configureBundledPlugin: async (id, action) => {
+      calls.push([id, action])
       await completion
     },
     restartDsh: async () => {},
@@ -248,19 +248,19 @@ test('management reinstalls a bundled plugin as an audited task and excludes run
   const client = new LocalApiClient(socketPath)
   try {
     assert.deepEqual((await client.request('GET', '/_dsh_platform/api/v1/bundled-plugins')).plugins, [{
-      id: 'platform-management', installed: true,
+      id: 'diagnostics', installed: true, enabled: true, protected: false,
     }])
-    const task = await client.request('POST', '/_dsh_platform/api/v1/bundled-plugins/reinstall', {
-      id: 'platform-management',
+    const task = await client.request('POST', '/_dsh_platform/api/v1/bundled-plugins/action', {
+      id: 'diagnostics', action: 'disable',
     })
     assert.equal(typeof task.taskId, 'string')
     for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 5))
     }
-    assert.deepEqual(calls, ['platform-management'])
-    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).bundledPluginReinstall.status, 'reinstalling')
+    assert.deepEqual(calls, [['diagnostics', 'disable']])
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'running')
     for (const [method, path, body] of [
-      ['POST', '/_dsh_platform/api/v1/bundled-plugins/reinstall', { id: 'platform-management' }],
+      ['POST', '/_dsh_platform/api/v1/bundled-plugins/action', { id: 'diagnostics', action: 'delete' }],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
       ['POST', '/_dsh_platform/api/v1/update'],
     ]) {
@@ -269,10 +269,10 @@ test('management reinstalls a bundled plugin as an audited task and excludes run
     finish()
     await new Promise(resolve => setImmediate(resolve))
     await logs.queue
-    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).bundledPluginReinstall.status, 'success')
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'success')
     assert.deepEqual(
       (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
-      ['system-plugin.reinstall.started', 'system-plugin.reinstall.completed'],
+      ['system-plugin.disable.started', 'system-plugin.disable.completed'],
     )
   } finally {
     await new Promise(resolve => server.close(resolve))
