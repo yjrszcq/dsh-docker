@@ -20,10 +20,12 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createTrustServer({ ledger, objects, stageBootstrap, collectBootstrap }) {
+export function createTrustServer({ ledger, objects, stageBootstrap, collectBootstrap, report = async () => {} }) {
   return createServer(async (request, response) => {
+    let pathname = 'invalid-url'
     try {
       const url = new URL(request.url ?? '/', 'http://stage0.internal')
+      pathname = url.pathname
       if (request.method === 'GET' && url.pathname === '/v1/status') {
         const keyring = await ledger.currentKeyring()
         const target = await ledger.currentTarget()
@@ -46,15 +48,18 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
       if (url.pathname === '/v1/keyring') {
         const value = await ledger.acceptKeyring(Buffer.from(body.document, 'base64'), body.signature)
         await objects.reconcileRevocations(value)
+        await report('keyring.accepted', { generation: value.generation })
         send(response, 200, { generation: value.generation })
       } else if (url.pathname === '/v1/target') {
         const value = await ledger.acceptTarget(Buffer.from(body.document, 'base64'), body.signature)
         await objects.reconcileRevocations((await ledger.currentKeyring()).value)
+        await report('target.accepted', { targetSequence: value.targetSequence })
         send(response, 200, { targetSequence: value.targetSequence })
       } else if (url.pathname === '/v1/artifacts/import') {
         const receipt = body.parentReceipt === null || body.parentReceipt === undefined
           ? await objects.importFromTarget(body.artifactId, body.sourcePath)
           : await objects.importFromManifest(body.parentReceipt, body.artifactId, body.sourcePath)
+        await report('artifact.imported', { artifactId: body.artifactId, objectSha256: receipt.objectSha256 })
         send(response, 200, receipt)
       } else if (url.pathname === '/v1/dsh/ensure') {
         if (
@@ -63,13 +68,21 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
         ) {
           throw new Error('official DSH import accepts only version')
         }
-        send(response, 200, await objects.ensureOfficialDsh(body.version))
+        const receipt = await objects.ensureOfficialDsh(body.version)
+        await report('official-dsh.imported', { dshVersion: body.version, objectSha256: receipt.objectSha256 })
+        send(response, 200, receipt)
       } else if (url.pathname === '/v1/manifests/accept') {
-        send(response, 200, await objects.acceptManifest(body.receipt, body.signatureReceipt))
+        const receipt = await objects.acceptManifest(body.receipt, body.signatureReceipt)
+        await report('manifest.accepted', { objectSha256: receipt.objectSha256 })
+        send(response, 200, receipt)
       } else if (url.pathname === '/v1/activate') {
-        send(response, 200, { receipts: await objects.activate(body.receipts) })
+        const receipts = await objects.activate(body.receipts)
+        await report('receipts.activated', { receiptCount: receipts.length })
+        send(response, 200, { receipts })
       } else if (url.pathname === '/v1/objects/collect') {
-        send(response, 200, { removed: await objects.collectGarbage() })
+        const removed = await objects.collectGarbage()
+        await report('objects.collected', { removedCount: removed.length })
+        send(response, 200, { removed })
       } else if (url.pathname === '/v1/bootstrap/stage' && stageBootstrap !== undefined) {
         await stageBootstrap(body.receipt, body.version)
         send(response, 202, { status: 'switching', version: body.version })
@@ -79,6 +92,7 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
         send(response, 404, { error: 'not found' })
       }
     } catch (error) {
+      await report('trust.request.failed', { error, method: request.method ?? null, pathname })
       send(response, 400, { error: error instanceof Error ? error.message : 'invalid request' })
     }
   })

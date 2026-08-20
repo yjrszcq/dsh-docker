@@ -190,13 +190,24 @@ test('rolls back when the current Bootstrap exits before readiness', async () =>
   await slots.reconcileImage(image.record)
   const candidate = await storeBootstrap(slots, '2.0.0', 2, 'process.exit(2)')
   await slots.promote(candidate.id)
-  const supervisor = new BootstrapSupervisor({ slots, dataRoot: root, readyTimeoutMs: 1_000 })
+  const reports = []
+  const supervisor = new BootstrapSupervisor({
+    slots,
+    dataRoot: root,
+    readyTimeoutMs: 1_000,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
   const child = await supervisor.startWithRollback()
   assert.equal(child.exitCode, null)
   const state = await slots.state()
   assert.equal(state.current, image.record.id)
   assert.equal(state.previous, candidate.id)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.launch.failed' && entry.fields.error instanceof Error), true)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.rollback.started'), true)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.rollback.completed'), true)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.ready' && entry.fields.pid === child.pid), true)
   await supervisor.stop()
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.stop.completed'), true)
 })
 
 test('rejects an in-flight recovery request when Bootstrap exits', async () => {
@@ -209,10 +220,19 @@ test('rejects an in-flight recovery request when Bootstrap exits', async () => {
   const image = await imageBootstrap(root, '1.0.0', 1, behavior)
   const slots = bootstrapManager(root, image)
   await slots.reconcileImage(image.record)
-  const supervisor = new BootstrapSupervisor({ slots, dataRoot: root, readyTimeoutMs: 1_000 })
+  const reports = []
+  const supervisor = new BootstrapSupervisor({
+    slots,
+    dataRoot: root,
+    readyTimeoutMs: 1_000,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
   await supervisor.startWithRollback()
   await assert.rejects(supervisor.recoverImageBaseline(), /Bootstrap exited unexpectedly/)
   assert.equal(supervisor.requests.size, 0)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.recovery.started'), true)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.recovery.failed' && entry.fields.error instanceof Error), true)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.exited' && entry.fields.code === 7), true)
 })
 
 function unixRequest(socketPath, method, path, body) {
@@ -232,10 +252,12 @@ test('root-only recovery server requires the exact current imageBuildId', async 
   const root = await mkdtemp(join(tmpdir(), 'dsh-recovery-server-'))
   const image = await imageBootstrap(root, '1.0.0', 2)
   let recoveries = 0
+  const reports = []
   const server = createRecoveryServer({
     inventory: image.inventory,
     deployments: async () => ({ current: { recordId: 'broken' } }),
     supervisor: { recoverImageBaseline: async () => { recoveries += 1; return { current: image.record.id } } },
+    report: (message, fields) => { reports.push({ message, fields }) },
   })
   const socketPath = join(root, 'run', 'recovery.sock')
   await listenRecovery(server, socketPath)
@@ -251,6 +273,9 @@ test('root-only recovery server requires the exact current imageBuildId', async 
       confirm: 'x'.repeat(17 * 1024),
     })).status, 400)
     assert.equal(recoveries, 1)
+    assert.equal(reports.some(entry => entry.message === 'recovery.request.failed' && entry.fields.error instanceof Error), true)
+    assert.equal(reports.some(entry => entry.message === 'image-baseline.requested'), true)
+    assert.equal(reports.some(entry => entry.message === 'image-baseline.recovered'), true)
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
@@ -261,7 +286,12 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
   const recovery = keyPair()
   const ledger = new TrustLedger(join(root, 'trust'), recovery.publicKey)
   const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot: join(root, 'downloads'), ledger })
-  const server = createTrustServer({ ledger, objects })
+  const reports = []
+  const server = createTrustServer({
+    ledger,
+    objects,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
   const socketPath = join(root, 'run', 'trust.sock')
   await listenUnix(server, socketPath)
   try {
@@ -270,6 +300,10 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
       body: { keyringGeneration: null, targetSequence: null, officialDshVersion: null },
     })
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/trust/reset', {})).status, 404)
+    assert.equal((await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', { version: 'bad', sourcePath: '/tmp/x' })).status, 400)
+    assert.equal(reports.some(entry => entry.message === 'trust.request.failed'
+      && entry.fields.pathname === '/v1/dsh/ensure'
+      && entry.fields.error instanceof Error), true)
     assert.equal((await readFile(socketPath).catch(error => error.code)), 'ENXIO')
   } finally {
     await new Promise(resolve => server.close(resolve))

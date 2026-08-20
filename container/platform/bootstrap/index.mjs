@@ -24,12 +24,29 @@ import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 const paths = new PlatformPaths(dataRoot, runRoot)
+const logs = new JsonlLogManager({
+  root: paths.logsRoot,
+  maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
+  retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
+  output: { stdout: process.stdout, stderr: process.stderr },
+})
+logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
+await logs.diagnostic('bootstrap', 'bootstrap.starting', {
+  bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? null,
+  imageBuildId: inventory.imageBuildId,
+  targetSequence: inventory.targetSequence,
+})
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
 const trust = new LocalApiClient(paths.trustSocket)
-await deployments.recoverActivation(trust)
+try {
+  await deployments.recoverActivation(trust)
+} catch (error) {
+  await logs.diagnostic('bootstrap', 'deployment.activation-recovery.failed', { error })
+  throw error
+}
 let imagePlan
 let previousPlan
 let planningError = null
@@ -38,12 +55,14 @@ try {
   await deployments.publishStatus({ plan: imagePlan, currentId: imagePlan.target })
 } catch (error) {
   planningError = error
+  await logs.diagnostic('bootstrap', 'deployment.image-plan.failed', { error })
   if (error instanceof DeploymentResolutionError) {
     try {
       previousPlan = await deployments.preparePreviousRecovery()
       await deployments.publishStatus({ currentId: previousPlan.target, operation: 'recovering' })
     } catch (recoveryError) {
       planningError = new AggregateError([error, recoveryError], 'Deployment resolution and previous recovery failed')
+      await logs.diagnostic('bootstrap', 'deployment.previous-plan.failed', { error: planningError })
     }
   }
   if (previousPlan === undefined) await deployments.publishStatus({
@@ -57,13 +76,6 @@ await linkSystemPluginScope({
   dshHome: process.env.DSH_HOME ?? '/data/dsh',
   viewRoot: join(paths.viewsRoot, 'system-plugins'),
 })
-const logs = new JsonlLogManager({
-  root: paths.logsRoot,
-  maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
-  retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
-  output: { stdout: process.stdout, stderr: process.stderr },
-})
-logs.on('error', error => console.error(error))
 const systemPluginSelections = new SystemPluginSelectionStore(join(paths.deploymentStateRoot, 'system-plugins.json'))
 const applySystemPluginSelection = async () => {
   const selected = await deployments.selected()
@@ -76,7 +88,7 @@ const applySystemPluginSelection = async () => {
   })
   await replaceSystemPluginView(paths, materialized.path)
   await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: materialized.path })
-  await logs.append('bootstrap', 'platform', 'system-plugin.view.applied', {
+  await logs.diagnostic('bootstrap', 'system-plugin.view.applied', {
     pluginCount: materialized.plugins.length,
   })
   return materialized.plugins
@@ -91,25 +103,25 @@ const prepareSystemPluginSelection = async () => {
     outputRoot: paths.systemPluginViewsRoot,
     selectionStore: systemPluginSelections,
   })
-  await logs.append('bootstrap', 'platform', 'system-plugin.view.prepared', {
+  await logs.diagnostic('bootstrap', 'system-plugin.view.prepared', {
     pluginCount: materialized.plugins.length,
   })
   return Object.freeze({
     activate: async () => {
       await replaceSystemPluginView(paths, materialized.path)
-      await logs.append('bootstrap', 'platform', 'system-plugin.view.activated')
+      await logs.diagnostic('bootstrap', 'system-plugin.view.activated')
     },
     commit: async () => {
       await pruneSystemPluginSelectionViews({
         outputRoot: paths.systemPluginViewsRoot,
         keepPath: materialized.path,
       })
-      await logs.append('bootstrap', 'platform', 'system-plugin.view.committed')
+      await logs.diagnostic('bootstrap', 'system-plugin.view.committed')
     },
     rollback: async () => {
       await replaceSystemPluginView(paths, previous)
       await pruneSystemPluginSelectionViews({ outputRoot: paths.systemPluginViewsRoot, keepPath: previous })
-      await logs.append('bootstrap', 'platform', 'system-plugin.view.rolled-back', { level: 'warning' })
+      await logs.diagnostic('bootstrap', 'system-plugin.view.rolled-back', { level: 'warning' })
     },
   })
 }
@@ -119,12 +131,7 @@ const capture = (child, source, declaration) => logs.capture(
   declaration,
   { acceptForwarded: source === 'platform-management' },
 )
-const reportLifecycle = (message, fields) => logs.append(
-  fields.componentId ?? 'bootstrap',
-  'platform',
-  message,
-  fields,
-)
+const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
 const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
@@ -152,10 +159,7 @@ const runtime = new BootstrapRuntime({
     await deployments.publishStatus({
       recoveryMode: { reason, failedRecordId: state.current },
     })
-    await logs.append('bootstrap', 'platform', 'environment entered recovery mode', {
-      error: reason,
-      level: 'error',
-    })
+    await logs.diagnostic('bootstrap', 'environment.recovery-mode.entered', { error, failedRecordId: state.current })
   },
 })
 const systemPlugins = {
@@ -221,12 +225,14 @@ try {
       try {
         previousPlan = await deployments.preparePreviousRecovery(imagePlan?.target)
         return true
-      } catch {
+      } catch (error) {
+        await logs.diagnostic('bootstrap', 'deployment.previous-plan.failed', { error })
         return false
       }
     },
   })
 } catch (error) {
+  await logs.diagnostic('bootstrap', 'bootstrap.start.failed', { error })
   server.close()
   throw error
 }
@@ -237,7 +243,11 @@ if (runtime.recoveryMode === null) {
       await deployments.acceptPreviousRecovery(previousPlan, tokens => trust.activate(tokens))
       planningError = null
     } catch (error) {
-      await runtime.suspend('dsh-runtime').catch(() => {})
+      await runtime.suspend('dsh-runtime').catch(suspendError => logs.diagnostic('bootstrap', 'dsh-runtime.suspend.failed', {
+        error: suspendError,
+        cause: error instanceof Error ? error.message : String(error),
+      }))
+      await logs.diagnostic('bootstrap', 'deployment.previous-activation.failed', { error })
       runtime.enterRecovery(error)
     }
   }
@@ -250,7 +260,7 @@ const recoveryMode = recoveryReason === null ? null : {
   failedRecordId: imagePlan?.target ?? null,
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
-await logs.append('bootstrap', 'platform', 'platform ready', { recoveryMode: recoveryMode !== null })
+await logs.diagnostic('bootstrap', 'platform.ready', { recoveryMode: recoveryMode !== null })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 process.on('message', message => {
   if (message?.type !== 'recover-image-baseline' || typeof message.requestId !== 'string') return
@@ -258,11 +268,17 @@ process.on('message', message => {
     healthCheck: () => runtime.reload(),
     activateReceipts: tokens => trust.activate(tokens),
   }).then(
-    slots => process.send?.({ type: 'recovery-result', requestId: message.requestId, slots }),
-    error => process.send?.({
-      type: 'recovery-result', requestId: message.requestId,
-      error: error instanceof Error ? error.message : 'image baseline recovery failed',
-    }),
+    async slots => {
+      await logs.diagnostic('bootstrap', 'image-baseline.recovery.completed', { requestId: message.requestId })
+      process.send?.({ type: 'recovery-result', requestId: message.requestId, slots })
+    },
+    async error => {
+      await logs.diagnostic('bootstrap', 'image-baseline.recovery.failed', { error, requestId: message.requestId })
+      process.send?.({
+        type: 'recovery-result', requestId: message.requestId,
+        error: error instanceof Error ? error.message : 'image baseline recovery failed',
+      })
+    },
   )
 })
 
@@ -275,6 +291,9 @@ const outcome = await Promise.race([
   signal,
   runtime.fatal.then(error => ({ type: 'fatal', error })),
 ])
+if (outcome.type === 'fatal') await logs.diagnostic('bootstrap', 'bootstrap.fatal', { error: outcome.error })
+else await logs.diagnostic('bootstrap', 'bootstrap.stopping')
 server.close()
-await runtime.stop().catch(error => console.error(error))
+await runtime.stop().catch(error => logs.diagnostic('bootstrap', 'bootstrap.stop.failed', { error }))
+await logs.diagnostic('bootstrap', 'bootstrap.stopped')
 if (outcome.type === 'fatal') throw outcome.error

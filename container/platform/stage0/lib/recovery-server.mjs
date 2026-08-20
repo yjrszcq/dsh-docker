@@ -18,7 +18,7 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createRecoveryServer({ inventory, deployments, supervisor }) {
+export function createRecoveryServer({ inventory, deployments, supervisor, report = async () => {} }) {
   return createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/v1/status') {
@@ -34,9 +34,13 @@ export function createRecoveryServer({ inventory, deployments, supervisor }) {
       } else if (request.method === 'POST' && request.url === '/v1/recover-image-baseline') {
         const value = await body(request)
         if (value.confirm !== inventory.imageBuildId) throw new Error('image baseline recovery confirmation is invalid')
-        send(response, 200, { status: 'recovered', slots: await supervisor.recoverImageBaseline() })
+        await report('image-baseline.requested', { imageBuildId: inventory.imageBuildId })
+        const slots = await supervisor.recoverImageBaseline()
+        await report('image-baseline.recovered', { imageBuildId: inventory.imageBuildId })
+        send(response, 200, { status: 'recovered', slots })
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
+      await report('recovery.request.failed', { error, method: request.method ?? null, pathname: request.url ?? null })
       send(response, 400, { error: error instanceof Error ? error.message : 'recovery failed' })
     }
   })
