@@ -27,7 +27,7 @@
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_PASSWORD` | 空 | 可选 Gateway 密码；留空关闭认证 |
-| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时使用的平台管理密码；留空进入临时密钥模式 |
+| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时使用的 DSH 管理中心密码；留空进入临时密钥模式 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码 |
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
@@ -56,13 +56,13 @@ tini
   └─ Stage-0
        └─ Bootstrap
             ├─ Control Plane
-            │    ├─ management + Platform Management  Unix socket
+            │    ├─ management + DSH Management Console  Unix socket
             │    └─ gateway                      0.0.0.0:3080
             └─ Environment
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换、暂停或重启 DSH 不会停止 Gateway、Management 或平台管理界面。
+Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
 
 源码目录使用同一边界：
 
@@ -120,7 +120,7 @@ Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/ui/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的平台管理集成与独立页共用这个会话。
+`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/ui/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的管理中心集成与独立页共用这个会话。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 
@@ -140,9 +140,9 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-自动检查默认每六小时带抖动执行一次，可在任一平台管理前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/ui/` 提供独立控制台；它优先使用已保存的 DSH 语言，提供相同的更新、运行维护、日志和系统插件操作，并且只在自己的页面内显示更新提醒。
+自动检查默认每六小时带抖动执行一次，可在任一 DSH 管理中心前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/ui/` 提供独立控制台；它优先使用已保存的 DSH 语言，提供相同的更新、运行维护、日志和系统插件操作，并且只在自己的页面内显示更新提醒。
 
-“运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
+“运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的 DSH 管理中心会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
@@ -150,7 +150,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 ### 独立恢复工具
 
-`/_dsh_platform/ui/` 中的“用户插件”和“终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
+`/_dsh_platform/ui/` 中的“用户插件”和“终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“DSH 管理中心”集成不会显示这两个恢复标签。
 
 用户插件恢复只管理 `/data/dsh/profiles/web/package.json` 声明的 Bundle Plugin：包必须同时存在于 dependencies 和有序的 `dsh.profile.bundles` 中。普通依赖和用户手写的 `cordis.patch.yml` Entry 不会被改写。本地 metadata 损坏时仍会显示并允许卸载。System Plugin 身份来自已验证的 Environment 清单；与其同名的用户包不能启用，与包名前缀或 scope 无关。
 

@@ -76,7 +76,7 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 | `DSH_TRUSTED_HOSTS` | 仅 loopback | 浏览器侧允许的主机 |
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名 |
 | `DSH_PROXY_PASSWORD` | 空 | HTTP Basic 密码；留空关闭认证 |
-| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时保护平台管理；留空进入临时密钥模式 |
+| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时保护 DSH 管理中心；留空进入临时密钥模式 |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径 |
 | `DSH_SUDO_ENABLED` | `true` | 仅供 Compose 使用的免密码 sudo 开关 |
 
@@ -84,11 +84,11 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 
 ## 更新
 
-在 DSH 设置中打开“平台管理”，或访问 <http://127.0.0.1:3080/_dsh_platform/ui/>。检查不会自动下载或激活，必须由用户确认更新。
+在 DSH 设置中打开“DSH 管理中心”，或访问 <http://127.0.0.1:3080/_dsh_platform/ui/>。检查不会自动下载或激活，必须由用户确认更新。
 
 独立页面在 DSH 无法启动时仍可使用，并提供用户插件恢复和容器终端。
 
-Gateway 密码为空时，平台管理使用独立的 `DSH_PLATFORM_PASSWORD`。如果该密码也为空，平台管理默认锁定，可从容器终端生成有效期 10 分钟的临时访问密钥；重新生成会立即废止旧密钥：
+Gateway 密码为空时，DSH 管理中心使用独立的 `DSH_PLATFORM_PASSWORD`。如果该密码也为空，管理中心默认锁定，可从容器终端生成有效期 10 分钟的临时访问密钥；重新生成会立即废止旧密钥：
 
 ```bash
 docker exec dsh-test dsh-platform access create

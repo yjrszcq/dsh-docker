@@ -23,8 +23,8 @@ const COPY = Object.freeze({
 })
 
 const MANAGEMENT_LINK = Object.freeze({
-  en: 'Open Platform Management for diagnostics and recovery',
-  zh: '打开平台管理进行检查和恢复',
+  en: 'Open DSH Management Console for diagnostics and recovery',
+  zh: '打开 DSH 管理中心进行检查和恢复',
 })
 
 export class DshAvailability {

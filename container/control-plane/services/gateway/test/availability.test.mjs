@@ -53,7 +53,7 @@ test('official-style holding page is self-contained and replaces the spinner wit
   assert.match(page, /HARNESS/)
   assert.match(page, /正在切换 DeepSeek Harness 运行版本/)
   assert.match(page, /href="\/_dsh_platform\/ui\/"/)
-  assert.match(page, /打开平台管理进行检查和恢复/)
+  assert.match(page, /打开 DSH 管理中心进行检查和恢复/)
   assert.match(page, new RegExp(READINESS_PATH))
   assert.doesNotMatch(page, /spinner|Loading plugins/)
   assert.doesNotMatch(page, /letter-spacing:-/)
@@ -65,7 +65,7 @@ test('holding pages prefer the last DSH locale cookie over browser language', ()
   assert.equal(language({ cookie: 'dsh_locale=fr', 'accept-language': 'en-US' }), 'en')
   assert.equal(language({ 'accept-language': 'fr-FR, zh-CN;q=0.8, en;q=0.5' }), 'zh')
   assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), /平台正在恢复/)
-  assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=en', 'accept-language': 'zh-CN' }), /Open Platform Management for diagnostics and recovery/)
+  assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=en', 'accept-language': 'zh-CN' }), /Open DSH Management Console for diagnostics and recovery/)
 })
 
 test('every classified outage page links to the standalone Platform Management console', () => {

@@ -27,7 +27,7 @@ This guide documents configuration, platform behavior, online updates, trust, re
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_PASSWORD` | Empty | Optional gateway password; empty disables authentication |
-| `DSH_PLATFORM_PASSWORD` | Empty | Platform Management password used when the gateway password is empty; empty selects temporary-key mode |
+| `DSH_PLATFORM_PASSWORD` | Empty | DSH Management Console password used when the gateway password is empty; empty selects temporary-key mode |
 | `DSH_PROXY_POLYFILL` | `true` | Inject the guarded `crypto.randomUUID` compatibility shim |
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
@@ -56,13 +56,13 @@ tini
   └─ Stage-0
        └─ Bootstrap
             ├─ Control Plane
-            │    ├─ management + Platform Management  Unix socket
+            │    ├─ management + DSH Management Console  Unix socket
             │    └─ gateway                      0.0.0.0:3080
             └─ Environment
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing, suspending, or restarting DSH therefore does not stop Gateway, Management, or Platform Management.
+Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing, suspending, or restarting DSH therefore does not stop Gateway, Management, or DSH Management Console.
 
 The source tree follows the same boundary:
 
@@ -140,9 +140,9 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Platform Management frontend. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The Management component serves the standalone console at `/_dsh_platform/ui/`; it follows the saved DSH locale when available, exposes the same update, maintenance, log, and System Plugin workflows, and renders notifications only inside its own page.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either DSH Management Console frontend. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The Management component serves the standalone console at `/_dsh_platform/ui/`; it follows the saved DSH locale when available, exposes the same update, maintenance, log, and System Plugin workflows, and renders notifications only inside its own page.
 
-The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
+The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded DSH Management Console view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
@@ -150,7 +150,7 @@ The standalone console also lists System Plugins bundled by the current Environm
 
 ### Standalone Recovery Tools
 
-The **User Plugins** and **Terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
+The **User Plugins** and **Terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The DSH Management Console integration inside DSH deliberately does not expose these two recovery tabs.
 
 User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
 
