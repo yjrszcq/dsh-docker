@@ -59,6 +59,54 @@
 .connection.online > span { background: var(--dsw-alias-state-success-primary); }
 .connection.offline > span { background: var(--dsw-alias-state-error-primary); }
 
+.tabs {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+
+.tabs button {
+  position: relative;
+  flex: none;
+  min-height: 36px;
+  padding: 0 2px;
+  border: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tabs button:hover { color: var(--dsw-alias-label-primary); }
+.tabs button[aria-selected='true'] {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.tabs button[aria-selected='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--dsw-alias-label-primary);
+  content: '';
+}
+
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.tabPanel[hidden] { display: none; }
+.tabPanel > .section:last-child { padding-bottom: 0; border-bottom: 0; }
+
 .section {
   display: flex;
   flex-direction: column;
@@ -355,6 +403,7 @@
 
 @media (max-width: 640px) {
   .root { gap: 16px; }
+  .tabs { gap: 20px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .actionHeading { align-items: flex-start; }
   .versions { grid-template-columns: 1fr; }

@@ -212,6 +212,7 @@ function UpdateReminder({ t }) {
 }
 
 function PlatformManagement({ t }) {
+  const [activeTab, setActiveTab] = useState('updates')
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
   const [connection, setConnection] = useState('connecting')
@@ -361,6 +362,25 @@ function PlatformManagement({ t }) {
           t(connection))),
       h('p', { className: css.intro }, t('intro'))),
 
+    h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
+      ['updates', 'automatic', 'maintenance'].map(tab => h('button', {
+        key: tab,
+        id: `platform-tab-${tab}-button`,
+        type: 'button',
+        role: 'tab',
+        'aria-selected': activeTab === tab,
+        'aria-controls': `platform-tab-${tab}`,
+        tabIndex: activeTab === tab ? 0 : -1,
+        onClick: () => setActiveTab(tab),
+      }, t(`${tab}Tab`)))),
+
+    h('div', {
+      id: 'platform-tab-updates',
+      className: css.tabPanel,
+      role: 'tabpanel',
+      'aria-labelledby': 'platform-tab-updates-button',
+      hidden: activeTab !== 'updates',
+    },
     h('section', { className: css.section, 'aria-labelledby': 'platform-channel-title' },
       h('div', { className: css.sectionHeading },
         h('div', null,
@@ -419,8 +439,15 @@ function PlatformManagement({ t }) {
           h('span', null, t('confirmDataLoss'))),
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => { setConfirmStable(false); setDataLossAccepted(false) } }, t('cancel')),
-          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null),
+          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null)),
 
+    h('div', {
+      id: 'platform-tab-automatic',
+      className: css.tabPanel,
+      role: 'tabpanel',
+      'aria-labelledby': 'platform-tab-automatic-button',
+      hidden: activeTab !== 'automatic',
+    },
     h('section', { className: css.section, 'aria-labelledby': 'automatic-check-title' },
       h('div', { className: css.sectionHeading },
         h('div', null,
@@ -439,8 +466,15 @@ function PlatformManagement({ t }) {
           h('span', null,
             h('b', null, t('updateNotifications')),
             h('small', null, t('updateNotificationsDetail'))),
-          h('input', { type: 'checkbox', checked: automaticCheck.notificationsEnabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) } })))),
+          h('input', { type: 'checkbox', checked: automaticCheck.notificationsEnabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) } }))))),
 
+    h('div', {
+      id: 'platform-tab-maintenance',
+      className: css.tabPanel,
+      role: 'tabpanel',
+      'aria-labelledby': 'platform-tab-maintenance-button',
+      hidden: activeTab !== 'maintenance',
+    },
     h('section', { className: `${css.section} ${css.maintenanceSection}`, 'aria-labelledby': 'platform-maintenance-title' },
       h('div', { className: css.sectionHeading },
         h('div', null,
@@ -462,7 +496,7 @@ function PlatformManagement({ t }) {
         h('p', null, t('restartWarning')),
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => setConfirmRestart(false) }, t('cancel')),
-          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null))
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null)))
 }
 
 export function apply(ctx) {
@@ -473,6 +507,7 @@ export function apply(ctx) {
     zh: {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
+      managementSections: '平台管理功能', updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
@@ -491,6 +526,7 @@ export function apply(ctx) {
     en: {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
+      managementSections: 'Platform management sections', updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
