@@ -100,6 +100,10 @@ function queryString(options) {
   return value === '' ? '' : `?${value}`
 }
 
+function json(value) {
+  return JSON.stringify(value)
+}
+
 export async function runCli({
   argv = process.argv.slice(2),
   management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock'),
@@ -115,12 +119,12 @@ export async function runCli({
   const parsed = parseCli(argv)
   if (parsed.command === 'recover') {
     const value = await recover({ recovery, input, output })
-    write(JSON.stringify(value, null, 2))
+    write(json(value))
     return 0
   }
   if (parsed.command === 'trust') {
     const value = parsed.operation === 'status' ? await trust.status() : await reset()
-    write(JSON.stringify(value, null, 2))
+    write(json(value))
     return 0
   }
   if (parsed.command === 'logs') {
@@ -130,12 +134,12 @@ export async function runCli({
   }
   if (parsed.command === 'update') {
     const started = await management.request('POST', `${API_PREFIX}/update`)
-    write(JSON.stringify(started, null, 2))
+    write(json(started))
     if (!parsed.wait) return 0
     for (;;) {
       const value = await management.request('GET', `${API_PREFIX}/status`)
       if (value.update.taskId === started.taskId && ['success', 'failed'].includes(value.update.status)) {
-        write(JSON.stringify(value.update, null, 2))
+        write(json(value.update))
         return value.update.status === 'success' ? 0 : 1
       }
       await delay(1_000)
@@ -143,13 +147,13 @@ export async function runCli({
   }
   if (parsed.command === 'restart') {
     const started = await management.request('POST', `${API_PREFIX}/restart-dsh`)
-    write(JSON.stringify(started, null, 2))
+    write(json(started))
     if (!parsed.wait) return 0
     for (;;) {
       const value = await management.request('GET', `${API_PREFIX}/status`)
       const restart = value.dshRestart
       if (restart.taskId === started.taskId && ['success', 'failed'].includes(restart.status)) {
-        write(JSON.stringify(restart, null, 2))
+        write(json(restart))
         return restart.status === 'success' ? 0 : 1
       }
       await delay(1_000)
@@ -171,7 +175,7 @@ export async function runCli({
     const unique = [...new Map(choices.map(value => [value.id, value])).values()]
     if (unique.length !== 1) throw new Error('retry requires exactly one active Hold or Blocked combination')
     const value = await management.request('POST', `${API_PREFIX}/holds/retry`, { id: unique[0].id })
-    write(JSON.stringify(value, null, 2))
+    write(json(value))
     return 0
   }
   if (parsed.command === 'rollback' || parsed.command === 'return-stable') {
@@ -190,11 +194,11 @@ export async function runCli({
       planId: plan.planId,
       ...(parsed.command === 'return-stable' ? { confirmDataLoss } : {}),
     })
-    write(JSON.stringify(value, null, 2))
+    write(json(value))
     return 0
   }
   const method = parsed.command === 'status' ? 'GET' : 'POST'
   const value = await management.request(method, `${API_PREFIX}/${parsed.command}`)
-  write(JSON.stringify(value, null, 2))
+  write(json(value))
   return 0
 }

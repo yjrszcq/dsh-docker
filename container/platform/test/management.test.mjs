@@ -412,6 +412,21 @@ test('update wait ignores a terminal state from an older task', async () => {
   assert.match(output.at(-1), /new-task/)
 })
 
+test('management CLI emits each JSON result as one log-safe line', async () => {
+  const output = []
+  const status = {
+    officialDshVersion: null,
+    dshRestart: { status: 'idle', taskId: null, error: null, updatedAt: null },
+  }
+  assert.equal(await runCli({
+    argv: ['status'],
+    management: { request: async () => status },
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(output, [JSON.stringify(status)])
+  assert.equal(output[0].includes('\n'), false)
+})
+
 test('restart CLI has a fixed DSH scope and waits only for its own task', async () => {
   assert.deepEqual(parseCli(['restart']), { command: 'restart', wait: false })
   assert.deepEqual(parseCli(['restart', '--wait']), { command: 'restart', wait: true })
