@@ -79,6 +79,11 @@ test('release tool signs an exact supported target with the configured current k
 
 test('Management terminal dependencies are exact, licensed, and architecture-neutral', async () => {
   const root = new URL('../../control-plane/services/management/', import.meta.url).pathname
+  const manifest = JSON.parse(await readFile(join(root, 'package.json')))
+  const lock = JSON.parse(await readFile(join(root, 'package-lock.json')))
+  assert.equal(Object.hasOwn(manifest, 'version'), false)
+  assert.equal(Object.hasOwn(lock, 'version'), false)
+  assert.equal(Object.hasOwn(lock.packages[''], 'version'), false)
   const result = await verifyManagementDependencies(root)
   assert.deepEqual(result.packages, {
     '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', ws: '8.21.3',
