@@ -42,7 +42,7 @@ This guide documents configuration, platform behavior, online updates, trust, re
 - Comma-separated values: every listed authority.
 - `*`: any Host. Origin, Fetch Metadata, and optional password checks remain enabled.
 
-Values must not contain a scheme, path, credentials, or subdomain wildcard. Valid examples include `dsh.example.com`, `dsh.example.com:8443`, `192.168.1.100`, and `[fd00::1]:3080`. The legacy `DSH_TRUSTED_HOST` remains supported; do not set both names.
+Values must not contain a scheme, path, credentials, or subdomain wildcard. Valid examples include `dsh.example.com`, `dsh.example.com:8443`, `192.168.1.100`, and `[fd00::1]:3080`.
 
 ### Workspace Behavior
 

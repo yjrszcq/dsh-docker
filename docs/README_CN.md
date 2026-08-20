@@ -42,7 +42,7 @@
 - 逗号分隔多值：接受列出的全部 authority。
 - `*`：接受任意 Host；Origin、Fetch Metadata 和可选密码检查仍然启用。
 
-值中不能包含协议、路径、凭据或子域名通配符。合法示例包括 `dsh.example.com`、`dsh.example.com:8443`、`192.168.1.100` 和 `[fd00::1]:3080`。旧变量 `DSH_TRUSTED_HOST` 暂时兼容；不要同时设置新旧变量。
+值中不能包含协议、路径、凭据或子域名通配符。合法示例包括 `dsh.example.com`、`dsh.example.com:8443`、`192.168.1.100` 和 `[fd00::1]:3080`。
 
 ### Workspace 行为
 

@@ -16,7 +16,6 @@ function render(overrides = {}) {
     DSH_PLATFORM_PASSWORD_FILE: '',
     DSH_PROXY_POLYFILL: 'true',
     DSH_TELEMETRY_DISABLED: 'true',
-    DSH_TRUSTED_HOST: '',
     DSH_TRUSTED_HOSTS: '',
     DSH_WORKSPACE: './workspace',
     ...overrides,
@@ -79,9 +78,5 @@ assert.deepEqual(configured.group_add, ['dsh-sudo-false'])
 const secretFile = render({ DSH_PLATFORM_PASSWORD_FILE: '/run/secrets/platform-password' })
 assert.equal(secretFile.environment.DSH_PLATFORM_PASSWORD, '')
 assert.equal(secretFile.environment.DSH_PLATFORM_PASSWORD_FILE, '/run/secrets/platform-password')
-
-const legacy = render({ DSH_TRUSTED_HOST: 'old.example', DSH_TRUSTED_HOSTS: '' })
-assert.equal(legacy.environment.DSH_TRUSTED_HOST, 'old.example')
-assert.equal(legacy.environment.DSH_TRUSTED_HOSTS, '')
 
 console.log('Compose configuration checks passed')

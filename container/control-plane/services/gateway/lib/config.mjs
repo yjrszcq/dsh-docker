@@ -42,13 +42,7 @@ export function parseTrustedAuthority(value) {
 }
 
 export function parseTrustedHosts(environment = process.env) {
-  const plural = environment.DSH_TRUSTED_HOSTS?.trim() ?? ''
-  const legacy = environment.DSH_TRUSTED_HOST?.trim() ?? ''
-  if (plural !== '' && legacy !== '') {
-    throw new UsageError('DSH_TRUSTED_HOSTS and DSH_TRUSTED_HOST cannot both be set')
-  }
-
-  const raw = plural !== '' ? plural : legacy
+  const raw = environment.DSH_TRUSTED_HOSTS?.trim() ?? ''
   if (raw === '') return Object.freeze({ wildcard: false, authorities: Object.freeze([]) })
 
   const entries = raw.split(',').map(entry => entry.trim())

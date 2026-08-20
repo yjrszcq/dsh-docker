@@ -51,9 +51,8 @@ test('parseTrustedAuthority rejects URL-like and noncanonical entries', () => {
   }
 })
 
-test('parseTrustedHosts supports empty, lists, deduplication, legacy, and wildcard', () => {
+test('parseTrustedHosts supports empty, lists, deduplication, and wildcard', () => {
   assert.deepEqual(parseTrustedHosts({}), { wildcard: false, authorities: [] })
-  assert.equal(parseTrustedHosts({ DSH_TRUSTED_HOST: 'old.example' }).authorities[0].hostname, 'old.example')
   const list = parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'a.example, b.example:8443,a.example' })
   assert.equal(list.wildcard, false)
   assert.equal(list.authorities.length, 2)
@@ -63,11 +62,7 @@ test('parseTrustedHosts supports empty, lists, deduplication, legacy, and wildca
   })
 })
 
-test('parseTrustedHosts rejects ambiguous configuration', () => {
-  assert.throws(() => parseTrustedHosts({
-    DSH_TRUSTED_HOSTS: 'new.example',
-    DSH_TRUSTED_HOST: 'old.example',
-  }), UsageError)
+test('parseTrustedHosts rejects malformed lists', () => {
   assert.throws(() => parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'a.example,,b.example' }), UsageError)
   assert.throws(() => parseTrustedHosts({ DSH_TRUSTED_HOSTS: '*,a.example' }), UsageError)
 })
