@@ -184,25 +184,45 @@ function LogViewer({ active, t }) {
   const [displayLimit, setDisplayLimit] = useState(readLogDisplayLimit)
   const listRef = useRef(null)
   const clearCutoff = useRef(readLogClearCutoff())
+  const logIdentities = useRef(new Set())
+  const pendingEntries = useRef([])
+  const renderFrame = useRef()
 
   useEffect(() => {
     if (!active) return undefined
     setStreamState('connecting')
     const stream = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
+    const commitPendingEntries = () => {
+      renderFrame.current = undefined
+      const pending = pendingEntries.current.splice(0)
+      if (pending.length === 0) return
+      setEntries(previous => {
+        const combined = [...previous, ...pending]
+        const removed = combined.slice(0, Math.max(0, combined.length - LOG_STREAM_LIMIT))
+        for (const entry of removed) logIdentities.current.delete(entry.identity)
+        return combined.slice(-LOG_STREAM_LIMIT)
+      })
+    }
     stream.addEventListener('log', event => {
       try {
         const entry = JSON.parse(event.data)
         const identity = JSON.stringify(entry)
-        if (isClearedLog(entry, clearCutoff.current)) return
-        setEntries(previous => {
-          if (previous.some(item => item.identity === identity)) return previous
-          return [...previous, { identity, value: entry }].slice(-LOG_STREAM_LIMIT)
-        })
+        if (isClearedLog(entry, clearCutoff.current) || logIdentities.current.has(identity)) return
+        logIdentities.current.add(identity)
+        pendingEntries.current.push({ identity, value: entry })
+        if (renderFrame.current === undefined) {
+          renderFrame.current = window.requestAnimationFrame(commitPendingEntries)
+        }
       } catch {}
     })
     stream.onopen = () => setStreamState('live')
     stream.onerror = () => setStreamState('disconnected')
-    return () => stream.close()
+    return () => {
+      stream.close()
+      if (renderFrame.current !== undefined) window.cancelAnimationFrame(renderFrame.current)
+      for (const entry of pendingEntries.current.splice(0)) logIdentities.current.delete(entry.identity)
+      renderFrame.current = undefined
+    }
   }, [active])
 
   const visibleEntries = limitProcessedLogEntries(entries, displayLimit)
@@ -230,8 +250,12 @@ function LogViewer({ active, t }) {
   }, [active, autoScroll, displayLimit, entries, level, query, source])
 
   const clearLogView = () => {
-    clearCutoff.current = latestLogCutoff(entries)
+    clearCutoff.current = latestLogCutoff([...entries, ...pendingEntries.current])
     try { window.sessionStorage.setItem(LOG_CLEAR_CUTOFF_KEY, clearCutoff.current) } catch {}
+    if (renderFrame.current !== undefined) window.cancelAnimationFrame(renderFrame.current)
+    renderFrame.current = undefined
+    pendingEntries.current.length = 0
+    logIdentities.current.clear()
     setEntries([])
   }
 
