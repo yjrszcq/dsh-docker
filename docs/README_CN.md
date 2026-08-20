@@ -77,7 +77,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 
 ```text
 /data/platform/
-├── state/{trust,bootstrap,deployments,updater}
+├── state/{trust,bootstrap,deployments,updater,management}
 ├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
 ├── cache/downloads
 └── logs
@@ -135,6 +135,18 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 独立控制台还列出当前 Environment 随附的 System Plugins。用户可以从当前 Deployment 的本地可信 Environment Artifact 重新安装其中一个插件，包括被禁用或卸载的 `platform-management` DSH 集成；平台会重建并校验完整 System Plugin Set，要求内容 Hash 与 Deployment Record 一致，然后只重启 DSH。这个操作不访问 GitHub 或 npm，也不从已构建 Runtime 复制文件。插件缺失不会自动触发重新安装。
 
+### 独立恢复工具
+
+`/_dsh_platform/ui/` 中的“用户插件”和“终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
+
+用户插件恢复只管理 `/data/dsh/profiles/web/package.json` 声明的 Bundle Plugin：包必须同时存在于 dependencies 和有序的 `dsh.profile.bundles` 中。普通依赖和用户手写的 `cordis.patch.yml` Entry 不会被改写。本地 metadata 损坏时仍会显示并允许卸载。System Plugin 身份来自已验证的 Environment 清单；与其同名的用户包不能启用，与包名前缀或 scope 无关。
+
+启用、禁用和卸载会先积累为当前页面内的草稿。提交时，Management 会幂等暂停 DSH、为完整 Web Profile 创建快照、执行精确操作、校验结果，然后只重启 DSH。提交前刷新或离开页面会丢弃草稿；revision 冲突时会重新读取清单，不会覆盖并发修改。commit 前中断会恢复快照；commit 后即使 DSH 仍启动失败，也会保留本次插件修改，方便连续处理多个故障插件。此处不提供安装功能；请使用 DSH 正常插件流程或独立终端安装。
+
+“终端”会在 `/workspace` 启动真实的交互式 `/bin/bash`，其 UID、GID、补充组、`DSH_HOME=/data/dsh`、PATH、代理变量和 sudo 策略均与 DSH 一致。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Management 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
+
+两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata 和可选 Basic Auth 校验，不增加独立密码或监听端口。因此，能进入这个页面的用户已经拥有与 DSH 等价的命令和数据权限，只应在[安全模型](#安全模型)所述的可信边界内开放。
+
 可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
 
 平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
@@ -185,7 +197,7 @@ Recovery 私钥绝不能进入 GitHub secrets。CI 只接收已签好的公开 k
 
 ## 安全模型
 
-能通过 Gateway 访问，就等同于拥有完整 DSH 权限。被放行的用户可能读取或替换模型凭据、执行命令，并访问容器 `node` 用户可用的所有路径，而不只是 `/workspace`。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
+能通过 Gateway 访问，就等同于拥有完整 DSH 权限。被放行的用户可能读取或替换模型凭据、通过 DSH 或独立终端执行命令，并访问容器 `node` 用户可用的所有路径，而不只是 `/workspace`。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
 
 允许不可信网络访问前，应使用强 Gateway 密码、带认证的反向代理、VPN 或其他可信边界。显式绑定 loopback 后可以使用 SSH 隧道：
 

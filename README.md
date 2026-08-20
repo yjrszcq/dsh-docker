@@ -85,6 +85,8 @@ See the [complete configuration reference](docs/README.md#configuration) for all
 
 Open **Platform Management** in DSH settings or visit <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
 
+The standalone page remains available when DSH is down and includes User Plugin recovery and a container terminal.
+
 Useful commands:
 
 ```bash

@@ -77,7 +77,7 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 
 ```text
 /data/platform/
-├── state/{trust,bootstrap,deployments,updater}
+├── state/{trust,bootstrap,deployments,updater,management}
 ├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
 ├── cache/downloads
 └── logs
@@ -135,6 +135,18 @@ The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runt
 
 The standalone console also lists System Plugins bundled by the current Environment. A user can reinstall one from the current Deployment's local trusted Environment Artifact, including the `platform-management` DSH integration if it was disabled or uninstalled. The platform rebuilds and verifies the complete System Plugin Set against the Deployment Record content hash, then restarts only DSH. This operation never contacts GitHub or npm and never copies files from a built Runtime. A missing plugin does not trigger automatic reinstallation.
 
+### Standalone Recovery Tools
+
+The **User Plugins** and **Terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
+
+User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
+
+Enable, disable, and uninstall changes are accumulated as a page-local draft. Applying them pauses DSH idempotently, snapshots the complete Web Profile, performs the exact actions, validates the resulting Profile, and restarts only DSH. Refreshing or leaving before Apply discards the draft. A revision conflict returns the latest inventory instead of overwriting concurrent changes. Pre-commit interruption restores the snapshot; after commit, a plugin change is retained even if DSH still fails, so multiple faulty plugins can be removed over consecutive attempts. Installation is intentionally not offered here; use DSH's normal plugin flow or the standalone terminal.
+
+The Terminal tab starts a real interactive `/bin/bash` in `/workspace` with the same UID, GID, supplementary groups, `DSH_HOME=/data/dsh`, PATH, proxy variables, and sudo policy as DSH. Restarting only DSH does not terminate the terminal. A browser refresh or brief disconnect can reattach for 30 seconds and redraw up to 256 KiB of recent output; explicitly closing the session, stopping Management, or stopping the container terminates it. Platform logs record session lifecycle only, never terminal input, output, command history, or the complete environment.
+
+Both tools use the existing Gateway Host, Origin, Fetch Metadata, and optional Basic Auth checks. They do not add another password or listener. Consequently, anyone admitted to this page has the same command and data authority already granted to DSH; expose it only behind the trusted boundary described in [Security Model](#security-model).
+
 The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
 
 New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
@@ -185,7 +197,7 @@ Recovery private material must never enter GitHub secrets. CI receives only a si
 
 ## Security Model
 
-Gateway access is full DSH access. An admitted user may read or replace model credentials, execute commands, and access every path available to the container's `node` user, not only `/workspace`. The Host allowlist mitigates DNS rebinding; it is not user authentication.
+Gateway access is full DSH access. An admitted user may read or replace model credentials, execute commands through DSH or the standalone terminal, and access every path available to the container's `node` user, not only `/workspace`. The Host allowlist mitigates DNS rebinding; it is not user authentication.
 
 Before exposing the service to untrusted networks, use a strong Gateway password, authenticated reverse proxy, VPN, or another trusted boundary. An SSH tunnel can be combined with loopback-only publication:
 
