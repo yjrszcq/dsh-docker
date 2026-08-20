@@ -26,6 +26,10 @@ function sameDeployment(left, right) {
     })
 }
 
+function isImageDeployment(record) {
+  return KINDS.every(kind => record[kind === 'system-plugins' ? 'systemPlugins' : kind].storage === 'image')
+}
+
 function validateCandidate(from, candidate, experimental) {
   if (experimental) {
     if (candidate.authority !== 'experimental') throw new TrustError('probation candidate must use Experimental authority')
@@ -237,6 +241,17 @@ export class DeploymentManager {
           imageBehindCurrent = image.targetSequence < current.targetSequence
           requiresExperimentalRebuild = image.targetSequence > current.targetSequence && !dshCaughtUp
         }
+      } else if (
+        current.authority === 'development'
+        && image.authority === 'development'
+        && current.targetSequence === 0
+        && image.targetSequence === 0
+        && isImageDeployment(current)
+        && isImageDeployment(image)
+        && current.id !== image.id
+      ) {
+        target = image.id
+        action = 'development-refresh'
       } else if (image.targetSequence > current.targetSequence) {
         target = image.id
         action = 'image-forward'
@@ -253,7 +268,7 @@ export class DeploymentManager {
       return Object.freeze({
         baseGeneration: state.generation,
         target,
-        fallback: target === current.id ? null : current.id,
+        fallback: target === current.id || action === 'development-refresh' ? null : current.id,
         action,
         imageBehindCurrent,
         requiresExperimentalRebuild,
@@ -266,7 +281,7 @@ export class DeploymentManager {
       const state = await this.state()
       if (state.generation !== plan.baseGeneration) throw new TrustError('Deployment slots changed during image startup')
       if (state.current === plan.target) return state
-      return this.commit(plan.target, state.current)
+      return this.commit(plan.target, plan.action === 'development-refresh' ? null : state.current)
     })
   }
 

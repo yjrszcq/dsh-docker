@@ -27,13 +27,13 @@ async function bootstrap(root, version, behavior) {
   return directory
 }
 
-async function imageBootstrap(root, version, sequence, behavior = 'seed', revision = `revision-${String(sequence)}`) {
+async function imageBootstrap(root, version, sequence, behavior = 'seed', revision = `revision-${String(sequence)}`, authority = 'stable') {
   const seedRoot = join(root, `seed-${revision}`)
   const bootstrapRoot = await bootstrap(join(seedRoot, 'bootstrap'), version, behavior)
   const bootstrapSha256 = await hashTree(bootstrapRoot)
   const content = {
     schema: 1,
-    authority: 'stable',
+    authority,
     platformRevision: revision,
     targetSequence: sequence,
     bootstrapApi: 1,
@@ -129,6 +129,18 @@ test('rejects same-sequence Bootstrap content conflicts', async () => {
   await bootstrapManager(root, first).reconcileImage(first.record)
   const conflicting = await imageBootstrap(root, '1.0.0', 1, 'two', 'revision-two')
   await assert.rejects(bootstrapManager(root, conflicting).reconcileImage(conflicting.record), /conflicts/)
+})
+
+test('replaces a rebuilt development Bootstrap without retaining a stale Image Reference', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-development-refresh-'))
+  const first = await imageBootstrap(root, '1.0.0', 0, 'one', 'development-one', 'development')
+  await bootstrapManager(root, first).reconcileImage(first.record)
+  const rebuilt = await imageBootstrap(root, '1.0.0', 0, 'two', 'development-two', 'development')
+  const manager = bootstrapManager(root, rebuilt)
+  const state = await manager.reconcileImage(rebuilt.record)
+  assert.equal(state.current, rebuilt.record.id)
+  assert.equal(state.previous, null)
+  assert.equal((await manager.current()).path, join(rebuilt.seedRoot, 'bootstrap', '1.0.0'))
 })
 
 test('preserves a higher Managed Bootstrap when the image is behind', async () => {

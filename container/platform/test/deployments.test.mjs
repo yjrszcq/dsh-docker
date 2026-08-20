@@ -18,29 +18,35 @@ import { hashTree } from '../lib/tree-hash.mjs'
 
 const kinds = ['environment', 'pristine', 'runtime', 'system-plugins']
 
-async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-deployments-'))
-  const seedRoot = join(root, 'seed')
-  const paths = new PlatformPaths(join(root, 'data'), join(root, 'run'))
+async function fixture({
+  root,
+  paths,
+  authority = 'stable',
+  targetSequence = 1,
+  marker = 'image',
+} = {}) {
+  root ??= await mkdtemp(join(tmpdir(), 'dsh-deployments-'))
+  paths ??= new PlatformPaths(join(root, 'data'), join(root, 'run'))
+  const seedRoot = join(root, `seed-${marker}`)
   const assets = {}
   for (const kind of kinds) {
     const plural = kind === 'environment' ? 'environments' : kind === 'runtime' ? 'runtimes' : kind
-    const id = `image-${kind}`
+    const id = `image-${kind}-${marker}`
     const path = join(seedRoot, plural, id)
     await mkdir(path, { recursive: true })
-    await writeFile(join(path, 'sentinel'), `${kind}:image`)
+    await writeFile(join(path, 'sentinel'), `${kind}:${marker}`)
     assets[kind] = { id, sha256: await hashTree(path) }
   }
   const content = {
     schema: 1,
-    authority: 'stable',
-    platformRevision: 'deployment-fixture',
-    targetSequence: 1,
+    authority,
+    platformRevision: `deployment-fixture-${marker}`,
+    targetSequence,
     bootstrapApi: 1,
     updateApi: 1,
     bootstrap: { version: '1.0.0', id: 'bootstrap', sha256: 'a'.repeat(64) },
     deployment: {
-      id: 'image-deployment',
+      id: `image-deployment-${marker}`,
       dshVersion: '0.1.0-rc.1',
       environmentVersion: '2026.08.20.1',
       environment: assets.environment,
@@ -221,6 +227,25 @@ test('rejects same-sequence Stable content conflicts', async () => {
   const conflicting = await context.manager.writeRecord(await managedRecord(context, 'conflict', 1))
   await context.manager.activate(conflicting.id, async () => {})
   await assert.rejects(context.manager.prepareImage(context.image), /same targetSequence/)
+})
+
+test('replaces a rebuilt development image without retaining stale image slots', async () => {
+  const first = await fixture({ authority: 'development', targetSequence: 0, marker: 'development-one' })
+  await first.manager.initialize(first.image)
+  const rebuilt = await fixture({
+    root: first.root,
+    paths: first.paths,
+    authority: 'development',
+    targetSequence: 0,
+    marker: 'development-two',
+  })
+  const plan = await rebuilt.manager.prepareImage(rebuilt.image)
+  assert.equal(plan.action, 'development-refresh')
+  assert.equal(plan.fallback, null)
+  assert.equal(await readFile(join(rebuilt.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:development-two')
+  const state = await rebuilt.manager.acceptImage(plan)
+  assert.equal(state.current, rebuilt.image.id)
+  assert.equal(state.previous, null)
 })
 
 test('preserves Experimental DSH until a Stable image catches up', async () => {
