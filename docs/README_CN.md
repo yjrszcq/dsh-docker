@@ -129,11 +129,11 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-自动检查默认每六小时带抖动执行一次，可在 DSH 设置的“平台管理”中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。独立控制台仍可通过 `/_dsh_platform/ui/` 访问。
+自动检查默认每六小时带抖动执行一次，可在任一平台管理前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/ui/` 提供独立控制台；它优先使用已保存的 DSH 语言，提供相同的更新、运行维护、日志和系统插件操作，并且只在自己的页面内显示更新提醒。
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
-独立控制台还列出当前 Environment 随附的 System Plugins。用户可以从当前 Deployment 的本地可信 Environment Artifact 重新安装其中一个插件；平台会重建并校验完整 System Plugin Set，要求内容 Hash 与 Deployment Record 一致，然后只重启 DSH。这个操作不访问 GitHub 或 npm，也不从已构建 Runtime 复制文件。插件缺失不会自动触发重新安装。
+独立控制台还列出当前 Environment 随附的 System Plugins。用户可以从当前 Deployment 的本地可信 Environment Artifact 重新安装其中一个插件，包括被禁用或卸载的 `platform-management` DSH 集成；平台会重建并校验完整 System Plugin Set，要求内容 Hash 与 Deployment Record 一致，然后只重启 DSH。这个操作不访问 GitHub 或 npm，也不从已构建 Runtime 复制文件。插件缺失不会自动触发重新安装。
 
 平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
 

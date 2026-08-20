@@ -401,6 +401,29 @@ test('Platform Management script references only DOM IDs declared by its documen
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/)
 })
 
+test('standalone console keeps localized feature parity on the shared Management API', async () => {
+  const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
+  const html = await readFile(new URL('index.html', publicRoot), 'utf8')
+  const script = await readFile(new URL('app.js', publicRoot), 'utf8')
+  const style = await readFile(new URL('style.css', publicRoot), 'utf8')
+  for (const panel of ['updates', 'maintenance', 'plugins']) {
+    assert.match(html, new RegExp(`id="panel-${panel}"`))
+  }
+  for (const route of [
+    'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
+    'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action', 'logs/stream',
+  ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
+  assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
+  assert.match(script, /name === 'dsh_locale'/)
+  assert.match(script, /navigator\.languages/)
+  assert.match(script, /checkUpdates\('page-open'\)/)
+  assert.match(script, /NOTICE_PREFIX = 'dsh-platform:console-update-notice'/)
+  assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)
+  assert.match(style, /\.tabs \{[\s\S]*overflow-x: auto/)
+  assert.match(style, /@media \(max-width: 640px\)/)
+  assert.match(style, /\.log-list \{[\s\S]*max-height: min\(320px, 42dvh\)/)
+})
+
 test('CLI parser keeps rollback local and update wait behavior explicit', async () => {
   assert.deepEqual(parseCli(['update', '--wait']), { command: 'update', wait: true })
   assert.deepEqual(parseCli(['trust', 'status']), { command: 'trust', operation: 'status' })
