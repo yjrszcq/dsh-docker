@@ -70,7 +70,7 @@
   border-radius: 6px;
   background: var(--dsw-alias-bg-base);
 }
-.editorFrame:focus-within { border-color: var(--dsw-alias-label-tertiary); }
+.editorFrame:focus-within { border-color: var(--dsw-alias-border-l2); }
 
 .lineNumbers {
   box-sizing: border-box;
