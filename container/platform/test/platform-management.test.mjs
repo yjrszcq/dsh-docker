@@ -56,6 +56,11 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护', logsTab: '日志'/)
   assert.match(source, /updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime', logsTab: 'Logs'/)
   assert.match(source, /logs\/stream\?limit=500/)
+  assert.match(source, /function compactLogEntries\(entries\)/)
+  assert.match(source, /JSON\.parse\(lines\.join\('\\n'\)\)/)
+  assert.match(source, /message: JSON\.stringify\(value\)/)
+  assert.match(source, /if \(!isJsonFragment\(first\.value\.message \?\? ''\)\) compacted\.push\(first\)/)
+  assert.match(source, /const visibleEntries = compactLogEntries\(entries\)/)
   assert.match(source, /searchLogs: '搜索日志'/)
   assert.match(source, /allSources: '全部模块'/)
   assert.match(source, /levelWarning: '警告'/)
@@ -92,6 +97,40 @@ test('Platform Management is embedded in the official settings.section slot', as
   for (const status of ['idle', 'checking', 'planning', 'downloading', 'validating', 'switching', 'probation', 'success', 'failed']) {
     assert.match(source, new RegExp(`${status.replace('-', '\\-')}: ['"]status`))
   }
+})
+
+test('Platform Management compacts multiline JSON only in the log presentation', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))
+  const compactLogEntries = new Function(`${helpers}; return compactLogEntries`)()
+  const status = {
+    platformLayout: 1,
+    recoveryMode: null,
+    trust: { keyringGeneration: 1, targetSequence: null, officialDshVersion: null },
+    dshRestart: { status: 'idle', taskId: null, error: null, updatedAt: null },
+  }
+  let index = 0
+  const entry = message => ({
+    identity: `entry-${String(index)}`,
+    value: {
+      timestamp: new Date(Date.UTC(2026, 7, 20, 0, 0, 0, index++)).toISOString(),
+      source: 'platform-management',
+      stream: 'stdout',
+      level: 'info',
+      message,
+    },
+  })
+  const visible = compactLogEntries([
+    entry('"orphanedAtBoundary": null,'),
+    ...JSON.stringify(status, null, 2).split('\n').map(entry),
+    entry('ordinary output'),
+    entry('{"already":"compact"}'),
+  ])
+  assert.deepEqual(visible.map(item => item.value.message), [
+    JSON.stringify(status),
+    'ordinary output',
+    '{"already":"compact"}',
+  ])
 })
 
 test('Platform Management follows DSH settings tokens and responsive layout', async () => {

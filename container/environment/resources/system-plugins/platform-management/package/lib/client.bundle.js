@@ -102,6 +102,48 @@ function logLevel(entry) {
   return /^\s*(warn(?:ing)?)[\s:]/i.test(entry?.message ?? '') ? 'warning' : 'info'
 }
 
+function isJsonFragment(message) {
+  const value = message.trim()
+  return /^(?:[{}\[\]],?|"(?:[^"\\]|\\.)+"\s*:\s*.*)$/.test(value)
+}
+
+function compactLogEntries(entries) {
+  const compacted = []
+  for (let index = 0; index < entries.length; index += 1) {
+    const first = entries[index]
+    const opening = first.value.message?.trim()
+    if (opening !== '{' && opening !== '[') {
+      if (!isJsonFragment(first.value.message ?? '')) compacted.push(first)
+      continue
+    }
+    const lines = [first.value.message]
+    const startedAt = Date.parse(first.value.timestamp)
+    let merged = false
+    for (let end = index + 1; end < entries.length; end += 1) {
+      const next = entries[end]
+      if (
+        next.value.source !== first.value.source
+        || next.value.stream !== first.value.stream
+        || logLevel(next.value) !== logLevel(first.value)
+        || Date.parse(next.value.timestamp) - startedAt > 2_000
+      ) break
+      lines.push(next.value.message)
+      try {
+        const value = JSON.parse(lines.join('\n'))
+        compacted.push({
+          identity: entries.slice(index, end + 1).map(item => item.identity).join('|'),
+          value: { ...first.value, message: JSON.stringify(value) },
+        })
+        index = end
+        merged = true
+        break
+      } catch {}
+    }
+    if (!merged && !isJsonFragment(first.value.message)) compacted.push(first)
+  }
+  return compacted
+}
+
 function LogViewer({ active, t }) {
   const [entries, setEntries] = useState([])
   const [query, setQuery] = useState('')
@@ -132,9 +174,10 @@ function LogViewer({ active, t }) {
     return () => stream.close()
   }, [active])
 
-  const sources = [...new Set(entries.map(item => item.value.source).filter(Boolean))].sort()
+  const visibleEntries = compactLogEntries(entries)
+  const sources = [...new Set(visibleEntries.map(item => item.value.source).filter(Boolean))].sort()
   const normalizedQuery = query.trim().toLocaleLowerCase(t('localeCode') === 'en' ? 'en-US' : 'zh-CN')
-  const filtered = entries.filter(item => {
+  const filtered = visibleEntries.filter(item => {
     const entry = item.value
     return (source === 'all' || entry.source === source)
       && (level === 'all' || logLevel(entry) === level)
@@ -188,9 +231,9 @@ function LogViewer({ active, t }) {
         sources.map(value => h('option', { key: value, value }, value))),
       h('select', { value: level, 'aria-label': t('logLevel'), onChange: event => setLevel(event.target.value) },
         ['all', 'debug', 'info', 'warning', 'error'].map(value => h('option', { key: value, value }, t(`level${value[0].toUpperCase()}${value.slice(1)}`))))),
-    h('div', { className: css.logSummary }, t('logCount').replace('{shown}', String(filtered.length)).replace('{total}', String(entries.length))),
+    h('div', { className: css.logSummary }, t('logCount').replace('{shown}', String(filtered.length)).replace('{total}', String(visibleEntries.length))),
     filtered.length === 0
-      ? h('p', { className: css.emptyLogs }, entries.length === 0 ? t('noLogs') : t('noMatchingLogs'))
+      ? h('p', { className: css.emptyLogs }, visibleEntries.length === 0 ? t('noLogs') : t('noMatchingLogs'))
       : h('div', { className: css.logList, ref: listRef }, filtered.map(item => {
           const entry = item.value
           const entryLevel = logLevel(entry)
