@@ -20,6 +20,7 @@ import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { readDeploymentStatus } from '../../../platform/lib/deployment-status.mjs'
 import { parseImageInventory } from '../../../platform/lib/deployment-contracts.mjs'
+import { SettingsDocumentStore } from './settings-document.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -62,6 +63,7 @@ const coordinator = new UpdateCoordinator({
   automaticChecks,
   allowUnavailableMetadata: imageInventory.authority === 'development',
 })
+const settingsDocument = new SettingsDocumentStore(process.env.DSH_HOME ?? '/data/dsh')
 const scheduler = new UpdateScheduler({
   check: () => coordinator.check('automatic'),
 })
@@ -76,6 +78,7 @@ const server = createManagementServer({
   listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
+  settingsDocument,
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)

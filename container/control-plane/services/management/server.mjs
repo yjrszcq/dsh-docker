@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { UpdateConflictError } from '../../modules/updater/lib/coordinator.mjs'
+import { MAX_SETTINGS_DOCUMENT_BYTES, SettingsDocumentConflictError } from './settings-document.mjs'
 
 export const API_PREFIX = '/_dsh_platform/api/v1/'
 export const CONSOLE_PREFIX = '/_dsh_platform/ui/'
@@ -19,12 +20,12 @@ const CONSOLE_HEADERS = Object.freeze({
   'x-content-type-options': 'nosniff',
 })
 
-async function jsonBody(request) {
+async function jsonBody(request, maxBytes = MAX_BODY_BYTES) {
   const chunks = []
   let size = 0
   for await (const chunk of request) {
     size += chunk.byteLength
-    if (size > MAX_BODY_BYTES) throw new Error('request body is too large')
+    if (size > maxBytes) throw new Error('request body is too large')
     chunks.push(chunk)
   }
   if (size === 0) return {}
@@ -87,6 +88,7 @@ export function createManagementServer({
   listBundledPlugins = async () => [],
   configureBundledPlugin = async () => { throw new Error('System Plugin management is not configured') },
   recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
+  settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
@@ -179,6 +181,19 @@ export function createManagementServer({
         })
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
+      } else if (request.method === 'GET' && route === 'settings-document') {
+        if (settingsDocument === undefined) throw new Error('settings document editing is not configured')
+        send(response, 200, await settingsDocument.read())
+      } else if (request.method === 'PUT' && route === 'settings-document') {
+        if (settingsDocument === undefined) throw new Error('settings document editing is not configured')
+        const body = await jsonBody(request, MAX_SETTINGS_DOCUMENT_BYTES * 6 + 4096)
+        if (body === null || typeof body !== 'object' || Array.isArray(body)
+          || Object.keys(body).some(key => !['content', 'revision'].includes(key))) {
+          throw new Error('settings document request is invalid')
+        }
+        const saved = await settingsDocument.write(body.content, body.revision)
+        await logs.audit('settings-document.saved', { revision: saved.revision }).catch(() => {})
+        send(response, 200, saved)
       } else if (request.method === 'POST' && route === 'check') {
         const body = await jsonBody(request)
         const source = body.source ?? 'manual'
@@ -269,7 +284,7 @@ export function createManagementServer({
         response.once('close', () => logs.off('entry', listener))
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
-      send(response, error instanceof UpdateConflictError ? 409 : 400, {
+      send(response, error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError ? 409 : 400, {
         error: error instanceof Error ? error.message : 'management request failed',
       })
     }

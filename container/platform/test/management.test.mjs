@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { request as httpRequest } from 'node:http'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -11,6 +11,7 @@ import { API_PREFIX, createManagementServer, listenManagement } from '../../cont
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { UpdateConflictError } from '../../control-plane/modules/updater/lib/coordinator.mjs'
 import { UpdateScheduler } from '../../control-plane/modules/updater/lib/scheduler.mjs'
+import { SettingsDocumentStore } from '../../control-plane/services/management/settings-document.mjs'
 
 class Coordinator extends EventEmitter {
   constructor() {
@@ -154,6 +155,53 @@ test('management reports unpublished development metadata without an HTTP error'
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
+})
+
+test('management edits only the fixed settings document with optimistic revisions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-settings-document-'))
+  const dshHome = join(root, 'dsh')
+  const settingsDocument = new SettingsDocumentStore(dshHome)
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({ coordinator: new Coordinator(), logs, settingsDocument })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const empty = await client.request('GET', `${API_PREFIX}settings-document`)
+    assert.equal(empty.content, '')
+    assert.equal(empty.exists, false)
+    assert.match(empty.revision, /^[a-f0-9]{64}$/)
+    const saved = await client.request('PUT', `${API_PREFIX}settings-document`, {
+      content: 'language: zh\n', revision: empty.revision,
+    })
+    assert.equal(saved.exists, true)
+    assert.equal(await readFile(join(dshHome, 'settings.yaml'), 'utf8'), 'language: zh\n')
+    assert.equal((await lstat(join(dshHome, 'settings.yaml'))).isFile(), true)
+    await assert.rejects(client.request('PUT', `${API_PREFIX}settings-document`, {
+      content: 'language: en\n', revision: empty.revision, path: '/etc/passwd',
+    }), error => error.statusCode === 400)
+    await assert.rejects(client.request('PUT', `${API_PREFIX}settings-document`, {
+      content: 'language: en\n', revision: empty.revision,
+    }), error => error.statusCode === 409)
+    assert.equal(await readFile(join(dshHome, 'settings.yaml'), 'utf8'), 'language: zh\n')
+    assert.deepEqual((await logs.query({ sources: ['audit'] })).map(entry => entry.message), ['settings-document.saved'])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('settings document editing rejects symbolic links and oversized content', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-settings-unsafe-'))
+  const dshHome = join(root, 'dsh')
+  await import('node:fs/promises').then(({ mkdir }) => mkdir(dshHome))
+  const target = join(root, 'outside.yaml')
+  await writeFile(target, 'outside: true\n')
+  await symlink(target, join(dshHome, 'settings.yaml'))
+  const store = new SettingsDocumentStore(dshHome, { maxBytes: 8 })
+  await assert.rejects(store.read(), /regular file/)
+  await import('node:fs/promises').then(({ rm }) => rm(join(dshHome, 'settings.yaml')))
+  await assert.rejects(store.write('123456789', '0'.repeat(64)), /too large/)
+  assert.equal(await readFile(target, 'utf8'), 'outside: true\n')
 })
 
 test('management restarts only DSH as an audited task and excludes update activation', async () => {
