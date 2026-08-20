@@ -201,13 +201,13 @@ export class SystemPluginSelectionStore {
     assertPluginId(pluginId)
     if (!ids.includes(pluginId)) throw new Error(`System Plugin ${pluginId} is not provided by the current Environment`)
     if (this.protectedIds.has(pluginId)) throw new Error(`System Plugin ${pluginId} is managed by the platform and cannot be changed`)
-    if (!['install', 'delete', 'enable', 'disable'].includes(action)) {
+    if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) {
       throw new Error('System Plugin action is invalid')
     }
     const selection = await this.read(ids)
     const current = selection[pluginId]
     if (action === 'install') selection[pluginId] = { ...current, installed: true, enabled: true }
-    else if (action === 'delete') selection[pluginId] = { ...current, installed: false, enabled: false }
+    else if (action === 'uninstall') selection[pluginId] = { ...current, installed: false, enabled: false }
     else if (action === 'enable') {
       if (!current.installed) throw new Error(`System Plugin ${pluginId} must be installed before it can be enabled`)
       selection[pluginId] = { ...current, enabled: true }

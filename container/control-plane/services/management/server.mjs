@@ -114,7 +114,7 @@ export function createManagementServer({
     if (typeof pluginId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(pluginId)) {
       throw new Error('System Plugin ID is invalid')
     }
-    if (!['install', 'delete', 'enable', 'disable'].includes(action)) throw new Error('System Plugin action is invalid')
+    if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) throw new Error('System Plugin action is invalid')
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const taskId = randomUUID()

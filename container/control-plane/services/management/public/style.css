@@ -73,6 +73,8 @@ section:first-child { padding-top: 0; }
 .plugin-row button { flex: 0 0 auto; }
 .plugin-row strong, .plugin-row span { display: block; overflow-wrap: anywhere; }
 .plugin-row span, .operation-result { color: #697480; font-size: 12px; margin-top: 3px; }
+.plugin-controls { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; }
+.managed-badge { background: #e8ecef; border-radius: 12px; color: #59636e; margin: 0; padding: 4px 9px; }
 
 .icon-button { font-weight: 700; height: 32px; min-height: 32px; padding: 0; width: 32px; }
 pre { background: #171b20; color: #dce2e8; font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.55; margin: 0; max-height: 320px; min-height: 150px; overflow: auto; padding: 14px; white-space: pre-wrap; }
@@ -92,6 +94,7 @@ dialog p { line-height: 1.55; }
   .versions, .versions > div + div, .holds, .hold, .details div, .plugin-list, .plugin-row { border-color: #343b42; }
   .progress { background: #343b42; }
   .error, button.danger-outline { color: #ef9c9c; }
+  .managed-badge { background: #2c333a; }
 }
 
 @media (max-width: 680px) {

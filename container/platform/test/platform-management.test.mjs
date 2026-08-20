@@ -53,8 +53,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)
   assert.match(source, /className: css\.tabs, role: 'tablist'/)
   assert.match(source, /role: 'tabpanel'/)
-  assert.match(source, /updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护', logsTab: '日志'/)
-  assert.match(source, /updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime', logsTab: 'Logs'/)
+  assert.match(source, /updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护', pluginsTab: '系统插件', logsTab: '日志'/)
+  assert.match(source, /updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime', pluginsTab: 'System plugins', logsTab: 'Logs'/)
   assert.match(source, /logs\/stream\?limit=500/)
   assert.match(source, /function compactLogEntries\(entries\)/)
   assert.match(source, /JSON\.parse\(lines\.join\('\\n'\)\)/)
@@ -70,7 +70,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /listRef\.current\.scrollTop = listRef\.current\.scrollHeight/)
   assert.match(source, /'aria-pressed': autoScroll/)
   assert.doesNotMatch(source, /运行详情|平台日志/)
-  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh']) {
+  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins\\/action']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
@@ -80,6 +80,10 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /setConfirmRestart\(true\)/)
   assert.match(source, /restartWarning: '当前 DSH 连接会暂时中断/)
   assert.match(source, /restartWarning: 'The current DSH connection will be interrupted briefly/)
+  assert.match(source, /plugin\.protected/)
+  assert.match(source, /platformManaged: '平台核心组件，始终保持安装和启用。'/)
+  assert.match(source, /systemPluginsDetail: '管理当前环境提供的 DSH Docker 系统插件。卸载后仍可从本地可信副本重新安装。'/)
+  for (const action of ['install', 'uninstall', 'enable', 'disable']) assert.match(source, new RegExp(`'${action}'`))
   assert.doesNotMatch(source, /trust\/reset/)
   assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
   assert.match(source, /`env-\$\{String\(value\)\}`/)

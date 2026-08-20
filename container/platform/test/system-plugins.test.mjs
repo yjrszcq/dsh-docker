@@ -218,7 +218,7 @@ test('persists install and enable selection while protecting Platform Management
     ['diagnostics', true, true, false],
   ])
 
-  await assert.rejects(store.configure(pluginIds, 'platform-management', 'delete'), /managed by the platform/)
+  await assert.rejects(store.configure(pluginIds, 'platform-management', 'uninstall'), /managed by the platform/)
   await store.configure(pluginIds, 'diagnostics', 'disable')
   const disabled = await materializeSystemPluginSelection({
     environmentRoot: environment,
@@ -230,7 +230,7 @@ test('persists install and enable selection while protecting Platform Management
   assert.deepEqual(JSON.parse(await readFile(join(disabled.path, 'cordis.patch.yml'), 'utf8'))
     .flatMap(entry => entry.insert).map(row => row.name), ['@dsh-docker/platform-management'])
 
-  await store.configure(pluginIds, 'diagnostics', 'delete')
+  await store.configure(pluginIds, 'diagnostics', 'uninstall')
   const deleted = await materializeSystemPluginSelection({
     environmentRoot: environment,
     sourceRoot: source,

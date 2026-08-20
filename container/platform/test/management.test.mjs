@@ -260,7 +260,7 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     assert.deepEqual(calls, [['diagnostics', 'disable']])
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'running')
     for (const [method, path, body] of [
-      ['POST', '/_dsh_platform/api/v1/bundled-plugins/action', { id: 'diagnostics', action: 'delete' }],
+      ['POST', '/_dsh_platform/api/v1/bundled-plugins/action', { id: 'diagnostics', action: 'uninstall' }],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
       ['POST', '/_dsh_platform/api/v1/update'],
     ]) {

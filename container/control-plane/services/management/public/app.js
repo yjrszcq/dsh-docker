@@ -73,24 +73,44 @@ function renderBundledPlugins(values, busy) {
     const name = document.createElement('strong')
     name.textContent = plugin.id
     const state = document.createElement('span')
-    state.textContent = plugin.installed ? '已安装' : '需要重新安装'
+    state.textContent = plugin.protected
+      ? '平台核心组件，始终保持安装和启用'
+      : !plugin.installed ? '未安装' : plugin.enabled ? '已安装并启用' : '已安装但已禁用'
     copy.append(name, state)
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.textContent = plugin.installed ? '重新安装' : '安装'
-    button.disabled = busy
-    button.addEventListener('click', () => act(() => api('bundled-plugins/reinstall', {
-      method: 'POST', body: { id: plugin.id },
-    })))
-    row.append(copy, button)
+    const controls = document.createElement('div')
+    controls.className = 'plugin-controls'
+    if (plugin.protected) {
+      const badge = document.createElement('span')
+      badge.className = 'managed-badge'
+      badge.textContent = '平台托管'
+      controls.append(badge)
+    } else if (!plugin.installed) {
+      controls.append(pluginButton('安装', plugin.id, 'install', busy))
+    } else {
+      controls.append(pluginButton(plugin.enabled ? '禁用' : '启用', plugin.id, plugin.enabled ? 'disable' : 'enable', busy))
+      controls.append(pluginButton('卸载', plugin.id, 'uninstall', busy, 'danger-outline'))
+    }
+    row.append(copy, controls)
     elements['bundled-plugins'].append(row)
   }
+}
+
+function pluginButton(label, id, action, disabled, className = '') {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = className
+  button.textContent = label
+  button.disabled = disabled
+  button.addEventListener('click', () => act(() => api('bundled-plugins/action', {
+    method: 'POST', body: { id, action },
+  })))
+  return button
 }
 
 function runtimeBusy(next) {
   const update = next.update ?? {}
   return !TERMINAL.has(update.status ?? 'idle')
-    || next.bundledPluginReinstall?.status === 'reinstalling'
+    || next.systemPluginOperation?.status === 'running'
     || next.dshRestart?.status === 'restarting'
 }
 
@@ -98,7 +118,7 @@ function render(next) {
   status = next
   rollbackPlan = next.rollbackPlan
   const update = next.update ?? {}
-  const pluginOperation = next.bundledPluginReinstall ?? {}
+  const pluginOperation = next.systemPluginOperation ?? {}
   const busy = runtimeBusy(next)
   setText('current-dsh', next.current?.dsh)
   setText('current-env', next.current?.environment)
@@ -130,10 +150,10 @@ function render(next) {
   const holds = [...(next.holds ?? []), ...(next.experimentalBlocked ? [next.experimentalBlocked] : [])]
   renderHolds([...new Map(holds.map(hold => [hold.id, hold])).values()], busy)
   elements['plugin-operation'].hidden = pluginOperation.status === 'idle'
-  elements['plugin-operation'].textContent = pluginOperation.status === 'reinstalling'
-    ? `正在重新安装 ${display(pluginOperation.pluginId)} 并重启 DSH`
+  elements['plugin-operation'].textContent = pluginOperation.status === 'running'
+    ? `正在执行 ${display(pluginOperation.action)}：${display(pluginOperation.pluginId)}，并重启 DSH`
     : pluginOperation.status === 'success'
-      ? `${display(pluginOperation.pluginId)} 已重新安装`
+      ? `${display(pluginOperation.pluginId)} 操作完成`
       : pluginOperation.error ?? ''
   const notices = []
   if (next.aheadOfStable) notices.push('当前版本领先 Latest Supported，已冻结完整运行组合。')
