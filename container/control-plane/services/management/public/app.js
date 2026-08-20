@@ -1,3 +1,6 @@
+import { FitAddon } from './vendor/addon-fit.mjs'
+import { Terminal } from './vendor/xterm.mjs'
+
 const API = '/_dsh_platform/api/v1'
 const TERMINAL = new Set(['idle', 'success', 'failed'])
 const STATUS_LABELS = Object.freeze({
@@ -22,10 +25,11 @@ const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
 const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
 const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
+const TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: '平台管理', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
-    managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件',
+    managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件', terminalTab: '终端',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
@@ -71,12 +75,17 @@ const COPY = Object.freeze({
     userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
     stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
     upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
+    terminal: '容器终端', terminalDetail: '打开交互式容器 Shell；仅重新启动 DSH 时终端会话保持运行。',
+    newTerminal: '新建会话', closeTerminal: '关闭会话', terminalIdle: '没有活动会话', terminalStarting: '正在创建会话',
+    terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
+    terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
+    terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
   }),
   en: Object.freeze({
     title: 'Platform Management', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins', terminalTab: 'Terminal',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
@@ -122,6 +131,11 @@ const COPY = Object.freeze({
     userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
     stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
     upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
+    terminal: 'Container terminal', terminalDetail: 'Open an interactive container shell that remains running when only DSH restarts.',
+    newTerminal: 'New session', closeTerminal: 'Close session', terminalIdle: 'No active session', terminalStarting: 'Creating session',
+    terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
+    terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
+    terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
   }),
@@ -157,6 +171,17 @@ let eventSource
 let logSource
 let autoScroll = true
 let reminder
+let terminalEmulator
+let terminalFit
+let terminalSocket
+let terminalSessionId
+let terminalSessionState = 'idle'
+let terminalReconnectTimer
+let terminalReconnectDeadline
+let terminalResizeObserver
+let terminalResizeFrame
+let terminalRestored = false
+let terminalLeaving = false
 const logEntries = []
 let logDisplayLimit = (() => {
   const value = Number(storageValue(LOG_DISPLAY_LIMIT_KEY))
@@ -835,6 +860,188 @@ function appendLog(entry) {
   renderLogs()
 }
 
+function terminalTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? { background: '#18181a', foreground: '#f0f0f1', cursor: '#f0f0f1', selectionBackground: '#4b5f80', black: '#18181a', brightBlack: '#85858b' }
+    : { background: '#ffffff', foreground: '#202124', cursor: '#202124', selectionBackground: '#c9d9f4', black: '#202124', brightBlack: '#6f7177' }
+}
+
+function setTerminalStatus(key, state, values = {}) {
+  terminalSessionState = state
+  elements['terminal-status'].dataset.state = state
+  elements['terminal-status'].querySelector('strong').textContent = t(key, values)
+  const active = terminalSessionId !== undefined
+  elements['new-terminal'].disabled = active || state === 'starting'
+  elements['close-terminal'].disabled = !active
+  elements['terminal-frame'].classList.toggle('active', active)
+  elements['terminal-placeholder'].hidden = active
+}
+
+function saveTerminalSession(value) {
+  terminalSessionId = value
+  try {
+    if (value === undefined) window.sessionStorage.removeItem(TERMINAL_SESSION_KEY)
+    else window.sessionStorage.setItem(TERMINAL_SESSION_KEY, value)
+  } catch {}
+}
+
+function storedTerminalSession() {
+  try { return window.sessionStorage.getItem(TERMINAL_SESSION_KEY) ?? undefined } catch { return undefined }
+}
+
+function terminalWebSocketUrl(sessionId) {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${API}/terminal/sessions/${sessionId}/stream`
+}
+
+function terminalDimensions() {
+  return {
+    cols: Math.max(2, Math.min(500, terminalEmulator?.cols ?? 80)),
+    rows: Math.max(1, Math.min(200, terminalEmulator?.rows ?? 24)),
+  }
+}
+
+function sendTerminalResize() {
+  if (terminalSocket?.readyState !== WebSocket.OPEN) return
+  terminalSocket.send(JSON.stringify({ type: 'resize', ...terminalDimensions() }))
+}
+
+function fitTerminal() {
+  if (terminalEmulator === undefined || elements['panel-terminal'].hidden) return
+  window.cancelAnimationFrame(terminalResizeFrame)
+  terminalResizeFrame = window.requestAnimationFrame(() => {
+    try {
+      terminalFit.fit()
+      sendTerminalResize()
+    } catch {}
+  })
+}
+
+function initializeTerminal() {
+  if (terminalEmulator !== undefined) return
+  terminalFit = new FitAddon()
+  terminalEmulator = new Terminal({
+    cursorBlink: true,
+    fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
+    fontSize: 13,
+    lineHeight: 1.25,
+    scrollback: 5_000,
+    theme: terminalTheme(),
+  })
+  terminalEmulator.loadAddon(terminalFit)
+  terminalEmulator.open(elements['terminal-screen'])
+  terminalEmulator.onData(data => {
+    if (terminalSocket?.readyState === WebSocket.OPEN && terminalSessionState === 'connected') {
+      terminalSocket.send(JSON.stringify({ type: 'input', data }))
+    }
+  })
+  terminalResizeObserver = new ResizeObserver(fitTerminal)
+  terminalResizeObserver.observe(elements['terminal-frame'])
+  const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
+  colorScheme.addEventListener('change', () => { terminalEmulator.options.theme = terminalTheme() })
+  fitTerminal()
+}
+
+function clearTerminalReconnect() {
+  window.clearTimeout(terminalReconnectTimer)
+  terminalReconnectTimer = undefined
+  terminalReconnectDeadline = undefined
+}
+
+function forgetTerminalSession(statusKey = 'terminalIdle', state = 'idle') {
+  clearTerminalReconnect()
+  terminalSocket?.close()
+  terminalSocket = undefined
+  saveTerminalSession(undefined)
+  terminalEmulator?.reset()
+  setTerminalStatus(statusKey, state)
+}
+
+function connectTerminal({ reconnect = false } = {}) {
+  if (terminalSessionId === undefined || terminalLeaving) return
+  clearTimeout(terminalReconnectTimer)
+  setTerminalStatus(reconnect ? 'terminalReconnecting' : 'terminalConnecting', reconnect ? 'reconnecting' : 'connecting')
+  terminalEmulator.reset()
+  const sessionId = terminalSessionId
+  const socket = new WebSocket(terminalWebSocketUrl(sessionId))
+  terminalSocket = socket
+  socket.addEventListener('open', () => {
+    if (terminalSocket !== socket || terminalSessionId !== sessionId) return socket.close()
+    terminalReconnectDeadline = undefined
+    setTerminalStatus('terminalConnected', 'connected')
+    sendTerminalResize()
+    terminalEmulator.focus()
+  })
+  socket.addEventListener('message', event => {
+    if (terminalSocket !== socket) return
+    try {
+      const message = JSON.parse(event.data)
+      if (message.type === 'output' && typeof message.data === 'string') terminalEmulator.write(message.data)
+      else if (message.type === 'exit') {
+        const result = message.code === null || message.code === undefined ? `signal ${display(message.signal)}` : String(message.code)
+        setTerminalStatus('terminalExited', 'exited', { status: result })
+      }
+    } catch {
+      setTerminalStatus('terminalFailed', 'failed')
+    }
+  })
+  socket.addEventListener('close', () => {
+    if (terminalSocket !== socket) return
+    terminalSocket = undefined
+    if (terminalLeaving || terminalSessionId !== sessionId || terminalSessionState === 'exited') return
+    terminalReconnectDeadline ??= Date.now() + 30_000
+    if (Date.now() >= terminalReconnectDeadline) {
+      forgetTerminalSession('terminalFailed', 'failed')
+      return
+    }
+    setTerminalStatus('terminalReconnecting', 'reconnecting')
+    terminalReconnectTimer = window.setTimeout(() => connectTerminal({ reconnect: true }), 1_000)
+  })
+  socket.addEventListener('error', () => {
+    if (terminalSocket === socket) setTerminalStatus('terminalReconnecting', 'reconnecting')
+  })
+}
+
+async function restoreTerminalSession() {
+  if (terminalRestored) return
+  terminalRestored = true
+  initializeTerminal()
+  const sessionId = storedTerminalSession()
+  if (sessionId === undefined) return setTerminalStatus('terminalIdle', 'idle')
+  saveTerminalSession(sessionId)
+  try {
+    await api(`terminal/sessions/${sessionId}`)
+    connectTerminal()
+  } catch (error) {
+    if (error.statusCode === 404) forgetTerminalSession()
+    else setTerminalStatus('terminalFailed', 'failed')
+  }
+}
+
+async function createTerminalSession() {
+  initializeTerminal()
+  setTerminalStatus('terminalStarting', 'starting')
+  try {
+    fitTerminal()
+    const session = await api('terminal/sessions', { method: 'POST', body: terminalDimensions() })
+    saveTerminalSession(session.sessionId)
+    connectTerminal()
+  } catch (error) {
+    forgetTerminalSession('terminalFailed', 'failed')
+    showError(error)
+  }
+}
+
+async function closeTerminalSession() {
+  const sessionId = terminalSessionId
+  if (sessionId === undefined) return
+  elements['close-terminal'].disabled = true
+  try { await api(`terminal/sessions/${sessionId}`, { method: 'DELETE' }) } catch (error) {
+    if (error.statusCode !== 404) showError(error)
+  }
+  forgetTerminalSession('terminalClosed', 'closed')
+}
+
 function selectTab(tab) {
   for (const button of tabButtons) {
     const active = button.dataset.tab === tab
@@ -846,6 +1053,10 @@ function selectTab(tab) {
     window.requestAnimationFrame(() => {
       elements['log-list'].scrollTop = elements['log-list'].scrollHeight
     })
+  }
+  if (tab === 'terminal') {
+    void restoreTerminalSession()
+    fitTerminal()
   }
 }
 
@@ -913,6 +1124,8 @@ elements['cancel-user-plugin-changes'].addEventListener('click', () => {
   renderUserPlugins(runtimeBusy())
 })
 elements['apply-user-plugin-changes'].addEventListener('click', () => { void applyUserPluginDraft() })
+elements['new-terminal'].addEventListener('click', () => { void createTerminalSession() })
+elements['close-terminal'].addEventListener('click', () => { void closeTerminalSession() })
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })
@@ -956,6 +1169,9 @@ elements['reminder-dismiss'].addEventListener('click', () => {
 })
 
 window.addEventListener('beforeunload', () => {
+  terminalLeaving = true
+  clearTimeout(terminalReconnectTimer)
+  terminalSocket?.close()
   eventSource?.close()
   logSource?.close()
 })

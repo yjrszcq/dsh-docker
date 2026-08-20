@@ -763,6 +763,15 @@ test('management serves only the fixed persistent Platform Management assets', a
     const head = await rawRequest(socketPath, '/_dsh_platform/ui/style.css', 'HEAD')
     assert.equal(head.status, 200)
     assert.equal(head.body, '')
+    const xterm = await rawRequest(socketPath, '/_dsh_platform/ui/vendor/xterm.mjs')
+    assert.equal(xterm.status, 200)
+    assert.match(xterm.headers['content-type'], /^text\/javascript/)
+    assert.match(xterm.body, /export\{/)
+    const fit = await rawRequest(socketPath, '/_dsh_platform/ui/vendor/addon-fit.mjs')
+    assert.equal(fit.status, 200)
+    assert.match(fit.body, /FitAddon/)
+    assert.match((await rawRequest(socketPath, '/_dsh_platform/ui/vendor/xterm.css')).headers['content-type'], /^text\/css/)
+    assert.equal((await rawRequest(socketPath, '/_dsh_platform/ui/vendor/xterm.mjs.map')).status, 404)
     assert.equal((await rawRequest(socketPath, '/_dsh_platform/ui/../server.mjs')).status, 404)
     assert.equal((await rawRequest(socketPath, '/_dsh_platform/ui/app.js', 'POST')).status, 405)
   } finally {
@@ -787,13 +796,14 @@ test('standalone console keeps localized feature parity on the shared Management
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
   const script = await readFile(new URL('app.js', publicRoot), 'utf8')
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins']) {
+  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins', 'terminal']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action',
     'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
+    'terminal/sessions',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(script, /name === 'dsh_locale'/)
@@ -828,6 +838,15 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
   assert.doesNotMatch(script, /插件设置并重启 DSH|settings and restarting DSH/)
   assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)
+  assert.match(script, /import \{ Terminal \} from '\.\/vendor\/xterm\.mjs'/)
+  assert.match(script, /import \{ FitAddon \} from '\.\/vendor\/addon-fit\.mjs'/)
+  assert.match(script, /TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'/)
+  assert.match(script, /sessionStorage\.setItem\(TERMINAL_SESSION_KEY, value\)/)
+  assert.match(script, /new WebSocket\(terminalWebSocketUrl\(sessionId\)\)/)
+  assert.match(script, /terminalEmulator\.reset\(\)[\s\S]*new WebSocket/)
+  assert.match(script, /terminalReconnectDeadline \?\?= Date\.now\(\) \+ 30_000/)
+  assert.match(script, /terminalFit\.fit\(\)/)
+  assert.match(style, /height: clamp\(260px, 52dvh, 420px\)/)
   assert.match(script, /userPluginsTab: '用户插件'/)
   assert.match(script, /userPluginsTab: 'User plugins'/)
   assert.match(script, /applyUserPluginChanges: '应用并重新启动 DSH'/)

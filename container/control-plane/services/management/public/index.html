@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Platform Management</title>
+  <link rel="stylesheet" href="./vendor/xterm.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -31,6 +32,7 @@
       <button id="tab-maintenance" type="button" role="tab" aria-selected="false" aria-controls="panel-maintenance" data-tab="maintenance" data-i18n="maintenanceTab">Maintenance</button>
       <button id="tab-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-plugins" data-tab="plugins" data-i18n="pluginsTab">System plugins</button>
       <button id="tab-user-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-user-plugins" data-tab="user-plugins" data-i18n="userPluginsTab">User plugins</button>
+      <button id="tab-terminal" type="button" role="tab" aria-selected="false" aria-controls="panel-terminal" data-tab="terminal" data-i18n="terminalTab">Terminal</button>
     </nav>
 
     <p id="error" class="message error" role="alert" hidden></p>
@@ -125,6 +127,23 @@
           <div><button id="cancel-user-plugin-changes" type="button" class="secondary" data-i18n="cancelChanges" disabled>Cancel changes</button><button id="apply-user-plugin-changes" type="button" class="primary" data-i18n="applyUserPluginChanges" disabled>Apply and restart DSH</button></div>
         </div>
         <p id="user-plugin-operation" class="operation-result" role="status" aria-live="polite" hidden></p>
+      </section>
+    </div>
+
+    <div id="panel-terminal" class="tab-panel" role="tabpanel" aria-labelledby="tab-terminal" hidden>
+      <section class="terminal-section" aria-labelledby="terminal-title">
+        <div class="section-heading terminal-heading">
+          <div><h2 id="terminal-title" data-i18n="terminal">Terminal</h2><p data-i18n="terminalDetail">Open a container shell that remains available while DSH restarts.</p></div>
+          <div class="terminal-actions">
+            <button id="new-terminal" type="button" class="primary" data-i18n="newTerminal">New session</button>
+            <button id="close-terminal" type="button" class="secondary" data-i18n="closeTerminal" disabled>Close session</button>
+          </div>
+        </div>
+        <div class="terminal-status" id="terminal-status" data-state="idle" role="status" aria-live="polite"><span aria-hidden="true"></span><strong data-i18n="terminalIdle">No active session</strong></div>
+        <div id="terminal-frame" class="terminal-frame">
+          <div id="terminal-screen" aria-label="Container terminal" data-i18n-aria-label="terminalScreen"></div>
+          <p id="terminal-placeholder" data-i18n="terminalPlaceholder">Start a session to open an interactive Bash shell.</p>
+        </div>
       </section>
     </div>
   </main>

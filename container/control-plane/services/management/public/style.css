@@ -325,6 +325,53 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .draft-actions > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .draft-actions > div { display: flex; justify-content: flex-end; gap: 8px; }
 
+.terminal-section { gap: 14px; }
+.terminal-heading { align-items: center; }
+.terminal-actions { display: flex; flex: none; gap: 8px; }
+.terminal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.terminal-status > span { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--faint); }
+.terminal-status[data-state="connected"] > span { background: var(--success); }
+.terminal-status[data-state="connecting"] > span,
+.terminal-status[data-state="reconnecting"] > span,
+.terminal-status[data-state="starting"] > span { background: var(--warning); }
+.terminal-status[data-state="failed"] { color: var(--danger); }
+.terminal-status[data-state="failed"] > span { background: var(--danger); }
+.terminal-status strong { font-weight: 400; }
+.terminal-frame {
+  position: relative;
+  width: 100%;
+  height: clamp(260px, 52dvh, 420px);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+#terminal-screen { width: 100%; height: 100%; }
+.terminal-frame:not(.active) #terminal-screen { visibility: hidden; }
+#terminal-screen .xterm { height: 100%; padding: 10px; background: var(--surface); }
+#terminal-screen .xterm-viewport { background-color: var(--surface) !important; scrollbar-color: var(--faint) transparent; }
+.terminal-frame > p {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .log-section { gap: 10px; }
 .log-tools { display: flex; align-items: center; gap: 8px; }
 .log-filters { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(110px, auto)); gap: 8px; }
@@ -409,6 +456,10 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .draft-actions { align-items: stretch; flex-direction: column; }
   .draft-actions > div { justify-content: stretch; }
   .draft-actions button { flex: 1; }
+  .terminal-heading { align-items: stretch; }
+  .terminal-actions { width: 100%; }
+  .terminal-actions button { flex: 1; }
+  .terminal-frame { height: clamp(260px, 48dvh, 360px); }
   .log-tools { width: 100%; flex-wrap: wrap; }
   .log-connection { margin-right: auto; }
   .log-filters { grid-template-columns: 1fr 1fr; }

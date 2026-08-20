@@ -11,9 +11,12 @@ const MAX_BODY_BYTES = 16 * 1024
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
 const CONSOLE_ASSETS = new Map([
-  ['', ['index.html', 'text/html; charset=utf-8']],
-  ['app.js', ['app.js', 'text/javascript; charset=utf-8']],
-  ['style.css', ['style.css', 'text/css; charset=utf-8']],
+  ['', ['public', 'index.html', 'text/html; charset=utf-8']],
+  ['app.js', ['public', 'app.js', 'text/javascript; charset=utf-8']],
+  ['style.css', ['public', 'style.css', 'text/css; charset=utf-8']],
+  ['vendor/xterm.mjs', ['dependencies', '@xterm/xterm/lib/xterm.mjs', 'text/javascript; charset=utf-8']],
+  ['vendor/xterm.css', ['dependencies', '@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8']],
+  ['vendor/addon-fit.mjs', ['dependencies', '@xterm/addon-fit/lib/addon-fit.mjs', 'text/javascript; charset=utf-8']],
 ])
 const CONSOLE_HEADERS = Object.freeze({
   'cache-control': 'no-store',
@@ -39,7 +42,7 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-async function sendConsoleAsset(request, response, pathname, consoleRoot) {
+async function sendConsoleAsset(request, response, pathname, consoleRoots) {
   if (pathname === CONSOLE_PREFIX.slice(0, -1)) {
     response.writeHead(308, { location: CONSOLE_PREFIX, ...CONSOLE_HEADERS })
     response.end()
@@ -57,10 +60,10 @@ async function sendConsoleAsset(request, response, pathname, consoleRoot) {
     response.end()
     return true
   }
-  const body = await readFile(join(consoleRoot, asset[0]))
+  const body = await readFile(join(consoleRoots[asset[0]], asset[1]))
   response.writeHead(200, {
     ...CONSOLE_HEADERS,
-    'content-type': asset[1],
+    'content-type': asset[2],
     'content-length': String(body.byteLength),
   })
   response.end(request.method === 'HEAD' ? undefined : body)
@@ -105,6 +108,7 @@ export function createManagementServer({
     upgrade: (_request, socket) => socket.destroy(),
   },
   consoleRoot = join(import.meta.dirname, 'public'),
+  consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
   let restartTask
   let pluginTask
@@ -125,6 +129,7 @@ export function createManagementServer({
   if (userPluginState.taskId !== null) userPluginTasks.set(userPluginState.taskId, userPluginState)
   let server
   const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
+  const recordAudit = (message, fields = {}) => audit(message, fields).catch(() => {})
 
   const publishRestart = value => {
     restartState = Object.freeze({ ...restartState, ...value, updatedAt: new Date().toISOString() })
@@ -163,7 +168,7 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishUserPlugin({ status: 'running', taskId, phase: 'validated', error: null })
     userPluginTask = Promise.resolve()
-      .then(() => audit('user-plugin.apply.started', { taskId, actions: validated.actions }))
+      .then(() => recordAudit('user-plugin.apply.started', { taskId, actions: validated.actions }))
       .then(() => applyUserPluginActions({
         taskId,
         revision: validated.revision,
@@ -172,17 +177,17 @@ export function createManagementServer({
       }))
       .then(
         async () => {
+          await recordAudit('user-plugin.apply.completed', { taskId })
           publishUserPlugin({ status: 'success', taskId, phase: 'completed', error: null })
           publishPlugin({ restartRequired: false })
-          await audit('user-plugin.apply.completed', { taskId })
         },
         async error => {
           const journal = error?.journal
+          await recordAudit('user-plugin.apply.failed', { error, taskId })
           publishUserPlugin({
             status: 'failed', taskId, phase: journal?.phase ?? userPluginState.phase,
             error: error instanceof Error ? error.message : 'User Plugin operation failed',
           })
-          await audit('user-plugin.apply.failed', { error, taskId })
         },
       )
       .finally(() => { userPluginTask = undefined })
@@ -202,17 +207,17 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishPlugin({ status: 'running', taskId, pluginId, action, error: null })
     pluginTask = Promise.resolve()
-      .then(() => audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }))
+      .then(() => recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }))
       .then(() => recovery ? recoverBundledPlugin(pluginId, action) : configureBundledPlugin(pluginId, action))
       .then(
         async () => {
+          await recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId })
           publishPlugin({ status: 'success', taskId, pluginId, action, error: null, restartRequired: true })
-          await audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId })
         },
         async error => {
           const message = error instanceof Error ? error.message : 'System Plugin operation failed'
+          await recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, { error, taskId, pluginId })
           publishPlugin({ status: 'failed', taskId, pluginId, action, error: message })
-          await audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, { error, taskId, pluginId })
         },
       )
       .finally(() => { pluginTask = undefined })
@@ -226,18 +231,18 @@ export function createManagementServer({
     const taskId = randomUUID()
     publishRestart({ status: 'restarting', taskId, error: null })
     restartTask = Promise.resolve()
-      .then(() => audit('dsh.restart.started', { taskId }))
+      .then(() => recordAudit('dsh.restart.started', { taskId }))
       .then(() => restartDsh())
       .then(
         async () => {
+          await recordAudit('dsh.restart.completed', { taskId })
           publishRestart({ status: 'success', taskId, error: null })
           publishPlugin({ restartRequired: false })
-          await audit('dsh.restart.completed', { taskId })
         },
         async error => {
           const message = error instanceof Error ? error.message : 'DSH restart failed'
+          await recordAudit('dsh.restart.failed', { error, taskId })
           publishRestart({ status: 'failed', taskId, error: message })
-          await audit('dsh.restart.failed', { error, taskId })
         },
       )
       .finally(() => { restartTask = undefined })
@@ -250,7 +255,10 @@ export function createManagementServer({
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
       pathname = url.pathname
-      if (await sendConsoleAsset(request, response, url.pathname, consoleRoot)) return
+      if (await sendConsoleAsset(request, response, url.pathname, {
+        public: consoleRoot,
+        dependencies: consoleDependencyRoot,
+      })) return
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {
