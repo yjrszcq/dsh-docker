@@ -555,6 +555,14 @@ test('reads npm latest from the official packument without trusting it locally',
   assert.deepEqual(found, { version: candidate.version })
 })
 
+test('does not misclassify a missing npm package as unpublished signed metadata', async () => {
+  const client = new NpmRegistryClient({ fetchImpl: async () => response('missing', 404) })
+  await assert.rejects(client.discover(), error => (
+    !(error instanceof MetadataUnavailableError)
+    && error.message === 'npm packument returned HTTP 404'
+  ))
+})
+
 test('records candidate and combination Holds without holding snapshot failures', async () => {
   const candidateRoot = await mkdtemp(join(tmpdir(), 'dsh-experimental-candidate-hold-'))
   const candidateState = new ChannelStateStore(join(candidateRoot, 'state', 'channel.json'))

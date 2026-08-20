@@ -11,7 +11,6 @@ export class MetadataUnavailableError extends Error {
 }
 
 async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
-  if (response.status === 404) throw new MetadataUnavailableError()
   if (!response.ok) throw new Error(`${label} returned HTTP ${String(response.status)}`)
   const bytes = Buffer.from(await response.arrayBuffer())
   if (bytes.byteLength > maxBytes) throw new Error(`${label} exceeds the download limit`)
@@ -31,7 +30,9 @@ export class MetadataClient {
   }
 
   async file(name) {
-    return responseBytes(await this.fetchImpl(new URL(name, this.baseUrl)), name)
+    const response = await this.fetchImpl(new URL(name, this.baseUrl))
+    if (response.status === 404) throw new MetadataUnavailableError()
+    return responseBytes(response, name)
   }
 
   async check() {
