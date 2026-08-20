@@ -4,13 +4,29 @@ export class BootstrapRuntime {
     environment,
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
+    onEnvironmentFatal = async () => {},
   }) {
     this.controlPlane = controlPlane
     this.environment = environment
-    this.fatal = Promise.race([controlPlane.fatal, environment.fatal])
+    this.fatal = controlPlane.fatal
     this.recoveryMode = null
+    this.recovery = Promise.resolve()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
+    this.onEnvironmentFatal = onEnvironmentFatal
+    const handleEnvironmentFatal = error => {
+      this.recoveryMode = error instanceof Error ? error.message : String(error)
+      this.recovery = this.recovery.then(async () => {
+        await Promise.resolve(this.onEnvironmentFatal(error)).catch(() => {})
+        await this.environment.stop().catch(() => {})
+      })
+    }
+    if (typeof environment.onFatal === 'function') {
+      this.offEnvironmentFatal = environment.onFatal(handleEnvironmentFatal)
+    } else {
+      void environment.fatal.then(handleEnvironmentFatal)
+      this.offEnvironmentFatal = undefined
+    }
   }
 
   async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
@@ -56,6 +72,8 @@ export class BootstrapRuntime {
   }
 
   async stop() {
+    this.offEnvironmentFatal?.()
+    await this.recovery
     const failures = []
     try { await this.environment.stop() } catch (error) { failures.push(error) }
     try { await this.controlPlane.stop() } catch (error) { failures.push(error) }
@@ -65,7 +83,9 @@ export class BootstrapRuntime {
   async reload() {
     await this.validateDeployment()
     await this.prepareDeployment()
-    return this.environment.reload()
+    const status = await this.environment.reload()
+    this.recoveryMode = null
+    return status
   }
   suspend(componentId) { return this.environment.suspend(componentId) }
   async resume(componentId, options) {
@@ -73,14 +93,18 @@ export class BootstrapRuntime {
       if (options?.skipValidation !== true) await this.validateDeployment()
       if (options?.skipPreparation !== true) await this.prepareDeployment()
     }
-    return this.environment.resume(componentId)
+    const status = await this.environment.resume(componentId)
+    if (componentId === 'dsh-runtime') this.recoveryMode = null
+    return status
   }
   async restart(componentId, options) {
     if (componentId === 'dsh-runtime') {
       if (options?.skipValidation !== true) await this.validateDeployment()
       if (options?.skipPreparation !== true) await this.prepareDeployment()
     }
-    return this.environment.restart(componentId, options)
+    const status = await this.environment.restart(componentId, options)
+    if (componentId === 'dsh-runtime') this.recoveryMode = null
+    return status
   }
   health() { return this.environment.health() }
 

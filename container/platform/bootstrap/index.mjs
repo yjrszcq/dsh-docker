@@ -146,6 +146,17 @@ const runtime = new BootstrapRuntime({
     })
   },
   prepareDeployment: applySystemPluginSelection,
+  onEnvironmentFatal: async error => {
+    const state = await deployments.state().catch(() => ({ current: null }))
+    const reason = error instanceof Error ? error.message : String(error)
+    await deployments.publishStatus({
+      recoveryMode: { reason, failedRecordId: state.current },
+    })
+    await logs.append('bootstrap', 'platform', 'environment entered recovery mode', {
+      error: reason,
+      level: 'error',
+    })
+  },
 })
 const systemPlugins = {
   list: async () => {

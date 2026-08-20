@@ -145,7 +145,20 @@ export class EnvironmentRunner {
     this.environment = undefined
     this.operation = Promise.resolve()
     this.stopping = false
+    this.fatalListeners = new Set()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
+  }
+
+  onFatal(listener) {
+    this.fatalListeners.add(listener)
+    return () => this.fatalListeners.delete(listener)
+  }
+
+  emitFatal(error) {
+    this.resolveFatal(error)
+    for (const listener of this.fatalListeners) {
+      try { listener(error) } catch {}
+    }
   }
 
   emitLifecycle(message, fields = {}) {
@@ -217,9 +230,15 @@ export class EnvironmentRunner {
         this.emitLifecycle('component.spawned', { componentId: component.id, pid: child.pid ?? null })
         child.once('exit', (code, signal) => {
           if (running.ready && !this.stopping && this.running.includes(running)) {
-            this.resolveFatal(new Error(
-              `${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`,
-            ))
+            const error = new Error(`${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`)
+            this.emitLifecycle('component.exited', {
+              componentId: component.id,
+              code,
+              signal,
+              error: error.message,
+              level: 'error',
+            })
+            this.emitFatal(error)
           }
         })
       } else {

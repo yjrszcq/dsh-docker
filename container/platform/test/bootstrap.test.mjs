@@ -179,13 +179,19 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-runtime-exit-'))
   const exits = join(temp, 'exits.mjs')
   await writeFile(exits, 'setTimeout(() => process.exit(7), 20)')
+  const reports = []
+  const observed = []
   const runner = new EnvironmentRunner({
     environmentRoot: await environment([component('service', exits, 'service')]),
     capture: () => {},
+    report: (message, fields) => { reports.push({ message, fields }) },
   })
+  runner.onFatal(error => observed.push(error))
   await runner.start()
   const error = await runner.fatal
   assert.match(error.message, /service exited unexpectedly.*code=7/)
+  assert.equal(observed[0], error)
+  assert.equal(reports.find(report => report.message === 'component.exited').fields.level, 'error')
   await runner.stop()
 })
 
@@ -313,6 +319,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
   const deployments = {
     exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
+    publishStatus: async () => { calls.push(['status', 'published']) },
   }
   const systemPlugins = {
     prepare: async () => {
@@ -369,7 +376,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['restart', 'dsh-runtime'],
       ['activate-system-plugins'],
       ['commit-system-plugins'],
-      ['operation', null],
+      ['status', 'published'],
     ])
     systemPlugins.prepare = async () => {
       calls.push(['prepare-system-plugins-failed'])
@@ -450,6 +457,53 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     'environment:stop',
     'control:stop',
   ])
+})
+
+test('isolates an unexpected Environment exit and keeps the Control Plane available', async () => {
+  const calls = []
+  let emitEnvironmentFatal
+  const controlPlane = {
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push('control:start') },
+    stop: async () => { calls.push('control:stop') },
+    status: () => ({ components: [{ id: 'gateway' }, { id: 'platform-management' }] }),
+  }
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    onFatal: listener => {
+      emitEnvironmentFatal = listener
+      return () => { emitEnvironmentFatal = undefined }
+    },
+    start: async () => { calls.push('environment:start') },
+    stop: async () => { calls.push('environment:stop') },
+    restart: async id => { calls.push(`environment:restart:${id}`); return { components: [{ id }] } },
+    status: () => ({ environmentVersion: '2026.08.20.1', components: [] }),
+  }
+  const runtime = new BootstrapRuntime({
+    controlPlane,
+    environment: environmentRunner,
+    onEnvironmentFatal: async error => { calls.push(`recovery:${error.message}`) },
+  })
+  await runtime.start()
+  emitEnvironmentFatal(new Error('dsh-runtime exited unexpectedly'))
+  await runtime.recovery
+
+  assert.equal(runtime.status().recoveryMode, 'dsh-runtime exited unexpectedly')
+  assert.deepEqual(runtime.status().controlPlane.map(component => component.id), ['gateway', 'platform-management'])
+  assert.deepEqual(calls, [
+    'control:start',
+    'environment:start',
+    'recovery:dsh-runtime exited unexpectedly',
+    'environment:stop',
+  ])
+  assert.equal(await Promise.race([
+    runtime.fatal.then(() => 'fatal'),
+    new Promise(resolve => setTimeout(() => resolve('available'), 20)),
+  ]), 'available')
+
+  await runtime.restart('dsh-runtime')
+  assert.equal(runtime.status().recoveryMode, null)
+  await runtime.stop()
 })
 
 test('validates mandatory Patches before every operation that starts DSH', async () => {

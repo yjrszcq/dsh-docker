@@ -259,6 +259,41 @@ docker exec "$container" sh -c "
   rg --fixed-strings '\"message\":\"system-plugin.changes.discarded\"' /data/platform/logs/audit.jsonl >/dev/null
 "
 
+bootstrap_pid="$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')"
+dsh_pid="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
+docker exec "$container" kill -9 "$dsh_pid"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  | rg --fixed-strings 'DSH Platform Management' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 20 ] || exit 1
+  sleep 0.1
+done
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e '.recoveryMode != null' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.1
+done
+[ "$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
+[ "$(docker inspect --format '{{.RestartCount}}' "$container")" = 0 ]
+restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --request POST \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$restart_task" \
+    '.dshRestart.taskId == $task and .dshRestart.status == "success" and .recoveryMode == null' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 100 ] || exit 1
+  sleep 0.1
+done
+docker exec "$container" curl --fail --silent http://127.0.0.1:3079/ >/dev/null
+
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \

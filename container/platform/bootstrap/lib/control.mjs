@@ -96,7 +96,7 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
                   onStartFailure: () => transaction?.rollback?.(),
                 })
                 await transaction?.commit?.().catch(error => console.error(error))
-                await deployments.setOperation(null)
+                await deployments.publishStatus()
                 return value
               } catch (error) {
                 await deployments.setOperation('restart-failed').catch(() => {})
