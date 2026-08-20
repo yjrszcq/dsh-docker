@@ -6,6 +6,7 @@ import { userPluginInternals } from './index.mjs'
 
 function parse(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'disabled,schema'
     || value.schema !== 1 || !Array.isArray(value.disabled)) {
     throw new Error('User Plugin selection state is invalid')
   }

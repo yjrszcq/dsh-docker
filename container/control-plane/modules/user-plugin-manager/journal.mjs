@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
+import { userPluginInternals } from './index.mjs'
 
 const PHASES = new Set([
   'validated', 'paused', 'snapshotted', 'mutating', 'committed', 'restarting',
@@ -21,7 +22,8 @@ const TRANSITIONS = new Map([
 function parseAction(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).sort().join(',') !== 'action,name'
-    || typeof value.name !== 'string' || !['enable', 'disable', 'uninstall'].includes(value.action)) {
+    || typeof value.name !== 'string' || !userPluginInternals.PACKAGE_NAME_PATTERN.test(value.name)
+    || !['enable', 'disable', 'uninstall'].includes(value.action)) {
     throw new Error('User Plugin journal action is invalid')
   }
   return Object.freeze({ name: value.name, action: value.action })
@@ -29,6 +31,7 @@ function parseAction(value) {
 
 function parse(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'actions,error,phase,previousDisabled,recoveryResult,revision,schema,selectionPresent,snapshotId,taskId,updatedAt'
     || value.schema !== 1 || typeof value.taskId !== 'string' || !/^[A-Za-z0-9-]{1,128}$/.test(value.taskId)
     || !PHASES.has(value.phase) || typeof value.revision !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(value.revision)
     || !Array.isArray(value.actions) || value.actions.length === 0
@@ -43,7 +46,8 @@ function parse(value) {
   const previousDisabled = value.previousDisabled.map(entry => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)
       || Object.keys(entry).sort().join(',') !== 'index,name'
-      || typeof entry.name !== 'string' || !Number.isSafeInteger(entry.index) || entry.index < 0
+      || typeof entry.name !== 'string' || !userPluginInternals.PACKAGE_NAME_PATTERN.test(entry.name)
+      || !Number.isSafeInteger(entry.index) || entry.index < 0
       || names.has(entry.name)) throw new Error('User Plugin journal disabled-order state is invalid')
     names.add(entry.name)
     return Object.freeze({ name: entry.name, index: entry.index })

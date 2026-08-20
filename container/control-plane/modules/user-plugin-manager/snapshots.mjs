@@ -48,6 +48,7 @@ async function syncDirectory(path) {
 
 function parseManifest(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'archiveSha256,archiveSize,createdAt,id,schema,source'
     || value.schema !== 1 || !ID_PATTERN.test(value.id)
     || value.source !== '/data/dsh/profiles/web'
     || typeof value.createdAt !== 'string' || new Date(value.createdAt).toISOString() !== value.createdAt
@@ -134,3 +135,5 @@ export class UserPluginSnapshots {
     await rm(this.path(id), { recursive: true, force: true })
   }
 }
+
+export const userPluginSnapshotInternals = Object.freeze({ parseManifest })

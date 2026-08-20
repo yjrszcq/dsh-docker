@@ -6,7 +6,7 @@ import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import { userPluginInternals } from './index.mjs'
 
-function runDshPlugin({ dshHome, profile, name }) {
+function runDshPlugin({ dshHome, profile, name }, timeoutMs = 300_000) {
   return new Promise((resolveRun, reject) => {
     const child = spawn('/usr/local/bin/dsh', ['plugin', '--profile', profile, 'remove', name], {
       env: { ...process.env, DSH_HOME: dshHome },
@@ -15,14 +15,34 @@ function runDshPlugin({ dshHome, profile, name }) {
     const stdout = []
     const stderr = []
     let size = 0
+    let settled = false
+    let timeoutError
+    let killTimer
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      clearTimeout(killTimer)
+      if (error === undefined) resolveRun()
+      else reject(error)
+    }
+    const timer = setTimeout(() => {
+      timeoutError = new Error(`dsh plugin remove timed out for ${name}`)
+      child.kill('SIGTERM')
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000)
+      killTimer.unref()
+    }, timeoutMs)
+    timer.unref()
     for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => {
       size += chunk.byteLength
       if (size <= 256 * 1024) (stream === child.stdout ? stdout : stderr).push(chunk)
     })
-    child.once('error', reject)
-    child.once('exit', code => code === 0
-      ? resolveRun()
-      : reject(new Error(`dsh plugin remove failed for ${name}: ${Buffer.concat(stderr).toString('utf8').trim()}`)))
+    child.once('error', finish)
+    child.once('exit', code => timeoutError !== undefined
+      ? finish(timeoutError)
+      : code === 0
+        ? finish()
+        : finish(new Error(`dsh plugin remove failed for ${name}: ${Buffer.concat(stderr).toString('utf8').trim()}`)))
   })
 }
 
@@ -174,7 +194,10 @@ export class UserPluginTransactionManager {
           await this.selectionStore.restore(selectionBefore)
           await this.restartDsh()
           await this.journal.transition('failed', { recoveryResult: 'success' })
-          await this.snapshots.remove(snapshotId)
+          await this.snapshots.remove(snapshotId).catch(cleanupError => this.record('user-plugin.snapshot.cleanup.failed', {
+            taskId,
+            error: cleanupError,
+          }))
         } catch (recoveryError) {
           const aggregate = new AggregateError([error, recoveryError], 'User Plugin transaction and recovery failed')
           aggregate.journal = await this.journal.transition('failed', {
@@ -208,7 +231,10 @@ export class UserPluginTransactionManager {
     const state = await this.journal.read()
     if (state === undefined) return undefined
     if (['completed', 'failed'].includes(state.phase)) {
-      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId)
+      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
+        taskId: state.taskId,
+        error,
+      }))
       return state
     }
     if (['committed', 'restarting'].includes(state.phase)) {
@@ -216,7 +242,10 @@ export class UserPluginTransactionManager {
         if (state.phase === 'committed') await this.journal.transition('restarting')
         await this.restartDsh()
         const completed = await this.journal.transition('completed')
-        if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId)
+        if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
+          taskId: state.taskId,
+          error,
+        }))
         return completed
       } catch (error) {
         const failed = await this.journal.transition('failed', { error: message(error) })
@@ -250,7 +279,10 @@ export class UserPluginTransactionManager {
       })
       await this.restartDsh()
       const failed = await this.journal.transition('failed', { recoveryResult: 'success' })
-      await this.snapshots.remove(restoring.snapshotId)
+      await this.snapshots.remove(restoring.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
+        taskId: state.taskId,
+        error,
+      }))
       return failed
     } catch (error) {
       return this.journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
@@ -261,7 +293,10 @@ export class UserPluginTransactionManager {
     let state = await this.journal.read()
     if (state === undefined) return undefined
     if (['completed', 'failed'].includes(state.phase)) {
-      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId)
+      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
+        taskId: state.taskId,
+        error,
+      }))
       return state
     }
     if (state.phase === 'validated') {
@@ -288,7 +323,10 @@ export class UserPluginTransactionManager {
         state: { schema: 1, disabled: state.previousDisabled },
       })
       const failed = await this.journal.transition('failed', { recoveryResult: 'success' })
-      await this.snapshots.remove(state.snapshotId)
+      await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
+        taskId: state.taskId,
+        error,
+      }))
       return failed
     } catch (error) {
       return this.journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
@@ -311,4 +349,4 @@ export class UserPluginTransactionManager {
   }
 }
 
-export const userPluginTransactionInternals = Object.freeze({ mutateProfile, validateActions })
+export const userPluginTransactionInternals = Object.freeze({ mutateProfile, runDshPlugin, validateActions })

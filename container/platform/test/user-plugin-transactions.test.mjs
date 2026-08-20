@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
-import { UserPluginJournal } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
-import { UserPluginSnapshots } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
-import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugin-manager/state.mjs'
+import { UserPluginJournal, userPluginJournalInternals } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
+import { UserPluginSnapshots, userPluginSnapshotInternals } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
+import { UserPluginSelectionStore, userPluginStateInternals } from '../../control-plane/modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
 
 async function fixture() {
@@ -301,4 +301,54 @@ test('rejects stale revisions and reserved-name enablement before pausing DSH', 
     actions: [{ name: 'alpha', action: 'enable' }],
   }), /cannot be enabled/)
   assert.deepEqual(reservedManager.calls, [])
+})
+
+test('rejects extension fields in every persisted User Plugin state document', () => {
+  assert.throws(() => userPluginStateInternals.parse({ schema: 1, disabled: [], extra: true }), /invalid/)
+  assert.throws(() => userPluginSnapshotInternals.parseManifest({
+    schema: 1,
+    id: 'snapshot',
+    source: '/data/dsh/profiles/web',
+    createdAt: new Date(0).toISOString(),
+    archiveSha256: 'a'.repeat(64),
+    archiveSize: 1,
+    extra: true,
+  }), /invalid/)
+  assert.throws(() => userPluginJournalInternals.parse({
+    schema: 1,
+    taskId: 'task',
+    revision: `sha256:${'a'.repeat(64)}`,
+    actions: [{ name: 'plugin', action: 'disable' }],
+    selectionPresent: false,
+    previousDisabled: [],
+    phase: 'validated',
+    snapshotId: null,
+    error: null,
+    recoveryResult: null,
+    updatedAt: new Date(0).toISOString(),
+    extra: true,
+  }), /invalid/)
+})
+
+test('does not turn successful recovery into failure when snapshot cleanup fails', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const reports = []
+  const snapshots = {
+    ...value.snapshots,
+    create: (...args) => value.snapshots.create(...args),
+    restore: (...args) => value.snapshots.restore(...args),
+    remove: async () => { throw new Error('cleanup failed') },
+  }
+  const transaction = manager(value, {
+    snapshots,
+    report: async message => { reports.push(message) },
+  })
+  const result = await transaction.value.apply({
+    taskId: 'task-cleanup-warning', revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+  })
+  assert.equal(result.status, 'success')
+  assert.equal((await value.journal.read()).phase, 'completed')
+  assert.equal(reports.includes('user-plugin.snapshot.cleanup.failed'), true)
 })

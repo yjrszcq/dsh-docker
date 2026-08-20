@@ -103,8 +103,15 @@ if (initialUserPluginTransaction !== undefined) {
 }
 const waitForBootstrapStartup = async () => {
   for (;;) {
-    const status = await bootstrap.status()
-    if (status.startupComplete === true) return status
+    try {
+      const status = await bootstrap.status()
+      if (status.startupComplete === true) return status
+    } catch (error) {
+      await logs.diagnostic('user-plugin-manager', 'bootstrap.startup-status.retrying', {
+        error,
+        level: 'warning',
+      })
+    }
     await new Promise(resolve => setTimeout(resolve, 100))
   }
 }
@@ -130,12 +137,19 @@ const server = createManagementServer({
   initialUserPluginTransaction,
   recoverUserPluginTransaction: initialUserPluginTransaction?.phase === 'restarting' ? async () => {
     const status = await waitForBootstrapStartup()
-    const health = await bootstrap.request('GET', '/v1/health')
-    const dsh = health.components?.find(component => component.id === 'dsh-runtime')
-    return userPluginTransactions.completeDshStartup({
-      healthy: status.recoveryMode === null && dsh?.healthy === true,
-      error: status.recoveryMode,
-    })
+    try {
+      const health = await bootstrap.request('GET', '/v1/health')
+      const dsh = health.components?.find(component => component.id === 'dsh-runtime')
+      return userPluginTransactions.completeDshStartup({
+        healthy: status.recoveryMode === null && dsh?.healthy === true,
+        error: status.recoveryMode,
+      })
+    } catch (error) {
+      return userPluginTransactions.completeDshStartup({
+        healthy: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   } : undefined,
   settingsDocument,
   updateAutomaticCheck: async value => {
