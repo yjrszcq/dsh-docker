@@ -56,13 +56,13 @@ tini
   └─ Stage-0
        └─ Bootstrap
             ├─ Control Plane
-            │    ├─ management + Update Console  Unix socket
+            │    ├─ management + Platform Management  Unix socket
             │    └─ gateway                      0.0.0.0:3080
             └─ Environment
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换或暂停 DSH 不会停止 Gateway、Management 或 Update Console。
+Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换、暂停或重启 DSH 不会停止 Gateway、Management 或平台管理界面。
 
 源码目录使用同一边界：
 
@@ -126,7 +126,9 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置入口打开常驻 Console `/_dsh_platform/ui/`；DSH 暂停、替换、健康检查或回滚时，该页面仍然可用。
+Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置中的“平台管理”直接使用常驻 Management API；独立控制台仍可通过 `/_dsh_platform/ui/` 访问。
+
+“运行维护”只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。
 
 平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
 

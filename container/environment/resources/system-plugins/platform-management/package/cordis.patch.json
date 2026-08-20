@@ -1,0 +1,10 @@
+[
+  {
+    "insert": [
+      {
+        "id": "dsh-docker.platform-management.plugin",
+        "name": "@dsh-docker/platform-management"
+      }
+    ]
+  }
+]

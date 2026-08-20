@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-docker/update-console-entry",
+  "name": "@dsh-docker/platform-management",
   "version": "1.0.0",
   "type": "module",
   "main": "lib/index.js",

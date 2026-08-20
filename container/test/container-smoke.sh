@@ -81,7 +81,7 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
-  | rg --fixed-strings 'DSH Platform Update' >/dev/null
+  | rg --fixed-strings 'DSH Platform Management' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.updateChannel == "stable"' >/dev/null
@@ -148,7 +148,7 @@ docker exec --user node "$container" curl --fail --silent --unix-socket /run/dsh
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
-  | rg --fixed-strings 'DSH Platform Update' >/dev/null
+  | rg --fixed-strings 'DSH Platform Management' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status >/dev/null
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'

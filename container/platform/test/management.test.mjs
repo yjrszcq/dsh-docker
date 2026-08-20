@@ -227,7 +227,7 @@ test('management records a completion audit for a successful update task', async
   }
 })
 
-test('management serves only the fixed persistent Update Console assets', async () => {
+test('management serves only the fixed persistent Platform Management assets', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-console-'))
   const coordinator = new Coordinator()
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
@@ -242,7 +242,7 @@ test('management serves only the fixed persistent Update Console assets', async 
     assert.equal(page.status, 200)
     assert.match(page.headers['content-type'], /^text\/html/)
     assert.match(page.headers['content-security-policy'], /script-src 'self'/)
-    assert.match(page.body, /DSH Platform Update/)
+    assert.match(page.body, /DSH Platform Management/)
     const script = await rawRequest(socketPath, '/_dsh_platform/ui/app.js')
     assert.equal(script.status, 200)
     assert.match(script.body, /new EventSource/)
@@ -256,7 +256,7 @@ test('management serves only the fixed persistent Update Console assets', async 
   }
 })
 
-test('Update Console script references only DOM IDs declared by its document', async () => {
+test('Platform Management script references only DOM IDs declared by its document', async () => {
   const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
   const script = await readFile(new URL('app.js', publicRoot), 'utf8')

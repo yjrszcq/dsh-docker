@@ -56,13 +56,13 @@ tini
   └─ Stage-0
        └─ Bootstrap
             ├─ Control Plane
-            │    ├─ management + Update Console  Unix socket
+            │    ├─ management + Platform Management  Unix socket
             │    └─ gateway                      0.0.0.0:3080
             └─ Environment
                  └─ dsh-runtime                  127.0.0.1:3079
 ```
 
-Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing or suspending DSH therefore does not stop Gateway, Management, or the Update Console.
+Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing, suspending, or restarting DSH therefore does not stop Gateway, Management, or Platform Management.
 
 The source tree follows the same boundary:
 
@@ -126,7 +126,9 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Management checks every six hours with jitter but does not automatically download or activate. The DSH settings entry opens the persistent Console at `/_dsh_platform/ui/`, which remains available while DSH is suspended, replaced, health-checked, or rolled back.
+Management checks every six hours with jitter but does not automatically download or activate. Platform Management in DSH settings uses the persistent Management API directly; the standalone console remains available at `/_dsh_platform/ui/`.
+
+The Runtime maintenance action restarts only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback.
 
 New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
 

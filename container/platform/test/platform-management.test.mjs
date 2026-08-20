@@ -3,22 +3,23 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 
-const root = new URL('../../environment/resources/system-plugins/update-console-entry/package/', import.meta.url)
+const root = new URL('../../environment/resources/system-plugins/platform-management/package/', import.meta.url)
 
-test('Update Console entry declares an rc.7 web client and a platform-namespaced overlay row', async () => {
+test('Platform Management declares an rc.7 web client and a platform-namespaced overlay row', async () => {
   const packageJson = JSON.parse(await readFile(new URL('package.json', root)))
   const patch = JSON.parse(await readFile(new URL('cordis.patch.json', root)))
   assert.equal(packageJson.dsh.client.platform, 'web')
   assert.equal(packageJson.exports['./client'], './lib/client.bundle.js')
   assert.equal(packageJson.exports['./package.json'], './package.json')
   assert.equal(await readFile(new URL('lib/style.module.css', root), 'utf8').then(value => value.includes('@media (max-width: 640px)')), true)
-  assert.equal(patch[0].insert[0].id, 'dsh-docker.update-console-entry.plugin')
+  assert.equal(packageJson.name, '@dsh-docker/platform-management')
+  assert.equal(patch[0].insert[0].id, 'dsh-docker.platform-management.plugin')
 })
 
-test('Update Console checked-in client bundle matches its source and DSH loader protocol', async () => {
+test('Platform Management checked-in client bundle matches its source and DSH loader protocol', async () => {
   const bundle = await readFile(new URL('lib/client.bundle.js', root), 'utf8')
   const rebuilt = await buildSystemPluginClient({
-    pluginId: '@dsh-docker/update-console-entry',
+    pluginId: '@dsh-docker/platform-management',
     sourcePath: new URL('lib/client.js', root),
     stylePath: new URL('lib/style.module.css', root),
   })
@@ -27,11 +28,14 @@ test('Update Console checked-in client bundle matches its source and DSH loader 
   assert.doesNotMatch(bundle, /^import /m)
 })
 
-test('Update Console is embedded in the official settings.section slot', async () => {
+test('Platform Management is embedded in the official settings.section slot', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   assert.match(source, /settings\.section/)
+  assert.match(source, /settings\.dshPlatformManagement/)
+  assert.match(source, /id: 'dsh-platform-management'/)
+  assert.doesNotMatch(source, /dshPlatformUpdate|dsh-platform-update/)
   assert.doesNotMatch(source, /\/_dsh_platform\/ui\//)
-  assert.doesNotMatch(source, /打开更新控制台|href:/)
+  assert.doesNotMatch(source, /href:/)
   assert.match(source, /fetch\(`/)
   assert.match(source, /new EventSource/)
   assert.match(source, /refresh\(\)\.then\(value => \{[\s\S]*void checkUpdates\(\)/)
@@ -47,10 +51,16 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /update\.updateAvailable !== true/)
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)
   assert.doesNotMatch(source, /logs\/stream|运行详情|平台日志/)
-  for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable']) {
+  for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
+  assert.match(source, /requestedRestart\.current = task\.taskId/)
+  assert.match(source, /status\?\.dshRestart/)
+  assert.match(source, /window\.location\.reload\(\)/)
+  assert.match(source, /setConfirmRestart\(true\)/)
+  assert.match(source, /restartWarning: '当前 DSH 连接会暂时中断/)
+  assert.match(source, /restartWarning: 'The current DSH connection will be interrupted briefly/)
   assert.doesNotMatch(source, /trust\/reset/)
   assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
   assert.match(source, /`env-\$\{String\(value\)\}`/)
@@ -64,7 +74,7 @@ test('Update Console is embedded in the official settings.section slot', async (
   }
 })
 
-test('Update Console follows DSH settings tokens and responsive layout', async () => {
+test('Platform Management follows DSH settings tokens and responsive layout', async () => {
   const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
   assert.match(style, /--dsw-alias-label-primary/)
   assert.match(style, /--dsw-alias-button-primary-fill/)
@@ -74,5 +84,6 @@ test('Update Console follows DSH settings tokens and responsive layout', async (
   assert.match(style, /\.experimentalVersions \{ grid-template-columns: repeat\(3,/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actionHeading \{ align-items: flex-start; \}/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actions \{ width: 100%; justify-content: flex-start; \}/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.maintenanceButton \{ width: 100%; \}/)
   assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b/i)
 })

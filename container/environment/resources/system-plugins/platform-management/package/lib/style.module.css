@@ -261,6 +261,16 @@
 .confirmation input { margin: 3px 0 0; accent-color: var(--dsw-alias-brand-primary); }
 .confirmActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+.maintenanceSection { border-bottom: 0; }
+.maintenanceButton { flex: none; }
+.maintenanceStatus {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+.restartConfirmation { border-color: var(--dsw-alias-border-l2); }
+
 @media (max-width: 640px) {
   .root { gap: 16px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
@@ -271,6 +281,7 @@
   .segmented button { flex: 1; }
   .actions > button { flex: 1 1 calc(50% - 8px); }
   .actions { width: 100%; justify-content: flex-start; }
+  .maintenanceButton { width: 100%; }
 }
 
 @media (max-width: 480px) {

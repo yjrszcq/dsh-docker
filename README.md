@@ -83,7 +83,7 @@ See the [complete configuration reference](docs/README.md#configuration) for all
 
 ## Updates
 
-Open **Platform Update** in DSH settings or visit <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
+Open **Platform Management** in DSH settings or visit <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
 
 Useful commands:
 
