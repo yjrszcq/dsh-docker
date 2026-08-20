@@ -27,9 +27,10 @@ import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots
 import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/transaction.mjs'
 import { TerminalSessionManager } from './terminal/sessions.mjs'
-import { FileInventory, FileSearchManager } from '../../modules/file-manager/index.mjs'
+import { FileInventory } from '../../modules/file-manager/index.mjs'
 import { FileTransferManager } from '../../modules/file-manager/transfers.mjs'
 import { AtomicFileEditor } from '../../modules/file-manager/editor.mjs'
+import { FileTaskManager } from '../../modules/file-manager/tasks.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -132,7 +133,14 @@ const fileInventory = new FileInventory()
 const fileTransfers = new FileTransferManager()
 const fileEditor = new AtomicFileEditor()
 let server
-const fileTasks = new FileSearchManager({ onState: state => server?.emit('management-state', { fileTask: state }) })
+const fileTasks = new FileTaskManager({
+  root: paths.fileTasksRoot,
+  inventory: fileInventory,
+  platformBusy: () => coordinator.hasActiveTask?.() === true,
+  onState: state => server?.emit('management-state', { fileTask: state }),
+  report: (message, fields) => logs.diagnostic('file-manager', message, fields),
+})
+await fileTasks.initialize()
 server = createManagementServer({
   coordinator,
   logs,

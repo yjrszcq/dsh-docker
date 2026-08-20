@@ -26,6 +26,7 @@ export class PlatformPaths {
     this.managementStateRoot = join(this.stateRoot, 'management')
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
     this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
+    this.fileTasksRoot = join(this.managementStateRoot, 'file-tasks')
     this.objectsRoot = join(this.storeRoot, 'objects')
     this.bootstrapStoreRoot = join(this.storeRoot, 'bootstrap')
     this.environmentsRoot = join(this.storeRoot, 'environments')
@@ -64,7 +65,7 @@ export async function preparePersistentLayout(paths) {
   await rejectLegacyLayout(paths)
   const directories = [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
-    paths.managementStateRoot,
+    paths.managementStateRoot, paths.fileTasksRoot,
     paths.objectsRoot, paths.bootstrapStoreRoot, paths.environmentsRoot, paths.pristineRoot,
     paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
     paths.downloadsRoot, paths.logsRoot,

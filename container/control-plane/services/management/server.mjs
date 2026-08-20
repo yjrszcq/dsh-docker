@@ -169,6 +169,7 @@ export function createManagementServer({
     if (runtimeResetTask !== undefined) throw new UpdateConflictError('the DSH Runtime is already resetting')
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
     if (userPluginTask !== undefined) throw new UpdateConflictError('a User Plugin operation is already running')
+    if (fileTasks?.hasManagedMutation === true) throw new UpdateConflictError('a managed file operation is already running')
   }
 
   const startUserPluginAction = async body => {
@@ -394,9 +395,9 @@ export function createManagementServer({
       } else if (request.method === 'POST' && route === 'files/tasks') {
         if (fileTasks === undefined) throw new Error('file tasks are not configured')
         const body = await jsonBody(request)
-        if (body?.operation !== 'search') throw new Error('file task operation is invalid')
-        const task = fileTasks.start({ path: body.path, revision: body.revision, query: body.query })
-        await recordAudit('files.search.started', { path: task.path, taskId: task.taskId })
+        if (fileTasks.wouldManage?.(body) === true) requireRuntimeIdle()
+        const task = fileTasks.start(body)
+        await recordAudit(`files.${task.operation}.started`, { path: task.path, taskId: task.taskId, managed: task.managed })
         send(response, 202, task)
       } else if (request.method === 'GET' && route === 'files/tasks') {
         if (fileTasks === undefined) throw new Error('file tasks are not configured')
