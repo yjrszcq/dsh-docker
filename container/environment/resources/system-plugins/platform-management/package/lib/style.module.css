@@ -526,7 +526,7 @@
 .logList {
   display: flex;
   flex-direction: column;
-  max-height: 440px;
+  max-height: min(320px, 42dvh);
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
@@ -633,7 +633,7 @@
   .logFilters input { grid-column: 1 / -1; }
   .logMeta { flex-wrap: wrap; }
   .logMeta time { width: 100%; margin-left: 0; }
-  .logList { max-height: clamp(220px, calc(100dvh - 460px), 480px); }
+  .logList { max-height: min(260px, 36dvh); }
   .updateReminder { right: 16px; bottom: 16px; }
 }
 
