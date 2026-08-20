@@ -343,7 +343,6 @@
 .confirmation input { margin: 3px 0 0; accent-color: var(--dsw-alias-brand-primary); }
 .confirmActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
-.maintenanceSection { border-bottom: 0; }
 .maintenanceButton { flex: none; }
 .maintenanceStatus {
   margin: 0;
