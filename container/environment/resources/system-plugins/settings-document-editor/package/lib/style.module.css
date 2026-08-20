@@ -70,7 +70,7 @@
   border-radius: 6px;
   background: var(--dsw-alias-bg-base);
 }
-.editorFrame:focus-within { border-color: var(--dsw-alias-state-business-primary); }
+.editorFrame:focus-within { border-color: var(--dsw-alias-label-tertiary); }
 
 .lineNumbers {
   box-sizing: border-box;
@@ -81,7 +81,7 @@
   padding: 12px 10px;
   border-right: 1px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-bg-module-platform);
+  background: color-mix(in srgb, var(--dsw-alias-bg-base) 72%, var(--dsw-alias-bg-module-platform));
   font: 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-align: right;
   user-select: none;
