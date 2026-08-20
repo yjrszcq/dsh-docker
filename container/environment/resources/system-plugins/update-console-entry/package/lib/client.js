@@ -138,12 +138,12 @@ function UpdateConsoleEntry({ t }) {
 
   return h('div', { className: css.root },
     h('div', { className: css.heading },
-      h('div', null,
+      h('div', { className: css.titleRow },
         h('h2', { className: css.title }, t('title')),
-        h('p', { className: css.intro }, t('intro'))),
-      h('span', { className: `${css.connection} ${css[connection]}`, role: 'status' },
-        h('span', { 'aria-hidden': 'true' }),
-        t(connection))),
+        h('span', { className: `${css.connection} ${css[connection]}`, role: 'status' },
+          h('span', { 'aria-hidden': 'true' }),
+          t(connection))),
+      h('p', { className: css.intro }, t('intro'))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-channel-title' },
       h('div', { className: css.sectionHeading },

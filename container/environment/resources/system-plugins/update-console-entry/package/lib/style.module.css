@@ -7,12 +7,18 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.heading,
 .sectionHeading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .title {
@@ -240,7 +246,7 @@
 
 @media (max-width: 640px) {
   .root { gap: 16px; }
-  .heading, .sectionHeading { flex-direction: column; gap: 10px; }
+  .sectionHeading { flex-direction: column; gap: 10px; }
   .versions { grid-template-columns: 1fr; }
   .versionCell + .versionCell { border-left: 0; border-top: 1px solid var(--dsw-alias-border-l2); }
   .segmented { width: 100%; }
