@@ -599,6 +599,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /timestamp <= Date\.parse\(logClearCutoff\)/)
   assert.match(script, /DEFAULT_LOG_DISPLAY_LIMIT = 500/)
   assert.match(script, /limitProcessedLogEntries\(logEntries, logDisplayLimit\)/)
+  assert.match(script, /total: logDisplayLimit/)
   assert.match(script, /writeStorage\(LOG_DISPLAY_LIMIT_KEY, String\(value\)\)/)
   assert.match(html, /id="log-limit"/)
   assert.match(script, /tab === 'maintenance' && autoScroll[\s\S]*requestAnimationFrame[\s\S]*scrollTop = elements\['log-list'\]\.scrollHeight/)

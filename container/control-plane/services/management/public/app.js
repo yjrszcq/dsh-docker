@@ -599,7 +599,7 @@ function renderLogs() {
   const filtered = entries.filter(item => (source === 'all' || item.value.source === source)
     && (level === 'all' || logLevel(item.value) === level)
     && (query === '' || JSON.stringify(item.value).toLocaleLowerCase().includes(query)))
-  elements['log-summary'].textContent = t('logCount', { shown: filtered.length, total: entries.length })
+  elements['log-summary'].textContent = t('logCount', { shown: filtered.length, total: logDisplayLimit })
   elements['log-list'].replaceChildren()
   elements['log-list'].hidden = filtered.length === 0
   elements['empty-logs'].hidden = filtered.length !== 0

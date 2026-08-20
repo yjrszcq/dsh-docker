@@ -67,6 +67,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /message: JSON\.stringify\(value\)/)
   assert.match(source, /if \(!isJsonFragment\(first\.value\.message \?\? ''\)\) compacted\.push\(first\)/)
   assert.match(source, /const visibleEntries = limitProcessedLogEntries\(entries, displayLimit\)/)
+  assert.match(source, /replace\('\{total\}', String\(displayLimit\)\)/)
   assert.match(source, /DEFAULT_LOG_DISPLAY_LIMIT = 500/)
   assert.match(source, /LOG_DISPLAY_LIMITS = Object\.freeze\(\[100, 250, 500, 1_000\]\)/)
   assert.match(source, /localStorage\.setItem\(LOG_DISPLAY_LIMIT_KEY, String\(value\)\)/)
