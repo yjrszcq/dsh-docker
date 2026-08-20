@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, readlink, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { buildRuntime, RuntimeSlots, verifyNpmIntegrity } from '../../control-plane/modules/patch-manager/index.mjs'
+import {
+  buildRuntime,
+  RuntimeSlots,
+  verifyNpmIntegrity,
+  verifyRuntimePatches,
+} from '../../control-plane/modules/patch-manager/index.mjs'
 
 const containerRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
@@ -22,6 +27,41 @@ async function pristine() {
   await mkdir(join(root, 'node_modules/.bin'), { recursive: true })
   await symlink('../tool/bin.js', join(root, 'node_modules/.bin/tool'))
   return root
+}
+
+async function environment(root, patches) {
+  const environmentRoot = join(root, 'environment')
+  await mkdir(join(environmentRoot, 'artifacts'), { recursive: true })
+  const artifacts = []
+  const references = []
+  for (const [index, path] of patches.entries()) {
+    const bytes = await readFile(path)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const id = `patch-${String(index + 1)}`
+    await cp(path, join(environmentRoot, 'artifacts', id))
+    artifacts.push({
+      id,
+      mediaType: 'text/javascript',
+      sha256,
+      size: bytes.byteLength,
+      url: `https://example.invalid/${id}`,
+    })
+    references.push({ id, sha256 })
+  }
+  await writeFile(join(environmentRoot, 'environment.manifest.json'), JSON.stringify({
+    schema: 1,
+    manifestType: 'environment',
+    version: '2026.08.20.1',
+    keyringGeneration: 1,
+    targetSequence: 1,
+    issuedAt: '2026-08-20T00:00:00.000Z',
+    artifacts,
+    bootstrapApi: 1,
+    components: [],
+    patches: references,
+    systemPlugins: [],
+  }))
+  return environmentRoot
 }
 
 test('rebuilds each Runtime from unchanged Pristine with the complete ordered Patch set', async () => {
@@ -53,6 +93,31 @@ test('rejects a Patch mismatch without publishing a partial Runtime', async () =
     patchPaths: [join(containerRoot, 'environment/resources/patches/browser-loopback.mjs')],
   }), /found 0/)
   await assert.rejects(readFile(join(root, 'versions/broken/package/lib/bin.js')), { code: 'ENOENT' })
+})
+
+test('verifies mandatory Patch Artifacts and their applied Runtime effects before startup', async () => {
+  const source = await pristine()
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-verification-'))
+  const patches = [
+    join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
+    join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
+  ]
+  const runtimeRoot = await buildRuntime({
+    pristineRoot: source,
+    versionsRoot: join(root, 'versions'),
+    runtimeId: 'verified',
+    patchPaths: patches,
+  })
+  const environmentRoot = await environment(root, patches)
+  assert.deepEqual(await verifyRuntimePatches({ runtimeRoot, environmentRoot }), ['patch-1', 'patch-2'])
+
+  await writeFile(
+    join(runtimeRoot, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'),
+    'isLoopback: false,\n',
+  )
+  await assert.rejects(verifyRuntimePatches({ runtimeRoot, environmentRoot }), /Patch verification failed/)
+  await writeFile(join(environmentRoot, 'artifacts', 'patch-2'), 'modified artifact\n')
+  await assert.rejects(verifyRuntimePatches({ runtimeRoot, environmentRoot }), /differs from the Environment Manifest/)
 })
 
 test('checks npm SHA-512 integrity and tracks Runtime current/previous slots', async () => {

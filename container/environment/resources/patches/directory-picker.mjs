@@ -25,4 +25,14 @@ export function applyPatch(dshRoot) {
   patchDirectoryPicker(resolve(dshRoot, DIRECTORY_PICKER_RELATIVE_TARGET))
 }
 
+export function verifyPatch(dshRoot) {
+  const target = resolve(dshRoot, DIRECTORY_PICKER_RELATIVE_TARGET)
+  const expected = 'const target = resolve(path ?? process.env.DSH_DEFAULT_WORKSPACE ?? home);'
+  const source = readFileSync(target, 'utf8')
+  const matches = source.split(expected).length - 1
+  if (matches !== 1 || source.includes('const target = resolve(path ?? home);')) {
+    throw new Error(`Directory picker Patch verification failed for ${target}`)
+  }
+}
+
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) patchDirectoryPicker()

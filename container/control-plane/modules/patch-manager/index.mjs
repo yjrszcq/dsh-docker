@@ -3,6 +3,11 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:f
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TrustError } from '../../../platform/lib/validation.mjs'
+import { artifactForReference, parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
+
+async function patchModule(path) {
+  return import(`${pathToFileURL(resolve(path)).href}?runtime=${randomUUID()}`)
+}
 
 export async function verifyNpmIntegrity(path, integrity) {
   if (typeof integrity !== 'string' || !integrity.startsWith('sha512-')) {
@@ -17,12 +22,40 @@ export async function verifyNpmIntegrity(path, integrity) {
 
 export async function applyPatchSet(dshRoot, patchPaths) {
   for (const path of patchPaths) {
-    const module = await import(`${pathToFileURL(resolve(path)).href}?runtime=${randomUUID()}`)
+    const module = await patchModule(path)
     if (typeof module.applyPatch !== 'function') {
       throw new Error(`Patch ${path} does not export applyPatch(dshRoot)`)
     }
     await module.applyPatch(dshRoot)
   }
+}
+
+export async function verifyPatchSet(dshRoot, patchPaths) {
+  for (const path of patchPaths) {
+    const module = await patchModule(path)
+    if (typeof module.verifyPatch !== 'function') {
+      throw new Error(`Patch ${path} does not export verifyPatch(dshRoot)`)
+    }
+    await module.verifyPatch(resolve(dshRoot))
+  }
+}
+
+export async function verifyRuntimePatches({ runtimeRoot, environmentRoot }) {
+  const environment = resolve(environmentRoot)
+  const manifest = parseEnvironmentManifest(await readFile(join(environment, 'environment.manifest.json')))
+  const paths = []
+  for (const reference of manifest.patches) {
+    const descriptor = artifactForReference(manifest, reference)
+    const path = join(environment, 'artifacts', descriptor.id)
+    const bytes = await readFile(path)
+    if (bytes.byteLength !== descriptor.size
+      || createHash('sha256').update(bytes).digest('hex') !== descriptor.sha256) {
+      throw new TrustError(`Patch Artifact ${descriptor.id} differs from the Environment Manifest`)
+    }
+    paths.push(path)
+  }
+  await verifyPatchSet(join(resolve(runtimeRoot), 'package'), paths)
+  return Object.freeze(manifest.patches.map(reference => reference.id))
 }
 
 export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patchPaths }) {

@@ -298,6 +298,49 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   ])
 })
 
+test('validates mandatory Patches before every operation that starts DSH', async () => {
+  const calls = []
+  const service = name => ({
+    fatal: new Promise(() => {}),
+    start: async () => { calls.push(`${name}:start`) },
+    stop: async () => { calls.push(`${name}:stop`) },
+    reload: async () => { calls.push(`${name}:reload`) },
+    suspend: async id => { calls.push(`${name}:suspend:${id}`) },
+    resume: async id => { calls.push(`${name}:resume:${id}`) },
+    restart: async id => { calls.push(`${name}:restart:${id}`) },
+    health: async () => ({ healthy: true, components: [] }),
+    status: () => ({ components: [] }),
+  })
+  let validations = 0
+  const runtime = new BootstrapRuntime({
+    controlPlane: service('control'),
+    environment: service('environment'),
+    validateDeployment: async () => {
+      validations += 1
+      calls.push('validate')
+      if (validations === 1) throw new Error('Patch verification failed')
+    },
+  })
+  await runtime.start({ onEnvironmentFailure: async () => true })
+  await runtime.reload()
+  await runtime.resume('dsh-runtime')
+  await runtime.restart('dsh-runtime')
+  await runtime.resume('gateway')
+  assert.deepEqual(calls, [
+    'control:start',
+    'validate',
+    'validate',
+    'environment:start',
+    'validate',
+    'environment:reload',
+    'validate',
+    'environment:resume:dsh-runtime',
+    'validate',
+    'environment:restart:dsh-runtime',
+    'environment:resume:gateway',
+  ])
+})
+
 test('retries a previous Deployment without restarting the Control Plane', async () => {
   const calls = []
   let environmentStarts = 0

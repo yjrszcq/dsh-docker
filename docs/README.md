@@ -96,6 +96,8 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 
 Runtime, Environment, and System Plugins form one content-addressed Deployment Record. Bootstrap resolves that complete record into one candidate view, starts it, checks health, and commits the current/previous slots atomically. A partial combination is never selected after restart.
 
+Patches are mandatory Deployment content, not user-selectable resources. Before every DSH start, recovery, reload, or single-service restart, Bootstrap checks each current Environment Patch Artifact's SHA-256 and size and runs the Patch-owned applied-result verifier. A candidate DSH is not started when verification fails.
+
 The image contains an immutable Bootstrap and Deployment inventory. With no platform state, these assets run directly from the image without copying the Seed tree. A newer signed Stable image becomes the baseline only after health checks. A Managed deployment with a higher target sequence remains current and reports that the image is behind; an older image never downgrades it. Equal sequences must describe identical content, otherwise startup refuses the conflict. An Experimental DSH ahead of Stable is preserved while the platform reconciles the formal Environment according to the update state machine.
 
 Consequently, pulling a newer image still matters: when its signed target sequence is newer than the current Stable deployment, the container advances to that image baseline. When an online update is already newer, the image instead provides a verified fallback without overwriting current state.

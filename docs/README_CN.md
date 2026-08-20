@@ -96,6 +96,8 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 
 Runtime、Environment 和 System Plugins 共同组成一个内容寻址的 Deployment Record。Bootstrap 将完整 Record 解析为一个 candidate view，启动并执行健康检查，然后原子提交 current/previous slots。重启后不会选中只切换了一部分的组合。
 
+Patches 是强制 Deployment 内容，不属于用户选装项。每次 DSH 启动、恢复、reload 或单服务重启前，Bootstrap 都会核对当前 Environment 中 Patch Artifact 的 SHA-256 和大小，并执行 Patch 自带的结果校验；校验失败时不会启动该候选 DSH。
+
 镜像内含不可变的 Bootstrap 和 Deployment inventory。平台没有状态时，Seed 资产直接从镜像运行，不复制到数据卷。较新的已签名 Stable 镜像只有通过健康检查后才成为基线。target sequence 更高的 Managed Deployment 会继续作为 current，并报告镜像落后；旧镜像不会让它降级。相同 sequence 必须描述完全相同的内容，否则启动会拒绝冲突。Experimental DSH 领先 Stable 时会被保留，平台按更新状态机协调正式 Environment。
 
 因此，拉取新镜像仍然有意义：其签名 target sequence 高于当前 Stable Deployment 时，容器会推进到新镜像基线；在线更新已经更高时，新镜像则作为经过验证的后备，不覆盖当前状态。

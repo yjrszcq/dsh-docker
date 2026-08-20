@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import test from 'node:test'
 import { provisionPlatformSeed } from '../stage0/lib/seed.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
+import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
 
 const execute = promisify(execFile)
 
@@ -132,4 +133,8 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   assert.equal(inventory.deployment.dshVersion, '0.1.0-rc.fixture')
   assert.equal(await readlink(join(output, 'pristine/0.1.0-rc.fixture/node_modules/.bin/tool')), '../tool/bin.js')
   assert.equal(await readlink(join(output, 'runtime/0.1.0-rc.fixture/package/node_modules/.bin/tool')), '../tool/bin.js')
+  assert.deepEqual(await verifyRuntimePatches({
+    runtimeRoot: join(output, 'runtimes', inventory.deployment.runtime.id),
+    environmentRoot: join(output, 'environments', inventory.deployment.environment.id),
+  }), ['directory-picker', 'browser-loopback'])
 })

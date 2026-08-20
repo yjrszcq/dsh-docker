@@ -16,6 +16,7 @@ import {
   rebuildBundledSystemPluginView,
 } from '../../control-plane/modules/system-plugin-manager/index.mjs'
 import { replaceSystemPluginView } from '../lib/paths.mjs'
+import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -66,7 +67,14 @@ const environment = new EnvironmentRunner({
   environmentRoot: join(paths.viewsRoot, 'environment'),
   capture,
 })
-const runtime = new BootstrapRuntime({ controlPlane, environment })
+const runtime = new BootstrapRuntime({
+  controlPlane,
+  environment,
+  validateDeployment: () => verifyRuntimePatches({
+    runtimeRoot: join(paths.viewsRoot, 'runtime'),
+    environmentRoot: join(paths.viewsRoot, 'environment'),
+  }),
+})
 const systemPlugins = {
   list: async () => {
     const resolved = await deployments.selected()

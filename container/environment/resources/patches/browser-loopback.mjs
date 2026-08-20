@@ -25,4 +25,13 @@ export function applyPatch(dshRoot) {
   patchBrowserLoopback(resolve(dshRoot, BROWSER_CONNECTION_RELATIVE_TARGET))
 }
 
+export function verifyPatch(dshRoot) {
+  const target = resolve(dshRoot, BROWSER_CONNECTION_RELATIVE_TARGET)
+  const source = readFileSync(target, 'utf8')
+  const matches = source.split('isLoopback: true,').length - 1
+  if (matches !== 1 || source.includes('isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),')) {
+    throw new Error(`Browser loopback Patch verification failed for ${target}`)
+  }
+}
+
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) patchBrowserLoopback()
