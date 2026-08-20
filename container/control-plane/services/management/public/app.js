@@ -1485,6 +1485,7 @@ function selectTab(tab) {
     button.tabIndex = active ? 0 : -1
     elements[`panel-${button.dataset.tab}`].hidden = !active
   }
+  tabButtons.find(button => button.dataset.tab === tab)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   if (tab === 'maintenance') {
     connectLogs()
   }

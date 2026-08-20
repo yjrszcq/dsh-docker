@@ -204,7 +204,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .file-table td:nth-child(2) { color: var(--text); }
 .file-table td strong { font-weight: 500; }
 .file-type-mark { display: inline-block; width: 20px; color: var(--accent); text-align: center; }
-.file-load-more { display: flex !important; margin: 12px auto; }
+.file-load-more { margin: 12px auto; }
 .file-selection { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; color: var(--muted); font-size: 12px; }
 .file-selection .danger-text { border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .file-editor-dialog { width: min(860px, calc(100% - 32px)); height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
