@@ -25,7 +25,8 @@ class Coordinator extends EventEmitter {
 
   hasActiveTask() { return this.running === true }
 
-  async check() {
+  async check(source) {
+    this.checkSource = source
     return { value: { targetSequence: 2, desired: { dsh: { version: 'rc.8' } } } }
   }
 
@@ -70,6 +71,7 @@ test('management socket exposes status, check, update, logs, and local rollback'
     coordinator,
     logs,
     platformStatus: async () => ({ environment: 'one' }),
+    updateAutomaticCheck: async value => value,
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -77,11 +79,15 @@ test('management socket exposes status, check, update, logs, and local rollback'
   try {
     const status = await client.request('GET', '/_dsh_platform/api/v1/status')
     assert.equal(status.environment, 'one')
-    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/check')).targetSequence, 2)
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/check', { source: 'page-open' })).targetSequence, 2)
+    assert.equal(coordinator.checkSource, 'page-open')
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/update'), { taskId: 'task-one' })
     await assert.rejects(client.request('POST', '/_dsh_platform/api/v1/update'), error => error.statusCode === 409)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/logs?source=gateway')).entries[0].message, 'ready')
     assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/channel', { channel: 'experimental' })).updateChannel, 'experimental')
+    assert.deepEqual(await client.request('PUT', '/_dsh_platform/api/v1/automatic-check', {
+      enabled: true, intervalSeconds: 21_600, notificationsEnabled: false,
+    }), { enabled: true, intervalSeconds: 21_600, notificationsEnabled: false })
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/holds/retry', { id: 'hold-a' })).retried, 'hold-a')
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
     coordinator.running = false
@@ -473,12 +479,34 @@ test('scheduler applies bounded jitter and performs checks without activating up
   assert.equal(delay, 90_000)
   await callback()
   assert.equal(checks, 1)
+  scheduler.configure({ enabled: false, intervalSeconds: 3_600 })
+  assert.equal(scheduler.timer, undefined)
+  scheduler.configure({ enabled: true, intervalSeconds: 3_600 })
+  assert.equal(delay, 3_240_000)
   scheduler.stop()
+})
+
+test('scheduler configuration during a running check does not revive an old timer', async () => {
+  const timers = []
+  let finish
+  const scheduler = new UpdateScheduler({
+    check: () => new Promise(resolve => { finish = resolve }),
+    intervalSeconds: 100,
+    setTimer: callback => { const timer = { callback, unref() {} }; timers.push(timer); return timer },
+    clearTimer: () => {},
+  })
+  scheduler.start()
+  const running = timers[0].callback()
+  scheduler.configure({ enabled: false, intervalSeconds: 3_600 })
+  finish()
+  await running
+  assert.equal(timers.length, 1)
+  assert.equal(scheduler.timer, undefined)
 })
 
 test('management does not check metadata before the first scheduled interval', async () => {
   const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
-  assert.match(source, /check: \(\) => coordinator\.check\(\)/)
+  assert.match(source, /check: \(\) => coordinator\.check\('automatic'\)/)
   assert.match(source, /allowUnavailableMetadata: imageInventory\.authority === 'development'/)
 })

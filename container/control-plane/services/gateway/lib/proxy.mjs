@@ -15,7 +15,7 @@ export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/reinstall'])],
-  ['PUT', new Set(['channel'])],
+  ['PUT', new Set(['channel', 'automatic-check'])],
 ])
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024

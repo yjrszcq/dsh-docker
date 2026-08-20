@@ -24,6 +24,7 @@ test('Platform Management checked-in client bundle matches its source and DSH lo
     stylePath: new URL('lib/style.module.css', root),
   })
   assert.equal(bundle, rebuilt)
+  assert.doesNotThrow(() => new Function(bundle))
   assert.match(bundle, /^window\.__ModuleLoader__\.load\(/)
   assert.doesNotMatch(bundle, /^import /m)
 })
@@ -38,9 +39,9 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.doesNotMatch(source, /href:/)
   assert.match(source, /fetch\(`/)
   assert.match(source, /new EventSource/)
-  assert.match(source, /refresh\(\)\.then\(value => \{[\s\S]*void checkUpdates\(\)/)
+  assert.match(source, /refresh\(\)\.then\(value => \{[\s\S]*void checkUpdates\('page-open'\)/)
   assert.match(source, /className: css\.checkSpinner/)
-  assert.match(source, /changeChannel[\s\S]*void checkUpdates\(\)/)
+  assert.match(source, /changeChannel[\s\S]*void checkUpdates\('channel-change'\)/)
   assert.match(source, /ctx\.locale\.getLocale\(\)/)
   assert.match(source, /ctx\.on\('locale\/change'/)
   assert.match(source, /dsh_locale/)
@@ -51,7 +52,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /update\.updateAvailable !== true/)
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)
   assert.doesNotMatch(source, /logs\/stream|运行详情|平台日志/)
-  for (const route of ['status', 'check', 'update', 'channel', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh']) {
+  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
@@ -69,6 +70,12 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /stable: '稳定', experimental: '实验'/)
   assert.match(source, /}, t\(channel\)\)\)\)\)/)
   assert.doesNotMatch(source, /回滚 previous|正式 Environment|恢复 Stable|立即回 Stable/)
+  assert.match(source, /shell\.overlay/)
+  assert.match(source, /latestAutomatic/)
+  assert.match(source, /notificationsEnabled/)
+  assert.match(source, /不再提醒此版本/)
+  assert.match(source, /Do not remind for this version/)
+  assert.match(source, /source = 'manual'/)
   for (const status of ['idle', 'checking', 'planning', 'downloading', 'validating', 'switching', 'probation', 'success', 'failed']) {
     assert.match(source, new RegExp(`${status.replace('-', '\\-')}: ['"]status`))
   }
@@ -85,5 +92,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actionHeading \{ align-items: flex-start; \}/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.actions \{ width: 100%; justify-content: flex-start; \}/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.maintenanceButton \{ width: 100%; \}/)
+  assert.match(style, /\.updateReminder/)
+  assert.match(style, /\.settingRows/)
   assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b/i)
 })

@@ -28,7 +28,6 @@
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_PASSWORD` | 空 | 可选 Gateway 密码；留空关闭认证 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码 |
-| `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | 后台检查间隔；检查不会自动下载或激活 |
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
 | `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | 更新激活健康检查期限 |
@@ -130,7 +129,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置中的“平台管理”直接使用常驻 Management API；独立控制台仍可通过 `/_dsh_platform/ui/` 访问。
+自动检查默认每六小时带抖动执行一次，可在 DSH 设置的“平台管理”中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。独立控制台仍可通过 `/_dsh_platform/ui/` 访问。
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 

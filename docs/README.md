@@ -28,7 +28,6 @@ This guide documents configuration, platform behavior, online updates, trust, re
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
 | `DSH_PROXY_PASSWORD` | Empty | Optional gateway password; empty disables authentication |
 | `DSH_PROXY_POLYFILL` | `true` | Inject the guarded `crypto.randomUUID` compatibility shim |
-| `DSH_UPDATE_CHECK_INTERVAL_SECONDS` | `21600` | Background check interval; checks do not download or activate |
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
 | `DSH_ACTIVATION_TIMEOUT_SECONDS` | `60` | Update activation health deadline |
@@ -130,7 +129,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Management checks every six hours with jitter but does not automatically download or activate. Platform Management in DSH settings uses the persistent Management API directly; the standalone console remains available at `/_dsh_platform/ui/`.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from Platform Management in DSH settings. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The standalone console remains available at `/_dsh_platform/ui/`.
 
 The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 

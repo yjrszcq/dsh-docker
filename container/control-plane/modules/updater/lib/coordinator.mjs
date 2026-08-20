@@ -9,7 +9,7 @@ export class UpdateConflictError extends Error {}
 
 export class UpdateCoordinator extends EventEmitter {
   constructor({
-    metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery,
+    metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
     allowUnavailableMetadata = false,
     probationSeconds = 120,
     now = () => new Date(),
@@ -25,6 +25,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.snapshots = snapshots
     this.channelState = channelState
     this.completeRecovery = completeRecovery
+    this.automaticChecks = automaticChecks
     this.allowUnavailableMetadata = allowUnavailableMetadata
     this.probationSeconds = probationSeconds
     this.now = now
@@ -43,14 +44,14 @@ export class UpdateCoordinator extends EventEmitter {
     return this.task !== undefined
   }
 
-  check() {
+  check(source = 'manual') {
     if (this.task !== undefined) return Promise.reject(new UpdateConflictError('an update task is already running'))
     if (this.checkTask !== undefined) return this.checkTask
-    this.checkTask = this.runCheck().finally(() => { this.checkTask = undefined })
+    this.checkTask = this.runCheck(source).finally(() => { this.checkTask = undefined })
     return this.checkTask
   }
 
-  async runCheck() {
+  async runCheck(source) {
     await this.transition('checking', { error: null })
     try {
       if (this.channelState !== undefined) {
@@ -75,6 +76,17 @@ export class UpdateCoordinator extends EventEmitter {
           checkedAt: this.now().toISOString(),
           metadataUnavailable: false,
         })
+        if (source === 'automatic' && this.automaticChecks !== undefined) {
+          await this.automaticChecks.record({
+            channel: plan.updateChannel,
+            current: plan.current,
+            target: plan.target,
+            upstream: plan.upstream,
+            stableAvailable: plan.action === 'stable',
+            holds: plan.holds,
+          })
+          this.emit('state', await this.state.read())
+        }
         return { value: plan.target, updateAvailable }
       }
       const target = await this.metadata.check()
@@ -136,7 +148,9 @@ export class UpdateCoordinator extends EventEmitter {
   async setChannel(updateChannel) {
     if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
     if (this.channelState === undefined) throw new Error('update channels are not configured')
-    return this.channelState.setChannel(updateChannel)
+    const result = await this.channelState.setChannel(updateChannel)
+    if (updateChannel === 'stable') await this.automaticChecks?.clearUpstream()
+    return result
   }
 
   async retryHold(id) {
@@ -170,6 +184,7 @@ export class UpdateCoordinator extends EventEmitter {
         ) throw new Error('no verified pre-Experimental Stable recovery point is available')
       }
       const result = await this.completeRecovery.restore(planId, options)
+      await this.clearSatisfiedNotifications().catch(() => {})
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
     } catch (error) {
@@ -201,12 +216,13 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async publicStatus() {
-    const [update, local, current, rollbackPlan, journal] = await Promise.all([
+    const [update, local, current, rollbackPlan, journal, automatic] = await Promise.all([
       this.state.read(),
       this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
       this.activator.currentDeployment().catch(() => null),
       this.rollbackPlan().catch(() => null),
       this.journal?.read().catch(() => undefined),
+      this.automaticChecks?.read() ?? Promise.resolve(null),
     ])
     const returnStableAvailable = rollbackPlan !== null && rollbackPlan.snapshot !== null && update.supported?.dsh !== undefined
       && compareDshVersions(rollbackPlan.previous.dsh, update.supported.dsh) <= 0
@@ -221,6 +237,10 @@ export class UpdateCoordinator extends EventEmitter {
       holds: local.holds,
       probation: journal?.phase === 'probation' ? { until: journal.probationUntil } : null,
       rollbackPlan: rollbackPlan === null ? null : { ...rollbackPlan, returnStableAvailable },
+      ...(automatic === null ? {} : {
+        automaticCheck: automatic.automaticCheck,
+        latestAutomatic: automatic.latestAutomatic,
+      }),
     })
   }
 
@@ -251,6 +271,7 @@ export class UpdateCoordinator extends EventEmitter {
       await this.transition('validating', { taskId, progress: 70 })
       await this.transition('switching', { taskId, progress: 85 })
       await this.activator.activate(prepared)
+      await this.clearSatisfiedNotifications().catch(() => {})
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update failed' })
@@ -329,6 +350,7 @@ export class UpdateCoordinator extends EventEmitter {
       } while (true)
       await this.activator.commitExperimental(candidateRuntimeId)
       transaction = await this.journal.transition('committed')
+      await this.clearSatisfiedNotifications().catch(() => {})
       await this.activator.cleanup?.().catch(() => {})
       if (obsoleteSnapshotId !== null && obsoleteSnapshotId !== transaction.snapshotId) {
         await this.snapshots.remove?.(obsoleteSnapshotId).catch(() => {})
@@ -373,5 +395,10 @@ export class UpdateCoordinator extends EventEmitter {
   async recover() {
     if (this.journal === undefined || this.snapshots === undefined) return undefined
     return recoverInterruptedUpdate({ journal: this.journal, snapshots: this.snapshots, activator: this.activator })
+  }
+
+  async clearSatisfiedNotifications() {
+    if (this.automaticChecks === undefined) return
+    await this.automaticChecks.clearSatisfied(await this.activator.currentDeployment())
   }
 }

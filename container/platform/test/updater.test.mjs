@@ -204,6 +204,35 @@ test('coalesces overlapping metadata checks into one request', async () => {
   assert.equal(state.value.status, 'idle')
 })
 
+test('only an automatic check records update notification candidates', async () => {
+  const recorded = []
+  const state = {
+    value: { status: 'idle' },
+    async read() { return this.value },
+    async write(status, fields) { this.value = { ...this.value, ...fields, status }; return this.value },
+  }
+  const plan = {
+    action: 'experimental', updateChannel: 'experimental', aheadOfStable: false, experimentalBlocked: null, holds: [],
+    current: { targetSequence: 1, dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' },
+    supported: { dsh: '0.1.0-rc.8', environment: 'env-1' }, upstream: { version: '0.1.0-rc.10' },
+    target: { targetSequence: 2, desired: {
+      bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: '0.1.0-rc.8' },
+    } },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, activator: {}, state, channelState: {},
+    automaticChecks: { record: async value => recorded.push(value), read: async () => ({ automaticCheck: {}, latestAutomatic: {} }) },
+  })
+  coordinator.desiredState = async () => plan
+  coordinator.rollbackPlan = async () => null
+
+  await coordinator.check('page-open')
+  assert.equal(recorded.length, 0)
+  await coordinator.check('automatic')
+  assert.equal(recorded.length, 1)
+  assert.equal(recorded[0].upstream.version, '0.1.0-rc.10')
+})
+
 test('reports unpublished metadata only for development images', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-development-metadata-'))
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))

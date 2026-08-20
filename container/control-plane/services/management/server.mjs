@@ -86,6 +86,7 @@ export function createManagementServer({
   restartDsh = async () => { throw new Error('DSH restart is not configured') },
   listBundledPlugins = async () => [],
   reinstallBundledPlugin = async () => { throw new Error('System Plugin reinstall is not configured') },
+  updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
   let restartTask
@@ -176,7 +177,10 @@ export function createManagementServer({
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
       } else if (request.method === 'POST' && route === 'check') {
-        const target = await coordinator.check()
+        const body = await jsonBody(request)
+        const source = body.source ?? 'manual'
+        if (!['manual', 'page-open', 'channel-change'].includes(source)) throw new Error('update check source is invalid')
+        const target = await coordinator.check(source)
         send(response, 200, target.unavailable === true
           ? { available: false, upstream: target.upstream }
           : {
@@ -203,7 +207,13 @@ export function createManagementServer({
         send(response, 202, startPluginReinstall(body.id))
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
-        send(response, 200, await coordinator.setChannel(body.channel))
+        const value = await coordinator.setChannel(body.channel)
+        server.emit('management-state', value)
+        send(response, 200, value)
+      } else if (request.method === 'PUT' && route === 'automatic-check') {
+        const value = await updateAutomaticCheck(await jsonBody(request))
+        server.emit('management-state', value)
+        send(response, 200, value)
       } else if (request.method === 'POST' && route === 'holds/retry') {
         const body = await jsonBody(request)
         send(response, 200, await coordinator.retryHold(body.id))

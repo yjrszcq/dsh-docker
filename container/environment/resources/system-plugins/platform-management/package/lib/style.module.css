@@ -271,6 +271,88 @@
 }
 .restartConfirmation { border-color: var(--dsw-alias-border-l2); }
 
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle > span {
+  box-sizing: border-box;
+  width: 34px;
+  height: 20px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--dsw-alias-border-l2);
+  transition: background .15s ease;
+}
+.toggle > span::after {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-primary-foreground);
+  content: '';
+  transition: transform .15s ease;
+}
+.toggle input:checked + span { background: var(--dsw-alias-state-success-primary); }
+.toggle input:checked + span::after { transform: translateX(14px); }
+.toggle input:focus-visible + span { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.toggle input:disabled ~ * { opacity: .5; cursor: default; }
+.toggle b { font-weight: 500; }
+
+.settingRows { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; overflow: hidden; }
+.settingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.settingRow + .settingRow { border-top: 1px solid var(--dsw-alias-border-l2); }
+.settingRow > span { min-width: 0; }
+.settingRow b, .settingRow small { display: block; }
+.settingRow b { font-weight: 500; }
+.settingRow small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.settingRow select {
+  min-width: 120px;
+  height: 32px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  font: inherit;
+}
+.settingRow input[type='checkbox'] { width: 16px; height: 16px; flex: none; accent-color: var(--dsw-alias-brand-primary); }
+
+.updateReminder {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+  pointer-events: auto;
+}
+.updateReminder strong { display: block; font-size: 14px; line-height: 22px; }
+.updateReminder p { margin: 4px 0 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.reminderActions { display: flex; justify-content: flex-end; gap: 8px; }
+.reminderActions button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 15px;
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
 @media (max-width: 640px) {
   .root { gap: 16px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
@@ -282,6 +364,9 @@
   .actions > button { flex: 1 1 calc(50% - 8px); }
   .actions { width: 100%; justify-content: flex-start; }
   .maintenanceButton { width: 100%; }
+  .toggle { width: 100%; justify-content: space-between; }
+  .settingRow { align-items: flex-start; }
+  .updateReminder { right: 16px; bottom: 16px; }
 }
 
 @media (max-width: 480px) {

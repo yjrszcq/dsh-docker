@@ -71,7 +71,6 @@ ENV DSH_PLATFORM_DATA=/data/platform \
     DSH_PROXY_POLYFILL=true \
     DSH_TELEMETRY_DISABLED=true \
     DSH_UPDATE_METADATA_URL=https://github.com/yjrszcq/dsh-docker/releases/latest/download/ \
-    DSH_UPDATE_CHECK_INTERVAL_SECONDS=21600 \
     DSH_LOG_MAX_BYTES=104857600 \
     DSH_LOG_RETENTION_DAYS=14 \
     DSH_ACTIVATION_TIMEOUT_SECONDS=60 \

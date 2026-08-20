@@ -10,6 +10,7 @@ import { TargetPreparer } from '../../modules/updater/lib/preparer.mjs'
 import { UpdateCoordinator } from '../../modules/updater/lib/coordinator.mjs'
 import { UpdateScheduler } from '../../modules/updater/lib/scheduler.mjs'
 import { UpdateStateStore } from '../../modules/updater/lib/state.mjs'
+import { AutomaticCheckStateStore } from '../../modules/updater/lib/automatic-check.mjs'
 import { PlatformActivator } from '../../modules/updater/lib/activator.mjs'
 import { UpdateJournal } from '../../modules/updater/lib/journal.mjs'
 import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mjs'
@@ -46,6 +47,7 @@ const snapshots = new PersistentStateSnapshots({
   sourceRoot: process.env.DSH_HOME ?? '/data/dsh',
 })
 const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
+const automaticChecks = new AutomaticCheckStateStore(join(paths.updaterStateRoot, 'automatic-check.json'))
 const coordinator = new UpdateCoordinator({
   metadata,
   preparer,
@@ -57,7 +59,11 @@ const coordinator = new UpdateCoordinator({
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
   channelState: new ChannelStateStore(join(paths.updaterStateRoot, 'channel.json')),
   completeRecovery,
+  automaticChecks,
   allowUnavailableMetadata: imageInventory.authority === 'development',
+})
+const scheduler = new UpdateScheduler({
+  check: () => coordinator.check('automatic'),
 })
 const server = createManagementServer({
   coordinator,
@@ -69,13 +75,14 @@ const server = createManagementServer({
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
   listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
   reinstallBundledPlugin: id => bootstrap.request('POST', '/v1/system-plugins/reinstall', { id }),
+  updateAutomaticCheck: async value => {
+    const state = await automaticChecks.configure(value)
+    scheduler.configure(state.automaticCheck)
+    return state.automaticCheck
+  },
 })
 await listenManagement(server, paths.managementSocket)
-const scheduler = new UpdateScheduler({
-  check: () => coordinator.check(),
-  intervalSeconds: Number(process.env.DSH_UPDATE_CHECK_INTERVAL_SECONDS ?? 21600),
-})
-scheduler.start()
+scheduler.configure((await automaticChecks.read()).automaticCheck)
 const { transaction, persisted } = await reconcileRecoveredState({ journal, state: coordinator.state })
 const journalOwnsState = transaction !== undefined && persisted.taskId === transaction.transactionId
 const resumeUpdate = !journalOwnsState && !['idle', 'success', 'failed'].includes(persisted.status)

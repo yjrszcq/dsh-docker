@@ -20,6 +20,9 @@ const STATUS_LABELS = Object.freeze({
 })
 const h = React.createElement
 const LOCALE_COOKIE = 'dsh_locale'
+const NOTICE_OWNER_KEY = 'dsh-platform:update-notice-owner'
+const NOTICE_SNOOZE_KEY = 'dsh-platform:update-notice-snooze'
+const NOTICE_OWNER_TTL = 20_000
 
 export const inject = ['slots', 'locale']
 
@@ -82,6 +85,132 @@ function VersionCell({ label, version, detail }) {
     h('span', { className: css.detail }, display(detail)))
 }
 
+function storageValue(key) {
+  try { return window.localStorage.getItem(key) } catch { return null }
+}
+
+function writeStorage(key, value) {
+  try {
+    if (value === null) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, value)
+  } catch {}
+}
+
+function parsedStorage(key) {
+  try { return JSON.parse(storageValue(key) ?? 'null') } catch { return null }
+}
+
+function candidateIdentity(candidate) {
+  return candidate.kind === 'stable'
+    ? `stable:${String(candidate.targetSequence)}`
+    : `upstream:${candidate.version}`
+}
+
+function eligibleCandidates(status) {
+  if (status?.automaticCheck?.notificationsEnabled !== true) return []
+  const candidates = []
+  if (status?.latestAutomatic?.stable !== null && status?.latestAutomatic?.stable !== undefined) {
+    candidates.push({ kind: 'stable', ...status.latestAutomatic.stable })
+  }
+  const upstream = status?.latestAutomatic?.upstream
+  const held = upstream !== null && upstream !== undefined && (status?.holds ?? []).some(hold => hold.dshVersion === upstream.version)
+  if (status?.updateChannel === 'experimental' && upstream !== null && upstream !== undefined && !held) {
+    candidates.push({ kind: 'upstream', ...upstream })
+  }
+  return candidates.filter(candidate => storageValue(`dsh-platform:update-notice-dismissed:${candidate.kind}`) !== candidateIdentity(candidate))
+}
+
+function clearSatisfiedDismissals(status) {
+  if (status?.update?.status !== 'success') return
+  const completion = status.update.taskId ?? status.update.updatedAt
+  if (completion === undefined || completion === null || storageValue('dsh-platform:update-notice-cleared-completion') === completion) return
+  writeStorage('dsh-platform:update-notice-dismissed:stable', null)
+  writeStorage('dsh-platform:update-notice-dismissed:upstream', null)
+  writeStorage('dsh-platform:update-notice-cleared-completion', completion)
+}
+
+function UpdateReminder({ t }) {
+  const [status, setStatus] = useState(null)
+  const [tick, setTick] = useState(0)
+  const [ownsNotice, setOwnsNotice] = useState(false)
+  const ownerId = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`)
+
+  const refresh = useCallback(async () => {
+    try {
+      const value = await request('status')
+      clearSatisfiedDismissals(value)
+      setStatus(value)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    const events = new EventSource(`${API}/events`)
+    events.addEventListener('state', () => { void refresh() })
+    const timer = window.setInterval(() => { void refresh() }, 30_000)
+    const changed = () => setTick(value => value + 1)
+    const visibilityChanged = () => {
+      if (document.visibilityState !== 'visible' && parsedStorage(NOTICE_OWNER_KEY)?.id === ownerId.current) {
+        writeStorage(NOTICE_OWNER_KEY, null)
+      }
+      changed()
+    }
+    const leaseTimer = window.setInterval(changed, NOTICE_OWNER_TTL / 2)
+    window.addEventListener('storage', changed)
+    document.addEventListener('visibilitychange', visibilityChanged)
+    return () => {
+      events.close()
+      window.clearInterval(timer)
+      window.clearInterval(leaseTimer)
+      window.removeEventListener('storage', changed)
+      document.removeEventListener('visibilitychange', visibilityChanged)
+      const owner = parsedStorage(NOTICE_OWNER_KEY)
+      if (owner?.id === ownerId.current) writeStorage(NOTICE_OWNER_KEY, null)
+    }
+  }, [refresh])
+
+  const candidate = eligibleCandidates(status)[0]
+  const identity = candidate === undefined ? null : candidateIdentity(candidate)
+
+  useEffect(() => {
+    if (identity === null || document.visibilityState !== 'visible') {
+      setOwnsNotice(false)
+      return
+    }
+    const now = Date.now()
+    const snooze = parsedStorage(NOTICE_SNOOZE_KEY)
+    const owner = parsedStorage(NOTICE_OWNER_KEY)
+    const available = !(snooze?.identity === identity && snooze.until > now)
+      && (owner?.id === ownerId.current || owner?.expiresAt <= now || owner === null)
+    if (available) writeStorage(NOTICE_OWNER_KEY, JSON.stringify({ id: ownerId.current, expiresAt: now + NOTICE_OWNER_TTL }))
+    setOwnsNotice(available)
+  }, [identity, tick])
+
+  useEffect(() => {
+    if (!ownsNotice) return undefined
+    const timer = window.setInterval(() => {
+      writeStorage(NOTICE_OWNER_KEY, JSON.stringify({ id: ownerId.current, expiresAt: Date.now() + NOTICE_OWNER_TTL }))
+    }, NOTICE_OWNER_TTL / 2)
+    return () => window.clearInterval(timer)
+  }, [identity, ownsNotice])
+
+  if (!ownsNotice || candidate === undefined) return null
+  const dismiss = permanent => {
+    if (permanent) writeStorage(`dsh-platform:update-notice-dismissed:${candidate.kind}`, identity)
+    else writeStorage(NOTICE_SNOOZE_KEY, JSON.stringify({ identity, until: Date.now() + 3_600_000 }))
+    writeStorage(NOTICE_OWNER_KEY, null)
+    setTick(tick + 1)
+  }
+  return h('aside', { className: css.updateReminder, role: 'status', 'aria-live': 'polite' },
+    h('strong', null, candidate.kind === 'stable' ? t('stableNoticeTitle') : t('upstreamNoticeTitle')),
+    h('p', null, candidate.kind === 'stable'
+      ? t('stableNoticeBody').replace('{version}', candidate.dsh)
+      : t('upstreamNoticeBody').replace('{version}', candidate.version)),
+    h('div', { className: css.reminderActions },
+      h('button', { type: 'button', onClick: () => dismiss(false) }, t('later')),
+      h('button', { type: 'button', onClick: () => dismiss(true) }, t('dismissVersion'))))
+}
+
 function PlatformManagement({ t }) {
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
@@ -126,17 +255,17 @@ function PlatformManagement({ t }) {
     }
   }, [refresh])
 
-  const checkUpdates = useCallback(async () => {
+  const checkUpdates = useCallback(async (source = 'manual') => {
     setChecking(true)
     try {
-      return await act('check', { method: 'POST' })
+      return await act('check', { method: 'POST', body: { source } })
     } finally {
       setChecking(false)
     }
   }, [act])
 
   const changeChannel = useCallback(async channel => {
-    if (await act('channel', { method: 'PUT', body: { channel } })) void checkUpdates()
+    if (await act('channel', { method: 'PUT', body: { channel } })) void checkUpdates('channel-change')
   }, [act, checkUpdates])
 
   const restartDsh = useCallback(async () => {
@@ -161,7 +290,7 @@ function PlatformManagement({ t }) {
     stateEvents.onerror = () => setConnection('connecting')
 
     void refresh().then(value => {
-      if (TERMINAL.has(value?.update?.status ?? 'idle')) void checkUpdates()
+      if (TERMINAL.has(value?.update?.status ?? 'idle')) void checkUpdates('page-open')
     })
 
     const timer = window.setInterval(() => { void refresh() }, 15_000)
@@ -204,6 +333,14 @@ function PlatformManagement({ t }) {
   const notices = []
   if (status?.aheadOfStable) notices.push(t('aheadOfStable'))
   if (status?.experimentalBlocked) notices.push(t('experimentalBlocked'))
+  const automaticCheck = status?.automaticCheck ?? { enabled: true, intervalSeconds: 21_600, notificationsEnabled: true }
+
+  const saveAutomaticCheck = async change => {
+    await act('automatic-check', {
+      method: 'PUT',
+      body: { ...automaticCheck, ...change },
+    })
+  }
 
   const returnStable = async () => {
     const restored = await act('return-stable', {
@@ -252,7 +389,7 @@ function PlatformManagement({ t }) {
           h('h3', { id: 'platform-actions-title' }, t('actions')),
           h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt, t('localeCode'))}` : t('notChecked'))),
         h('div', { className: css.actions },
-          h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void checkUpdates() } },
+          h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void checkUpdates('manual') } },
             checkingUpdates ? h('span', { className: css.checkSpinner, 'aria-hidden': 'true' }) : null,
             checkingUpdates ? t('checking') : t('check')),
           h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget || update.updateAvailable !== true, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
@@ -283,6 +420,26 @@ function PlatformManagement({ t }) {
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => { setConfirmStable(false); setDataLossAccepted(false) } }, t('cancel')),
           h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null),
+
+    h('section', { className: css.section, 'aria-labelledby': 'automatic-check-title' },
+      h('div', { className: css.sectionHeading },
+        h('div', null,
+          h('h3', { id: 'automatic-check-title' }, t('automaticChecks')),
+          h('p', null, t('automaticChecksDetail'))),
+        h('label', { className: css.toggle },
+          h('input', { type: 'checkbox', checked: automaticCheck.enabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ enabled: event.target.checked }) } }),
+          h('span', { 'aria-hidden': 'true' }),
+          h('b', null, automaticCheck.enabled ? t('enabled') : t('disabled')))),
+      h('div', { className: css.settingRows },
+        h('label', { className: css.settingRow },
+          h('span', null, t('checkInterval')),
+          h('select', { value: automaticCheck.intervalSeconds, disabled: acting || !automaticCheck.enabled, onChange: event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) } },
+            [3_600, 10_800, 21_600, 43_200, 86_400].map(seconds => h('option', { key: seconds, value: seconds }, t(`interval${String(seconds)}`))))),
+        h('label', { className: css.settingRow },
+          h('span', null,
+            h('b', null, t('updateNotifications')),
+            h('small', null, t('updateNotificationsDetail'))),
+          h('input', { type: 'checkbox', checked: automaticCheck.notificationsEnabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) } })))),
 
     h('section', { className: `${css.section} ${css.maintenanceSection}`, 'aria-labelledby': 'platform-maintenance-title' },
       h('div', { className: css.sectionHeading },
@@ -326,6 +483,9 @@ export function apply(ctx) {
       aheadOfStable: '当前版本领先正式支持版本，已暂停完整运行组合更新。', experimentalBlocked: '实验 DSH 与正式环境组合不可用。',
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       maintenance: '运行维护', maintenanceDetail: '仅重新启动 DSH，容器和平台管理服务保持运行。', restartDsh: '重新启动 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
+      automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '网页更新提醒', updateNotificationsDetail: '仅自动检查发现新版本时提醒。',
+      interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
+      stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
     },
     en: {
@@ -341,6 +501,9 @@ export function apply(ctx) {
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       maintenance: 'Runtime maintenance', maintenanceDetail: 'Restart DSH only. The container and platform management services remain running.', restartDsh: 'Restart DSH', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
+      automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Web update notifications', updateNotificationsDetail: 'Shown only when an automatic check finds a new version.',
+      interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
+      stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
     },
   }), 'dsh-platform-management: locale')
@@ -351,4 +514,10 @@ export function apply(ctx) {
     label: () => ctx.locale.bind('settings.dshPlatformManagement')('nav'),
     locale: 'settings.dshPlatformManagement',
   }, PlatformManagement))
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-platform-management-reminder',
+    order: 90,
+    locale: 'settings.dshPlatformManagement',
+  }, UpdateReminder))
 }

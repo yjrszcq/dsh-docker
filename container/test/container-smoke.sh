@@ -85,7 +85,15 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   | rg --fixed-strings 'DSH Platform Management' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
-  | jq -e '.updateChannel == "stable"' >/dev/null
+  | jq -e '.updateChannel == "stable"
+    and .automaticCheck == {"enabled":true,"intervalSeconds":21600,"notificationsEnabled":true}
+    and .latestAutomatic == {"stable":null,"upstream":null}' >/dev/null
+
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check \
+  | jq -e '. == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' >/dev/null
 
 loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matches \
   'isLoopback: true,' \
@@ -156,10 +164,17 @@ docker run --detach --name "$container" \
   --volume "$home_volume:/data/dsh" \
   "$image" >/dev/null
 startup_two="$(wait_platform_ready)"
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check >/dev/null
 docker exec --user node "$container" sh -c 'printf platform > /data/platform/state/updater/smoke && printf home > /data/dsh/smoke'
 docker restart "$container" >/dev/null
 startup_three="$(wait_platform_ready)"
 docker exec "$container" sh -c '[ "$(cat /data/platform/state/updater/smoke)" = platform ] && [ "$(cat /data/dsh/smoke)" = home ]'
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e '.automaticCheck == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' >/dev/null
 echo "Cold readiness (ms): $startup_one, $startup_two, $startup_three"
 
 docker exec "$container" dsh-platform channel experimental >/dev/null
