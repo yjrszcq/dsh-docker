@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { lstat, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { DeploymentManager } from '../bootstrap/lib/deployments.mjs'
+import { DeploymentManager, DeploymentResolutionError } from '../bootstrap/lib/deployments.mjs'
 import { PlatformGarbageCollector } from '../bootstrap/lib/gc.mjs'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import {
@@ -223,6 +223,98 @@ test('advances to a newer image only after startup acceptance', async () => {
   const state = await restarted.acceptImage(plan)
   assert.equal(state.current, nextRecord.id)
   assert.equal(state.previous, context.image.id)
+})
+
+test('rejects an unresolvable newer image candidate and keeps the valid current Deployment', async () => {
+  const current = await fixture({ targetSequence: 1, marker: 'current' })
+  await current.manager.initialize(current.image)
+  const managed = await current.manager.materializeCurrent()
+  const candidateContent = {
+    ...current.inventory.document,
+    platformRevision: 'deployment-fixture-candidate-missing',
+    targetSequence: 2,
+  }
+  delete candidateContent.imageBuildId
+  const inventory = parseImageInventory({
+    ...candidateContent,
+    imageBuildId: deriveImageBuildId(candidateContent),
+  })
+  const candidate = recordsFromImageInventory(inventory).deployment
+  await rm(join(current.seedRoot, 'runtimes', inventory.deployment.runtime.id), { recursive: true })
+  const manager = new DeploymentManager({ paths: current.paths, seedRoot: current.seedRoot, inventory })
+  const plan = await manager.prepareImage(candidate)
+  assert.equal(plan.action, 'image-rejected')
+  assert.equal(plan.target, managed.id)
+  assert.match(plan.candidateError, /ENOENT/)
+  assert.equal((await manager.selected()).record.id, managed.id)
+  assert.equal((await manager.state()).current, managed.id)
+})
+
+test('commits previous only after an invalid current resolves and previous receipts activate', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const previous = await managedRecord(context, 'previous-valid', 2, 'stable', '0.1.0-rc.2', ['receipt-previous'])
+  const current = await managedRecord(context, 'current-invalid', 3, 'stable', '0.1.0-rc.3', ['receipt-current'])
+  await context.manager.activateManaged(previous, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await context.manager.activateManaged(current, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await rm(join(context.paths.runtimesRoot, current.runtime.id), { recursive: true })
+
+  const manager = new DeploymentManager({ paths: context.paths, seedRoot: context.seedRoot, inventory: context.inventory })
+  await assert.rejects(manager.prepareImage(context.image), DeploymentResolutionError)
+  const plan = await manager.preparePreviousRecovery()
+  assert.equal((await manager.selected()).record.id, previous.id)
+  assert.deepEqual(await manager.state(), { schema: 1, generation: 4, current: current.id, previous: previous.id })
+  const activations = []
+  await manager.acceptPreviousRecovery(plan, async tokens => { activations.push(tokens) })
+  assert.deepEqual(activations, [['receipt-previous']])
+  assert.deepEqual(await manager.state(), { schema: 1, generation: 5, current: previous.id, previous: current.id })
+})
+
+test('finishes automatic previous recovery after interruption between receipts and slots', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const previous = await managedRecord(context, 'recovery-interrupted-previous', 2, 'stable', '0.1.0-rc.2', ['receipt-previous'])
+  const current = await managedRecord(context, 'recovery-interrupted-current', 3, 'stable', '0.1.0-rc.3', ['receipt-current'])
+  await context.manager.activateManaged(previous, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await context.manager.activateManaged(current, { healthCheck: async () => {}, activateReceipts: async () => {} })
+
+  const manager = new DeploymentManager({ paths: context.paths, seedRoot: context.seedRoot, inventory: context.inventory })
+  const plan = await manager.preparePreviousRecovery()
+  manager.commit = async () => { throw new Error('simulated interruption before slots commit') }
+  await assert.rejects(
+    manager.acceptPreviousRecovery(plan, async tokens => assert.deepEqual(tokens, ['receipt-previous'])),
+    /simulated interruption/,
+  )
+  assert.equal((await manager.activation()).phase, 'receipts-active')
+  assert.equal((await manager.state()).current, current.id)
+
+  const restarted = new DeploymentManager({ paths: context.paths, seedRoot: context.seedRoot, inventory: context.inventory })
+  const recovered = await restarted.recoverActivation({
+    activeReceipts: async () => ({ receipts: [{ token: 'receipt-previous' }] }),
+    activate: async () => { throw new Error('active previous must be completed') },
+  })
+  assert.deepEqual(recovered, { action: 'committed', recordId: previous.id })
+  assert.deepEqual(await restarted.state(), { schema: 1, generation: 5, current: previous.id, previous: current.id })
+  assert.equal(await restarted.activation(), undefined)
+})
+
+test('does not automatically downgrade an unparseable current Deployment Record', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const previous = await managedRecord(context, 'record-valid-previous', 2)
+  const current = await managedRecord(context, 'record-corrupt-current', 3)
+  await context.manager.activateManaged(previous, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await context.manager.activateManaged(current, { healthCheck: async () => {}, activateReceipts: async () => {} })
+  await writeFile(context.manager.recordPath(current.id), '{invalid')
+
+  const manager = new DeploymentManager({ paths: context.paths, seedRoot: context.seedRoot, inventory: context.inventory })
+  await assert.rejects(manager.prepareImage(context.image), error => {
+    assert.equal(error instanceof DeploymentResolutionError, false)
+    assert.match(error.message, /valid JSON/)
+    return true
+  })
+  await assert.rejects(manager.preparePreviousRecovery(), /valid JSON/)
+  assert.deepEqual(await manager.state(), { schema: 1, generation: 4, current: current.id, previous: previous.id })
 })
 
 test('keeps a newer managed Deployment when the image is behind', async () => {

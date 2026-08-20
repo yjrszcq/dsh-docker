@@ -8,7 +8,7 @@ import { createBootstrapControl, listenBootstrapControl } from './lib/control.mj
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
-import { DeploymentManager } from './lib/deployments.mjs'
+import { DeploymentManager, DeploymentResolutionError } from './lib/deployments.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import {
   linkSystemPluginScope,
@@ -28,23 +28,32 @@ const deployments = new DeploymentManager({ paths, seedRoot, inventory })
 const trust = new LocalApiClient(paths.trustSocket)
 await deployments.recoverActivation(trust)
 let imagePlan
+let previousPlan
 let planningError = null
 try {
   imagePlan = await deployments.prepareImage(imageRecords.deployment)
-  await linkSystemPluginScope({
-    dshHome: process.env.DSH_HOME ?? '/data/dsh',
-    viewRoot: join(paths.viewsRoot, 'system-plugins'),
-  })
   await deployments.publishStatus({ plan: imagePlan, currentId: imagePlan.target })
 } catch (error) {
   planningError = error
-  await deployments.publishStatus({
+  if (error instanceof DeploymentResolutionError) {
+    try {
+      previousPlan = await deployments.preparePreviousRecovery()
+      await deployments.publishStatus({ currentId: previousPlan.target, operation: 'recovering' })
+    } catch (recoveryError) {
+      planningError = new AggregateError([error, recoveryError], 'Deployment resolution and previous recovery failed')
+    }
+  }
+  if (previousPlan === undefined) await deployments.publishStatus({
     recoveryMode: {
       reason: error instanceof Error ? error.message : 'Deployment resolution failed',
       failedRecordId: null,
     },
   })
 }
+await linkSystemPluginScope({
+  dshHome: process.env.DSH_HOME ?? '/data/dsh',
+  viewRoot: join(paths.viewsRoot, 'system-plugins'),
+})
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -113,15 +122,38 @@ try {
     allowRecovery: true,
     onEnvironmentFailure: async () => {
       imageCandidateHealthy = false
-      return imagePlan === undefined ? false : deployments.rejectImage(imagePlan)
+      if (previousPlan !== undefined) return false
+      if (planningError !== null) return false
+      if (imagePlan?.fallback !== null && imagePlan?.fallback !== undefined) {
+        return deployments.rejectImage(imagePlan)
+      }
+      try {
+        previousPlan = await deployments.preparePreviousRecovery(imagePlan?.target)
+        return true
+      } catch {
+        return false
+      }
     },
   })
 } catch (error) {
   server.close()
   throw error
 }
-if (imageCandidateHealthy && imagePlan !== undefined) await deployments.acceptImage(imagePlan)
-const recoveryReason = planningError instanceof Error ? planningError.message : runtime.recoveryMode
+if (runtime.recoveryMode === null) {
+  if (imageCandidateHealthy && imagePlan !== undefined) await deployments.acceptImage(imagePlan)
+  else if (previousPlan !== undefined) {
+    try {
+      await deployments.acceptPreviousRecovery(previousPlan, tokens => trust.activate(tokens))
+      planningError = null
+    } catch (error) {
+      await runtime.suspend('dsh-runtime').catch(() => {})
+      runtime.enterRecovery(error)
+    }
+  }
+}
+const recoveryReason = runtime.recoveryMode ?? (previousPlan === undefined && planningError instanceof Error
+  ? planningError.message
+  : null)
 const recoveryMode = recoveryReason === null ? null : {
   reason: recoveryReason,
   failedRecordId: imagePlan?.target ?? null,

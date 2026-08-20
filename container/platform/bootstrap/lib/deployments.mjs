@@ -17,6 +17,13 @@ import { TrustError } from '../../lib/validation.mjs'
 
 const KINDS = Object.freeze(['environment', 'pristine', 'runtime', 'system-plugins'])
 
+export class DeploymentResolutionError extends Error {
+  constructor(message, cause) {
+    super(message, { cause })
+    this.name = 'DeploymentResolutionError'
+  }
+}
+
 function sameDeployment(left, right) {
   return left.dshVersion === right.dshVersion
     && left.environmentVersion === right.environmentVersion
@@ -271,7 +278,25 @@ export class DeploymentManager {
         action = 'prefer-image'
       }
 
-      await this.select(target)
+      let candidateError = null
+      try {
+        await this.select(target)
+      } catch (error) {
+        if (target === current.id) {
+          throw new DeploymentResolutionError('current Deployment assets could not be resolved', error)
+        }
+        try {
+          await this.select(current.id)
+        } catch (fallbackError) {
+          throw new DeploymentResolutionError(
+            'image candidate and current Deployment assets could not be resolved',
+            new AggregateError([error, fallbackError]),
+          )
+        }
+        target = current.id
+        action = 'image-rejected'
+        candidateError = error instanceof Error ? error.message : 'image candidate could not be resolved'
+      }
       return Object.freeze({
         baseGeneration: state.generation,
         target,
@@ -279,6 +304,7 @@ export class DeploymentManager {
         action,
         imageBehindCurrent,
         requiresExperimentalRebuild,
+        candidateError,
       })
     })
   }
@@ -299,6 +325,41 @@ export class DeploymentManager {
       if (plan.fallback === null) return false
       await this.select(plan.fallback)
       return true
+    })
+  }
+
+  async preparePreviousRecovery(failedRecordId) {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      const failed = failedRecordId ?? state.current
+      if (failed === null || state.current !== failed) {
+        throw new TrustError('failed Deployment is no longer current')
+      }
+      if (state.previous === null || state.previous === failed) {
+        throw new TrustError('no previous Deployment exists')
+      }
+      await this.record(failed)
+      await this.select(state.previous)
+      return Object.freeze({
+        baseGeneration: state.generation,
+        failed,
+        target: state.previous,
+      })
+    })
+  }
+
+  async acceptPreviousRecovery(plan, activateReceipts) {
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.generation !== plan.baseGeneration || state.current !== plan.failed || state.previous !== plan.target) {
+        throw new TrustError('Deployment slots changed during automatic recovery')
+      }
+      const previous = await this.record(plan.target)
+      await activateReceipts(previous.receiptTokens)
+      await this.writeActivation({ phase: 'receipts-active', from: plan.failed, to: plan.target })
+      const committed = await this.commit(plan.target, plan.failed)
+      await this.clearActivation()
+      return committed
     })
   }
 

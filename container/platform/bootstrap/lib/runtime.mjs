@@ -69,6 +69,10 @@ export class BootstrapRuntime {
   }
   health() { return this.environment.health() }
 
+  enterRecovery(error) {
+    this.recoveryMode = error instanceof Error ? error.message : String(error)
+  }
+
   status() {
     const environment = this.environment.status()
     return Object.freeze({
