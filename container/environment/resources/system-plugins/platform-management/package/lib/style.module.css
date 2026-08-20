@@ -423,6 +423,21 @@
 .pluginIdentity span { display: block; overflow-wrap: anywhere; }
 .pluginIdentity strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .pluginIdentity span { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.pluginIdentity .pendingBadge {
+  display: inline-block;
+  width: fit-content;
+  margin-top: 5px;
+  color: var(--dsw-alias-state-warn-label);
+  font-weight: 500;
+}
+.pluginInstallHint {
+  margin: -2px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.pluginInstallHint a { color: var(--dsw-alias-state-business-primary); text-decoration: none; }
+.pluginInstallHint a:hover { text-decoration: underline; }
 .managedBadge {
   padding: 3px 9px;
   border-radius: 12px;

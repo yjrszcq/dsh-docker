@@ -78,6 +78,7 @@ const server = createManagementServer({
   listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
+  discardBundledPluginChanges: () => bootstrap.request('POST', '/v1/system-plugins/discard'),
   settingsDocument,
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)

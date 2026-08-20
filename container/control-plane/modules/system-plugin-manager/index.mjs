@@ -238,9 +238,25 @@ async function pluginCatalog(environmentRoot) {
   }
 }
 
-export async function listManagedSystemPlugins({ environmentRoot, sourceRoot, selectionStore }) {
+async function readActiveSelection(root, plugins) {
+  if (root === undefined) return undefined
+  const overlay = await readOverlay(resolve(root))
+  const enabledPackages = new Set(overlay.flatMap(entry => (
+    Array.isArray(entry?.insert) ? entry.insert.map(row => row?.name).filter(Boolean) : []
+  )))
+  return Object.fromEntries(await Promise.all(plugins.map(async ({ id }) => {
+    const installed = await lstat(join(resolve(root), 'packages', id)).then(
+      () => true,
+      error => error?.code === 'ENOENT' ? false : Promise.reject(error),
+    )
+    return [id, { installed, enabled: installed && enabledPackages.has(`@dsh-docker/${id}`) }]
+  })))
+}
+
+export async function listManagedSystemPlugins({ environmentRoot, sourceRoot, selectionStore, activeRoot }) {
   const catalog = await pluginCatalog(environmentRoot)
   const selection = await selectionStore.read(catalog.plugins.map(plugin => plugin.id))
+  const active = await readActiveSelection(activeRoot, catalog.plugins)
   return Object.freeze(await Promise.all(catalog.plugins.map(async ({ id, descriptor }) => {
     const metadata = JSON.parse(await readFile(join(resolve(sourceRoot), 'packages', id, 'package.json'), 'utf8'))
     validatePackage(metadata, id)
@@ -254,6 +270,8 @@ export async function listManagedSystemPlugins({ environmentRoot, sourceRoot, se
       }
       description = Object.freeze({ zh: value.zh, en: value.en })
     }
+    const activeInstalled = active?.[id].installed ?? selection[id].installed
+    const activeEnabled = active?.[id].enabled ?? selection[id].enabled
     return Object.freeze({
       id,
       artifactId: descriptor.id,
@@ -261,10 +279,22 @@ export async function listManagedSystemPlugins({ environmentRoot, sourceRoot, se
       description,
       installed: selection[id].installed,
       enabled: selection[id].enabled,
+      activeInstalled,
+      activeEnabled,
+      pendingRestart: activeInstalled !== selection[id].installed || activeEnabled !== selection[id].enabled,
       protected: selection[id].protected,
       reason: null,
     })
   })))
+}
+
+export async function discardSystemPluginSelection({ environmentRoot, sourceRoot, selectionStore, activeRoot }) {
+  const catalog = await pluginCatalog(environmentRoot)
+  const pluginIds = catalog.plugins.map(plugin => plugin.id)
+  const active = await readActiveSelection(activeRoot, catalog.plugins)
+  if (active === undefined) throw new Error('active System Plugin view is unavailable')
+  await selectionStore.write(pluginIds, active)
+  return listManagedSystemPlugins({ environmentRoot, sourceRoot, selectionStore, activeRoot })
 }
 
 export async function materializeSystemPluginSelection({

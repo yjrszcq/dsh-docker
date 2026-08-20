@@ -11,6 +11,7 @@ import { parseImageInventory, recordsFromImageInventory } from '../lib/deploymen
 import { DeploymentManager, DeploymentResolutionError } from './lib/deployments.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import {
+  discardSystemPluginSelection,
   linkSystemPluginScope,
   listManagedSystemPlugins,
   materializeSystemPluginSelection,
@@ -129,10 +130,14 @@ const systemPlugins = {
   list: async () => {
     const resolved = await deployments.selected()
     if (resolved === null) return []
+    const activeRoot = await realpath(join(paths.systemPluginViewsRoot, 'current')).catch(error => (
+      error?.code === 'ENOENT' ? undefined : Promise.reject(error)
+    ))
     return listManagedSystemPlugins({
       environmentRoot: resolved.paths.environment,
       sourceRoot: resolved.paths['system-plugins'],
       selectionStore: systemPluginSelections,
+      activeRoot,
     })
   },
   mutate: (pluginId, action, recovery = false) => deployments.exclusive(async () => {
@@ -152,6 +157,17 @@ const systemPlugins = {
       }
       throw error
     }
+  }),
+  discard: () => deployments.exclusive(async () => {
+    const resolved = await deployments.selected()
+    if (resolved === null) throw new Error('no Deployment is selected')
+    const activeRoot = await realpath(join(paths.systemPluginViewsRoot, 'current'))
+    return discardSystemPluginSelection({
+      environmentRoot: resolved.paths.environment,
+      sourceRoot: resolved.paths['system-plugins'],
+      selectionStore: systemPluginSelections,
+      activeRoot,
+    })
   }),
   prepare: prepareSystemPluginSelection,
 }

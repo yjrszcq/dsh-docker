@@ -1,5 +1,8 @@
 import { createServer, request as httpRequest } from 'node:http'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { connect as netConnect } from 'node:net'
+import { join, resolve } from 'node:path'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
 import { BASIC_AUTH_CHALLENGE, createPasswordAccess } from './auth.mjs'
@@ -14,11 +17,12 @@ export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/recovery-action'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard'])],
   ['PUT', new Set(['channel', 'automatic-check', 'settings-document'])],
 ])
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
+const SYSTEM_PLUGIN_BUNDLE = /^\/plugins\/@dsh-docker\/([a-z0-9][a-z0-9._-]{0,127})\/client\.js$/
 const upgradedSocketsByServer = new WeakMap()
 const probeTimersByServer = new WeakMap()
 const HOP_BY_HOP_HEADERS = new Set([
@@ -99,6 +103,35 @@ function sendAvailabilityPage(request, response, state) {
     'referrer-policy': 'no-referrer',
   })
   response.end(body)
+}
+
+async function serveSystemPluginBundle(request, response, root, pathname, searchParams) {
+  if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) return false
+  const match = SYSTEM_PLUGIN_BUNDLE.exec(pathname)
+  if (match === null) return false
+  const packageRoot = join(resolve(root), match[1])
+  try {
+    const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+    if (metadata.name !== `@dsh-docker/${match[1]}`) return false
+    const client = metadata.exports?.['./client']
+    const relative = typeof client === 'string' ? client : client?.default
+    if (typeof relative !== 'string' || relative.startsWith('/') || relative.includes('\\') || relative.split('/').includes('..')) return false
+    const body = await readFile(join(packageRoot, relative))
+    const requestedRev = searchParams.get('rev')
+    const actualRev = createHash('sha1').update(body).digest('hex').slice(0, 12)
+    if (requestedRev !== null && requestedRev !== actualRev) return false
+    response.writeHead(200, {
+      'cache-control': 'no-cache',
+      'content-length': String(body.byteLength),
+      'content-type': 'text/javascript; charset=utf-8',
+      etag: `"${actualRev}"`,
+    })
+    response.end(request.method === 'HEAD' ? undefined : body)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
 }
 
 function rejectUpgrade(socket, status, reason, headers = {}) {
@@ -267,6 +300,7 @@ export function createGatewayServer({
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
   managementSocketPath = '/run/dsh-platform/management.sock',
+  systemPluginRoot = '/run/dsh-platform/deployment/system-plugins/packages',
   platformStatus = async () => ({}),
   availability = new DshAvailability(),
   probe = () => probeDsh({ host: upstreamHost, port: upstreamPort }),
@@ -277,7 +311,7 @@ export function createGatewayServer({
   passwordAccess = createPasswordAccess(password, { username }),
 }) {
   const options = {
-    trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, platformStatus,
+    trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, systemPluginRoot, platformStatus,
     availability, probe, isReady, passwordAccess,
   }
   const upgradedSockets = new Set()
@@ -291,7 +325,8 @@ export function createGatewayServer({
         rejectHttp(response, 403, 'forbidden')
         return
       }
-      const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+      const url = new URL(request.url ?? '/', 'http://gateway.internal')
+      const pathname = url.pathname
       if (pathname === HEALTH_PATH) {
         if (options.isReady()) {
           response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
@@ -302,6 +337,7 @@ export function createGatewayServer({
         return
       }
       if (options.passwordAccess.handleHttp(request, response)) return
+      if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (pathname === READINESS_PATH) {
         const ready = await options.probe()
         options.availability.observe(ready)

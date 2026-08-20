@@ -16,6 +16,7 @@ const STATUS_LABELS = Object.freeze({
   failed: 'statusFailed',
 })
 const NOTICE_PREFIX = 'dsh-platform:console-update-notice'
+const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: '平台管理', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
@@ -46,7 +47,7 @@ const COPY = Object.freeze({
     clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
-    recoveryAvailable: '可离线恢复', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用',
+    notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
     installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
@@ -85,7 +86,7 @@ const COPY = Object.freeze({
     clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the DSH Platform Management integration.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
-    recoveryAvailable: 'Offline recovery', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled',
+    notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending restart',
     installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
@@ -201,7 +202,8 @@ async function api(path, { method = 'GET', body } = {}) {
 
 function runtimeBusy(next = status) {
   const update = next?.update ?? {}
-  return acting || checking || !TERMINAL.has(update.status ?? 'idle')
+  return (acting && !checking)
+    || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
     || next?.systemPluginOperation?.status === 'running'
     || next?.dshRestart?.status === 'restarting'
 }
@@ -245,7 +247,10 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
   button.disabled = busy
   button.addEventListener('click', () => {
     const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
-    void act(path, { method: 'POST', body: { id: plugin.id, action } })
+    window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
+    void act(path, { method: 'POST', body: { id: plugin.id, action } }).then(changed => {
+      if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+    })
   })
   return button
 }
@@ -265,10 +270,10 @@ function renderBundledPlugins(values, busy) {
     const state = document.createElement('span')
     state.textContent = pluginDescription(plugin)
     identity.append(name, state)
-    if (plugin.protected) {
+    if (plugin.pendingRestart) {
       const badge = document.createElement('span')
-      badge.className = 'recovery-badge'
-      badge.textContent = t('recoveryAvailable')
+      badge.className = 'plugin-pending'
+      badge.textContent = t('pluginPendingRestart')
       identity.append(badge)
     }
     const controls = document.createElement('div')
@@ -284,7 +289,10 @@ function renderBundledPlugins(values, busy) {
       checkbox.disabled = busy
       checkbox.addEventListener('change', event => {
         const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
-        void act(path, { method: 'POST', body: { id: plugin.id, action: event.target.checked ? 'enable' : 'disable' } })
+        window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
+        void act(path, { method: 'POST', body: { id: plugin.id, action: event.target.checked ? 'enable' : 'disable' } }).then(changed => {
+          if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+        })
       })
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
@@ -384,7 +392,7 @@ function render(next) {
   elements['plugin-operation'].hidden = !['running', 'failed'].includes(pluginOperation.status)
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
-  elements['plugin-restart-required'].hidden = pluginOperation.restartRequired !== true
+  elements['plugin-restart-required'].hidden = !plugins.some(plugin => plugin.pendingRestart)
   elements['plugin-restart-dsh'].disabled = busy
   elements['plugin-restart-dsh'].textContent = restart.status === 'restarting' ? t('restarting') : t('restartDsh')
   renderBundledPlugins(plugins, busy)
@@ -670,7 +678,11 @@ elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
-  await act('restart-dsh', { method: 'POST' })
+  const hadDraft = window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1'
+  if (hadDraft) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+  if (!await act('restart-dsh', { method: 'POST' }) && hadDraft) {
+    window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
+  }
 })
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {
   element.addEventListener(element.tagName === 'INPUT' ? 'input' : 'change', renderLogs)
@@ -706,6 +718,17 @@ applyTranslations()
 selectTab('updates')
 renderLogs()
 connectEvents()
+if (window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1') {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      await api('bundled-plugins/discard', { method: 'POST' })
+      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+      break
+    } catch {
+      await new Promise(resolve => window.setTimeout(resolve, 100))
+    }
+  }
+}
 const initial = await loadStatus()
 if (TERMINAL.has(initial?.update?.status ?? 'idle')) void checkUpdates('page-open')
 window.setInterval(() => { void loadStatus() }, 15_000)

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import {
+  discardSystemPluginSelection,
   linkSystemPluginScope,
   listBundledSystemPlugins,
   listManagedSystemPlugins,
@@ -218,6 +219,12 @@ test('persists install and enable selection while protecting Platform Management
     ['platform-management', { zh: 'platform-management 功能', en: 'platform-management feature' }, true, true, true],
     ['diagnostics', { zh: 'diagnostics 功能', en: 'diagnostics feature' }, true, true, false],
   ])
+  const active = await materializeSystemPluginSelection({
+    environmentRoot: environment,
+    sourceRoot: source,
+    outputRoot: join(root, 'views'),
+    selectionStore: store,
+  })
 
   await assert.rejects(store.configure(pluginIds, 'platform-management', 'uninstall'), /managed by the platform/)
   await assert.rejects(store.recover(pluginIds, 'diagnostics', 'uninstall'), /not a platform recovery target/)
@@ -226,6 +233,36 @@ test('persists install and enable selection while protecting Platform Management
     installed: false, enabled: false, protected: true,
   })
   await store.recover(pluginIds, 'platform-management', 'install')
+  await store.configure(pluginIds, 'diagnostics', 'disable')
+  const pending = await listManagedSystemPlugins({
+    environmentRoot: environment,
+    sourceRoot: source,
+    selectionStore: store,
+    activeRoot: active.path,
+  })
+  assert.deepEqual(pending.find(plugin => plugin.id === 'diagnostics'), {
+    id: 'diagnostics',
+    artifactId: 'system-plugin-diagnostics',
+    sha256: artifacts.find(artifact => artifact.pluginId === 'diagnostics').sha256,
+    description: { zh: 'diagnostics 功能', en: 'diagnostics feature' },
+    installed: true,
+    enabled: false,
+    activeInstalled: true,
+    activeEnabled: true,
+    pendingRestart: true,
+    protected: false,
+    reason: null,
+  })
+  const discarded = await discardSystemPluginSelection({
+    environmentRoot: environment,
+    sourceRoot: source,
+    selectionStore: store,
+    activeRoot: active.path,
+  })
+  assert.equal(discarded.find(plugin => plugin.id === 'diagnostics').pendingRestart, false)
+  assert.deepEqual((await store.read(pluginIds)).diagnostics, {
+    installed: true, enabled: true, protected: false,
+  })
   await store.configure(pluginIds, 'diagnostics', 'disable')
   const disabled = await materializeSystemPluginSelection({
     environmentRoot: environment,
@@ -236,6 +273,12 @@ test('persists install and enable selection while protecting Platform Management
   assert.equal((await lstat(join(disabled.path, 'packages', 'diagnostics'))).isSymbolicLink(), true)
   assert.deepEqual(JSON.parse(await readFile(join(disabled.path, 'cordis.patch.yml'), 'utf8'))
     .flatMap(entry => entry.insert).map(row => row.name), ['@dsh-docker/platform-management'])
+  assert.equal((await listManagedSystemPlugins({
+    environmentRoot: environment,
+    sourceRoot: source,
+    selectionStore: store,
+    activeRoot: disabled.path,
+  })).find(plugin => plugin.id === 'diagnostics').pendingRestart, false)
 
   await store.configure(pluginIds, 'diagnostics', 'uninstall')
   const deleted = await materializeSystemPluginSelection({

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -131,6 +132,35 @@ test('health endpoint reports gateway readiness without touching upstream', asyn
   })
 })
 
+test('serves trusted System Plugin bundles across DSH restart and uninstall races', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-system-plugin-'))
+  const packageRoot = join(root, 'settings-document-editor')
+  const bundle = Buffer.from('window.systemPluginLoaded = true\n')
+  const rev = createHash('sha1').update(bundle).digest('hex').slice(0, 12)
+  await mkdir(join(packageRoot, 'lib'), { recursive: true })
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+    name: '@dsh-docker/settings-document-editor',
+    exports: { './client': './lib/client.bundle.js' },
+  }))
+  await writeFile(join(packageRoot, 'lib/client.bundle.js'), bundle)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort: 1,
+    systemPluginRoot: root,
+  })
+  const port = await listen(gateway)
+  try {
+    const response = await request(port, `/plugins/@dsh-docker/settings-document-editor/client.js?rev=${rev}`, { host: '127.0.0.1' })
+    assert.equal(response.status, 200)
+    assert.equal(response.body, bundle.toString('utf8'))
+    assert.match(response.headers['content-type'], /text\/javascript/)
+    const stale = await request(port, '/plugins/@dsh-docker/settings-document-editor/client.js?rev=000000000000', { host: '127.0.0.1' })
+    assert.notEqual(stale.status, 200)
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
 test('bounded management and Console requests use the protected local socket instead of DSH upstream', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-management-'))
   const socketPath = join(root, 'management.sock')
@@ -165,6 +195,7 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/return-stable'],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/action'],
+      ['POST', '/_dsh_platform/api/v1/bundled-plugins/toggle'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/recovery-action'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],

@@ -340,6 +340,72 @@ test('management changes a bundled plugin as an audited task and excludes runtim
   }
 })
 
+test('management toggle endpoint accepts only enable and disable actions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-toggle-'))
+  const calls = []
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    configureBundledPlugin: async (id, action) => { calls.push([id, action]) },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await assert.rejects(client.request('POST', `${API_PREFIX}bundled-plugins/toggle`, {
+      id: 'diagnostics', action: 'install',
+    }), error => error.statusCode === 400)
+    const task = await client.request('POST', `${API_PREFIX}bundled-plugins/toggle`, {
+      id: 'diagnostics', action: 'disable',
+    })
+    assert.equal(typeof task.taskId, 'string')
+    for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.deepEqual(calls, [['diagnostics', 'disable']])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management discards unapplied System Plugin changes and clears restart state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-discard-'))
+  let discarded = 0
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    configureBundledPlugin: async () => {},
+    discardBundledPluginChanges: async () => {
+      discarded += 1
+      return { plugins: [{ id: 'diagnostics', pendingRestart: false }] }
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await client.request('POST', `${API_PREFIX}bundled-plugins/action`, {
+      id: 'diagnostics', action: 'disable',
+    })
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if ((await client.request('GET', `${API_PREFIX}status`)).systemPluginOperation.restartRequired) break
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    const result = await client.request('POST', `${API_PREFIX}bundled-plugins/discard`)
+    assert.equal(discarded, 1)
+    assert.deepEqual(result, { plugins: [{ id: 'diagnostics', pendingRestart: false }] })
+    assert.equal((await client.request('GET', `${API_PREFIX}status`)).systemPluginOperation.restartRequired, false)
+    assert.deepEqual((await logs.query({ sources: ['audit'] })).map(entry => entry.message), [
+      'system-plugin.disable.started',
+      'system-plugin.disable.completed',
+      'system-plugin.changes.discarded',
+    ])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management keeps the System Plugin restart marker when DSH restart fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-restart-failure-'))
   const server = createManagementServer({
@@ -507,7 +573,8 @@ test('standalone console keeps localized feature parity on the shared Management
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
-    'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action', 'logs/stream',
+    'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action',
+    'bundled-plugins/discard', 'logs/stream',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(script, /name === 'dsh_locale'/)
@@ -517,10 +584,15 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(html, /id="plugin-restart-required"/)
   assert.match(html, /id="plugin-restart-dsh"/)
   assert.equal(html.indexOf('id="plugin-restart-required"') < html.indexOf('id="bundled-plugins"'), true)
-  assert.match(script, /pluginOperation\.restartRequired !== true/)
+  assert.match(script, /plugins\.some\(plugin => plugin\.pendingRestart\)/)
   assert.match(script, /pluginRestartRequired: '需要重新启动 DSH'/)
   assert.match(script, /pluginRestartRequired: 'Restart DSH required'/)
   assert.match(script, /plugin\.description\?\.\[locale\]/)
+  assert.match(script, /pluginPendingRestart: '待重启'/)
+  assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
+  assert.match(script, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)[\s\S]*bundled-plugins\/discard/)
+  assert.match(script, /\(acting && !checking\)/)
+  assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
   assert.doesNotMatch(script, /插件设置并重启 DSH|settings and restarting DSH/)
   assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)
   assert.match(style, /\.tabs \{[\s\S]*overflow-x: auto/)
