@@ -85,6 +85,7 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
             const status = await deployments.exclusive(async () => {
               await deployments.setOperation('restarting')
               try {
+                await systemPlugins?.apply?.()
                 const value = await runner.restart(componentId)
                 await deployments.setOperation(null)
                 return value

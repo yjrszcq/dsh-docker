@@ -232,6 +232,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     setOperation: async operation => { calls.push(['operation', operation]) },
   }
   const systemPlugins = {
+    apply: async () => { calls.push(['apply-system-plugins']) },
     list: async () => [{ id: 'platform-management', installed: true }],
     configure: async (id, action) => {
       calls.push(['configure', id, action])
@@ -266,8 +267,19 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['suspend', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],
+      ['apply-system-plugins'],
       ['restart', 'dsh-runtime'],
       ['operation', null],
+    ])
+    systemPlugins.apply = async () => {
+      calls.push(['apply-system-plugins-failed'])
+      throw new Error('overlay failed')
+    }
+    await assert.rejects(client.request('POST', '/v1/components/dsh-runtime/restart'), /overlay failed/)
+    assert.deepEqual(calls.slice(-3), [
+      ['operation', 'restarting'],
+      ['apply-system-plugins-failed'],
+      ['operation', 'restart-failed'],
     ])
   } finally {
     await new Promise(resolve => server.close(resolve))

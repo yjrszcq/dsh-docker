@@ -180,6 +180,25 @@ done
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
+plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"id":"settings-document-editor","action":"disable"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$plugin_task" \
+    '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"
+      and .systemPluginOperation.restartRequired == true' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.2
+done
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
+  | jq -e '.plugins[1] | .installed and (.enabled | not)' >/dev/null
+docker exec "$container" rg --fixed-strings '@dsh-docker/settings-document-editor' \
+  /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.systemPluginOperation.restartRequired == true' >/dev/null
@@ -200,6 +219,10 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 dsh_pid_after="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 [ "$dsh_pid_before" != "$dsh_pid_after" ]
+if docker exec "$container" rg --fixed-strings '@dsh-docker/settings-document-editor' \
+  /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null; then
+  exit 1
+fi
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 

@@ -121,18 +121,17 @@ const systemPlugins = {
     const previousSelection = await systemPluginSelections.read(pluginIds)
     try {
       await systemPluginSelections[recovery ? 'recover' : 'configure'](pluginIds, pluginId, action)
-      await applySystemPluginSelection()
       return systemPlugins.list()
     } catch (error) {
       try {
         await systemPluginSelections.write(pluginIds, previousSelection)
-        await applySystemPluginSelection()
       } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'System Plugin operation and rollback failed')
       }
       throw error
     }
   }),
+  apply: applySystemPluginSelection,
 }
 systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
 systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)
