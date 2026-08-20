@@ -104,6 +104,33 @@ docker exec "$container" sh -c '
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
   rg --fixed-strings "exec /run/dsh-platform/views/runtime/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
+
+stage0_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$')"
+bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')"
+management_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')"
+gateway_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')"
+dsh_pid="$(docker exec "$container" pgrep -o -f '/run/dsh-platform/views/runtime/package/lib/bin.js web')"
+restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --request POST \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$restart_task" '.dshRestart.taskId == $task and .dshRestart.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 60 ]; then
+    docker logs "$container" >&2
+    echo "DSH restart did not complete" >&2
+    exit 1
+  fi
+  sleep 0.2
+done
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$')" = "$stage0_pid" ]
+[ "$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')" = "$management_pid" ]
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')" = "$gateway_pid" ]
+[ "$(docker exec "$container" pgrep -o -f '/run/dsh-platform/views/runtime/package/lib/bin.js web')" != "$dsh_pid" ]
+
 if docker exec --user node "$container" curl --silent --unix-socket /run/dsh-platform/recovery.sock \
   http://localhost/v1/status >/dev/null 2>&1; then
   echo "node user unexpectedly accessed the Stage-0 recovery socket" >&2
