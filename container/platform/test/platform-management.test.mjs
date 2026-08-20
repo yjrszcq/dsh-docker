@@ -58,18 +58,25 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /\['updates', 'maintenance', 'plugins'\]\.map/)
   assert.doesNotMatch(source, /platform-tab-(?:automatic|logs)(?:-button)?/)
   assert.match(source, /h\(LogViewer, \{ active: activeTab === 'maintenance', t \}\)/)
-  assert.match(source, /logs\/stream\?limit=500/)
+  assert.match(source, /LOG_STREAM_LIMIT = 5_000/)
+  assert.match(source, /logs\/stream\?limit=\$\{String\(LOG_STREAM_LIMIT\)\}/)
   assert.match(source, /function compactLogEntries\(entries\)/)
   assert.match(source, /JSON\.parse\(lines\.join\('\\n'\)\)/)
   assert.match(source, /message: JSON\.stringify\(value\)/)
   assert.match(source, /if \(!isJsonFragment\(first\.value\.message \?\? ''\)\) compacted\.push\(first\)/)
-  assert.match(source, /const visibleEntries = compactLogEntries\(entries\)/)
+  assert.match(source, /const visibleEntries = limitProcessedLogEntries\(entries, displayLimit\)/)
+  assert.match(source, /DEFAULT_LOG_DISPLAY_LIMIT = 1_000/)
+  assert.match(source, /LOG_DISPLAY_LIMITS = Object\.freeze\(\[100, 250, 500, 1_000\]\)/)
+  assert.match(source, /localStorage\.setItem\(LOG_DISPLAY_LIMIT_KEY, String\(value\)\)/)
+  assert.match(source, /logDisplayLimit: '显示条数'/)
   assert.match(source, /searchLogs: '搜索日志'/)
   assert.match(source, /allSources: '全部模块'/)
   assert.match(source, /levelWarning: '警告'/)
   assert.match(source, /pauseAutoScroll: '暂停自动滚动'/)
   assert.match(source, /clearLogView: '清空显示'/)
-  assert.match(source, /clearedEntries\.current\.add\(entry\.identity\)/)
+  assert.match(source, /LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'/)
+  assert.match(source, /sessionStorage\.setItem\(LOG_CLEAR_CUTOFF_KEY, clearCutoff\.current\)/)
+  assert.match(source, /isClearedLog\(entry, clearCutoff\.current\)/)
   assert.match(source, /listRef\.current\.scrollTop = listRef\.current\.scrollHeight/)
   assert.match(source, /'aria-pressed': autoScroll/)
   assert.doesNotMatch(source, /运行详情|平台日志/)
@@ -161,6 +168,43 @@ test('Platform Management compacts multiline JSON only in the log presentation',
     'ordinary output',
     '{"already":"compact"}',
   ])
+})
+
+test('Platform Management limits the processed log entries instead of raw fragments', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))
+  const limitProcessedLogEntries = new Function(`${helpers}; return limitProcessedLogEntries`)()
+  let index = 0
+  const entry = message => ({
+    identity: `entry-${String(index)}`,
+    value: {
+      timestamp: new Date(Date.UTC(2026, 7, 20, 0, 0, 0, index++)).toISOString(),
+      source: 'platform-management', stream: 'stdout', level: 'info', message,
+    },
+  })
+  const raw = [
+    ...JSON.stringify({ first: true }, null, 2).split('\n').map(entry),
+    ...Array.from({ length: 1_000 }, (_, value) => entry(`line-${String(value)}`)),
+  ]
+  const visible = limitProcessedLogEntries(raw, 1_000)
+  assert.equal(visible.length, 1_000)
+  assert.equal(visible[0].value.message, 'line-0')
+  assert.equal(visible.at(-1).value.message, 'line-999')
+})
+
+test('Platform Management keeps a browser-tab log clear cutoff across refreshes', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))
+  const values = new Function(`${helpers}; return { latestLogCutoff, isClearedLog }`)()
+  const now = Date.parse('2026-08-20T12:00:00.000Z')
+  const cutoff = values.latestLogCutoff([
+    { value: { timestamp: '2026-08-20T11:59:59.000Z' } },
+    { value: { timestamp: '2026-08-20T12:00:01.000Z' } },
+  ], now)
+  assert.equal(cutoff, '2026-08-20T12:00:01.000Z')
+  assert.equal(values.isClearedLog({ timestamp: cutoff }, cutoff), true)
+  assert.equal(values.isClearedLog({ timestamp: '2026-08-20T12:00:01.001Z' }, cutoff), false)
+  assert.equal(values.isClearedLog({ timestamp: 'invalid' }, cutoff), false)
 })
 
 test('Platform Management follows DSH settings tokens and responsive layout', async () => {

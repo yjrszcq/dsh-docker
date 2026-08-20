@@ -24,6 +24,11 @@ const NOTICE_OWNER_KEY = 'dsh-platform:update-notice-owner'
 const NOTICE_SNOOZE_KEY = 'dsh-platform:update-notice-snooze'
 const NOTICE_OWNER_TTL = 20_000
 const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
+const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
+const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
+const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
+const DEFAULT_LOG_DISPLAY_LIMIT = 1_000
+const LOG_STREAM_LIMIT = 5_000
 
 export const inject = ['slots', 'locale']
 
@@ -134,6 +139,37 @@ function compactLogEntries(entries) {
   return compacted
 }
 
+function readLogDisplayLimit() {
+  try {
+    const value = Number(window.localStorage.getItem(LOG_DISPLAY_LIMIT_KEY))
+    return LOG_DISPLAY_LIMITS.includes(value) ? value : DEFAULT_LOG_DISPLAY_LIMIT
+  } catch { return DEFAULT_LOG_DISPLAY_LIMIT }
+}
+
+function limitProcessedLogEntries(entries, limit) {
+  return compactLogEntries(entries).slice(-limit)
+}
+
+function readLogClearCutoff() {
+  try {
+    const value = window.sessionStorage.getItem(LOG_CLEAR_CUTOFF_KEY)
+    return Number.isFinite(Date.parse(value)) ? value : null
+  } catch { return null }
+}
+
+function latestLogCutoff(entries, now = Date.now()) {
+  const latest = entries.reduce((value, entry) => {
+    const timestamp = Date.parse(entry.value.timestamp)
+    return Number.isFinite(timestamp) ? Math.max(value, timestamp) : value
+  }, now)
+  return new Date(latest).toISOString()
+}
+
+function isClearedLog(entry, cutoff) {
+  const timestamp = Date.parse(entry.timestamp)
+  return cutoff !== null && Number.isFinite(timestamp) && timestamp <= Date.parse(cutoff)
+}
+
 function LogViewer({ active, t }) {
   const [entries, setEntries] = useState([])
   const [query, setQuery] = useState('')
@@ -141,21 +177,22 @@ function LogViewer({ active, t }) {
   const [level, setLevel] = useState('all')
   const [streamState, setStreamState] = useState('connecting')
   const [autoScroll, setAutoScroll] = useState(true)
+  const [displayLimit, setDisplayLimit] = useState(readLogDisplayLimit)
   const listRef = useRef(null)
-  const clearedEntries = useRef(new Set())
+  const clearCutoff = useRef(readLogClearCutoff())
 
   useEffect(() => {
     if (!active) return undefined
     setStreamState('connecting')
-    const stream = new EventSource(`${API}/logs/stream?limit=500`)
+    const stream = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
     stream.addEventListener('log', event => {
       try {
         const entry = JSON.parse(event.data)
         const identity = JSON.stringify(entry)
-        if (clearedEntries.current.has(identity)) return
+        if (isClearedLog(entry, clearCutoff.current)) return
         setEntries(previous => {
           if (previous.some(item => item.identity === identity)) return previous
-          return [...previous, { identity, value: entry }].slice(-500)
+          return [...previous, { identity, value: entry }].slice(-LOG_STREAM_LIMIT)
         })
       } catch {}
     })
@@ -164,7 +201,7 @@ function LogViewer({ active, t }) {
     return () => stream.close()
   }, [active])
 
-  const visibleEntries = compactLogEntries(entries)
+  const visibleEntries = limitProcessedLogEntries(entries, displayLimit)
   const sources = [...new Set(visibleEntries.map(item => item.value.source).filter(Boolean))].sort()
   const normalizedQuery = query.trim().toLocaleLowerCase(t('localeCode') === 'en' ? 'en-US' : 'zh-CN')
   const filtered = visibleEntries.filter(item => {
@@ -183,8 +220,16 @@ function LogViewer({ active, t }) {
   }, [active, autoScroll, entries, level, query, source])
 
   const clearLogView = () => {
-    for (const entry of entries) clearedEntries.current.add(entry.identity)
+    clearCutoff.current = latestLogCutoff(entries)
+    try { window.sessionStorage.setItem(LOG_CLEAR_CUTOFF_KEY, clearCutoff.current) } catch {}
     setEntries([])
+  }
+
+  const changeDisplayLimit = event => {
+    const value = Number(event.target.value)
+    if (!LOG_DISPLAY_LIMITS.includes(value)) return
+    setDisplayLimit(value)
+    try { window.localStorage.setItem(LOG_DISPLAY_LIMIT_KEY, String(value)) } catch {}
   }
 
   return h('section', { className: `${css.section} ${css.logSection}`, 'aria-labelledby': 'platform-logs-title' },
@@ -220,7 +265,10 @@ function LogViewer({ active, t }) {
         h('option', { value: 'all' }, t('allSources')),
         sources.map(value => h('option', { key: value, value }, value))),
       h('select', { value: level, 'aria-label': t('logLevel'), onChange: event => setLevel(event.target.value) },
-        ['all', 'debug', 'info', 'warning', 'error'].map(value => h('option', { key: value, value }, t(`level${value[0].toUpperCase()}${value.slice(1)}`))))),
+        ['all', 'debug', 'info', 'warning', 'error'].map(value => h('option', { key: value, value }, t(`level${value[0].toUpperCase()}${value.slice(1)}`)))),
+      h('select', { value: displayLimit, 'aria-label': t('logDisplayLimit'), onChange: changeDisplayLimit },
+        LOG_DISPLAY_LIMITS.map(value => h('option', { key: value, value }, t('logDisplayLimitValue').replace('{count}', String(value))))),
+    ),
     h('div', { className: css.logSummary }, t('logCount').replace('{shown}', String(filtered.length)).replace('{total}', String(visibleEntries.length))),
     filtered.length === 0
       ? h('p', { className: css.emptyLogs }, visibleEntries.length === 0 ? t('noLogs') : t('noMatchingLogs'))
@@ -768,7 +816,7 @@ export function apply(ctx) {
       maintenance: '运行维护', maintenanceDetail: '仅重新启动 DSH，容器和平台管理服务保持运行。', restartDsh: '重新启动 DSH', cancelRestartDsh: '取消重启 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '网页更新提醒', updateNotificationsDetail: '仅自动检查发现新版本时提醒。',
       systemPlugins: '系统插件', systemPluginsDetail: '启用或禁用当前已安装的 DSH Docker 系统插件。', missingPluginsPrefix: '缺失或已卸载的系统插件请前往', platformManagementPage: '平台管理页', missingPluginsSuffix: ' 重新安装。', noSystemPlugins: '当前没有已安装的系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginPendingRestart: '待重启', pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
-      logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
+      logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -789,7 +837,7 @@ export function apply(ctx) {
       maintenance: 'Runtime maintenance', maintenanceDetail: 'Restart DSH only. The container and platform management services remain running.', restartDsh: 'Restart DSH', cancelRestartDsh: 'Cancel DSH restart', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Web update notifications', updateNotificationsDetail: 'Shown only when an automatic check finds a new version.',
       systemPlugins: 'System plugins', systemPluginsDetail: 'Enable or disable installed DSH Docker System Plugins.', missingPluginsPrefix: 'Reinstall missing or uninstalled System Plugins from the', platformManagementPage: 'Platform Management page', missingPluginsSuffix: '.', noSystemPlugins: 'No System Plugins are currently installed.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginPendingRestart: 'Pending restart', pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
-      logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
+      logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',

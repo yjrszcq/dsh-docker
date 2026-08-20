@@ -289,7 +289,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 
 .log-section { gap: 10px; }
 .log-tools { display: flex; align-items: center; gap: 8px; }
-.log-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, auto) minmax(110px, auto); gap: 8px; }
+.log-filters { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(110px, auto)); gap: 8px; }
 .log-filters input::placeholder { color: var(--faint); }
 .log-summary { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .log-list { display: flex; flex-direction: column; max-height: min(320px, 42dvh); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }

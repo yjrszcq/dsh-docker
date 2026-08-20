@@ -17,6 +17,8 @@ test('writes source-separated JSONL and queries bounded chronological entries', 
   assert.equal(entries[0].taskId, 'one')
   assert.equal(entries[0].level, 'info')
   assert.deepEqual((await readdir(root)).sort(), ['gateway.jsonl', 'updater.jsonl'])
+  assert.equal((await logs.query({ limit: 5_000 })).length, 2)
+  await assert.rejects(logs.query({ limit: 5_001 }), /log query limit is invalid/)
 })
 
 test('assigns default levels and accepts only explicit supported levels', async () => {

@@ -129,7 +129,7 @@ export class JsonlLogManager extends EventEmitter {
   }
 
   async query({ sources, since, limit = 200 } = {}) {
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) throw new Error('log query limit is invalid')
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5_000) throw new Error('log query limit is invalid')
     const selected = sources === undefined ? undefined : new Set(sources.map(validateSource))
     const threshold = since === undefined ? undefined : new Date(since).toISOString()
     const entries = []

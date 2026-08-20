@@ -17,6 +17,11 @@ const STATUS_LABELS = Object.freeze({
 })
 const NOTICE_PREFIX = 'dsh-platform:console-update-notice'
 const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
+const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
+const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
+const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
+const DEFAULT_LOG_DISPLAY_LIMIT = 1_000
+const LOG_STREAM_LIMIT = 5_000
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: '平台管理', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
@@ -42,7 +47,7 @@ const COPY = Object.freeze({
     restarting: '正在重新启动 DSH', restartComplete: 'DSH 已重新启动', restartFailed: 'DSH 重启失败',
     restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，此独立控制台保持可用。', confirmRestart: '确认重启',
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
-    logLevel: '日志级别', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
+    logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
     clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
@@ -81,7 +86,7 @@ const COPY = Object.freeze({
     restarting: 'Restarting DSH', restartComplete: 'DSH restarted', restartFailed: 'DSH restart failed',
     restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This standalone console remains available.', confirmRestart: 'Restart',
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
-    logLevel: 'Log level', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
+    logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
     clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the DSH Platform Management integration.',
@@ -125,7 +130,16 @@ let logSource
 let autoScroll = true
 let reminder
 const logEntries = []
-const clearedLogs = new Set()
+let logDisplayLimit = (() => {
+  const value = Number(storageValue(LOG_DISPLAY_LIMIT_KEY))
+  return LOG_DISPLAY_LIMITS.includes(value) ? value : DEFAULT_LOG_DISPLAY_LIMIT
+})()
+let logClearCutoff = (() => {
+  try {
+    const value = window.sessionStorage.getItem(LOG_CLEAR_CUTOFF_KEY)
+    return Number.isFinite(Date.parse(value)) ? value : null
+  } catch { return null }
+})()
 
 function t(key, values = {}) {
   let result = COPY[locale][key] ?? COPY.en[key] ?? key
@@ -139,6 +153,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n)
   for (const node of document.querySelectorAll('[data-i18n-placeholder]')) node.placeholder = t(node.dataset.i18nPlaceholder)
   for (const node of document.querySelectorAll('[data-i18n-aria-label]')) node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel))
+  for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
 }
 
 function display(value) {
@@ -548,6 +563,10 @@ function compactLogEntries(entries) {
   return compacted
 }
 
+function limitProcessedLogEntries(entries, limit) {
+  return compactLogEntries(entries).slice(-limit)
+}
+
 function updateLogSources(entries) {
   const selected = elements['log-source'].value
   const values = [...new Set(entries.map(item => item.value.source).filter(Boolean))].sort()
@@ -566,7 +585,7 @@ function updateLogSources(entries) {
 }
 
 function renderLogs() {
-  const entries = compactLogEntries(logEntries)
+  const entries = limitProcessedLogEntries(logEntries, logDisplayLimit)
   updateLogSources(entries)
   const query = elements['log-search'].value.trim().toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en-US')
   const source = elements['log-source'].value
@@ -606,9 +625,11 @@ function renderLogs() {
 
 function appendLog(entry) {
   const identity = JSON.stringify(entry)
-  if (clearedLogs.has(identity) || logEntries.some(item => item.identity === identity)) return
+  const timestamp = Date.parse(entry.timestamp)
+  if ((logClearCutoff !== null && Number.isFinite(timestamp) && timestamp <= Date.parse(logClearCutoff))
+    || logEntries.some(item => item.identity === identity)) return
   logEntries.push({ identity, value: entry })
-  if (logEntries.length > 500) logEntries.splice(0, logEntries.length - 500)
+  if (logEntries.length > LOG_STREAM_LIMIT) logEntries.splice(0, logEntries.length - LOG_STREAM_LIMIT)
   renderLogs()
 }
 
@@ -629,7 +650,7 @@ function connectEvents() {
   eventSource.onerror = () => setConnection('connecting')
 
   logSource?.close()
-  logSource = new EventSource(`${API}/logs/stream?limit=500`)
+  logSource = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
   logSource.addEventListener('log', event => {
     try { appendLog(JSON.parse(event.data)) } catch {}
   })
@@ -683,9 +704,17 @@ elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })
 })
+elements['log-limit'].value = String(logDisplayLimit)
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {
   element.addEventListener(element.tagName === 'INPUT' ? 'input' : 'change', renderLogs)
 }
+elements['log-limit'].addEventListener('change', event => {
+  const value = Number(event.target.value)
+  if (!LOG_DISPLAY_LIMITS.includes(value)) return
+  logDisplayLimit = value
+  writeStorage(LOG_DISPLAY_LIMIT_KEY, String(value))
+  renderLogs()
+})
 elements['auto-scroll'].addEventListener('click', () => {
   autoScroll = !autoScroll
   elements['auto-scroll'].setAttribute('aria-pressed', String(autoScroll))
@@ -693,7 +722,12 @@ elements['auto-scroll'].addEventListener('click', () => {
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
 })
 elements['clear-logs'].addEventListener('click', () => {
-  for (const entry of logEntries) clearedLogs.add(entry.identity)
+  const latest = logEntries.reduce((value, entry) => {
+    const timestamp = Date.parse(entry.value.timestamp)
+    return Number.isFinite(timestamp) ? Math.max(value, timestamp) : value
+  }, Date.now())
+  logClearCutoff = new Date(latest).toISOString()
+  try { window.sessionStorage.setItem(LOG_CLEAR_CUTOFF_KEY, logClearCutoff) } catch {}
   logEntries.length = 0
   renderLogs()
 })

@@ -523,7 +523,7 @@
 
 .logFilters {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(120px, auto) minmax(110px, auto);
+  grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(110px, auto));
   gap: 8px;
 }
 
