@@ -6,6 +6,7 @@ import { join } from 'node:path'
 const SOURCE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_ENTRY_BYTES = 64 * 1024
 const CONSOLE_MARKER = 'dsh-platform-log-v1'
+const LOG_LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 function validateSource(source) {
   if (typeof source !== 'string' || !SOURCE_PATTERN.test(source)) throw new Error('log source is invalid')
@@ -75,7 +76,9 @@ export class JsonlLogManager extends EventEmitter {
       validateSource(source)
       if (!['stdout', 'stderr', 'audit', 'platform'].includes(stream)) throw new Error('log stream is invalid')
       if (typeof message !== 'string') throw new Error('log message must be a string')
-      const entry = { ...fields, timestamp: this.now().toISOString(), source, stream, message }
+      const level = fields.level ?? (stream === 'stderr' ? 'error' : 'info')
+      if (!LOG_LEVELS.has(level)) throw new Error('log level is invalid')
+      const entry = { ...fields, timestamp: this.now().toISOString(), source, stream, level, message }
       const line = Buffer.from(`${JSON.stringify(entry)}\n`)
       if (line.byteLength > MAX_ENTRY_BYTES) throw new Error('log entry exceeds 64 KiB')
       await mkdir(this.root, { recursive: true })

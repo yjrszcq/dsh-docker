@@ -404,6 +404,144 @@
 }
 .settingRow input[type='checkbox'] { width: 16px; height: 16px; flex: none; accent-color: var(--dsw-alias-brand-primary); }
 
+.logSection { gap: 10px; }
+
+.logTools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logConnection {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.logConnection > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-warn-label);
+}
+
+.logConnection.live > span { background: var(--dsw-alias-state-success-primary); }
+.logConnection.disconnected > span { background: var(--dsw-alias-state-error-primary); }
+
+.autoScrollButton,
+.clearLogsButton {
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.autoScrollButton:hover,
+.clearLogsButton:hover:not(:disabled) { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.autoScrollButton[aria-pressed='true'] { color: var(--dsw-alias-label-primary); }
+.clearLogsButton:disabled { opacity: 0.45; cursor: default; }
+
+.logFilters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, auto) minmax(110px, auto);
+  gap: 8px;
+}
+
+.logFilters input,
+.logFilters select {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  font: inherit;
+  font-size: 12px;
+}
+
+.logFilters input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.logFilters input:focus-visible,
+.logFilters select:focus-visible {
+  border-color: var(--dsw-alias-state-business-primary);
+  outline: 1px solid var(--dsw-alias-state-business-primary);
+}
+
+.logSummary {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.logList {
+  display: flex;
+  flex-direction: column;
+  max-height: 440px;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.logEntry {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.logEntry + .logEntry { border-top: 1px solid var(--dsw-alias-border-l2); }
+.logMeta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
+.logDebug { color: var(--dsw-alias-label-tertiary); }
+.logInfo { color: var(--dsw-alias-state-business-primary); }
+.logWarning { color: var(--dsw-alias-state-warn-label); }
+.logError { color: var(--dsw-alias-state-error-primary); }
+.logSource {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logMeta time {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.logEntry pre {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.emptyLogs {
+  margin: 0;
+  padding: 28px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+  font-size: 13px;
+}
+
 .updateReminder {
   position: fixed;
   right: 20px;
@@ -447,6 +585,13 @@
   .maintenanceButton { width: 100%; }
   .toggle { width: 100%; justify-content: space-between; }
   .settingRow { align-items: flex-start; }
+  .logFilters { grid-template-columns: 1fr 1fr; }
+  .logTools { width: 100%; flex-wrap: wrap; }
+  .logConnection { margin-right: auto; }
+  .logFilters input { grid-column: 1 / -1; }
+  .logMeta { flex-wrap: wrap; }
+  .logMeta time { width: 100%; margin-left: 0; }
+  .logList { max-height: clamp(220px, calc(100dvh - 460px), 480px); }
   .updateReminder { right: 16px; bottom: 16px; }
 }
 

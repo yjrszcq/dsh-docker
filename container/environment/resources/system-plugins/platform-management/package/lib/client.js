@@ -85,6 +85,113 @@ function VersionCell({ label, version, detail }) {
     h('span', { className: css.detail }, display(detail)))
 }
 
+function logLevel(entry) {
+  if (['debug', 'info', 'warning', 'error'].includes(entry?.level)) return entry.level
+  if (entry?.stream === 'stderr') return 'error'
+  return /^\s*(warn(?:ing)?)[\s:]/i.test(entry?.message ?? '') ? 'warning' : 'info'
+}
+
+function LogViewer({ active, t }) {
+  const [entries, setEntries] = useState([])
+  const [query, setQuery] = useState('')
+  const [source, setSource] = useState('all')
+  const [level, setLevel] = useState('all')
+  const [streamState, setStreamState] = useState('connecting')
+  const [autoScroll, setAutoScroll] = useState(true)
+  const listRef = useRef(null)
+  const clearedEntries = useRef(new Set())
+
+  useEffect(() => {
+    if (!active) return undefined
+    setStreamState('connecting')
+    const stream = new EventSource(`${API}/logs/stream?limit=500`)
+    stream.addEventListener('log', event => {
+      try {
+        const entry = JSON.parse(event.data)
+        const identity = JSON.stringify(entry)
+        if (clearedEntries.current.has(identity)) return
+        setEntries(previous => {
+          if (previous.some(item => item.identity === identity)) return previous
+          return [...previous, { identity, value: entry }].slice(-500)
+        })
+      } catch {}
+    })
+    stream.onopen = () => setStreamState('live')
+    stream.onerror = () => setStreamState('disconnected')
+    return () => stream.close()
+  }, [active])
+
+  const sources = [...new Set(entries.map(item => item.value.source).filter(Boolean))].sort()
+  const normalizedQuery = query.trim().toLocaleLowerCase(t('localeCode') === 'en' ? 'en-US' : 'zh-CN')
+  const filtered = entries.filter(item => {
+    const entry = item.value
+    return (source === 'all' || entry.source === source)
+      && (level === 'all' || logLevel(entry) === level)
+      && (normalizedQuery === '' || JSON.stringify(entry).toLocaleLowerCase().includes(normalizedQuery))
+  })
+
+  useEffect(() => {
+    if (!active || !autoScroll || listRef.current === null) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      if (listRef.current !== null) listRef.current.scrollTop = listRef.current.scrollHeight
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [active, autoScroll, entries, level, query, source])
+
+  const clearLogView = () => {
+    for (const entry of entries) clearedEntries.current.add(entry.identity)
+    setEntries([])
+  }
+
+  return h('section', { className: `${css.section} ${css.logSection}`, 'aria-labelledby': 'platform-logs-title' },
+    h('div', { className: css.sectionHeading },
+      h('div', null,
+        h('h3', { id: 'platform-logs-title' }, t('logs')),
+        h('p', null, t('logsDetail'))),
+      h('div', { className: css.logTools },
+        h('span', { className: `${css.logConnection} ${css[streamState]}`, role: 'status' },
+          h('span', { 'aria-hidden': 'true' }),
+          t(`logs${streamState[0].toUpperCase()}${streamState.slice(1)}`)),
+        h('button', {
+          type: 'button',
+          className: css.autoScrollButton,
+          'aria-pressed': autoScroll,
+          onClick: () => setAutoScroll(value => !value),
+        }, autoScroll ? t('pauseAutoScroll') : t('resumeAutoScroll')),
+        h('button', {
+          type: 'button',
+          className: css.clearLogsButton,
+          disabled: entries.length === 0,
+          onClick: clearLogView,
+        }, t('clearLogView')))),
+    h('div', { className: css.logFilters },
+      h('input', {
+        type: 'search',
+        value: query,
+        placeholder: t('searchLogs'),
+        'aria-label': t('searchLogs'),
+        onChange: event => setQuery(event.target.value),
+      }),
+      h('select', { value: source, 'aria-label': t('logSource'), onChange: event => setSource(event.target.value) },
+        h('option', { value: 'all' }, t('allSources')),
+        sources.map(value => h('option', { key: value, value }, value))),
+      h('select', { value: level, 'aria-label': t('logLevel'), onChange: event => setLevel(event.target.value) },
+        ['all', 'debug', 'info', 'warning', 'error'].map(value => h('option', { key: value, value }, t(`level${value[0].toUpperCase()}${value.slice(1)}`))))),
+    h('div', { className: css.logSummary }, t('logCount').replace('{shown}', String(filtered.length)).replace('{total}', String(entries.length))),
+    filtered.length === 0
+      ? h('p', { className: css.emptyLogs }, entries.length === 0 ? t('noLogs') : t('noMatchingLogs'))
+      : h('div', { className: css.logList, ref: listRef }, filtered.map(item => {
+          const entry = item.value
+          const entryLevel = logLevel(entry)
+          return h('article', { className: css.logEntry, key: item.identity },
+            h('div', { className: css.logMeta },
+              h('strong', { className: `${css.logLevel} ${css[`log${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`]}` }, t(`level${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`)),
+              h('span', { className: css.logSource }, display(entry.source)),
+              h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode')))),
+            h('pre', null, display(entry.message)))
+        })))
+}
+
 function storageValue(key) {
   try { return window.localStorage.getItem(key) } catch { return null }
 }
@@ -363,7 +470,7 @@ function PlatformManagement({ t }) {
       h('p', { className: css.intro }, t('intro'))),
 
     h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
-      ['updates', 'automatic', 'maintenance'].map(tab => h('button', {
+      ['updates', 'automatic', 'maintenance', 'logs'].map(tab => h('button', {
         key: tab,
         id: `platform-tab-${tab}-button`,
         type: 'button',
@@ -496,7 +603,15 @@ function PlatformManagement({ t }) {
         h('p', null, t('restartWarning')),
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => setConfirmRestart(false) }, t('cancel')),
-          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null)))
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null)),
+
+    h('div', {
+      id: 'platform-tab-logs',
+      className: css.tabPanel,
+      role: 'tabpanel',
+      'aria-labelledby': 'platform-tab-logs-button',
+      hidden: activeTab !== 'logs',
+    }, h(LogViewer, { active: activeTab === 'logs', t })))
 }
 
 export function apply(ctx) {
@@ -507,7 +622,7 @@ export function apply(ctx) {
     zh: {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
-      managementSections: '平台管理功能', updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护',
+      managementSections: '平台管理功能', updatesTab: '更新', automaticTab: '自动检查', maintenanceTab: '运行维护', logsTab: '日志',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
@@ -519,6 +634,7 @@ export function apply(ctx) {
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       maintenance: '运行维护', maintenanceDetail: '仅重新启动 DSH，容器和平台管理服务保持运行。', restartDsh: '重新启动 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '网页更新提醒', updateNotificationsDetail: '仅自动检查发现新版本时提醒。',
+      logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -526,7 +642,7 @@ export function apply(ctx) {
     en: {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
-      managementSections: 'Platform management sections', updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime',
+      managementSections: 'Platform management sections', updatesTab: 'Updates', automaticTab: 'Auto checks', maintenanceTab: 'Runtime', logsTab: 'Logs',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
@@ -538,6 +654,7 @@ export function apply(ctx) {
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       maintenance: 'Runtime maintenance', maintenanceDetail: 'Restart DSH only. The container and platform management services remain running.', restartDsh: 'Restart DSH', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Web update notifications', updateNotificationsDetail: 'Shown only when an automatic check finds a new version.',
+      logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',

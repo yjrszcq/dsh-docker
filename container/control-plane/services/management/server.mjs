@@ -248,13 +248,17 @@ export function createManagementServer({
       } else if (request.method === 'GET' && route === 'logs') {
         send(response, 200, { entries: await logs.query(logOptions(url)) })
       } else if (request.method === 'GET' && route === 'logs/stream') {
+        const options = logOptions(url)
+        const selectedSources = options.sources === undefined ? undefined : new Set(options.sources)
         response.writeHead(200, {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
           connection: 'keep-alive',
         })
-        for (const entry of await logs.query(logOptions(url))) event(response, 'log', entry)
-        const listener = value => event(response, 'log', value)
+        for (const entry of await logs.query(options)) event(response, 'log', entry)
+        const listener = value => {
+          if (selectedSources === undefined || selectedSources.has(value.source)) event(response, 'log', value)
+        }
         logs.on('entry', listener)
         response.once('close', () => logs.off('entry', listener))
       } else send(response, 404, { error: 'not found' })

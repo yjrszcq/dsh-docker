@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { parseCli, recoverImageBaseline, resetTrust, runCli } from '../../control-plane/services/management/cli.mjs'
-import { createManagementServer, listenManagement } from '../../control-plane/services/management/server.mjs'
+import { API_PREFIX, createManagementServer, listenManagement } from '../../control-plane/services/management/server.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { UpdateConflictError } from '../../control-plane/modules/updater/lib/coordinator.mjs'
 import { UpdateScheduler } from '../../control-plane/modules/updater/lib/scheduler.mjs'
@@ -93,6 +93,45 @@ test('management socket exposes status, check, update, logs, and local rollback'
     coordinator.running = false
     assert.deepEqual(await client.request('POST', '/_dsh_platform/api/v1/rollback', { planId: 'plan-a' }), { taskId: 'rollback-task' })
   } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management live logs preserve the requested source filter', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-log-stream-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  await logs.append('gateway', 'stdout', 'initial')
+  const server = createManagementServer({ coordinator: new Coordinator(), logs })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  let request
+  let response
+  try {
+    ({ request, response } = await new Promise((resolve, reject) => {
+      const nextRequest = httpRequest({ socketPath, path: `${API_PREFIX}logs/stream?source=gateway&limit=10` }, nextResponse => {
+        resolve({ request: nextRequest, response: nextResponse })
+      })
+      nextRequest.once('error', reject)
+      nextRequest.end()
+    }))
+    let body = ''
+    const live = new Promise(resolve => {
+      response.on('data', chunk => {
+        body += chunk.toString('utf8')
+        if (body.includes('must-stream')) resolve()
+      })
+    })
+    await logs.append('updater', 'stdout', 'must-not-stream')
+    await logs.append('gateway', 'stdout', 'must-stream')
+    await Promise.race([
+      live,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for live log')), 1_000)),
+    ])
+    assert.match(body, /must-stream/)
+    assert.doesNotMatch(body, /must-not-stream/)
+  } finally {
+    request?.destroy()
+    response?.destroy()
     await new Promise(resolve => server.close(resolve))
   }
 })

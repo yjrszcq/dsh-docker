@@ -15,7 +15,18 @@ test('writes source-separated JSONL and queries bounded chronological entries', 
   const entries = await logs.query({ sources: ['updater'], limit: 10 })
   assert.equal(entries.length, 1)
   assert.equal(entries[0].taskId, 'one')
+  assert.equal(entries[0].level, 'info')
   assert.deepEqual((await readdir(root)).sort(), ['gateway.jsonl', 'updater.jsonl'])
+})
+
+test('assigns default levels and accepts only explicit supported levels', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-levels-'))
+  const logs = new JsonlLogManager({ root })
+  await logs.append('component', 'stdout', 'ordinary')
+  await logs.append('component', 'stderr', 'failed')
+  await logs.append('component', 'platform', 'slow response', { level: 'warning' })
+  assert.deepEqual((await logs.query()).map(entry => entry.level), ['info', 'error', 'warning'])
+  await assert.rejects(logs.append('component', 'stdout', 'invalid', { level: 'fatal' }), /log level is invalid/)
 })
 
 test('rotates files and enforces the aggregate byte budget', async () => {
@@ -63,11 +74,11 @@ test('mirrors new entries to the matching container output without replaying his
   await logs.append('dsh-runtime', 'stderr', 'failed')
   assert.deepEqual(stdout.map(line => JSON.parse(line)), [{
     timestamp: '2026-08-19T00:00:00.000Z', source: 'gateway', stream: 'stdout', message: 'ready',
-    platformLog: 'dsh-platform-log-v1',
+    level: 'info', platformLog: 'dsh-platform-log-v1',
   }])
   assert.deepEqual(stderr.map(line => JSON.parse(line)), [{
     timestamp: '2026-08-19T00:00:00.000Z', source: 'dsh-runtime', stream: 'stderr', message: 'failed',
-    platformLog: 'dsh-platform-log-v1',
+    level: 'error', platformLog: 'dsh-platform-log-v1',
   }])
 
   const secondOutput = []
