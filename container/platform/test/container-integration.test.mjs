@@ -37,3 +37,10 @@ test('Docker health reports DSH readiness instead of control-plane liveness', as
   assert.match(healthcheck, /127\.0\.0\.1:3079\//)
   assert.doesNotMatch(healthcheck, /_dsh_gateway\/health|stage0-trust\.sock/)
 })
+
+test('Docker installs locked Management dependencies inside the Seed stage only', async () => {
+  const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
+  const ignore = await readFile(new URL('../../../.dockerignore', import.meta.url), 'utf8')
+  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts[\s\S]*--prefix \/opt\/dsh-platform-source\/control-plane\/services\/management/)
+  assert.equal(ignore.split('\n').includes('**/node_modules'), true)
+})

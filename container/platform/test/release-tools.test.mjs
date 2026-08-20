@@ -10,6 +10,7 @@ import { parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
 import { parseImageInventory } from '../lib/deployment-contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
+import { verifyManagementDependencies } from '../tools/verify-management-dependencies.mjs'
 
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
@@ -76,6 +77,15 @@ test('release tool signs an exact supported target with the configured current k
   verifyDetached(stable, JSON.parse(await readFile(join(output, 'stable.sig.json'))), publicDer.toString('base64'))
 })
 
+test('Management terminal dependencies are exact, licensed, and architecture-neutral', async () => {
+  const root = new URL('../../control-plane/services/management/', import.meta.url).pathname
+  const result = await verifyManagementDependencies(root)
+  assert.deepEqual(result.packages, {
+    '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', ws: '8.21.3',
+  })
+  assert.equal(result.nativeModules, 0)
+})
+
 test('prepares one flat Recovery-rooted release from the reviewed Supported Target', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-prepare-release-'))
   const recovery = await pair(root, 'recovery')
@@ -132,7 +142,14 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/services/gateway/index.mjs',
     'control-plane/services/management/index.mjs',
     'control-plane/services/management/public/index.html',
+    'control-plane/services/management/package-lock.json',
+    'control-plane/services/management/node_modules/ws/index.js',
+    'control-plane/services/management/node_modules/ws/LICENSE',
+    'control-plane/services/management/node_modules/@xterm/xterm/lib/xterm.mjs',
+    'control-plane/services/management/node_modules/@xterm/xterm/css/xterm.css',
+    'control-plane/services/management/node_modules/@xterm/addon-fit/lib/addon-fit.mjs',
   ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
+  assert.equal(bootstrapEntries.some(name => name.endsWith('.node')), false)
 
   const stableBytes = await readFile(join(output, 'stable.json'))
   const stable = parseStable(stableBytes)

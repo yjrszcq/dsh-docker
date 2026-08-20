@@ -4,6 +4,7 @@
 .env
 temp
 data
+**/node_modules
 container/**/test
 container/**/test/**
 container/**/tests

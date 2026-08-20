@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 temp/
+node_modules/
 
 /data/
 /workspace/

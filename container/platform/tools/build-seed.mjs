@@ -10,6 +10,7 @@ import { canonicalJson } from '../lib/canonical-json.mjs'
 import { deriveImageBuildId, deriveRecordId, parseImageInventory } from '../lib/deployment-contracts.mjs'
 import { hashTree } from '../lib/tree-hash.mjs'
 import { verifyImageRelease } from './verify-image-release.mjs'
+import { verifyManagementDependencies } from './verify-management-dependencies.mjs'
 
 const [installedArg, outputArg, imageInputArg = '-', platformRevisionArg = 'development'] = process.argv.slice(2)
 if (installedArg === undefined || outputArg === undefined) {
@@ -102,6 +103,7 @@ if (imageInput !== undefined) {
   if (packaged.status !== 0) throw new Error(packaged.stderr || 'Environment packaging failed')
   environment = parseEnvironmentManifest(await readFile(join(environmentOutput, 'environment.manifest.json')))
 }
+await verifyManagementDependencies(join(bootstrapRoot, 'control-plane', 'services', 'management'))
 await writeFile(join(output, 'bootstrap', 'VERSION'), `${bootstrapVersion}\n`)
 await writeFile(join(output, 'environments', 'VERSION'), `${environmentVersion}\n`)
 await symlink('environments', join(output, 'environment'), 'dir')

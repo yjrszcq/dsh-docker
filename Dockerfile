@@ -18,7 +18,9 @@ FROM node:24-bookworm-slim AS platform-seed
 ARG PLATFORM_REVISION=development
 COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
-RUN if [ -f /opt/dsh-platform-source/platform/image-input/release/stable.json ]; then \
+RUN npm ci --omit=dev --ignore-scripts \
+      --prefix /opt/dsh-platform-source/control-plane/services/management \
+    && if [ -f /opt/dsh-platform-source/platform/image-input/release/stable.json ]; then \
       image_input=/opt/dsh-platform-source/platform/image-input; \
     else \
       image_input=-; \

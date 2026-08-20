@@ -12,6 +12,7 @@ import { validateSupportedTarget } from '../lib/supported-target.mjs'
 import { positiveSafeInteger } from '../lib/validation.mjs'
 import { validateKeyringTransition, verifyRecoveryKeyring } from '../stage0/lib/keyring.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
+import { verifyManagementDependencies } from './verify-management-dependencies.mjs'
 
 const args = process.argv.slice(2)
 if (args.length !== 10) {
@@ -127,6 +128,7 @@ await lstat(output).then(
 await mkdir(dirname(output), { recursive: true })
 await mkdir(staging, { recursive: false })
 try {
+  await verifyManagementDependencies(join(containerRoot, 'control-plane', 'services', 'management'))
   run(process.execPath, [
     join(platformRoot, 'tools', 'package-environment.mjs'), definitionPath, environmentOutput,
     String(keyring.generation), String(targetSequence), artifactBaseUrl.href, 'flat',

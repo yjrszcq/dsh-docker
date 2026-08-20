@@ -39,6 +39,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install Management runtime dependencies
+        run: npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
+
       - name: Verify merged Supported Target
         id: target
         run: |
