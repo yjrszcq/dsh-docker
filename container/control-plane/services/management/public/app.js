@@ -324,6 +324,9 @@ function render(next) {
   const busy = runtimeBusy(next)
   const updateActive = !TERMINAL.has(update.status ?? 'idle')
   const checkingUpdates = checking || update.status === 'checking'
+  if (restart.status === 'success' && !plugins.some(plugin => plugin.pendingRestart)) {
+    window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+  }
   const hasSupportedTarget = next.supported !== null && next.supported !== undefined
 
   setText('current-dsh', next.current?.dsh)
@@ -678,11 +681,7 @@ elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
-  const hadDraft = window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1'
-  if (hadDraft) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-  if (!await act('restart-dsh', { method: 'POST' }) && hadDraft) {
-    window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
-  }
+  await act('restart-dsh', { method: 'POST' })
 })
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {
   element.addEventListener(element.tagName === 'INPUT' ? 'input' : 'change', renderLogs)

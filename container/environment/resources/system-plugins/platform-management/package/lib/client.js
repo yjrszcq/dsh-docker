@@ -485,15 +485,12 @@ function PlatformManagement({ t }) {
   const restartDsh = useCallback(async () => {
     setActing(true)
     setError('')
-    const hadDraft = window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1'
-    if (hadDraft) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     try {
       const task = await request('restart-dsh', { method: 'POST' })
       requestedRestart.current = task.taskId
       setConfirmRestart(false)
       await refresh()
     } catch (nextError) {
-      if (hadDraft) window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
       setActing(false)
@@ -541,6 +538,7 @@ function PlatformManagement({ t }) {
     if (restart?.taskId !== requestedRestart.current) return
     if (restart.status === 'success') {
       requestedRestart.current = null
+      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
       window.location.reload()
     } else if (restart.status === 'failed') {
       requestedRestart.current = null

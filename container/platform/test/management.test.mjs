@@ -594,6 +594,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /pluginPendingRestart: '待重启'/)
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
   assert.match(script, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)[\s\S]*bundled-plugins\/discard/)
+  assert.match(script, /restart\.status === 'success'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
+  assert.doesNotMatch(script, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(script, /\(acting && !checking\)/)
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
   assert.doesNotMatch(script, /插件设置并重启 DSH|settings and restarting DSH/)

@@ -98,15 +98,21 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "description":{"zh":"管理 DSH Docker 更新、运行维护与系统插件。","en":"Manage DSH Docker updates, runtime maintenance, and System Plugins."},
     "installed":true,
     "enabled":true,
+    "activeInstalled":true,
+    "activeEnabled":true,
+    "pendingRestart":false,
     "protected":true,
     "reason":null
   },{
     "id":"settings-document-editor",
     "artifactId":"system-plugin-settings-document-editor",
     "sha256":.plugins[1].sha256,
-    "description":{"zh":"在浏览器中查看和编辑 DSH 设置文件。","en":"View and edit the DSH settings document in the browser."},
+    "description":{"zh":"在浏览器中查看和编辑 DSH 配置文件。","en":"View and edit the DSH settings document in the browser."},
     "installed":true,
     "enabled":true,
+    "activeInstalled":true,
+    "activeEnabled":true,
+    "pendingRestart":false,
     "protected":false,
     "reason":null
   }]' >/dev/null
@@ -204,6 +210,28 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   | jq -e '.systemPluginOperation.restartRequired == true' >/dev/null
 dsh_pid_before="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 [ "$dsh_pid_before_plugin_changes" = "$dsh_pid_before" ]
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --request POST \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/discard \
+  | jq -e '.plugins[1] | .installed and .enabled and (.pendingRestart | not)' >/dev/null
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e '.systemPluginOperation.restartRequired == false' >/dev/null
+[ "$dsh_pid_before" = "$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')" ]
+plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"id":"settings-document-editor","action":"disable"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$plugin_task" \
+    '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"
+      and .systemPluginOperation.restartRequired == true' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.2
+done
 restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
@@ -225,6 +253,11 @@ if docker exec "$container" rg --fixed-strings '@dsh-docker/settings-document-ed
 fi
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
+docker exec "$container" sh -c "
+  rg --fixed-strings '\"message\":\"component.stopping\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
+  rg --fixed-strings '\"message\":\"component.ready\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
+  rg --fixed-strings '\"message\":\"system-plugin.changes.discarded\"' /data/platform/logs/audit.jsonl >/dev/null
+"
 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
