@@ -72,9 +72,11 @@ export async function resetRuntimeLayout(paths) {
   await mkdir(paths.viewsRoot, { recursive: true })
   await mkdir(paths.deploymentViewsRoot, { recursive: true })
   await mkdir(paths.systemPluginViewsRoot, { recursive: true })
-  for (const name of ['environment', 'runtime', 'system-plugins']) {
+  for (const name of ['environment', 'runtime']) {
     await symlink(join('..', 'deployment', name), join(paths.viewsRoot, name), 'dir')
   }
+  await symlink(join('..', 'system-plugin-views', 'current'), join(paths.viewsRoot, 'system-plugins'), 'dir')
+  await symlink(join('..', 'deployment', 'system-plugins'), join(paths.systemPluginViewsRoot, 'current'), 'dir')
   if (process.getuid?.() === 0) {
     await chown(paths.runRoot, 0, 1000)
     await chmod(paths.runRoot, 0o1770)
@@ -82,6 +84,8 @@ export async function resetRuntimeLayout(paths) {
     await chmod(paths.viewsRoot, 0o755)
     await chown(paths.deploymentViewsRoot, 1000, 1000)
     await chmod(paths.deploymentViewsRoot, 0o755)
+    await chown(paths.systemPluginViewsRoot, 1000, 1000)
+    await chmod(paths.systemPluginViewsRoot, 0o755)
   }
 }
 
@@ -104,8 +108,8 @@ export async function replaceDeploymentView(paths, target) {
 }
 
 export async function replaceSystemPluginView(paths, target = join(paths.deploymentView, 'system-plugins')) {
-  const path = join(paths.viewsRoot, 'system-plugins')
-  const temporary = join(paths.viewsRoot, `.system-plugins.${randomUUID()}.tmp`)
+  const path = join(paths.systemPluginViewsRoot, 'current')
+  const temporary = join(paths.systemPluginViewsRoot, `.current.${randomUUID()}.tmp`)
   await symlink(resolve(target), temporary, 'dir')
   await rename(temporary, path)
   return path

@@ -122,6 +122,10 @@ test('initializes an Image Deployment through one atomic runtime view', async ()
   assert.match(await readlink(context.paths.deploymentView), new RegExp(`${context.image.id}$`))
   assert.equal(
     await readlink(join(context.paths.viewsRoot, 'system-plugins')),
+    join('..', 'system-plugin-views', 'current'),
+  )
+  assert.equal(
+    await readlink(join(context.paths.systemPluginViewsRoot, 'current')),
     join(context.paths.deploymentView, 'system-plugins'),
   )
   assert.equal((await context.manager.selected()).record.id, context.image.id)

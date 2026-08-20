@@ -9,6 +9,7 @@ fi
 image="$1"
 
 docker run --rm --entrypoint sh "$image" -c '
+  set -eu
   for package in \
     bash-completion build-essential dnsutils file htop iproute2 iputils-ping less lsof \
     nano netcat-openbsd openssl pkg-config python3 python3-venv rsync tmux tree unzip \
@@ -26,8 +27,8 @@ docker run --rm --entrypoint sh "$image" -c '
   ! command -v pip >/dev/null
   ! command -v pip3 >/dev/null
   [ ! -e /opt/dsh-python ]
-  uv --version | grep "^uv 0\.11\.32$" >/dev/null
-  uvx --version | grep "^uvx 0\.11\.32$" >/dev/null
+  uv --version | grep "^uv 0\.11\.32 (x86_64-unknown-linux-gnu)$" >/dev/null
+  uvx --version | grep "^uvx 0\.11\.32 (x86_64-unknown-linux-gnu)$" >/dev/null
   grep '\''^python-downloads = "manual"$'\'' /etc/uv/uv.toml >/dev/null
   uv run --isolated --no-python-downloads -- python -c \
     "import sys; assert sys.prefix != sys.base_prefix"

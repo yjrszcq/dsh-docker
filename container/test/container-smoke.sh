@@ -57,6 +57,7 @@ until docker logs "$container" 2>&1 \
 done
 
 docker exec "$container" sh -c '
+  set -eu
   command -v python3 >/dev/null
   venv="$(mktemp -d)/venv"
   python3 -m venv "$venv"
@@ -92,9 +93,10 @@ loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matc
 [ "$loopback_patch_count" = 1 ]
 
 docker exec "$container" sh -c '
+  set -eu
   pgrep -f "^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$" >/dev/null
   pgrep -f "/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs" >/dev/null
-  ps -eo args= | rg "package/lib/bin.js web --patch /run/dsh-platform/views/system-plugins/cordis.patch.yml --host 127.0.0.1 --port 3079" >/dev/null
+  pgrep -f "^node /run/dsh-platform/views/runtime/bin/dsh web --patch /run/dsh-platform/views/system-plugins/cordis.patch.yml --host 127.0.0.1 --port 3079$" >/dev/null
   pgrep -f "^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$" >/dev/null
   pgrep -f "^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$" >/dev/null
   dsh-platform trust status | jq -e ".keyringGeneration == 1" >/dev/null
@@ -109,7 +111,7 @@ stage0_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-p
 bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')"
 management_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')"
 gateway_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')"
-dsh_pid="$(docker exec "$container" pgrep -o -f '/run/dsh-platform/views/runtime/package/lib/bin.js web')"
+dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')"
 restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
@@ -127,7 +129,7 @@ done
 [ "$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
 [ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')" = "$management_pid" ]
 [ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')" = "$gateway_pid" ]
-[ "$(docker exec "$container" pgrep -o -f '/run/dsh-platform/views/runtime/package/lib/bin.js web')" != "$dsh_pid" ]
+[ "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')" != "$dsh_pid" ]
 
 if docker exec --user node "$container" curl --silent --unix-socket /run/dsh-platform/recovery.sock \
   http://localhost/v1/status >/dev/null 2>&1; then
@@ -214,6 +216,7 @@ until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
   sleep 1
 done
 docker exec "$container" sh -c '
+  set -eu
   [ "$(cat /data/dsh/smoke)" = home ]
   [ "$(jq -r .phase /data/platform/state/updater/transaction.json)" = rolled-back ]
   [ "$(dsh-platform channel)" = experimental ]

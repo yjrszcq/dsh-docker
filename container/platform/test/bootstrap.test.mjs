@@ -376,6 +376,42 @@ test('retries a previous Deployment without restarting the Control Plane', async
   ])
 })
 
+test('keeps DSH stopped when mandatory Patch verification fails for current and previous', async () => {
+  let validations = 0
+  let environmentStarts = 0
+  const controlPlane = {
+    fatal: new Promise(() => {}),
+    start: async () => {},
+    stop: async () => {},
+    status: () => ({ components: [{ id: 'gateway' }] }),
+  }
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    start: async () => { environmentStarts += 1 },
+    stop: async () => {},
+    status: () => ({ environmentVersion: null, components: [] }),
+  }
+  const runtime = new BootstrapRuntime({
+    controlPlane,
+    environment: environmentRunner,
+    validateDeployment: async () => {
+      validations += 1
+      throw new Error(`Patch verification failed for ${validations === 1 ? 'current' : 'previous'}`)
+    },
+  })
+  await runtime.start({
+    allowRecovery: true,
+    onEnvironmentFailure: async error => {
+      assert.match(error.message, /current/)
+      return true
+    },
+  })
+  assert.equal(validations, 2)
+  assert.equal(environmentStarts, 0)
+  assert.equal(runtime.status().recoveryMode, 'Deployment candidate and fallback both failed')
+  assert.deepEqual(runtime.status().controlPlane, [{ id: 'gateway' }])
+})
+
 test('keeps the Control Plane alive in recovery mode when no Deployment starts', async () => {
   const calls = []
   const controlPlane = {
