@@ -67,6 +67,8 @@ const COPY = Object.freeze({
     applyUserPluginChanges: '应用并重新启动 DSH', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
     userPluginApplyFailed: '用户插件恢复失败', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
     userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，可在运行维护中查看日志。',
+    userPluginPhaseValidated: '正在验证修改', userPluginPhasePaused: '正在暂停 DSH', userPluginPhaseSnapshotted: '已备份 Web Profile',
+    userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
     stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
     upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -116,6 +118,8 @@ const COPY = Object.freeze({
     applyUserPluginChanges: 'Apply and restart DSH', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
     userPluginApplyFailed: 'User plugin recovery failed', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
     userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly. Review the Maintenance logs for details.',
+    userPluginPhaseValidated: 'Validating changes', userPluginPhasePaused: 'Pausing DSH', userPluginPhaseSnapshotted: 'Web Profile backed up',
+    userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
     stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
     upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
@@ -439,6 +443,7 @@ function renderUserPlugins(busy) {
     uninstall.type = 'button'
     uninstall.className = action === 'uninstall' ? 'secondary' : 'danger-text'
     uninstall.textContent = t(action === 'uninstall' ? 'cancelUninstall' : 'uninstallUserPlugin')
+    uninstall.setAttribute('aria-label', `${uninstall.textContent}: ${plugin.name}`)
     uninstall.disabled = locked
     uninstall.addEventListener('click', () => {
       if (action === 'uninstall') userPluginDraft.delete(plugin.name)
@@ -460,7 +465,11 @@ function renderUserPlugins(busy) {
     : typeof status?.recoveryMode === 'string'
       ? status.recoveryMode
       : status?.recoveryMode?.reason ?? status?.recoveryMode?.message ?? t('userPluginRecoveryDetail')
-  const feedback = operation.status === 'running' ? t('userPluginApplying')
+  const phaseKey = {
+    validated: 'userPluginPhaseValidated', paused: 'userPluginPhasePaused', snapshotted: 'userPluginPhaseSnapshotted',
+    mutating: 'userPluginPhaseMutating', committed: 'userPluginPhaseCommitted', restarting: 'userPluginPhaseRestarting', restoring: 'userPluginPhaseRestoring',
+  }[operation.phase]
+  const feedback = operation.status === 'running' ? t(phaseKey ?? 'userPluginApplying')
     : operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
       : operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
@@ -592,12 +601,18 @@ async function act(path, options) {
 }
 
 async function waitForUserPluginTask(taskId) {
+  let lastError
   for (let attempt = 0; attempt < 2_400; attempt += 1) {
-    const task = await api(`user-plugins/task/${taskId}`)
-    if (task.status !== 'running') return task
+    try {
+      const task = await api(`user-plugins/task/${taskId}`)
+      if (task.status !== 'running') return task
+      lastError = undefined
+    } catch (error) {
+      lastError = error
+    }
     await new Promise(resolve => window.setTimeout(resolve, 250))
   }
-  throw new Error('User Plugin task timed out')
+  throw lastError ?? new Error('User Plugin task timed out')
 }
 
 async function applyUserPluginDraft() {

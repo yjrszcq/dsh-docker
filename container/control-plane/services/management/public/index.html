@@ -121,10 +121,10 @@
         <div id="user-plugin-list" class="user-plugin-list"></div>
         <p id="empty-user-plugins" class="empty-state" data-i18n="noUserPlugins" hidden>No managed user plugins were found in the Web Profile.</p>
         <div class="draft-actions">
-          <p id="user-plugin-draft-summary" data-i18n="noPendingUserPluginChanges">No pending changes</p>
+          <p id="user-plugin-draft-summary" role="status" aria-live="polite" data-i18n="noPendingUserPluginChanges">No pending changes</p>
           <div><button id="cancel-user-plugin-changes" type="button" class="secondary" data-i18n="cancelChanges" disabled>Cancel changes</button><button id="apply-user-plugin-changes" type="button" class="primary" data-i18n="applyUserPluginChanges" disabled>Apply and restart DSH</button></div>
         </div>
-        <p id="user-plugin-operation" class="operation-result" hidden></p>
+        <p id="user-plugin-operation" class="operation-result" role="status" aria-live="polite" hidden></p>
       </section>
     </div>
   </main>
