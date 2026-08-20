@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path'
 
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]{0,126}\/[a-z0-9][a-z0-9._-]{0,126}|[a-z0-9][a-z0-9._-]{0,213})$/i
 const SELECTION_SCHEMA = 1
-const MISSING_BYTES = Buffer.from('\0missing\0')
 
 function packagePath(root, packageName) {
   if (!PACKAGE_NAME_PATTERN.test(packageName)) return undefined
@@ -12,7 +11,10 @@ function packagePath(root, packageName) {
 }
 
 async function optionalBytes(path) {
-  return readFile(path).catch(error => error?.code === 'ENOENT' ? MISSING_BYTES : Promise.reject(error))
+  return readFile(path).then(
+    bytes => ({ present: true, bytes }),
+    error => error?.code === 'ENOENT' ? { present: false, bytes: Buffer.alloc(0) } : Promise.reject(error),
+  )
 }
 
 function parseObject(bytes, label) {
@@ -67,8 +69,14 @@ function sourceForSpec(spec) {
   if (/^(?:file|link):/i.test(spec) || /^(?:\.{1,2}\/|\/)/.test(spec)) return 'file'
   if (/^(?:git(?:\+[^:]+)?|github|gitlab|bitbucket):/i.test(spec) || /\.git(?:#|$)/i.test(spec)) return 'git'
   if (/^https?:/i.test(spec)) return 'url'
-  if (/^(?:npm:)?(?:[~^<>=*]|\d|v\d)/i.test(spec) || spec === 'latest' || spec === 'next') return 'registry'
+  if (/^npm:/i.test(spec) || /^(?:[~^<>=*]|\d|v\d)/i.test(spec) || spec === 'latest' || spec === 'next') return 'registry'
   return 'other'
+}
+
+function updateRevision(hash, label, file) {
+  hash.update(`${label}:${file.present ? '1' : '0'}:${String(file.bytes.length)}:`)
+  hash.update(file.bytes)
+  hash.update('\0')
 }
 
 function metadataFailure(error) {
@@ -94,9 +102,18 @@ async function inspectDependency(profileRoot, name, spec, enabledBundles, disabl
       metadataError = metadataFailure(error)
     }
   }
-  const patch = metadata?.dsh?.bundle?.patch
+  if (metadataError === null && metadata.version !== undefined
+    && (typeof metadata.version !== 'string' || metadata.version.length === 0)) {
+    metadataError = 'installed package version is invalid'
+  }
+  const bundleDeclaration = metadata?.dsh?.bundle
+  const patch = bundleDeclaration?.patch
   const isBundle = typeof patch === 'string' && patch.length > 0
   const reservedNameConflict = reservedNames.has(name)
+  if (metadataError === null && !isBundle
+    && (bundleDeclaration !== undefined || enabledBundles.has(name))) {
+    metadataError = 'installed package Bundle metadata is invalid'
+  }
   if (!isBundle && metadataError === null && !reservedNameConflict) return undefined
   return Object.freeze({
     name,
@@ -125,7 +142,7 @@ export class UserPluginInventory {
   async read() {
     const manifestPath = join(this.profileRoot, 'package.json')
     const lockfilePath = join(this.profileRoot, 'pnpm-lock.yaml')
-    const [manifestBytes, lockfileBytes, selectionBytes, names] = await Promise.all([
+    const [manifestBytes, lockfile, selectionFile, names] = await Promise.all([
       readFile(manifestPath),
       optionalBytes(lockfilePath),
       optionalBytes(this.selectionPath),
@@ -133,9 +150,9 @@ export class UserPluginInventory {
     ])
     const manifest = parseObject(manifestBytes, 'Web Profile package.json')
     const { dependencies, bundles } = profileFields(manifest)
-    const selection = selectionBytes === MISSING_BYTES
+    const selection = !selectionFile.present
       ? undefined
-      : parseObject(selectionBytes, 'User Plugin selection state')
+      : parseObject(selectionFile.bytes, 'User Plugin selection state')
     const disabled = disabledPositions(selection)
     const reservedNames = new Set(names)
     if ([...reservedNames].some(name => typeof name !== 'string' || !PACKAGE_NAME_PATTERN.test(name))) {
@@ -145,10 +162,11 @@ export class UserPluginInventory {
     const inspected = await Promise.all(Object.entries(dependencies).map(([name, spec]) => (
       inspectDependency(this.profileRoot, name, spec, enabledBundles, disabled, reservedNames)
     )))
-    const revision = createHash('sha256')
-      .update(manifestBytes).update('\0')
-      .update(lockfileBytes).update('\0')
-      .update(selectionBytes).digest('hex')
+    const revisionHash = createHash('sha256')
+    updateRevision(revisionHash, 'manifest', { present: true, bytes: manifestBytes })
+    updateRevision(revisionHash, 'lockfile', lockfile)
+    updateRevision(revisionHash, 'selection', selectionFile)
+    const revision = revisionHash.digest('hex')
     return Object.freeze({
       schema: 1,
       profile: this.profile,

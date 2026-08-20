@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -80,6 +80,20 @@ test('keeps damaged and dangling dependency metadata visible for recovery', asyn
   assert.match(inventory.plugins[1].metadataError, /missing/)
 })
 
+test('keeps an enabled dependency visible when its Bundle declaration is invalid', async () => {
+  const { root, selectionPath } = await fixture({
+    dependencies: { 'startup-breaking-plugin': '1.0.0' },
+    bundles: ['startup-breaking-plugin'],
+    packages: { 'startup-breaking-plugin': { dsh: { bundle: { patch: 42 } } } },
+  })
+  const inventory = await new UserPluginInventory({ dshHome: join(root, 'dsh'), selectionPath }).read()
+  assert.equal(inventory.plugins.length, 1)
+  assert.equal(inventory.plugins[0].name, 'startup-breaking-plugin')
+  assert.equal(inventory.plugins[0].enabled, true)
+  assert.equal(inventory.plugins[0].damaged, true)
+  assert.match(inventory.plugins[0].metadataError, /Bundle metadata/)
+})
+
 test('uses verified Environment names for reserved conflicts instead of namespace prefixes', async () => {
   const { root, selectionPath } = await fixture({
     dependencies: {
@@ -116,8 +130,14 @@ test('revision covers exact manifest, lockfile, and disabled-order bytes', async
   await mkdir(join(selectionPath, '..'), { recursive: true })
   await writeFile(selectionPath, '{"schema":1,"disabled":[]}\n')
   const third = await manager.read()
+  await rm(selectionPath)
+  await writeFile(join(profile, 'pnpm-lock.yaml'), '')
+  const emptyLockfile = await manager.read()
+  await rm(join(profile, 'pnpm-lock.yaml'))
+  const missingLockfile = await manager.read()
   assert.notEqual(first.revision, second.revision)
   assert.notEqual(second.revision, third.revision)
+  assert.notEqual(emptyLockfile.revision, missingLockfile.revision)
 })
 
 test('rejects malformed authoritative profile and selection state', async () => {
