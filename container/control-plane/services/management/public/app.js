@@ -25,7 +25,7 @@ const LOG_STREAM_LIMIT = 5_000
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: '平台管理', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
-    managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件',
+    managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
@@ -57,6 +57,16 @@ const COPY = Object.freeze({
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
     pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
+    userPlugins: '用户插件', userPluginsDetail: '无需启动 DSH，即可恢复 Web Profile 中由用户安装的插件。',
+    noUserPlugins: 'Web Profile 中没有可管理的用户插件。', dshUnavailable: 'DSH 当前不可用',
+    userPluginVersion: '版本', userPluginSpec: '依赖规格', userPluginSource: '来源', userPluginSourceRegistry: '软件包源',
+    userPluginSourceFile: '本地文件', userPluginSourceGit: 'Git', userPluginSourceUrl: 'URL', userPluginSourceOther: '其他',
+    userPluginEnabled: '已启用', userPluginDisabled: '已禁用', userPluginDamaged: '元数据损坏', userPluginReserved: '与系统插件重名',
+    pendingEnable: '待启用', pendingDisable: '待禁用', pendingUninstall: '待卸载', uninstallUserPlugin: '卸载', cancelUninstall: '取消卸载',
+    noPendingUserPluginChanges: '没有待应用的修改', pendingUserPluginChanges: '有 {count} 项修改待应用', cancelChanges: '取消修改',
+    applyUserPluginChanges: '应用并重新启动 DSH', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
+    userPluginApplyFailed: '用户插件恢复失败', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
+    userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，可在运行维护中查看日志。',
     stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
     upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -64,7 +74,7 @@ const COPY = Object.freeze({
   }),
   en: Object.freeze({
     title: 'Platform Management', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
@@ -96,6 +106,16 @@ const COPY = Object.freeze({
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
     pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
+    userPlugins: 'User plugins', userPluginsDetail: 'Recover user-installed Web Profile plugins without starting DSH.',
+    noUserPlugins: 'No managed user plugins were found in the Web Profile.', dshUnavailable: 'DSH is unavailable',
+    userPluginVersion: 'Version', userPluginSpec: 'Dependency spec', userPluginSource: 'Source', userPluginSourceRegistry: 'Registry',
+    userPluginSourceFile: 'Local file', userPluginSourceGit: 'Git', userPluginSourceUrl: 'URL', userPluginSourceOther: 'Other',
+    userPluginEnabled: 'Enabled', userPluginDisabled: 'Disabled', userPluginDamaged: 'Damaged metadata', userPluginReserved: 'Conflicts with a System Plugin',
+    pendingEnable: 'Pending enable', pendingDisable: 'Pending disable', pendingUninstall: 'Pending uninstall', uninstallUserPlugin: 'Uninstall', cancelUninstall: 'Cancel uninstall',
+    noPendingUserPluginChanges: 'No pending changes', pendingUserPluginChanges: '{count} changes pending', cancelChanges: 'Cancel changes',
+    applyUserPluginChanges: 'Apply and restart DSH', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
+    userPluginApplyFailed: 'User plugin recovery failed', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
+    userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly. Review the Maintenance logs for details.',
     stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
     upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
@@ -121,10 +141,14 @@ const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
 let status
 let plugins = []
+let userPluginInventory = { revision: null, plugins: [] }
+const userPluginDraft = new Map()
 let rollbackPlan
 let loading = false
 let checking = false
 let acting = false
+let userPluginSubmitting = false
+let userPluginFeedback = null
 let eventSource
 let logSource
 let autoScroll = true
@@ -211,7 +235,11 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const value = await response.json()
-  if (!response.ok) throw new Error(value.error ?? `HTTP ${String(response.status)}`)
+  if (!response.ok) {
+    const error = new Error(value.error ?? `HTTP ${String(response.status)}`)
+    error.statusCode = response.status
+    throw error
+  }
   return value
 }
 
@@ -220,6 +248,7 @@ function runtimeBusy(next = status) {
   return (acting && !checking)
     || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
     || next?.systemPluginOperation?.status === 'running'
+    || next?.userPluginOperation?.status === 'running'
     || next?.dshRestart?.status === 'restarting'
 }
 
@@ -330,6 +359,114 @@ function renderBundledPlugins(values, busy) {
   }
 }
 
+function userPluginSource(value) {
+  return t({
+    registry: 'userPluginSourceRegistry', file: 'userPluginSourceFile', git: 'userPluginSourceGit',
+    url: 'userPluginSourceUrl', other: 'userPluginSourceOther',
+  }[value] ?? 'userPluginSourceOther')
+}
+
+function setUserPluginDraft(plugin, action) {
+  if ((action === 'enable' && plugin.enabled) || (action === 'disable' && !plugin.enabled)) userPluginDraft.delete(plugin.name)
+  else userPluginDraft.set(plugin.name, action)
+  userPluginFeedback = null
+  renderUserPlugins(runtimeBusy())
+}
+
+function userPluginBadge(label, className = '') {
+  const badge = document.createElement('span')
+  badge.className = `user-plugin-badge ${className}`.trim()
+  badge.textContent = label
+  return badge
+}
+
+function renderUserPlugins(busy) {
+  const values = userPluginInventory.plugins ?? []
+  const operation = status?.userPluginOperation ?? {}
+  const locked = busy || userPluginSubmitting || operation.status === 'running'
+  elements['user-plugin-list'].replaceChildren()
+  elements['user-plugin-list'].hidden = values.length === 0
+  elements['empty-user-plugins'].hidden = values.length !== 0
+  for (const plugin of values) {
+    const action = userPluginDraft.get(plugin.name)
+    const row = document.createElement('article')
+    row.className = `user-plugin-row${action ? ' pending' : ''}`
+    const identity = document.createElement('div')
+    identity.className = 'user-plugin-main'
+    const name = document.createElement('strong')
+    name.textContent = plugin.name
+    const badges = document.createElement('div')
+    badges.className = 'user-plugin-badges'
+    badges.append(userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : ''))
+    if (plugin.damaged) badges.append(userPluginBadge(t('userPluginDamaged'), 'warning'))
+    if (plugin.reservedNameConflict) badges.append(userPluginBadge(t('userPluginReserved'), 'danger'))
+    if (action) badges.append(userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending'))
+    const metadata = document.createElement('dl')
+    for (const [label, value] of [
+      [t('userPluginVersion'), plugin.version], [t('userPluginSpec'), plugin.spec], [t('userPluginSource'), userPluginSource(plugin.source)],
+    ]) {
+      const field = document.createElement('div')
+      const term = document.createElement('dt')
+      term.textContent = label
+      const description = document.createElement('dd')
+      description.textContent = display(value)
+      field.append(term, description)
+      metadata.append(field)
+    }
+    identity.append(name, badges, metadata)
+    if (plugin.metadataError) {
+      const detail = document.createElement('p')
+      detail.className = 'user-plugin-error'
+      detail.textContent = locale === 'en' ? plugin.metadataError : t('userPluginMetadataError')
+      identity.append(detail)
+    }
+    const controls = document.createElement('div')
+    controls.className = 'user-plugin-controls'
+    const toggle = document.createElement('label')
+    toggle.className = 'toggle'
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = action === 'enable' || (action !== 'disable' && plugin.enabled)
+    checkbox.disabled = locked || action === 'uninstall' || (!plugin.enabled && (plugin.damaged || plugin.reservedNameConflict))
+    checkbox.setAttribute('aria-label', `${plugin.name}: ${checkbox.checked ? t('userPluginEnabled') : t('userPluginDisabled')}`)
+    checkbox.addEventListener('change', event => setUserPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
+    const track = document.createElement('span')
+    track.setAttribute('aria-hidden', 'true')
+    const toggleLabel = document.createElement('strong')
+    toggleLabel.textContent = checkbox.checked ? t('enabled') : t('disabled')
+    toggle.append(checkbox, track, toggleLabel)
+    const uninstall = document.createElement('button')
+    uninstall.type = 'button'
+    uninstall.className = action === 'uninstall' ? 'secondary' : 'danger-text'
+    uninstall.textContent = t(action === 'uninstall' ? 'cancelUninstall' : 'uninstallUserPlugin')
+    uninstall.disabled = locked
+    uninstall.addEventListener('click', () => {
+      if (action === 'uninstall') userPluginDraft.delete(plugin.name)
+      else userPluginDraft.set(plugin.name, 'uninstall')
+      userPluginFeedback = null
+      renderUserPlugins(runtimeBusy())
+    })
+    controls.append(toggle, uninstall)
+    row.append(identity, controls)
+    elements['user-plugin-list'].append(row)
+  }
+  const count = userPluginDraft.size
+  elements['user-plugin-draft-summary'].textContent = count === 0 ? t('noPendingUserPluginChanges') : t('pendingUserPluginChanges', { count })
+  elements['cancel-user-plugin-changes'].disabled = locked || count === 0
+  elements['apply-user-plugin-changes'].disabled = locked || count === 0
+  elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
+  elements['user-plugin-recovery-detail'].textContent = locale === 'zh'
+    ? t('userPluginRecoveryDetail')
+    : typeof status?.recoveryMode === 'string'
+      ? status.recoveryMode
+      : status?.recoveryMode?.reason ?? status?.recoveryMode?.message ?? t('userPluginRecoveryDetail')
+  const feedback = operation.status === 'running' ? t('userPluginApplying')
+    : operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
+      : operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
+  elements['user-plugin-operation'].textContent = feedback ?? ''
+  elements['user-plugin-operation'].hidden = !feedback
+}
+
 function render(next) {
   status = next
   rollbackPlan = next.rollbackPlan
@@ -414,6 +551,7 @@ function render(next) {
   elements['plugin-restart-dsh'].disabled = busy
   elements['plugin-restart-dsh'].textContent = restart.status === 'restarting' ? t('restarting') : t('restartDsh')
   renderBundledPlugins(plugins, busy)
+  renderUserPlugins(busy)
   renderReminder(next)
 }
 
@@ -421,8 +559,9 @@ async function loadStatus() {
   if (loading) return status
   loading = true
   try {
-    const [next, bundled] = await Promise.all([api('status'), api('bundled-plugins')])
+    const [next, bundled, users] = await Promise.all([api('status'), api('bundled-plugins'), api('user-plugins')])
     plugins = bundled.plugins ?? []
+    userPluginInventory = users
     render(next)
     clearError()
     setConnection('online')
@@ -449,6 +588,48 @@ async function act(path, options) {
   } finally {
     acting = false
     if (status !== undefined) render(status)
+  }
+}
+
+async function waitForUserPluginTask(taskId) {
+  for (let attempt = 0; attempt < 2_400; attempt += 1) {
+    const task = await api(`user-plugins/task/${taskId}`)
+    if (task.status !== 'running') return task
+    await new Promise(resolve => window.setTimeout(resolve, 250))
+  }
+  throw new Error('User Plugin task timed out')
+}
+
+async function applyUserPluginDraft() {
+  if (userPluginDraft.size === 0 || userPluginSubmitting) return
+  userPluginSubmitting = true
+  userPluginFeedback = null
+  clearError()
+  renderUserPlugins(runtimeBusy())
+  try {
+    const task = await api('user-plugins/apply', {
+      method: 'POST',
+      body: {
+        profile: 'web', revision: userPluginInventory.revision,
+        actions: [...userPluginDraft].map(([name, action]) => ({ name, action })),
+      },
+    })
+    userPluginDraft.clear()
+    await loadStatus()
+    await waitForUserPluginTask(task.taskId)
+    await loadStatus()
+  } catch (error) {
+    if (error.statusCode === 409) {
+      userPluginDraft.clear()
+      await loadStatus()
+      userPluginFeedback = t('userPluginRevisionConflict')
+    } else {
+      userPluginFeedback = `${t('userPluginApplyFailed')}: ${localizedError(error)}`
+      showError(error)
+    }
+  } finally {
+    userPluginSubmitting = false
+    renderUserPlugins(runtimeBusy())
   }
 }
 
@@ -711,6 +892,12 @@ elements['automatic-interval'].addEventListener('change', event => { void saveAu
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['cancel-user-plugin-changes'].addEventListener('click', () => {
+  userPluginDraft.clear()
+  userPluginFeedback = null
+  renderUserPlugins(runtimeBusy())
+})
+elements['apply-user-plugin-changes'].addEventListener('click', () => { void applyUserPluginDraft() })
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })

@@ -30,6 +30,7 @@
       <button id="tab-updates" type="button" role="tab" aria-selected="true" aria-controls="panel-updates" data-tab="updates" data-i18n="updatesTab">Updates</button>
       <button id="tab-maintenance" type="button" role="tab" aria-selected="false" aria-controls="panel-maintenance" data-tab="maintenance" data-i18n="maintenanceTab">Maintenance</button>
       <button id="tab-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-plugins" data-tab="plugins" data-i18n="pluginsTab">System plugins</button>
+      <button id="tab-user-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-user-plugins" data-tab="user-plugins" data-i18n="userPluginsTab">User plugins</button>
     </nav>
 
     <p id="error" class="message error" role="alert" hidden></p>
@@ -110,6 +111,20 @@
         <div id="bundled-plugins" class="plugin-list"></div>
         <p id="empty-plugins" class="empty-state" data-i18n="noSystemPlugins" hidden>The current Environment provides no System Plugins.</p>
         <p id="plugin-operation" class="operation-result" hidden></p>
+      </section>
+    </div>
+
+    <div id="panel-user-plugins" class="tab-panel" role="tabpanel" aria-labelledby="tab-user-plugins" hidden>
+      <section aria-labelledby="user-plugins-title">
+        <div class="section-heading"><div><h2 id="user-plugins-title" data-i18n="userPlugins">User plugins</h2><p data-i18n="userPluginsDetail">Recover user-installed Web Profile plugins without starting DSH.</p></div></div>
+        <div id="user-plugin-recovery" class="recovery-summary" role="status" hidden><strong data-i18n="dshUnavailable">DSH is unavailable</strong><p id="user-plugin-recovery-detail"></p></div>
+        <div id="user-plugin-list" class="user-plugin-list"></div>
+        <p id="empty-user-plugins" class="empty-state" data-i18n="noUserPlugins" hidden>No managed user plugins were found in the Web Profile.</p>
+        <div class="draft-actions">
+          <p id="user-plugin-draft-summary" data-i18n="noPendingUserPluginChanges">No pending changes</p>
+          <div><button id="cancel-user-plugin-changes" type="button" class="secondary" data-i18n="cancelChanges" disabled>Cancel changes</button><button id="apply-user-plugin-changes" type="button" class="primary" data-i18n="applyUserPluginChanges" disabled>Apply and restart DSH</button></div>
+        </div>
+        <p id="user-plugin-operation" class="operation-result" hidden></p>
       </section>
     </div>
   </main>

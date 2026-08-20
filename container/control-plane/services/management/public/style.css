@@ -250,7 +250,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toggle strong { font-weight: 500; }
 
-.setting-rows, .plugin-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.setting-rows, .plugin-list, .user-plugin-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 48px; padding: 8px 12px; font-size: 13px; }
 .setting-row + .setting-row { border-top: 1px solid var(--border); }
 .setting-row > span { min-width: 0; }
@@ -286,6 +286,44 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .plugin-action-state { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .plugin-pending { display: inline-block !important; width: fit-content; margin-top: 5px !important; color: var(--warning) !important; font-weight: 600; }
 .empty-state { margin: 0; padding: 26px 12px; color: var(--muted); text-align: center; font-size: 13px; }
+
+.recovery-summary {
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+.recovery-summary strong { color: var(--danger); font-size: 13px; line-height: 20px; }
+.recovery-summary p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.user-plugin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 94px;
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.user-plugin-row + .user-plugin-row { border-top: 1px solid var(--border); }
+.user-plugin-row.pending { background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }
+.user-plugin-main { min-width: 0; }
+.user-plugin-main > strong { display: block; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; font-weight: 600; }
+.user-plugin-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.user-plugin-badge { padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
+.user-plugin-badge.enabled { color: var(--success); }
+.user-plugin-badge.warning, .user-plugin-badge.pending { color: var(--warning); }
+.user-plugin-badge.danger { color: var(--danger); }
+.user-plugin-main dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 14px; margin: 9px 0 0; }
+.user-plugin-main dl > div { min-width: 0; }
+.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 17px; }
+.user-plugin-main dt { color: var(--faint); }
+.user-plugin-main dd { color: var(--muted); }
+.user-plugin-error { margin: 7px 0 0; color: var(--danger); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
+.user-plugin-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.user-plugin-controls .toggle { width: auto; }
+.draft-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 2px; }
+.draft-actions > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
+.draft-actions > div { display: flex; justify-content: flex-end; gap: 8px; }
 
 .log-section { gap: 10px; }
 .log-tools { display: flex; align-items: center; gap: 8px; }
@@ -365,6 +403,12 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .plugin-actions .toggle { width: auto; }
   .plugin-restart-notice { align-items: stretch; flex-direction: column; }
   .plugin-restart-notice button { width: 100%; }
+  .user-plugin-row { grid-template-columns: 1fr; align-items: stretch; }
+  .user-plugin-controls { justify-content: space-between; }
+  .user-plugin-main dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .draft-actions { align-items: stretch; flex-direction: column; }
+  .draft-actions > div { justify-content: stretch; }
+  .draft-actions button { flex: 1; }
   .log-tools { width: 100%; flex-wrap: wrap; }
   .log-connection { margin-right: auto; }
   .log-filters { grid-template-columns: 1fr 1fr; }
@@ -379,5 +423,7 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .actions > button { flex-basis: 100%; }
   .setting-row { flex-direction: column; }
   .setting-row select { width: 100%; }
+  .user-plugin-main dl { grid-template-columns: 1fr; }
+  .draft-actions > div { flex-direction: column; }
   .update-reminder > div { flex-direction: column; }
 }

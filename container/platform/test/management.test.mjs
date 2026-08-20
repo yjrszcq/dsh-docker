@@ -787,13 +787,13 @@ test('standalone console keeps localized feature parity on the shared Management
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
   const script = await readFile(new URL('app.js', publicRoot), 'utf8')
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins']) {
+  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins/recovery-action',
-    'bundled-plugins/discard', 'logs/stream',
+    'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(script, /name === 'dsh_locale'/)
@@ -828,11 +828,24 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
   assert.doesNotMatch(script, /插件设置并重启 DSH|settings and restarting DSH/)
   assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)
+  assert.match(script, /userPluginsTab: '用户插件'/)
+  assert.match(script, /userPluginsTab: 'User plugins'/)
+  assert.match(script, /applyUserPluginChanges: '应用并重新启动 DSH'/)
+  assert.match(script, /applyUserPluginChanges: 'Apply and restart DSH'/)
+  assert.match(script, /const userPluginDraft = new Map\(\)/)
+  assert.match(script, /revision: userPluginInventory\.revision/)
+  assert.match(script, /error\.statusCode === 409[\s\S]*userPluginDraft\.clear\(\)[\s\S]*userPluginRevisionConflict/)
+  assert.doesNotMatch(script, /(?:localStorage|sessionStorage).*user-plugin-draft/)
+  assert.match(html, /id="user-plugin-recovery"/)
+  assert.match(html, /id="cancel-user-plugin-changes"/)
+  assert.match(html, /id="apply-user-plugin-changes"/)
   assert.match(style, /\.tabs \{[\s\S]*overflow-x: auto/)
   assert.match(style, /\.topbar-inner \{[\s\S]*width: min\(780px, calc\(100% - 40px\)\)/)
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.log-list \{[\s\S]*max-height: min\(320px, 42dvh\)/)
   assert.match(style, /\.plugin-actions \.toggle \{ width: auto; \}/)
+  assert.match(style, /\.user-plugin-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.user-plugin-row \{ grid-template-columns: 1fr/)
 })
 
 test('CLI parser keeps rollback local and update wait behavior explicit', async () => {
