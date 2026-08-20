@@ -83,8 +83,6 @@ if (resumeUpdate) {
   setImmediate(() => {
     try { coordinator.start().completion.catch(() => {}) } catch (error) { console.error(error) }
   })
-} else {
-  setImmediate(() => { coordinator.check().catch(() => {}) })
 }
 
 const stop = () => {

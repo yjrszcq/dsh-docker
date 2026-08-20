@@ -476,8 +476,9 @@ test('scheduler applies bounded jitter and performs checks without activating up
   scheduler.stop()
 })
 
-test('management starts one metadata check before the first scheduled interval', async () => {
+test('management does not check metadata before the first scheduled interval', async () => {
   const source = await readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8')
-  assert.match(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
+  assert.doesNotMatch(source, /setImmediate\(\(\) => \{ coordinator\.check\(\)\.catch/)
+  assert.match(source, /check: \(\) => coordinator\.check\(\)/)
   assert.match(source, /allowUnavailableMetadata: imageInventory\.authority === 'development'/)
 })
