@@ -60,7 +60,7 @@ export class UpdateCoordinator extends EventEmitter {
             dsh: plan.target.desired.dsh.version,
           },
           supported: plan.supported,
-          upstream: plan.upstream === null ? null : { version: plan.upstream.version },
+          ...(plan.upstream === null ? {} : { upstream: { version: plan.upstream.version } }),
           current: { dsh: plan.current.dsh, environment: plan.current.environment, runtime: plan.current.runtime },
           aheadOfStable: plan.aheadOfStable,
           experimentalBlocked: plan.experimentalBlocked,
@@ -91,7 +91,7 @@ export class UpdateCoordinator extends EventEmitter {
           : null
         await this.transition('idle', {
           metadataUnavailable: true,
-          upstream,
+          ...(upstream === null ? {} : { upstream }),
           checkedAt: this.now().toISOString(),
           error: null,
         })
@@ -177,12 +177,20 @@ export class UpdateCoordinator extends EventEmitter {
     const [current, local] = await Promise.all([this.activator.currentDeployment(), this.channelState.read()])
     const supported = { dsh: stable.desired.dsh.version, environment: stable.desired.environment.version }
     let upstream = null
+    let upstreamCandidate = null
     if (
       local.updateChannel === 'experimental'
       && compareDshVersions(current.dsh, supported.dsh) <= 0
       && current.environment === supported.environment
-    ) upstream = await this.npm.latest(stable)
-    return Object.freeze({ ...planDesiredState({ local, current, supported, upstream }), target: stable })
+    ) {
+      upstream = await this.npm.discover(stable.officialDshPolicy)
+      upstreamCandidate = compareDshVersions(upstream.version, supported.dsh) > 0 ? upstream : null
+    }
+    return Object.freeze({
+      ...planDesiredState({ local, current, supported, upstream: upstreamCandidate }),
+      upstream,
+      target: stable,
+    })
   }
 
   async publicStatus() {

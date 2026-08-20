@@ -555,6 +555,34 @@ test('reads npm latest from the official packument without trusting it locally',
   assert.deepEqual(found, { version: candidate.version })
 })
 
+test('keeps the official npm version visible when it is not newer', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-upstream-display-'))
+  const channelState = new ChannelStateStore(join(root, 'state', 'channel.json'))
+  await channelState.setChannel('experimental')
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: {
+      desired: { bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: '0.1.0-rc.7' } },
+      officialDshPolicy: { registry: 'https://registry.npmjs.org/', packageName: '@deepseek-ai/dsh' },
+      targetSequence: 1,
+    } }) },
+    npm: { discover: async () => ({ version: '0.1.0-rc.7' }) },
+    activator: { currentDeployment: async () => ({ dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' }) },
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    channelState,
+  })
+
+  const plan = await coordinator.desiredState()
+  assert.equal(plan.action, 'none')
+  assert.deepEqual(plan.upstream, { version: '0.1.0-rc.7' })
+  await coordinator.check()
+  const status = await coordinator.publicStatus()
+  assert.deepEqual(status.upstream, { version: '0.1.0-rc.7' })
+
+  await channelState.setChannel('stable')
+  await coordinator.check()
+  assert.deepEqual((await coordinator.publicStatus()).upstream, { version: '0.1.0-rc.7' })
+})
+
 test('does not misclassify a missing npm package as unpublished signed metadata', async () => {
   const client = new NpmRegistryClient({ fetchImpl: async () => response('missing', 404) })
   await assert.rejects(client.discover(), error => (
