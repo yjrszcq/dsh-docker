@@ -279,6 +279,41 @@ test('management changes a bundled plugin as an audited task and excludes runtim
   }
 })
 
+test('management exposes a dedicated recovery action only for Platform Management', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-recovery-'))
+  const calls = []
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    recoverBundledPlugin: async (id, action) => { calls.push([id, action]) },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await assert.rejects(client.request('POST', `${API_PREFIX}bundled-plugins/recovery-action`, {
+      id: 'diagnostics', action: 'uninstall',
+    }), error => error.statusCode === 400)
+    const task = await client.request('POST', `${API_PREFIX}bundled-plugins/recovery-action`, {
+      id: 'platform-management', action: 'disable',
+    })
+    assert.equal(typeof task.taskId, 'string')
+    for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.deepEqual(calls, [['platform-management', 'disable']])
+    await new Promise(resolve => setImmediate(resolve))
+    await logs.queue
+    assert.deepEqual(
+      (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
+      ['system-plugin.recovery.disable.started', 'system-plugin.recovery.disable.completed'],
+    )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management separates a known Stable target from update availability', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-current-'))
   const coordinator = new Coordinator()

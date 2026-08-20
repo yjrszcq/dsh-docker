@@ -219,6 +219,12 @@ test('persists install and enable selection while protecting Platform Management
   ])
 
   await assert.rejects(store.configure(pluginIds, 'platform-management', 'uninstall'), /managed by the platform/)
+  await assert.rejects(store.recover(pluginIds, 'diagnostics', 'uninstall'), /not a platform recovery target/)
+  await store.recover(pluginIds, 'platform-management', 'uninstall')
+  assert.deepEqual(await store.read(pluginIds).then(value => value['platform-management']), {
+    installed: false, enabled: false, protected: true,
+  })
+  await store.recover(pluginIds, 'platform-management', 'install')
   await store.configure(pluginIds, 'diagnostics', 'disable')
   const disabled = await materializeSystemPluginSelection({
     environmentRoot: environment,

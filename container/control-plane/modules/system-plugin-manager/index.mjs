@@ -150,9 +150,7 @@ function validateSelectionDocument(value, pluginIds, protectedIds) {
     if (saved.enabled && !saved.installed) {
       throw new Error(`System Plugin ${id} cannot be enabled while it is not installed`)
     }
-    if (!protectedIds.has(id)) {
-      selection[id] = { installed: saved.installed, enabled: saved.enabled, protected: false }
-    }
+    selection[id] = { installed: saved.installed, enabled: saved.enabled, protected: protectedIds.has(id) }
   }
   return selection
 }
@@ -201,6 +199,18 @@ export class SystemPluginSelectionStore {
     assertPluginId(pluginId)
     if (!ids.includes(pluginId)) throw new Error(`System Plugin ${pluginId} is not provided by the current Environment`)
     if (this.protectedIds.has(pluginId)) throw new Error(`System Plugin ${pluginId} is managed by the platform and cannot be changed`)
+    return this.configureSelection(ids, pluginId, action)
+  }
+
+  async recover(pluginIds, pluginId, action) {
+    const ids = pluginIds.map(assertPluginId)
+    assertPluginId(pluginId)
+    if (!ids.includes(pluginId)) throw new Error(`System Plugin ${pluginId} is not provided by the current Environment`)
+    if (!this.protectedIds.has(pluginId)) throw new Error(`System Plugin ${pluginId} is not a platform recovery target`)
+    return this.configureSelection(ids, pluginId, action)
+  }
+
+  async configureSelection(ids, pluginId, action) {
     if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) {
       throw new Error('System Plugin action is invalid')
     }

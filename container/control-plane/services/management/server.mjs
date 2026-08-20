@@ -86,6 +86,7 @@ export function createManagementServer({
   restartDsh = async () => { throw new Error('DSH restart is not configured') },
   listBundledPlugins = async () => [],
   configureBundledPlugin = async () => { throw new Error('System Plugin management is not configured') },
+  recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
@@ -110,27 +111,28 @@ export function createManagementServer({
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
   }
 
-  const startPluginAction = (pluginId, action) => {
+  const startPluginAction = (pluginId, action, { recovery = false } = {}) => {
     if (typeof pluginId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(pluginId)) {
       throw new Error('System Plugin ID is invalid')
     }
     if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) throw new Error('System Plugin action is invalid')
+    if (recovery && pluginId !== 'platform-management') throw new Error('System Plugin is not a console recovery target')
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const taskId = randomUUID()
     publishPlugin({ status: 'running', taskId, pluginId, action, error: null })
     pluginTask = Promise.resolve()
-      .then(() => logs.audit(`system-plugin.${action}.started`, { taskId, pluginId }).catch(() => {}))
-      .then(() => configureBundledPlugin(pluginId, action))
+      .then(() => logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }).catch(() => {}))
+      .then(() => recovery ? recoverBundledPlugin(pluginId, action) : configureBundledPlugin(pluginId, action))
       .then(
         async () => {
           publishPlugin({ status: 'success', taskId, pluginId, action, error: null })
-          await logs.audit(`system-plugin.${action}.completed`, { taskId, pluginId }).catch(() => {})
+          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId }).catch(() => {})
         },
         async error => {
           const message = error instanceof Error ? error.message : 'System Plugin operation failed'
           publishPlugin({ status: 'failed', taskId, pluginId, action, error: message })
-          await logs.audit(`system-plugin.${action}.failed`, { error: message, taskId, pluginId }).catch(() => {})
+          await logs.audit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.failed`, { error: message, taskId, pluginId }).catch(() => {})
         },
       )
       .finally(() => { pluginTask = undefined })
@@ -206,6 +208,9 @@ export function createManagementServer({
       } else if (request.method === 'POST' && route === 'bundled-plugins/action') {
         const body = await jsonBody(request)
         send(response, 202, startPluginAction(body.id, body.action))
+      } else if (request.method === 'POST' && route === 'bundled-plugins/recovery-action') {
+        const body = await jsonBody(request)
+        send(response, 202, startPluginAction(body.id, body.action, { recovery: true }))
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
         const value = await coordinator.setChannel(body.channel)

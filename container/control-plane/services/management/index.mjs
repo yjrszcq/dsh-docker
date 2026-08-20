@@ -75,6 +75,7 @@ const server = createManagementServer({
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
   listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
+  recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)

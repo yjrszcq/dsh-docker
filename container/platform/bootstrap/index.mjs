@@ -112,7 +112,7 @@ const systemPlugins = {
       selectionStore: systemPluginSelections,
     })
   },
-  configure: (pluginId, action) => deployments.exclusive(async () => {
+  mutate: (pluginId, action, recovery = false) => deployments.exclusive(async () => {
     const resolved = await deployments.selected()
     if (resolved === null) throw new Error('no Deployment is selected')
     const before = await systemPlugins.list()
@@ -120,7 +120,7 @@ const systemPlugins = {
     const previousSelection = await systemPluginSelections.read(pluginIds)
     await deployments.setOperation('restarting')
     try {
-      await systemPluginSelections.configure(pluginIds, pluginId, action)
+      await systemPluginSelections[recovery ? 'recover' : 'configure'](pluginIds, pluginId, action)
       await runtime.restart('dsh-runtime')
       await deployments.setOperation(null)
       return systemPlugins.list()
@@ -137,6 +137,8 @@ const systemPlugins = {
     }
   }),
 }
+systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
+systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)
 const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins })
 await listenBootstrapControl(server, paths.bootstrapSocket)
 let imageCandidateHealthy = true

@@ -237,6 +237,10 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       calls.push(['configure', id, action])
       return [{ id, installed: true }]
     },
+    recover: async (id, action) => {
+      calls.push(['recover', id, action])
+      return [{ id, installed: false }]
+    },
   }
   const server = createBootstrapControl(runner, { deployments, systemPlugins })
   const socket = join(root, 'run', 'bootstrap.sock')
@@ -250,11 +254,15 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     assert.deepEqual((await client.request('POST', '/v1/system-plugins/action', {
       id: 'diagnostics', action: 'disable',
     })).plugins, [{ id: 'diagnostics', installed: true }])
+    assert.deepEqual((await client.request('POST', '/v1/system-plugins/recovery-action', {
+      id: 'platform-management', action: 'uninstall',
+    })).plugins, [{ id: 'platform-management', installed: false }])
     await client.request('POST', '/v1/components/dsh-runtime/suspend')
     await client.request('POST', '/v1/components/dsh-runtime/resume')
     await client.request('POST', '/v1/components/dsh-runtime/restart')
     assert.deepEqual(calls, [
       ['configure', 'diagnostics', 'disable'],
+      ['recover', 'platform-management', 'uninstall'],
       ['suspend', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],
