@@ -23,6 +23,9 @@ export class PlatformPaths {
     this.deploymentStateRoot = join(this.stateRoot, 'deployments')
     this.deploymentStatusPath = join(this.deploymentStateRoot, 'status.json')
     this.updaterStateRoot = join(this.stateRoot, 'updater')
+    this.managementStateRoot = join(this.stateRoot, 'management')
+    this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
+    this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
     this.objectsRoot = join(this.storeRoot, 'objects')
     this.bootstrapStoreRoot = join(this.storeRoot, 'bootstrap')
     this.environmentsRoot = join(this.storeRoot, 'environments')
@@ -30,6 +33,7 @@ export class PlatformPaths {
     this.runtimesRoot = join(this.storeRoot, 'runtimes')
     this.systemPluginsRoot = join(this.storeRoot, 'system-plugins')
     this.snapshotsRoot = join(this.storeRoot, 'snapshots')
+    this.userPluginSnapshotsRoot = join(this.snapshotsRoot, 'user-plugins')
     this.downloadsRoot = join(this.cacheRoot, 'downloads')
     this.viewsRoot = join(this.runRoot, 'views')
     this.deploymentViewsRoot = join(this.runRoot, 'deployments')
@@ -59,8 +63,10 @@ export async function preparePersistentLayout(paths) {
   await rejectLegacyLayout(paths)
   const directories = [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
+    paths.managementStateRoot,
     paths.objectsRoot, paths.bootstrapStoreRoot, paths.environmentsRoot, paths.pristineRoot,
-    paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.downloadsRoot, paths.logsRoot,
+    paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
+    paths.downloadsRoot, paths.logsRoot,
   ]
   await Promise.all(directories.map(path => mkdir(path, { recursive: true })))
   return Object.freeze([...directories])

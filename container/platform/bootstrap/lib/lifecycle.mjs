@@ -343,6 +343,21 @@ export class EnvironmentRunner {
     })
   }
 
+  pause(componentId, { allowMissing = false } = {}) {
+    return this.serialized(async () => {
+      const running = this.running.find(value => value.component.id === componentId)
+      const component = running?.component ?? this.environment?.components.find(value => value.id === componentId)
+      if (component === undefined) {
+        if (allowMissing) return this.status()
+        throw new Error(`component ${componentId} does not exist`)
+      }
+      if (component.type !== 'service') throw new Error(`component ${componentId} is not a service`)
+      if (running === undefined) return this.status()
+      await this.stopComponentUnlocked(running)
+      return this.status()
+    })
+  }
+
   resume(componentId) {
     return this.serialized(async () => {
       if (this.environment === undefined) throw new Error('Environment is not loaded')

@@ -81,7 +81,7 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments }).collect())
       }
       else {
-        const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(suspend|resume|restart)$/.exec(pathname)
+        const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(pause|suspend|resume|restart)$/.exec(pathname)
         if (request.method === 'POST' && operation !== null) {
           const [componentId, action] = operation.slice(1)
           if (componentId === 'dsh-runtime' && action === 'restart' && deployments !== undefined) {

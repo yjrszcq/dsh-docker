@@ -1,0 +1,248 @@
+import assert from 'node:assert/strict'
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
+import { UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
+import { UserPluginJournal } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
+import { UserPluginSnapshots } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
+import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugin-manager/state.mjs'
+import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
+
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-user-plugin-transaction-'))
+  const dshHome = join(root, 'dsh')
+  const profileRoot = join(dshHome, 'profiles/web')
+  const stateRoot = join(root, 'platform/state/management')
+  const selectionPath = join(stateRoot, 'user-plugins.json')
+  const journalPath = join(stateRoot, 'user-plugin-transaction.json')
+  const snapshotsRoot = join(root, 'platform/store/snapshots/user-plugins')
+  await mkdir(join(profileRoot, 'node_modules'), { recursive: true })
+  await writeFile(join(profileRoot, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-web',
+    dependencies: { alpha: '1.0.0', beta: '1.0.0', gamma: '1.0.0' },
+    dsh: { profile: { bundles: ['alpha', 'beta'] } },
+  }))
+  await writeFile(join(profileRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+  for (const name of ['alpha', 'beta', 'gamma']) {
+    const installed = join(profileRoot, 'node_modules', name)
+    await mkdir(installed)
+    await writeFile(join(installed, 'package.json'), JSON.stringify({
+      name, version: '1.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    await writeFile(join(installed, 'cordis.patch.yml'), '[]\n')
+  }
+  const inventory = new UserPluginInventory({ dshHome, selectionPath })
+  const selectionStore = new UserPluginSelectionStore(selectionPath)
+  const journal = new UserPluginJournal(journalPath)
+  const snapshots = new UserPluginSnapshots({ root: snapshotsRoot, profileRoot })
+  return { root, dshHome, profileRoot, selectionPath, journal, snapshots, inventory, selectionStore }
+}
+
+function manager(value, overrides = {}) {
+  const calls = []
+  return {
+    calls,
+    value: new UserPluginTransactionManager({
+      inventory: value.inventory,
+      selectionStore: value.selectionStore,
+      snapshots: value.snapshots,
+      journal: value.journal,
+      pauseDsh: async () => { calls.push('pause') },
+      restartDsh: async () => { calls.push('restart') },
+      runPlugin: async details => { calls.push(['remove', details]) },
+      report: async message => { calls.push(['report', message]) },
+      ...overrides,
+    }),
+  }
+}
+
+test('snapshots and restores the complete Web Profile with hidden files, modes, and symlinks', async () => {
+  const value = await fixture()
+  await writeFile(join(value.profileRoot, '.hidden'), 'hidden\n')
+  await chmod(join(value.profileRoot, '.hidden'), 0o640)
+  await symlink('package.json', join(value.profileRoot, 'manifest-link'))
+  await value.snapshots.create('snapshot-one')
+  await rm(join(value.profileRoot, '.hidden'))
+  await writeFile(join(value.profileRoot, 'package.json'), '{}\n')
+  await value.snapshots.restore('snapshot-one')
+  assert.equal(await readFile(join(value.profileRoot, '.hidden'), 'utf8'), 'hidden\n')
+  assert.equal((await lstat(join(value.profileRoot, '.hidden'))).mode & 0o777, 0o640)
+  assert.equal(await readlink(join(value.profileRoot, 'manifest-link')), 'package.json')
+  assert.match(await readFile(join(value.profileRoot, 'package.json'), 'utf8'), /dsh-profile-web/)
+  await writeFile(join(value.snapshots.path('snapshot-one'), 'profile.tar.gz'), 'corrupt')
+  await assert.rejects(value.snapshots.inspect('snapshot-one'), /does not match/)
+})
+
+test('atomically applies ordered enable and disable actions around one DSH pause', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const transaction = manager(value)
+  const result = await transaction.value.apply({
+    taskId: 'task-enable-disable',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }, { name: 'gamma', action: 'enable' }],
+  })
+  assert.equal(result.status, 'success')
+  const manifest = JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8'))
+  assert.deepEqual(manifest.dsh.profile.bundles, ['beta', 'gamma'])
+  assert.deepEqual((await value.selectionStore.read()).disabled, [{ name: 'alpha', index: 0 }])
+  assert.deepEqual(result.inventory.plugins.map(plugin => [plugin.name, plugin.enabled]), [
+    ['alpha', false], ['beta', true], ['gamma', true],
+  ])
+  assert.equal((await value.journal.read()).phase, 'completed')
+  await assert.rejects(lstat(value.snapshots.path('task-enable-disable')), { code: 'ENOENT' })
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['pause', 'restart'])
+})
+
+test('restores the full Profile when an exact uninstall command fails before commit', async () => {
+  const value = await fixture()
+  const beforeBytes = await readFile(join(value.profileRoot, 'package.json'))
+  const before = await value.inventory.read()
+  const transaction = manager(value, {
+    runPlugin: async ({ name }) => {
+      await writeFile(join(value.profileRoot, 'package.json'), '{}\n')
+      throw new Error(`pnpm failed for ${name}`)
+    },
+  })
+  await assert.rejects(transaction.value.apply({
+    taskId: 'task-uninstall-failure',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'uninstall' }],
+  }), /pnpm failed/)
+  assert.deepEqual(await readFile(join(value.profileRoot, 'package.json')), beforeBytes)
+  assert.equal((await value.journal.read()).phase, 'failed')
+  assert.equal((await value.journal.read()).recoveryResult, 'success')
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['pause', 'restart'])
+})
+
+test('uninstalls one exact package name without exposing package-manager arguments', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const removals = []
+  const transaction = manager(value, {
+    runPlugin: async details => {
+      removals.push(details)
+      const manifestPath = join(value.profileRoot, 'package.json')
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+      delete manifest.dependencies[details.name]
+      manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== details.name)
+      await writeFile(manifestPath, JSON.stringify(manifest))
+      await writeFile(join(value.profileRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\npackages: {}\n')
+      await rm(join(value.profileRoot, 'node_modules', details.name), { recursive: true, force: true })
+    },
+  })
+  const result = await transaction.value.apply({
+    taskId: 'task-uninstall-success',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'uninstall' }],
+  })
+  assert.deepEqual(removals, [{ dshHome: value.dshHome, profile: 'web', name: 'alpha' }])
+  assert.equal(result.inventory.plugins.some(plugin => plugin.name === 'alpha'), false)
+})
+
+test('restarts unchanged DSH when the mandatory Profile snapshot cannot be created', async () => {
+  const value = await fixture()
+  const beforeBytes = await readFile(join(value.profileRoot, 'package.json'))
+  const before = await value.inventory.read()
+  const transaction = manager(value, {
+    snapshots: {
+      create: async () => { throw new Error('snapshot disk full') },
+      remove: async () => {},
+    },
+  })
+  await assert.rejects(transaction.value.apply({
+    taskId: 'task-snapshot-failure',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+  }), /snapshot disk full/)
+  assert.deepEqual(await readFile(join(value.profileRoot, 'package.json')), beforeBytes)
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['pause', 'restart'])
+  const journal = await value.journal.read()
+  assert.equal(journal.phase, 'failed')
+  assert.equal(journal.recoveryResult, 'success')
+})
+
+test('retains a committed plugin change when DSH still fails to restart', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const transaction = manager(value, { restartDsh: async () => { throw new Error('DSH remains broken') } })
+  await assert.rejects(transaction.value.apply({
+    taskId: 'task-restart-failure',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+  }), /DSH remains broken/)
+  const manifest = JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8'))
+  assert.deepEqual(manifest.dsh.profile.bundles, ['beta'])
+  const journal = await value.journal.read()
+  assert.equal(journal.phase, 'failed')
+  assert.equal(journal.recoveryResult, null)
+  await assert.rejects(lstat(value.snapshots.path('task-restart-failure')), { code: 'ENOENT' })
+})
+
+test('recovers an interrupted pre-commit mutation from its persisted snapshot', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  await value.journal.begin({
+    taskId: 'task-interrupted', revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+    selection: await value.selectionStore.snapshot(),
+  })
+  await value.journal.transition('paused')
+  await value.snapshots.create('task-interrupted')
+  await value.journal.transition('snapshotted', { snapshotId: 'task-interrupted' })
+  await value.journal.transition('mutating')
+  await writeFile(join(value.profileRoot, 'package.json'), '{}\n')
+  const transaction = manager(value)
+  const recovered = await transaction.value.recover()
+  assert.equal(recovered.phase, 'failed')
+  assert.equal(recovered.recoveryResult, 'success')
+  assert.match(await readFile(join(value.profileRoot, 'package.json'), 'utf8'), /dsh-profile-web/)
+  await assert.rejects(lstat(value.selectionPath), { code: 'ENOENT' })
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), ['restart'])
+})
+
+test('restores platform selection state when final Profile validation fails', async () => {
+  const value = await fixture()
+  await value.selectionStore.write({ schema: 1, disabled: [{ name: 'gamma', index: 2 }] })
+  const initial = await value.inventory.read()
+  let reads = 0
+  const inventory = Object.create(value.inventory)
+  inventory.read = async () => {
+    reads += 1
+    if (reads === 2) throw new Error('result validation failed')
+    return value.inventory.read()
+  }
+  const transaction = manager({ ...value, inventory })
+  await assert.rejects(transaction.value.apply({
+    taskId: 'task-selection-restore',
+    revision: initial.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+  }), /result validation failed/)
+  assert.deepEqual((await value.selectionStore.read()).disabled, [{ name: 'gamma', index: 2 }])
+  const manifest = JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8'))
+  assert.deepEqual(manifest.dsh.profile.bundles, ['alpha', 'beta'])
+})
+
+test('rejects stale revisions and reserved-name enablement before pausing DSH', async () => {
+  const value = await fixture()
+  const transaction = manager(value)
+  await assert.rejects(transaction.value.apply({
+    revision: `sha256:${'0'.repeat(64)}`,
+    actions: [{ name: 'alpha', action: 'disable' }],
+  }), error => error.code === 'REVISION_CONFLICT')
+  assert.deepEqual(transaction.calls, [])
+
+  const reserved = new UserPluginInventory({
+    dshHome: value.dshHome,
+    selectionPath: value.selectionPath,
+    systemPluginNames: async () => ['alpha'],
+  })
+  const reservedManager = manager({ ...value, inventory: reserved })
+  const current = await reserved.read()
+  await assert.rejects(reservedManager.value.apply({
+    revision: current.revision,
+    actions: [{ name: 'alpha', action: 'enable' }],
+  }), /cannot be enabled/)
+  assert.deepEqual(reservedManager.calls, [])
+})

@@ -228,6 +228,9 @@ test('suspends, resumes, and restarts one service while keeping other Environmen
   })
   await runner.start()
   await runner.suspend('dsh-runtime')
+  await runner.pause('dsh-runtime')
+  await runner.pause('dsh-runtime')
+  await assert.rejects(runner.pause('unknown-service'), /does not exist/)
   assert.deepEqual(runner.status().components.map(value => value.id), ['platform-management'])
   assert.equal((await runner.health()).healthy, false)
   await runner.resume('dsh-runtime')
@@ -303,6 +306,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     reload: async () => ({}),
     health: async () => ({ healthy: true, components: [] }),
     suspend: async id => { calls.push(['suspend', id]); return {} },
+    pause: async id => { calls.push(['pause', id]); return {} },
     resume: async id => { calls.push(['resume', id]); return {} },
     restart: async (id, options = {}) => {
       calls.push(['restart', id])
@@ -364,6 +368,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       id: 'platform-management', installed: true,
     }])
     await client.request('POST', '/v1/components/dsh-runtime/suspend')
+    await client.request('POST', '/v1/components/dsh-runtime/pause')
     await client.request('POST', '/v1/components/dsh-runtime/resume')
     await client.request('POST', '/v1/components/dsh-runtime/restart')
     assert.deepEqual(calls, [
@@ -371,6 +376,7 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['recover', 'platform-management', 'uninstall'],
       ['discard-system-plugins'],
       ['suspend', 'dsh-runtime'],
+      ['pause', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],
       ['prepare-system-plugins'],
@@ -425,6 +431,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     stop: async () => { calls.push(`${name}:stop`) },
     reload: async () => { calls.push(`${name}:reload`); return status },
     suspend: async id => { calls.push(`${name}:suspend:${id}`); return status },
+    pause: async id => { calls.push(`${name}:pause:${id}`); return status },
     resume: async id => { calls.push(`${name}:resume:${id}`); return status },
     restart: async id => { calls.push(`${name}:restart:${id}`); return status },
     health: async () => ({ healthy: true, components: status.components }),
@@ -442,6 +449,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
 
   await runtime.start()
   await runtime.suspend('dsh-runtime')
+  await runtime.pause('dsh-runtime')
   await runtime.resume('dsh-runtime')
   await runtime.restart('dsh-runtime')
   await runtime.reload()
@@ -453,6 +461,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     'control:start',
     'environment:start',
     'environment:suspend:dsh-runtime',
+    'environment:pause:dsh-runtime',
     'environment:resume:dsh-runtime',
     'environment:restart:dsh-runtime',
     'environment:reload',

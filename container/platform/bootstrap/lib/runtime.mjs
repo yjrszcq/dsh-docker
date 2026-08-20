@@ -114,6 +114,7 @@ export class BootstrapRuntime {
     return status
   }
   suspend(componentId) { return this.environment.suspend(componentId) }
+  pause(componentId) { return this.environment.pause(componentId, { allowMissing: componentId === 'dsh-runtime' }) }
   async resume(componentId, options) {
     if (componentId === 'dsh-runtime') {
       if (options?.skipValidation !== true) await this.validateDeployment()

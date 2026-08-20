@@ -16,8 +16,10 @@ test('creates state, store, cache, and logs without persistent runtime views', a
   await preparePersistentLayout(paths)
   for (const path of [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
+    paths.managementStateRoot,
     paths.objectsRoot, paths.bootstrapStoreRoot, paths.environmentsRoot, paths.pristineRoot,
-    paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.downloadsRoot, paths.logsRoot,
+    paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
+    paths.downloadsRoot, paths.logsRoot,
   ]) assert.equal((await lstat(path)).isDirectory(), true)
   await assert.rejects(lstat(paths.runRoot), { code: 'ENOENT' })
 })
