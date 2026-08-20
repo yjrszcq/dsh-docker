@@ -28,7 +28,6 @@
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名；密码为空时忽略 |
 | `DSH_PROXY_PASSWORD` | 空 | 可选 Gateway 密码；留空关闭认证 |
 | `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时使用的平台管理密码；留空进入临时密钥模式 |
-| `DSH_PLATFORM_PASSWORD_FILE` | 空 | 容器内密码文件路径；不能与 `DSH_PLATFORM_PASSWORD` 同时设置 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码 |
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
@@ -121,7 +120,7 @@ Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/ui/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码；也可用 `DSH_PLATFORM_PASSWORD_FILE` 指向容器内 Docker Secret 文件，两者不能同时设置。DSH 设置中的平台管理集成与独立页共用这个会话。
+`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/ui/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的平台管理集成与独立页共用这个会话。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 

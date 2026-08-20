@@ -13,7 +13,6 @@ function render(overrides = {}) {
     DSH_PROXY_USERNAME: '',
     DSH_PROXY_PASSWORD: '',
     DSH_PLATFORM_PASSWORD: '',
-    DSH_PLATFORM_PASSWORD_FILE: '',
     DSH_PROXY_POLYFILL: 'true',
     DSH_TELEMETRY_DISABLED: 'true',
     DSH_TRUSTED_HOSTS: '',
@@ -42,7 +41,6 @@ assert.equal(defaults.ports[0].published, '3000')
 assert.equal(defaults.environment.DSH_PROXY_USERNAME, '')
 assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
 assert.equal(defaults.environment.DSH_PLATFORM_PASSWORD, '')
-assert.equal(defaults.environment.DSH_PLATFORM_PASSWORD_FILE, '')
 assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')
 assert.equal(defaults.environment.DSH_TRUSTED_HOSTS, '')
 assert.equal(Object.hasOwn(defaults.environment, 'DSH_UPDATE_METADATA_URL'), false)
@@ -69,14 +67,9 @@ assert.equal(configured.ports[0].published, '4080')
 assert.equal(configured.environment.DSH_PROXY_USERNAME, 'compose-user')
 assert.equal(configured.environment.DSH_PROXY_PASSWORD, 'compose-secret')
 assert.equal(configured.environment.DSH_PLATFORM_PASSWORD, 'platform-secret')
-assert.equal(configured.environment.DSH_PLATFORM_PASSWORD_FILE, '')
 assert.equal(configured.environment.DSH_PROXY_POLYFILL, 'false')
 assert.equal(configured.environment.DSH_TELEMETRY_DISABLED, 'false')
 assert.equal(configured.environment.DSH_TRUSTED_HOSTS, '192.168.1.10,dsh.example:8443')
 assert.deepEqual(configured.group_add, ['dsh-sudo-false'])
-
-const secretFile = render({ DSH_PLATFORM_PASSWORD_FILE: '/run/secrets/platform-password' })
-assert.equal(secretFile.environment.DSH_PLATFORM_PASSWORD, '')
-assert.equal(secretFile.environment.DSH_PLATFORM_PASSWORD_FILE, '/run/secrets/platform-password')
 
 console.log('Compose configuration checks passed')

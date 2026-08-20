@@ -1,5 +1,4 @@
 import { UsageError } from './errors.mjs'
-import { readFile } from 'node:fs/promises'
 
 export function parseBoolean(name, value, fallback) {
   const resolved = value ?? String(fallback)
@@ -65,19 +64,7 @@ export function parseTrustedHosts(environment = process.env) {
 export async function loadConfig(environment = process.env) {
   const username = environment.DSH_PROXY_USERNAME ?? ''
   const password = environment.DSH_PROXY_PASSWORD ?? ''
-  const platformPasswordPath = environment.DSH_PLATFORM_PASSWORD_FILE?.trim() ?? ''
-  const configuredPlatformPassword = environment.DSH_PLATFORM_PASSWORD ?? ''
-  if (configuredPlatformPassword !== '' && platformPasswordPath !== '') {
-    throw new UsageError('DSH_PLATFORM_PASSWORD and DSH_PLATFORM_PASSWORD_FILE cannot both be set')
-  }
-  let platformPassword = configuredPlatformPassword
-  if (platformPasswordPath !== '') {
-    try {
-      platformPassword = (await readFile(platformPasswordPath, 'utf8')).replace(/\r?\n$/, '')
-    } catch (error) {
-      throw new UsageError(`DSH_PLATFORM_PASSWORD_FILE cannot be read: ${error instanceof Error ? error.message : 'unknown error'}`)
-    }
-  }
+  const platformPassword = environment.DSH_PLATFORM_PASSWORD ?? ''
   if (password !== '' && username.includes(':')) {
     throw new UsageError('DSH_PROXY_USERNAME cannot contain a colon when authentication is enabled')
   }

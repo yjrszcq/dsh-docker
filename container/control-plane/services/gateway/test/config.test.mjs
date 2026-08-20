@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 import {
   loadConfig,
@@ -85,15 +82,6 @@ test('loadConfig owns only Gateway settings', async () => {
   }), UsageError)
 })
 
-test('loadConfig accepts exactly one platform password source', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-password-'))
-  const path = join(root, 'password')
-  await writeFile(path, 'secret from file\n')
+test('loadConfig accepts a platform password', async () => {
   assert.equal((await loadConfig({ DSH_PLATFORM_PASSWORD: 'direct' })).platformPassword, 'direct')
-  assert.equal((await loadConfig({ DSH_PLATFORM_PASSWORD_FILE: path })).platformPassword, 'secret from file')
-  await assert.rejects(loadConfig({
-    DSH_PLATFORM_PASSWORD: 'direct',
-    DSH_PLATFORM_PASSWORD_FILE: path,
-  }), UsageError)
-  await assert.rejects(loadConfig({ DSH_PLATFORM_PASSWORD_FILE: join(root, 'missing') }), UsageError)
 })
