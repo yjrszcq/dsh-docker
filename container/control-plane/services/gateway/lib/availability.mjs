@@ -70,8 +70,22 @@ export function probeDsh({ host, port, timeoutMs = 750 }) {
   })
 }
 
-function language(headers) {
-  return /^zh(?:-|,|;|$)/i.test(headers['accept-language'] ?? '') ? 'zh' : 'en'
+function cookieLocale(cookie = '') {
+  for (const part of cookie.split(';')) {
+    const [name, value] = part.trim().split('=', 2)
+    if (name === 'dsh_locale' && (value === 'zh' || value === 'en')) return value
+  }
+  return undefined
+}
+
+export function language(headers) {
+  const saved = cookieLocale(headers.cookie)
+  if (saved !== undefined) return saved
+  for (const item of (headers['accept-language'] ?? '').split(',')) {
+    const primary = item.trim().split(';', 1)[0].split('-', 1)[0].toLowerCase()
+    if (primary === 'zh' || primary === 'en') return primary
+  }
+  return 'en'
 }
 
 export function stateMessage(state, headers = {}) {

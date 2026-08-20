@@ -37,6 +37,11 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /refresh\(\)\.then\(value => \{[\s\S]*void checkUpdates\(\)/)
   assert.match(source, /className: css\.checkSpinner/)
   assert.match(source, /changeChannel[\s\S]*void checkUpdates\(\)/)
+  assert.match(source, /ctx\.locale\.getLocale\(\)/)
+  assert.match(source, /ctx\.on\('locale\/change'/)
+  assert.match(source, /dsh_locale/)
+  assert.match(source, /localizedError\(update\.error, t\)/)
+  assert.match(source, /localizedHoldReason\(hold, t\)/)
   assert.match(source, /metadataUnavailable/)
   assert.match(source, /hasSupportedTarget/)
   assert.match(source, /update\.updateAvailable !== true/)
@@ -51,6 +56,9 @@ test('Update Console is embedded in the official settings.section slot', async (
   assert.match(source, /`env-\$\{String\(value\)\}`/)
   assert.equal((source.match(/detail: displayEnvironment/g) ?? []).length, 2)
   assert.doesNotMatch(source, /display\(update\.status\)/)
+  assert.match(source, /stable: '稳定', experimental: '实验'/)
+  assert.match(source, /}, t\(channel\)\)\)\)\)/)
+  assert.doesNotMatch(source, /回滚 previous|正式 Environment|恢复 Stable|立即回 Stable/)
   for (const status of ['idle', 'checking', 'planning', 'downloading', 'validating', 'switching', 'probation', 'success', 'failed']) {
     assert.match(source, new RegExp(`${status.replace('-', '\\-')}: ['"]status`))
   }

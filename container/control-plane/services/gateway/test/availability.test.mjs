@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import test from 'node:test'
-import { DshAvailability, availabilityPage } from '../lib/availability.mjs'
+import { DshAvailability, availabilityPage, language } from '../lib/availability.mjs'
 import { closeGatewayServer, createGatewayServer, READINESS_PATH } from '../lib/proxy.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
 
@@ -55,6 +55,14 @@ test('official-style holding page is self-contained and replaces the spinner wit
   assert.match(page, new RegExp(READINESS_PATH))
   assert.doesNotMatch(page, /spinner|Loading plugins/)
   assert.doesNotMatch(page, /letter-spacing:-/)
+})
+
+test('holding pages prefer the last DSH locale cookie over browser language', () => {
+  assert.equal(language({ cookie: 'theme=dark; dsh_locale=en', 'accept-language': 'zh-CN' }), 'en')
+  assert.equal(language({ cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), 'zh')
+  assert.equal(language({ cookie: 'dsh_locale=fr', 'accept-language': 'en-US' }), 'en')
+  assert.equal(language({ 'accept-language': 'fr-FR, zh-CN;q=0.8, en;q=0.5' }), 'zh')
+  assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), /平台正在恢复/)
 })
 
 test('cold start serves a holding page while API and WebSocket-shaped HTTP requests receive 503', async () => {

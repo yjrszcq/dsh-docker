@@ -19,6 +19,7 @@ const STATUS_LABELS = Object.freeze({
   failed: 'statusFailed',
 })
 const h = React.createElement
+const LOCALE_COOKIE = 'dsh_locale'
 
 export const inject = ['slots', 'locale']
 
@@ -30,10 +31,37 @@ function displayEnvironment(value) {
   return value === undefined || value === null || value === '' ? '-' : `env-${String(value)}`
 }
 
-function localTime(value) {
+function localTime(value, locale) {
   if (!value) return '-'
   const date = new Date(value)
-  return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleString()
+  return Number.isNaN(date.valueOf())
+    ? String(value)
+    : date.toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')
+}
+
+function updateOutcome(value, t) {
+  const key = {
+    none: 'outcomeNone', frozen: 'outcomeFrozen', held: 'outcomeHeld', blocked: 'outcomeBlocked',
+    stable: 'outcomeStable', experimental: 'outcomeExperimental',
+  }[value]
+  return key === undefined ? display(value) : t(key)
+}
+
+function localizedError(value, t) {
+  const message = value instanceof Error ? value.message : String(value)
+  if (t('localeCode') === 'en') return message
+  const httpStatus = message.match(/HTTP\s+(\d{3})/i)?.[1]
+  return httpStatus === undefined ? t('operationError') : `${t('requestError')}（HTTP ${httpStatus}）`
+}
+
+function localizedHoldReason(hold, t) {
+  if (t('localeCode') === 'en') return display(hold.reason)
+  return t(hold.type === 'combination' ? 'holdCombination' : 'holdVersion')
+}
+
+function persistLocale(locale) {
+  if (typeof document === 'undefined') return
+  document.cookie = `${LOCALE_COOKIE}=${locale}; Path=/; Max-Age=31536000; SameSite=Lax`
 }
 
 async function request(path, { method = 'GET', body } = {}) {
@@ -178,7 +206,7 @@ function UpdateConsoleEntry({ t }) {
             'aria-pressed': status?.updateChannel === channel,
             disabled: busy,
             onClick: () => { void changeChannel(channel) },
-          }, channel === 'stable' ? 'Stable' : 'Experimental')))),
+          }, t(channel))))),
       h('div', { className: `${css.versions} ${status?.updateChannel === 'experimental' ? css.experimentalVersions : ''}` },
         h(VersionCell, { label: t('current'), version: status?.current?.dsh, detail: displayEnvironment(status?.current?.environment) }),
         h(VersionCell, { label: t('supported'), version: status?.supported?.dsh, detail: displayEnvironment(status?.supported?.environment) }),
@@ -186,13 +214,13 @@ function UpdateConsoleEntry({ t }) {
           ? h(VersionCell, { label: t('upstream'), version: status?.upstream?.version, detail: t('officialNpm') })
           : null),
       notices.length > 0 ? h('p', { className: css.notice }, notices.join(' ')) : null,
-      error ? h('p', { className: css.error, role: 'alert' }, error) : null),
+      error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-actions-title' },
       h('div', { className: `${css.sectionHeading} ${css.actionHeading}` },
         h('div', null,
           h('h3', { id: 'platform-actions-title' }, t('actions')),
-          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt)}` : t('notChecked'))),
+          h('p', null, update.checkedAt ? `${t('lastChecked')} ${localTime(update.checkedAt, t('localeCode'))}` : t('notChecked'))),
         h('div', { className: css.actions },
           h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void checkUpdates() } },
             checkingUpdates ? h('span', { className: css.checkSpinner, 'aria-hidden': 'true' }) : null,
@@ -206,7 +234,7 @@ function UpdateConsoleEntry({ t }) {
             h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
             t(updateStatus)),
           updateActive ? h('output', null, `${String(progress)}%`) : null),
-        update.error || update.outcome ? h('p', null, display(update.error ?? update.outcome)) : null,
+        update.error || update.outcome ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
         updateActive ? h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
           h('span', { style: { width: `${String(progress)}%` } })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
@@ -214,11 +242,11 @@ function UpdateConsoleEntry({ t }) {
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
             h('strong', null, `${display(hold.dshVersion)}${hold.environmentVersion ? ` + ${displayEnvironment(hold.environmentVersion)}` : ''}`),
-            h('span', null, display(hold.reason))),
+            h('span', null, localizedHoldReason(hold, t))),
           h('button', { type: 'button', className: css.smallButton, disabled: busy, onClick: () => { void act('holds/retry', { method: 'POST', body: { id: hold.id } }) } }, t('retry'))))) : null,
       confirmStable ? h('div', { className: css.confirmation, role: 'alertdialog', 'aria-labelledby': 'return-stable-title' },
         h('h4', { id: 'return-stable-title' }, t('returnStableTitle')),
-        h('p', null, `${t('returnStableWarning')} ${localTime(rollbackPlan?.snapshot?.createdAt)}`),
+        h('p', null, `${t('returnStableWarning')} ${localTime(rollbackPlan?.snapshot?.createdAt, t('localeCode'))}`),
         h('label', null,
           h('input', { type: 'checkbox', checked: dataLossAccepted, onChange: event => setDataLossAccepted(event.target.checked) }),
           h('span', null, t('confirmDataLoss'))),
@@ -228,24 +256,33 @@ function UpdateConsoleEntry({ t }) {
 }
 
 export function apply(ctx) {
+  const syncLocaleCookie = snapshot => { persistLocale(snapshot.active) }
+  syncLocaleCookie(ctx.locale.getLocale())
+  ctx.on('locale/change', syncLocaleCookie)
   ctx.effect(() => ctx.locale.register('settings.dshPlatformUpdate', {
     zh: {
+      localeCode: 'zh',
       nav: '平台更新', title: '平台更新', intro: 'DSH Docker 运行与更新状态',
       channel: '更新通道', channelDetail: '正式环境保持不变，实验通道仅跟进上游 DSH。',
-      stable: 'Stable', experimental: 'Experimental', current: '当前版本', supported: '正式支持', upstream: '上游版本', officialNpm: '官方 npm',
-      actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚 previous', returnStable: '立即回 Stable', retry: '重试', progress: '更新进度',
+      stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
+      actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
+      outcomeNone: '当前已是最新版本', outcomeFrozen: '等待正式支持版本追上当前版本', outcomeHeld: '此版本已暂停更新', outcomeBlocked: '当前版本组合不可用', outcomeStable: '已切换到稳定版本', outcomeExperimental: '已切换到实验版本',
+      requestError: '请求失败', operationError: '操作失败，请查看容器日志。', holdVersion: '此版本更新失败，已暂停自动重试。', holdCombination: '此版本与正式环境组合不可用，已暂停自动重试。',
       metadataUnavailable: '正式更新信息暂未发布，请稍后再试。',
-      aheadOfStable: '当前版本领先正式支持版本，已冻结完整运行组合。', experimentalBlocked: '实验 DSH 与正式 Environment 组合不可用。',
-      returnStableTitle: '恢复 Stable 状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
+      aheadOfStable: '当前版本领先正式支持版本，已暂停完整运行组合更新。', experimentalBlocked: '实验 DSH 与正式环境组合不可用。',
+      returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
     },
     en: {
+      localeCode: 'en',
       nav: 'Platform Update', title: 'Platform Update', intro: 'DSH Docker runtime and update status',
       channel: 'Update channel', channelDetail: 'The production Environment stays fixed; Experimental follows upstream DSH only.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
+      outcomeNone: 'Already up to date', outcomeFrozen: 'Waiting for the supported release to catch up', outcomeHeld: 'This version is on hold', outcomeBlocked: 'This version combination is unavailable', outcomeStable: 'Switched to the Stable release', outcomeExperimental: 'Switched to the Experimental release',
+      requestError: 'Request failed', operationError: 'The operation failed. Check the container logs.', holdVersion: 'This version failed and automatic retries are on hold.', holdCombination: 'This version is incompatible with the production Environment and automatic retries are on hold.',
       metadataUnavailable: 'Signed update metadata has not been published yet. Try again later.',
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
