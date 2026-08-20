@@ -454,9 +454,15 @@ async function act(path, options) {
 
 async function checkUpdates(source = 'manual') {
   checking = true
+  clearError()
   if (status !== undefined) render(status)
   try {
-    return await act('check', { method: 'POST', body: { source } })
+    await api('check', { method: 'POST', body: { source } })
+    await loadStatus()
+    return true
+  } catch (error) {
+    showError(error)
+    return false
   } finally {
     checking = false
     if (status !== undefined) render(status)
@@ -639,6 +645,11 @@ function selectTab(tab) {
     button.setAttribute('aria-selected', String(active))
     button.tabIndex = active ? 0 : -1
     elements[`panel-${button.dataset.tab}`].hidden = !active
+  }
+  if (tab === 'maintenance' && autoScroll) {
+    window.requestAnimationFrame(() => {
+      elements['log-list'].scrollTop = elements['log-list'].scrollHeight
+    })
   }
 }
 

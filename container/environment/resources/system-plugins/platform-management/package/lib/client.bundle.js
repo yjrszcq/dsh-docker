@@ -224,11 +224,17 @@ function LogViewer({ active, t }) {
 
   useEffect(() => {
     if (!active || !autoScroll || listRef.current === null) return undefined
-    const frame = window.requestAnimationFrame(() => {
-      if (listRef.current !== null) listRef.current.scrollTop = listRef.current.scrollHeight
+    let layoutFrame
+    const visibilityFrame = window.requestAnimationFrame(() => {
+      layoutFrame = window.requestAnimationFrame(() => {
+        if (listRef.current !== null) listRef.current.scrollTop = listRef.current.scrollHeight
+      })
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [active, autoScroll, entries, level, query, source])
+    return () => {
+      window.cancelAnimationFrame(visibilityFrame)
+      if (layoutFrame !== undefined) window.cancelAnimationFrame(layoutFrame)
+    }
+  }, [active, autoScroll, displayLimit, entries, level, query, source])
 
   const clearLogView = () => {
     clearCutoff.current = latestLogCutoff(entries)
@@ -530,12 +536,18 @@ function PlatformManagement({ t }) {
 
   const checkUpdates = useCallback(async (source = 'manual') => {
     setChecking(true)
+    setError('')
     try {
-      return await act('check', { method: 'POST', body: { source } })
+      await request('check', { method: 'POST', body: { source } })
+      await refresh()
+      return true
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+      return false
     } finally {
       setChecking(false)
     }
-  }, [act])
+  }, [refresh])
 
   const changeChannel = useCallback(async channel => {
     if (await act('channel', { method: 'PUT', body: { channel } })) void checkUpdates('channel-change')
