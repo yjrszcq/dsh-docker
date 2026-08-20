@@ -502,25 +502,34 @@ function PlatformManagement({ t }) {
   const [confirmStable, setConfirmStable] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [dataLossAccepted, setDataLossAccepted] = useState(false)
-  const loading = useRef(false)
+  const statusLoad = useRef()
+  const statusLoadRevision = useRef(0)
   const requestedRestart = useRef(null)
 
-  const refresh = useCallback(async () => {
-    if (loading.current) return
-    loading.current = true
-    try {
-      const [value, bundled] = await Promise.all([request('status'), request('bundled-plugins')])
-      setStatus(value)
-      setPlugins(bundled.plugins ?? [])
-      setError('')
-      setConnection('online')
+  const refresh = useCallback(() => {
+    statusLoadRevision.current += 1
+    if (statusLoad.current !== undefined) return statusLoad.current
+    statusLoad.current = (async () => {
+      let value
+      let loadedRevision
+      do {
+        loadedRevision = statusLoadRevision.current
+        try {
+          const [nextStatus, bundled] = await Promise.all([request('status'), request('bundled-plugins')])
+          value = nextStatus
+          setStatus(nextStatus)
+          setPlugins(bundled.plugins ?? [])
+          setError('')
+          setConnection('online')
+        } catch (nextError) {
+          setError(nextError instanceof Error ? nextError.message : String(nextError))
+          setConnection('offline')
+          value = undefined
+        }
+      } while (loadedRevision !== statusLoadRevision.current)
       return value
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-      setConnection('offline')
-    } finally {
-      loading.current = false
-    }
+    })().finally(() => { statusLoad.current = undefined })
+    return statusLoad.current
   }, [])
 
   const act = useCallback(async (path, options) => {

@@ -164,6 +164,7 @@ let inventoriesLoaded = false
 const userPluginDraft = new Map()
 let rollbackPlan
 let statusLoad
+let statusLoadRevision = 0
 let inventoryLoad
 let checking = false
 let acting = false
@@ -612,20 +613,26 @@ function loadInventories() {
 }
 
 function loadStatus() {
+  statusLoadRevision += 1
   if (statusLoad !== undefined) return statusLoad
   statusLoad = (async () => {
-    try {
-      const next = await api('status')
-      render(next)
-      clearError()
-      setConnection('online')
-      void loadInventories()
-      return next
-    } catch (error) {
-      showError(error)
-      setConnection('offline')
-      return undefined
-    }
+    let next
+    let loadedRevision
+    do {
+      loadedRevision = statusLoadRevision
+      try {
+        next = await api('status')
+        render(next)
+        clearError()
+        setConnection('online')
+        void loadInventories()
+      } catch (error) {
+        showError(error)
+        setConnection('offline')
+        next = undefined
+      }
+    } while (loadedRevision !== statusLoadRevision)
+    return next
   })().finally(() => { statusLoad = undefined })
   return statusLoad
 }
