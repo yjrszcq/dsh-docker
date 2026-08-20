@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
-import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
+import { errorDetails, JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 
 test('writes source-separated JSONL and queries bounded chronological entries', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-logs-'))
@@ -126,4 +126,51 @@ test('passes a platform-management envelope through without persisting it twice'
   assert.deepEqual(await logs.query({ sources: ['audit'] }), [])
   const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
   assert.match(bootstrap, /acceptForwarded: source === 'platform-management'/)
+})
+
+test('records bounded structured error diagnostics in JSONL and container output', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-diagnostic-'))
+  const stdout = []
+  const logs = new JsonlLogManager({
+    root,
+    now: () => new Date('2026-08-20T00:00:00.000Z'),
+    output: { stdout: { write: value => stdout.push(value) } },
+  })
+  const cause = Object.assign(new Error('socket unavailable'), { code: 'ECONNREFUSED' })
+  const failure = new AggregateError([cause, 'secondary failure'], 'startup failed', { cause })
+  await logs.diagnostic('stage0', 'bootstrap.launch.failed', { error: failure, recordId: 'bootstrap-one' })
+
+  const [entry] = await logs.query({ sources: ['stage0'] })
+  assert.equal(entry.message, 'bootstrap.launch.failed')
+  assert.equal(entry.recordId, 'bootstrap-one')
+  assert.equal(entry.error, 'startup failed')
+  assert.equal(entry.errorCause.errorCode, 'ECONNREFUSED')
+  assert.equal(entry.errors[1].error, 'secondary failure')
+  assert.match(entry.errorStack, /AggregateError: startup failed/)
+  assert.equal(JSON.parse(stdout[0]).platformLog, 'dsh-platform-log-v1')
+})
+
+test('falls back to container stderr when a diagnostic cannot be persisted', async () => {
+  const stderr = []
+  const logs = new JsonlLogManager({
+    root: '/dev/null/not-a-directory',
+    now: () => new Date('2026-08-20T00:00:00.000Z'),
+    output: { stderr: { write: value => stderr.push(value) } },
+  })
+  await logs.diagnostic('updater', 'update.failed', { error: new Error('network failed'), taskId: 'one' })
+  const fallback = JSON.parse(stderr[0])
+  assert.equal(fallback.message, 'diagnostic.write.failed')
+  assert.equal(fallback.diagnostic.message, 'update.failed')
+  assert.equal(fallback.diagnostic.error, 'network failed')
+  assert.equal(fallback.loggingError.errorCode, 'ENOTDIR')
+})
+
+test('bounds recursive and oversized error details', () => {
+  let failure = new Error('root')
+  for (let index = 0; index < 6; index += 1) failure = new Error(`level-${String(index)}`, { cause: failure })
+  const details = errorDetails(new AggregateError(Array.from({ length: 10 }, (_, index) => new Error(String(index))), 'x'.repeat(20_000), { cause: failure }))
+  assert.equal(details.error.endsWith('...[truncated]'), true)
+  assert.equal(details.errors.length, 8)
+  assert.equal(details.errorsTruncated, 2)
+  assert.equal(details.errorCause.errorCause.errorCause.errorCause, undefined)
 })

@@ -7,6 +7,32 @@ const SOURCE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_ENTRY_BYTES = 64 * 1024
 const CONSOLE_MARKER = 'dsh-platform-log-v1'
 const LOG_LEVELS = new Set(['debug', 'info', 'warning', 'error'])
+const MAX_DIAGNOSTIC_STRING = 16 * 1024
+const MAX_ERROR_DEPTH = 3
+const MAX_AGGREGATE_ERRORS = 8
+
+function boundedString(value) {
+  const text = String(value)
+  return text.length <= MAX_DIAGNOSTIC_STRING ? text : `${text.slice(0, MAX_DIAGNOSTIC_STRING)}...[truncated]`
+}
+
+export function errorDetails(error, depth = 0) {
+  if (error === undefined || error === null) return {}
+  if (!(error instanceof Error)) return { error: boundedString(error), errorType: typeof error }
+  const details = {
+    error: boundedString(error.message || error.name),
+    errorName: boundedString(error.name),
+  }
+  if (typeof error.code === 'string' || typeof error.code === 'number') details.errorCode = error.code
+  if (typeof error.stack === 'string') details.errorStack = boundedString(error.stack)
+  if (depth >= MAX_ERROR_DEPTH) return details
+  if (error.cause !== undefined) details.errorCause = errorDetails(error.cause, depth + 1)
+  if (error instanceof AggregateError) {
+    details.errors = [...error.errors].slice(0, MAX_AGGREGATE_ERRORS).map(value => errorDetails(value, depth + 1))
+    if (error.errors.length > MAX_AGGREGATE_ERRORS) details.errorsTruncated = error.errors.length - MAX_AGGREGATE_ERRORS
+  }
+  return details
+}
 
 function validateSource(source) {
   if (typeof source !== 'string' || !SOURCE_PATTERN.test(source)) throw new Error('log source is invalid')
@@ -97,6 +123,27 @@ export class JsonlLogManager extends EventEmitter {
 
   audit(action, fields = {}) {
     return this.append('audit', 'audit', action, fields)
+  }
+
+  async diagnostic(source, message, { error, level = error === undefined ? 'info' : 'error', stream = 'platform', ...fields } = {}) {
+    const details = { ...fields, ...errorDetails(error), level }
+    try {
+      return await this.append(source, stream, message, details)
+    } catch (loggingError) {
+      try {
+        this.writeOutput('stderr', JSON.stringify({
+          timestamp: this.now().toISOString(),
+          source: 'log-manager',
+          stream: 'stderr',
+          level: 'error',
+          message: 'diagnostic.write.failed',
+          diagnostic: { source, stream, message, ...details },
+          loggingError: errorDetails(loggingError),
+          platformLog: CONSOLE_MARKER,
+        }))
+      } catch {}
+      return undefined
+    }
   }
 
   async files() {
