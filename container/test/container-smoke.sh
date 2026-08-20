@@ -90,6 +90,36 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     and .latestAutomatic == {"stable":null,"upstream":null}' >/dev/null
 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
+  | jq -e '.plugins == [{
+    "id":"platform-management",
+    "artifactId":"system-plugin-platform-management",
+    "sha256":.plugins[0].sha256,
+    "installed":true,
+    "enabled":true,
+    "protected":true,
+    "reason":null
+  }]' >/dev/null
+plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"id":"platform-management","action":"uninstall"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$plugin_task" \
+    '.systemPluginOperation.taskId == $task
+      and .systemPluginOperation.status == "failed"
+      and (.systemPluginOperation.error | contains("managed by the platform"))' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.2
+done
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
+  | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
+
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check \
