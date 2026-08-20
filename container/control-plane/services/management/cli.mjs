@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -22,7 +22,7 @@ export function parseCli(argv) {
   if (command === 'recover' && rest.length === 1 && rest[0] === '--image-baseline') {
     return { command, imageBaseline: true }
   }
-  if (command === 'update') {
+  if (command === 'update' || command === 'restart') {
     if (rest.some(value => value !== '--wait') || rest.filter(value => value === '--wait').length > 1) throw new Error(usage())
     return { command, wait: rest.includes('--wait') }
   }
@@ -137,6 +137,20 @@ export async function runCli({
       if (value.update.taskId === started.taskId && ['success', 'failed'].includes(value.update.status)) {
         write(JSON.stringify(value.update, null, 2))
         return value.update.status === 'success' ? 0 : 1
+      }
+      await delay(1_000)
+    }
+  }
+  if (parsed.command === 'restart') {
+    const started = await management.request('POST', `${API_PREFIX}/restart-dsh`)
+    write(JSON.stringify(started, null, 2))
+    if (!parsed.wait) return 0
+    for (;;) {
+      const value = await management.request('GET', `${API_PREFIX}/status`)
+      const restart = value.dshRestart
+      if (restart.taskId === started.taskId && ['success', 'failed'].includes(restart.status)) {
+        write(JSON.stringify(restart, null, 2))
+        return restart.status === 'success' ? 0 : 1
       }
       await delay(1_000)
     }

@@ -128,7 +128,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 Management checks every six hours with jitter but does not automatically download or activate. Platform Management in DSH settings uses the persistent Management API directly; the standalone console remains available at `/_dsh_platform/ui/`.
 
-The Runtime maintenance action restarts only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback.
+The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded Platform Management view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
 New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
 
@@ -136,6 +136,7 @@ New Platform and DSH log entries are also emitted as source-tagged JSON to conta
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform restart --wait
 docker exec deepseek-harness dsh-platform channel experimental
 docker exec deepseek-harness dsh-platform retry
 docker exec deepseek-harness dsh-platform logs --source updater

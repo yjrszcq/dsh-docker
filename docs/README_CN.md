@@ -128,7 +128,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 Management 每六小时带抖动检查一次，但不会自动下载或激活。DSH 设置中的“平台管理”直接使用常驻 Management API；独立控制台仍可通过 `/_dsh_platform/ui/` 访问。
 
-“运行维护”只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。
+“运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的平台管理界面会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
 平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
 
@@ -136,6 +136,7 @@ Management 每六小时带抖动检查一次，但不会自动下载或激活。
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform restart --wait
 docker exec deepseek-harness dsh-platform channel experimental
 docker exec deepseek-harness dsh-platform retry
 docker exec deepseek-harness dsh-platform logs --source updater

@@ -314,6 +314,51 @@ test('update wait ignores a terminal state from an older task', async () => {
   assert.match(output.at(-1), /new-task/)
 })
 
+test('restart CLI has a fixed DSH scope and waits only for its own task', async () => {
+  assert.deepEqual(parseCli(['restart']), { command: 'restart', wait: false })
+  assert.deepEqual(parseCli(['restart', '--wait']), { command: 'restart', wait: true })
+  assert.throws(() => parseCli(['restart', 'gateway']))
+  assert.throws(() => parseCli(['restart', '--component', 'gateway']))
+  const immediateCalls = []
+  assert.equal(await runCli({
+    argv: ['restart'],
+    management: {
+      request: async (method, path) => {
+        immediateCalls.push([method, path])
+        return { taskId: 'immediate-task' }
+      },
+    },
+    write: () => {},
+  }), 0)
+  assert.deepEqual(immediateCalls, [['POST', '/_dsh_platform/api/v1/restart-dsh']])
+  const output = []
+  const statuses = [
+    { dshRestart: { taskId: 'old-task', status: 'success' } },
+    { dshRestart: { taskId: 'restart-task', status: 'restarting' } },
+    { dshRestart: { taskId: 'restart-task', status: 'success' } },
+  ]
+  const calls = []
+  const management = {
+    request: async (method, path) => {
+      calls.push([method, path])
+      if (method === 'POST') return { taskId: 'restart-task' }
+      return statuses.shift()
+    },
+  }
+  let waits = 0
+  const exitCode = await runCli({
+    argv: ['restart', '--wait'],
+    management,
+    write: line => output.push(line),
+    delay: async () => { waits += 1 },
+  })
+  assert.equal(exitCode, 0)
+  assert.equal(waits, 2)
+  assert.deepEqual(calls[0], ['POST', '/_dsh_platform/api/v1/restart-dsh'])
+  assert.match(output[0], /restart-task/)
+  assert.match(output.at(-1), /success/)
+})
+
 test('CLI parses channel controls and refuses noninteractive Stable return', async () => {
   assert.deepEqual(parseCli(['channel', 'experimental']), { command: 'channel', channel: 'experimental' })
   assert.deepEqual(parseCli(['retry']), { command: 'retry' })

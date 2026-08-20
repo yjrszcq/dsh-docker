@@ -9,7 +9,7 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /\/data\/platform\/state\/updater\/transaction\.json/)
   assert.match(script, /\/data\/platform\/store\/snapshots/)
   assert.match(script, /recovery\.sock/)
-  assert.match(script, /\/_dsh_platform\/api\/v1\/restart-dsh/)
+  assert.match(script, /dsh-platform restart/)
   assert.match(script, /\.dshRestart\.taskId == \$task and \.dshRestart\.status == "success"/)
   assert.match(script, /stage0_pid/)
   assert.match(script, /dsh_pid/)

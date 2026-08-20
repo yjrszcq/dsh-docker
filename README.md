@@ -91,6 +91,7 @@ Useful commands:
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform restart --wait
 docker exec deepseek-harness dsh-platform rollback
 ```
 

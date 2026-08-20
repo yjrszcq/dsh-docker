@@ -110,9 +110,7 @@ bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/boots
 management_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')"
 gateway_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')"
 dsh_pid="$(docker exec "$container" pgrep -o -f '/run/dsh-platform/views/runtime/package/lib/bin.js web')"
-restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' --request POST \
-  http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
+restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
