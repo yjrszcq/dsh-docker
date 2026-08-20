@@ -150,7 +150,7 @@ The standalone console also lists System Plugins bundled by the current Environm
 
 ### Standalone Recovery Tools
 
-The **User Plugins** and **Terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The DSH Management Console integration inside DSH deliberately does not expose these two recovery tabs.
+The **User Plugins** and **Terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
 
 User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
 

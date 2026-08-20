@@ -107,6 +107,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /'aria-expanded': confirmRestart/)
   assert.match(source, /t\(confirmRestart \? 'cancelRestartDsh' : 'restartDsh'\)/)
   assert.match(source, /href: '\/_dsh_platform\/ui\/'[\s\S]*target: '_blank'[\s\S]*t\('openPlatformManagement'\)/)
+  assert.match(source, /nav: '平台管理', title: '平台管理'/)
+  assert.match(source, /nav: 'Platform Management', title: 'Platform Management'/)
   assert.match(source, /standaloneManagement: 'DSH 管理中心'/)
   assert.match(source, /standaloneManagement: 'DSH Management Console'/)
   assert.match(source, /restartDshSection: '重启 DSH'/)

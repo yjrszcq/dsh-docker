@@ -882,8 +882,8 @@ export function apply(ctx) {
   ctx.effect(() => ctx.locale.register('settings.dshPlatformManagement', {
     zh: {
       localeCode: 'zh',
-      nav: 'DSH 管理中心', title: 'DSH 管理中心', intro: 'DSH Docker 运行、更新与恢复',
-      managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件',
+      nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
+      managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件',
       platformAuthRequired: 'DSH 管理中心访问已锁定，请先完成独立验证。', platformSignIn: '验证管理中心访问',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
@@ -904,7 +904,7 @@ export function apply(ctx) {
     },
     en: {
       localeCode: 'en',
-      nav: 'DSH Management Console', title: 'DSH Management Console', intro: 'DSH Docker runtime, updates, and recovery',
+      nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins',
       platformAuthRequired: 'DSH Management Console is locked. Complete its separate sign-in first.', platformSignIn: 'Sign in to DSH Management Console',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
