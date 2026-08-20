@@ -84,10 +84,14 @@ export function createManagementServer({
   logs,
   platformStatus = async () => ({}),
   restartDsh = async () => { throw new Error('DSH restart is not configured') },
+  listBundledPlugins = async () => [],
+  reinstallBundledPlugin = async () => { throw new Error('System Plugin reinstall is not configured') },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
   let restartTask
+  let pluginTask
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
+  let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, error: null, updatedAt: null })
   let server
 
   const publishRestart = value => {
@@ -95,8 +99,41 @@ export function createManagementServer({
     server.emit('management-state', restartState)
   }
 
+  const publishPlugin = value => {
+    pluginState = Object.freeze({ ...pluginState, ...value, updatedAt: new Date().toISOString() })
+    server.emit('management-state', pluginState)
+  }
+
   const requireRuntimeIdle = () => {
     if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
+    if (pluginTask !== undefined) throw new UpdateConflictError('a bundled System Plugin is already being reinstalled')
+  }
+
+  const startPluginReinstall = pluginId => {
+    if (typeof pluginId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(pluginId)) {
+      throw new Error('System Plugin ID is invalid')
+    }
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    publishPlugin({ status: 'reinstalling', taskId, pluginId, error: null })
+    pluginTask = Promise.resolve()
+      .then(() => logs.audit('system-plugin.reinstall.started', { taskId, pluginId }).catch(() => {}))
+      .then(() => reinstallBundledPlugin(pluginId))
+      .then(
+        async () => {
+          publishPlugin({ status: 'success', taskId, pluginId, error: null })
+          await logs.audit('system-plugin.reinstall.completed', { taskId, pluginId }).catch(() => {})
+        },
+        async error => {
+          const message = error instanceof Error ? error.message : 'System Plugin reinstall failed'
+          publishPlugin({ status: 'failed', taskId, pluginId, error: message })
+          await logs.audit('system-plugin.reinstall.failed', { error: message, taskId, pluginId }).catch(() => {})
+        },
+      )
+      .finally(() => { pluginTask = undefined })
+    pluginTask.catch(() => {})
+    return { taskId }
   }
 
   const startRestart = () => {
@@ -134,7 +171,10 @@ export function createManagementServer({
           ...(await coordinator.publicStatus()),
           ...(await platformStatus()),
           dshRestart: restartState,
+          bundledPluginReinstall: pluginState,
         })
+      } else if (request.method === 'GET' && route === 'bundled-plugins') {
+        send(response, 200, { plugins: await listBundledPlugins() })
       } else if (request.method === 'POST' && route === 'check') {
         const target = await coordinator.check()
         send(response, 200, target.unavailable === true
@@ -158,6 +198,9 @@ export function createManagementServer({
       } else if (request.method === 'POST' && route === 'restart-dsh') {
         const task = startRestart()
         send(response, 202, task)
+      } else if (request.method === 'POST' && route === 'bundled-plugins/reinstall') {
+        const body = await jsonBody(request)
+        send(response, 202, startPluginReinstall(body.id))
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
         send(response, 200, await coordinator.setChannel(body.channel))

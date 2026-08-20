@@ -64,11 +64,42 @@ function renderHolds(values, busy) {
   }
 }
 
+function renderBundledPlugins(values, busy) {
+  elements['bundled-plugins'].replaceChildren()
+  for (const plugin of values) {
+    const row = document.createElement('div')
+    row.className = 'plugin-row'
+    const copy = document.createElement('div')
+    const name = document.createElement('strong')
+    name.textContent = plugin.id
+    const state = document.createElement('span')
+    state.textContent = plugin.installed ? '已安装' : '需要重新安装'
+    copy.append(name, state)
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.textContent = plugin.installed ? '重新安装' : '安装'
+    button.disabled = busy
+    button.addEventListener('click', () => act(() => api('bundled-plugins/reinstall', {
+      method: 'POST', body: { id: plugin.id },
+    })))
+    row.append(copy, button)
+    elements['bundled-plugins'].append(row)
+  }
+}
+
+function runtimeBusy(next) {
+  const update = next.update ?? {}
+  return !TERMINAL.has(update.status ?? 'idle')
+    || next.bundledPluginReinstall?.status === 'reinstalling'
+    || next.dshRestart?.status === 'restarting'
+}
+
 function render(next) {
   status = next
   rollbackPlan = next.rollbackPlan
   const update = next.update ?? {}
-  const busy = !TERMINAL.has(update.status ?? 'idle')
+  const pluginOperation = next.bundledPluginReinstall ?? {}
+  const busy = runtimeBusy(next)
   setText('current-dsh', next.current?.dsh)
   setText('current-env', next.current?.environment)
   setText('supported-dsh', next.supported?.dsh)
@@ -98,6 +129,12 @@ function render(next) {
   elements['return-stable'].disabled = busy
   const holds = [...(next.holds ?? []), ...(next.experimentalBlocked ? [next.experimentalBlocked] : [])]
   renderHolds([...new Map(holds.map(hold => [hold.id, hold])).values()], busy)
+  elements['plugin-operation'].hidden = pluginOperation.status === 'idle'
+  elements['plugin-operation'].textContent = pluginOperation.status === 'reinstalling'
+    ? `正在重新安装 ${display(pluginOperation.pluginId)} 并重启 DSH`
+    : pluginOperation.status === 'success'
+      ? `${display(pluginOperation.pluginId)} 已重新安装`
+      : pluginOperation.error ?? ''
   const notices = []
   if (next.aheadOfStable) notices.push('当前版本领先 Latest Supported，已冻结完整运行组合。')
   if (next.experimentalBlocked) notices.push('Experimental DSH 与正式 Environment 组合不可用。')
@@ -109,7 +146,9 @@ async function loadStatus() {
   if (loading) return
   loading = true
   try {
-    render(await api('status'))
+    const [next, bundled] = await Promise.all([api('status'), api('bundled-plugins')])
+    render(next)
+    renderBundledPlugins(bundled.plugins ?? [], runtimeBusy(next))
     clearError()
     setConnection('online', '已连接')
   } catch (error) {

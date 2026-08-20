@@ -158,10 +158,12 @@ test('bounded management and Console requests use the protected local socket ins
     assert.equal(upstreamRequests, 0)
     for (const [method, path] of [
       ['GET', '/_dsh_platform/api/v1/rollback-plan'],
+      ['GET', '/_dsh_platform/api/v1/bundled-plugins'],
       ['POST', '/_dsh_platform/api/v1/holds/retry'],
       ['POST', '/_dsh_platform/api/v1/rollback'],
       ['POST', '/_dsh_platform/api/v1/return-stable'],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
+      ['POST', '/_dsh_platform/api/v1/bundled-plugins/reinstall'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['GET', '/_dsh_platform/ui/'],
       ['HEAD', '/_dsh_platform/ui/style.css'],

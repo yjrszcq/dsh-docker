@@ -32,6 +32,7 @@ section:first-child { padding-top: 0; }
 .section-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 14px; min-height: 36px; }
 .section-heading h2 { font-size: 16px; letter-spacing: 0; margin: 0; }
 .section-heading time { color: #697480; font-size: 12px; }
+.section-copy { color: #697480; font-size: 13px; margin: 5px 0 0; }
 .segmented { display: inline-flex; }
 .segmented button { border-radius: 0; }
 .segmented button:first-child { border-radius: 6px 0 0 6px; }
@@ -66,6 +67,10 @@ section:first-child { padding-top: 0; }
 .details div:nth-child(odd) { margin-right: 24px; }
 .details dt { color: #697480; }
 .details dd { margin: 0; overflow-wrap: anywhere; }
+.plugin-list { border-top: 1px solid #d9dee4; }
+.plugin-row { align-items: center; border-bottom: 1px solid #d9dee4; display: flex; gap: 16px; justify-content: space-between; padding: 12px 0; }
+.plugin-row strong, .plugin-row span { display: block; overflow-wrap: anywhere; }
+.plugin-row span, .operation-result { color: #697480; font-size: 12px; margin-top: 3px; }
 
 .icon-button { font-weight: 700; height: 32px; min-height: 32px; padding: 0; width: 32px; }
 pre { background: #171b20; color: #dce2e8; font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.55; margin: 0; max-height: 320px; min-height: 150px; overflow: auto; padding: 14px; white-space: pre-wrap; }
@@ -82,7 +87,7 @@ dialog p { line-height: 1.55; }
   .topbar, section, dialog { background: #1d2227; border-color: #343b42; color: #e4e8ec; }
   button { background: #252b31; border-color: #4a535c; color: #e4e8ec; }
   button:hover:not(:disabled) { background: #2c333a; border-color: #75818c; }
-  .versions, .versions > div + div, .holds, .hold, .details div { border-color: #343b42; }
+  .versions, .versions > div + div, .holds, .hold, .details div, .plugin-list, .plugin-row { border-color: #343b42; }
   .progress { background: #343b42; }
   .error, button.danger-outline { color: #ef9c9c; }
 }

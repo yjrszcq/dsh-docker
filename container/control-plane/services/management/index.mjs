@@ -67,6 +67,8 @@ const server = createManagementServer({
     trust: await trust.status(),
   }),
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
+  listBundledPlugins: async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins,
+  reinstallBundledPlugin: id => bootstrap.request('POST', '/v1/system-plugins/reinstall', { id }),
 })
 await listenManagement(server, paths.managementSocket)
 const scheduler = new UpdateScheduler({

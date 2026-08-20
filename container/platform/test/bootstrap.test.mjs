@@ -207,16 +207,30 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
     exclusive: operation => operation(),
     setOperation: async operation => { calls.push(['operation', operation]) },
   }
-  const server = createBootstrapControl(runner, { deployments })
+  const systemPlugins = {
+    list: async () => [{ id: 'platform-management', installed: true }],
+    reinstall: async id => {
+      calls.push(['reinstall', id])
+      return [{ id, installed: true }]
+    },
+  }
+  const server = createBootstrapControl(runner, { deployments, systemPlugins })
   const socket = join(root, 'run', 'bootstrap.sock')
   await listenBootstrapControl(server, socket)
   const client = new LocalApiClient(socket)
   try {
     assert.equal((await client.request('GET', '/v1/health')).healthy, true)
+    assert.deepEqual((await client.request('GET', '/v1/system-plugins')).plugins, [{
+      id: 'platform-management', installed: true,
+    }])
+    assert.deepEqual((await client.request('POST', '/v1/system-plugins/reinstall', {
+      id: 'platform-management',
+    })).plugins, [{ id: 'platform-management', installed: true }])
     await client.request('POST', '/v1/components/dsh-runtime/suspend')
     await client.request('POST', '/v1/components/dsh-runtime/resume')
     await client.request('POST', '/v1/components/dsh-runtime/restart')
     assert.deepEqual(calls, [
+      ['reinstall', 'platform-management'],
       ['suspend', 'dsh-runtime'],
       ['resume', 'dsh-runtime'],
       ['operation', 'restarting'],

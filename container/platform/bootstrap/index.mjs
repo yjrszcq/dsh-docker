@@ -10,7 +10,12 @@ import { PlatformPaths } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 import { DeploymentManager } from './lib/deployments.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
-import { linkSystemPluginScope } from '../../control-plane/modules/system-plugin-manager/index.mjs'
+import {
+  linkSystemPluginScope,
+  listBundledSystemPlugins,
+  rebuildBundledSystemPluginView,
+} from '../../control-plane/modules/system-plugin-manager/index.mjs'
+import { replaceSystemPluginView } from '../lib/paths.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -62,7 +67,39 @@ const environment = new EnvironmentRunner({
   capture,
 })
 const runtime = new BootstrapRuntime({ controlPlane, environment })
-const server = createBootstrapControl(runtime, { deployments, trust })
+const systemPlugins = {
+  list: async () => {
+    const state = await deployments.state()
+    if (state.current === null) return []
+    const resolved = await deployments.resolveRecord(state.current)
+    return listBundledSystemPlugins({
+      environmentRoot: resolved.paths.environment,
+      viewRoot: join(paths.viewsRoot, 'system-plugins'),
+    })
+  },
+  reinstall: pluginId => deployments.exclusive(async () => {
+    const state = await deployments.state()
+    if (state.current === null) throw new Error('no current Deployment exists')
+    const resolved = await deployments.resolveRecord(state.current)
+    await deployments.setOperation('restarting')
+    try {
+      const repaired = await rebuildBundledSystemPluginView({
+        environmentRoot: resolved.paths.environment,
+        outputRoot: paths.systemPluginViewsRoot,
+        expectedSha256: resolved.record.systemPlugins.sha256,
+        requestedPluginId: pluginId,
+      })
+      await replaceSystemPluginView(paths, repaired)
+      await runtime.restart('dsh-runtime')
+      await deployments.setOperation(null)
+      return systemPlugins.list()
+    } catch (error) {
+      await deployments.setOperation('restart-failed').catch(() => {})
+      throw error
+    }
+  }),
+}
+const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins })
 await listenBootstrapControl(server, paths.bootstrapSocket)
 let imageCandidateHealthy = true
 try {
