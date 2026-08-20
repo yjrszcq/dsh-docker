@@ -148,6 +148,8 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/services/management/node_modules/@xterm/xterm/lib/xterm.mjs',
     'control-plane/services/management/node_modules/@xterm/xterm/css/xterm.css',
     'control-plane/services/management/node_modules/@xterm/addon-fit/lib/addon-fit.mjs',
+    'control-plane/services/management/terminal/pty-helper.py',
+    'control-plane/services/management/terminal/sessions.mjs',
   ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
   assert.equal(bootstrapEntries.some(name => name.endsWith('.node')), false)
 

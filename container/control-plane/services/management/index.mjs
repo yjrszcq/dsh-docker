@@ -26,6 +26,7 @@ import { UserPluginJournal } from '../../modules/user-plugin-manager/journal.mjs
 import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/transaction.mjs'
+import { TerminalSessionManager } from './terminal/sessions.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -119,6 +120,11 @@ const scheduler = new UpdateScheduler({
   check: () => coordinator.check('automatic'),
   onError: error => logs.diagnostic('updater', 'update.automatic-check.failed', { error }),
 })
+const terminalSessions = new TerminalSessionManager({
+  cwd: '/workspace',
+  dshHome,
+  report: (message, fields) => logs.diagnostic('terminal', message, fields),
+})
 const server = createManagementServer({
   coordinator,
   logs,
@@ -152,6 +158,7 @@ const server = createManagementServer({
     }
   } : undefined,
   settingsDocument,
+  terminalSessions,
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)
@@ -188,7 +195,8 @@ const stop = signal => {
   if (stopping) return
   stopping = true
   scheduler.stop()
-  void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(() => {
+  void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(async () => {
+    await terminalSessions.shutdown()
     server.close(() => {
       void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
     })

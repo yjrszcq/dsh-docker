@@ -8,6 +8,8 @@ import { MAX_SETTINGS_DOCUMENT_BYTES, SettingsDocumentConflictError } from './se
 export const API_PREFIX = '/_dsh_platform/api/v1/'
 export const CONSOLE_PREFIX = '/_dsh_platform/ui/'
 const MAX_BODY_BYTES = 16 * 1024
+const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
 const CONSOLE_ASSETS = new Map([
   ['', ['index.html', 'text/html; charset=utf-8']],
   ['app.js', ['app.js', 'text/javascript; charset=utf-8']],
@@ -96,6 +98,12 @@ export function createManagementServer({
   initialUserPluginTransaction,
   settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
+  terminalSessions = {
+    create: () => { throw new Error('terminal sessions are not configured') },
+    status: () => { throw new Error('terminal sessions are not configured') },
+    close: () => { throw new Error('terminal sessions are not configured') },
+    upgrade: (_request, socket) => socket.destroy(),
+  },
   consoleRoot = join(import.meta.dirname, 'public'),
 }) {
   let restartTask
@@ -268,6 +276,12 @@ export function createManagementServer({
           throw error
         }
         send(response, 200, task)
+      } else if (request.method === 'POST' && route === 'terminal/sessions') {
+        send(response, 201, terminalSessions.create(await jsonBody(request)))
+      } else if (request.method === 'GET' && TERMINAL_SESSION_ROUTE.test(route)) {
+        send(response, 200, terminalSessions.status(TERMINAL_SESSION_ROUTE.exec(route)[1]))
+      } else if (request.method === 'DELETE' && TERMINAL_SESSION_ROUTE.test(route)) {
+        send(response, 200, terminalSessions.close(TERMINAL_SESSION_ROUTE.exec(route)[1]))
       } else if (request.method === 'GET' && route === 'settings-document') {
         if (settingsDocument === undefined) throw new Error('settings document editing is not configured')
         send(response, 200, await settingsDocument.read())
@@ -390,7 +404,7 @@ export function createManagementServer({
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
       const conflict = error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError
-        || error?.code === 'REVISION_CONFLICT'
+        || error?.code === 'REVISION_CONFLICT' || error?.statusCode === 409
       await logs.diagnostic('platform-management', 'management.request.failed', {
         error,
         level: conflict ? 'warning' : 'error',
@@ -400,6 +414,23 @@ export function createManagementServer({
       send(response, conflict ? 409 : (error?.statusCode ?? 400), {
         error: error instanceof Error ? error.message : 'management request failed',
       })
+    }
+  })
+  server.on('upgrade', (request, socket, head) => {
+    let pathname = 'invalid-url'
+    try {
+      pathname = new URL(request.url ?? '/', 'http://management.internal').pathname
+      if (!pathname.startsWith(API_PREFIX)) throw new Error('not found')
+      const match = TERMINAL_STREAM_ROUTE.exec(pathname.slice(API_PREFIX.length))
+      if (match === null) throw new Error('not found')
+      terminalSessions.upgrade(request, socket, head, match[1])
+    } catch (error) {
+      void logs.diagnostic('platform-management', 'management.terminal-upgrade.failed', {
+        error,
+        level: error?.statusCode === 404 ? 'warning' : 'error',
+        pathname,
+      })
+      if (!socket.destroyed) socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
     }
   })
   if (recoverUserPluginTransaction !== undefined) server.once('listening', () => {

@@ -238,6 +238,8 @@ test('bounded management and Console requests use the protected local socket ins
       ['GET', '/_dsh_platform/api/v1/settings-document'],
       ['GET', '/_dsh_platform/api/v1/user-plugins'],
       ['GET', '/_dsh_platform/api/v1/user-plugins/task/123e4567-e89b-42d3-a456-426614174000'],
+      ['GET', '/_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000'],
+      ['DELETE', '/_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000'],
       ['POST', '/_dsh_platform/api/v1/holds/retry'],
       ['POST', '/_dsh_platform/api/v1/rollback'],
       ['POST', '/_dsh_platform/api/v1/return-stable'],
@@ -246,6 +248,7 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/toggle'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/recovery-action'],
       ['POST', '/_dsh_platform/api/v1/user-plugins/apply'],
+      ['POST', '/_dsh_platform/api/v1/terminal/sessions'],
       ['PUT', '/_dsh_platform/api/v1/channel'],
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],
       ['PUT', '/_dsh_platform/api/v1/settings-document'],
@@ -258,6 +261,7 @@ test('bounded management and Console requests use the protected local socket ins
     }
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/user-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/terminal/sessions/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal(upstreamRequests, 0)
   } finally {
@@ -377,5 +381,80 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
       closeGatewayServer(gateway),
       new Promise(resolve => upstream.close(resolve)),
     ])
+  }
+})
+
+test('only exact terminal WebSocket upgrades reach the Management Unix socket', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-terminal-'))
+  const socketPath = join(root, 'management.sock')
+  const management = createServer()
+  let seenHeaders
+  let upgradedSocket
+  management.on('upgrade', (incoming, socket) => {
+    seenHeaders = incoming.headers
+    upgradedSocket = socket
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    socket.on('data', data => socket.write(data))
+  })
+  await new Promise((resolve, reject) => {
+    management.once('error', reject)
+    management.listen(socketPath, resolve)
+  })
+  const upstream = createServer((_incoming, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    managementSocketPath: socketPath,
+    upstreamPort,
+  })
+  const gatewayPort = await listen(gateway)
+  const client = netConnect(gatewayPort, '127.0.0.1')
+  try {
+    await new Promise((resolve, reject) => {
+      client.once('connect', resolve)
+      client.once('error', reject)
+    })
+    client.write([
+      'GET /_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000/stream HTTP/1.1',
+      'Host: dsh.example',
+      'Origin: https://dsh.example',
+      'Connection: Upgrade',
+      'Upgrade: websocket',
+      'Sec-WebSocket-Key: dGVzdA==',
+      'Sec-WebSocket-Version: 13',
+      '',
+      '',
+    ].join('\r\n'))
+    let received = ''
+    await new Promise((resolve, reject) => {
+      const onData = chunk => {
+        received += chunk.toString('utf8')
+        if (received.includes('\r\n\r\n')) {
+          client.off('data', onData)
+          resolve()
+        }
+      }
+      client.on('data', onData)
+      client.once('error', reject)
+    })
+    assert.match(received, /^HTTP\/1\.1 101/)
+    assert.equal(seenHeaders.host, INTERNAL_AUTHORITY)
+    assert.equal(seenHeaders.origin, `http://${INTERNAL_AUTHORITY}`)
+    client.write('terminal-ping')
+    assert.equal(await new Promise(resolve => client.once('data', data => resolve(data.toString()))), 'terminal-ping')
+
+    const rejected = netConnect(gatewayPort, '127.0.0.1')
+    await new Promise((resolve, reject) => {
+      rejected.once('connect', resolve)
+      rejected.once('error', reject)
+    })
+    rejected.write('GET /_dsh_platform/api/v1/events HTTP/1.1\r\nHost: dsh.example\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    const rejectedResponse = await new Promise(resolve => rejected.once('data', data => resolve(data.toString())))
+    assert.match(rejectedResponse, /^HTTP\/1\.1 400 Bad Request/)
+    rejected.destroy()
+  } finally {
+    client.destroy()
+    upgradedSocket?.destroy()
+    await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
   }
 })

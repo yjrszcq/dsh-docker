@@ -30,6 +30,8 @@ export async function verifyManagementDependencies(rootArg) {
     'node_modules/@xterm/xterm/lib/xterm.mjs',
     'node_modules/@xterm/xterm/css/xterm.css',
     'node_modules/@xterm/addon-fit/lib/addon-fit.mjs',
+    'terminal/pty-helper.py',
+    'terminal/sessions.mjs',
   ]) await requireFile(root, path)
   const entries = await readdir(join(root, 'node_modules'), { recursive: true, withFileTypes: true })
   const native = entries.find(entry => entry.isFile() && entry.name.endsWith('.node'))

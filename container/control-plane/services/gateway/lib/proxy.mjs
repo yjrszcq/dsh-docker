@@ -17,9 +17,11 @@ export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document', 'user-plugins'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'user-plugins/apply'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'user-plugins/apply', 'terminal/sessions'])],
   ['PUT', new Set(['channel', 'automatic-check', 'settings-document'])],
 ])
+const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
 const SYSTEM_PLUGIN_BUNDLE = /^\/plugins\/@dsh-docker\/([a-z0-9][a-z0-9._-]{0,127})\/client\.js$/
@@ -284,6 +286,7 @@ function isExternalManagementRoute(method, pathname) {
   if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
   const route = pathname.slice(MANAGEMENT_PREFIX.length)
   if (method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) return true
+  if (['GET', 'DELETE'].includes(method ?? 'GET') && TERMINAL_SESSION_ROUTE.test(route)) return true
   return EXTERNAL_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(route) ?? false
 }
 
@@ -306,33 +309,39 @@ function serializeUpgradeRequest(request, headers) {
 
 function proxyUpgrade(request, clientSocket, head, options) {
   const context = requestContext(request)
+  const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
+  const failureKey = `${upstreamType}-websocket`
   const headers = upstreamRequestHeaders(request.headers)
   headers.connection = 'Upgrade'
   headers.upgrade = request.headers.upgrade ?? 'websocket'
-  const upstreamSocket = netConnect(options.upstreamPort, options.upstreamHost)
+  const upstreamSocket = options.socketPath === undefined
+    ? netConnect(options.upstreamPort, options.upstreamHost)
+    : netConnect(options.socketPath)
   let connected = false
 
   upstreamSocket.once('connect', () => {
     connected = true
-    options.reportRecovered('dsh-websocket', 'gateway.websocket.recovered', { upstream: 'dsh' })
-    options.availability.observe(true)
+    options.reportRecovered(failureKey, 'gateway.websocket.recovered', { upstream: upstreamType })
+    if (upstreamType === 'dsh') options.availability.observe(true)
     upstreamSocket.write(serializeUpgradeRequest(request, headers))
     if (head.length > 0) upstreamSocket.write(head)
     clientSocket.pipe(upstreamSocket).pipe(clientSocket)
   })
   upstreamSocket.once('error', error => {
-    options.reportFailure('dsh-websocket', connected ? 'gateway.websocket.disconnected' : 'gateway.websocket.failed', {
+    options.reportFailure(failureKey, connected ? 'gateway.websocket.disconnected' : 'gateway.websocket.failed', {
       ...context,
       error,
       level: connected ? 'warning' : 'error',
-      upstream: 'dsh',
+      upstream: upstreamType,
     })
     if (!connected) {
-      options.availability.observe(false)
-      void unavailableState(options).then(state => {
-        if (state === 'unknown') rejectUpgrade(clientSocket, 502, 'Bad Gateway')
-        else rejectUpgrade(clientSocket, 503, 'Service Unavailable')
-      })
+      if (upstreamType === 'dsh') {
+        options.availability.observe(false)
+        void unavailableState(options).then(state => {
+          if (state === 'unknown') rejectUpgrade(clientSocket, 502, 'Bad Gateway')
+          else rejectUpgrade(clientSocket, 503, 'Service Unavailable')
+        })
+      } else rejectUpgrade(clientSocket, 502, 'Bad Gateway')
     }
     else clientSocket.destroy()
   })
@@ -454,6 +463,12 @@ export function createGatewayServer({
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+      if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
+        upgradedSockets.add(socket)
+        socket.once('close', () => upgradedSockets.delete(socket))
+        proxyUpgrade(request, socket, head, { ...options, socketPath: options.managementSocketPath })
+        return
+      }
       if (pathname.startsWith(MANAGEMENT_PREFIX)) {
         rejectUpgrade(socket, 400, 'Bad Request')
         return
