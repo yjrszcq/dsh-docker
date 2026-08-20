@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, mkdir, readFile, readlink, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -147,6 +147,14 @@ test('rebuilds a bundled System Plugin view only from the current Environment ar
     installed: true,
     reason: null,
   }])
+  await rm(join(rebuilt, 'packages', 'platform-management'), { recursive: true })
+  const repairedAgain = await rebuildBundledSystemPluginView({
+    environmentRoot: environment,
+    outputRoot: join(root, 'views'),
+    expectedSha256,
+    requestedPluginId: 'platform-management',
+  })
+  assert.equal(await hashTree(repairedAgain), expectedSha256)
   await assert.rejects(rebuildBundledSystemPluginView({
     environmentRoot: environment,
     outputRoot: join(root, 'views'),

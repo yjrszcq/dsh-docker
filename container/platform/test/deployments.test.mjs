@@ -124,6 +124,7 @@ test('initializes an Image Deployment through one atomic runtime view', async ()
     await readlink(join(context.paths.viewsRoot, 'system-plugins')),
     join(context.paths.deploymentView, 'system-plugins'),
   )
+  assert.equal((await context.manager.selected()).record.id, context.image.id)
   const status = await context.manager.publishStatus()
   assert.equal(status.platformLayout, 1)
   assert.equal(status.imageBaseline.imageBuildId, context.inventory.imageBuildId)

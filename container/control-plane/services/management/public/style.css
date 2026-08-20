@@ -69,6 +69,8 @@ section:first-child { padding-top: 0; }
 .details dd { margin: 0; overflow-wrap: anywhere; }
 .plugin-list { border-top: 1px solid #d9dee4; }
 .plugin-row { align-items: center; border-bottom: 1px solid #d9dee4; display: flex; gap: 16px; justify-content: space-between; padding: 12px 0; }
+.plugin-row > div { min-width: 0; }
+.plugin-row button { flex: 0 0 auto; }
 .plugin-row strong, .plugin-row span { display: block; overflow-wrap: anywhere; }
 .plugin-row span, .operation-result { color: #697480; font-size: 12px; margin-top: 3px; }
 

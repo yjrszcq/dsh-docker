@@ -161,9 +161,10 @@ export async function rebuildBundledSystemPluginView({
   try {
     const details = await lstat(destination)
     if (!details.isDirectory() || details.isSymbolicLink() || await hashTree(destination) !== expectedSha256) {
-      throw new Error('existing System Plugin repair view conflicts with the current Deployment')
+      await rm(destination, { recursive: true, force: true })
+    } else {
+      return destination
     }
-    return destination
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
   }

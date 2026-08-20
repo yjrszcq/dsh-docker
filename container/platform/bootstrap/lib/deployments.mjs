@@ -181,6 +181,11 @@ export class DeploymentManager {
     return Object.freeze({ record, paths: Object.freeze(Object.fromEntries(entries)) })
   }
 
+  async selected() {
+    const recordId = this.selectedRecordId ?? (await this.state()).current
+    return recordId === null ? null : this.resolveRecord(recordId)
+  }
+
   async prepareView(recordId) {
     const resolved = await this.resolveRecord(recordId)
     const destination = join(this.paths.deploymentViewsRoot, recordId)
@@ -203,6 +208,7 @@ export class DeploymentManager {
     const candidate = await this.prepareView(recordId)
     await replaceDeploymentView(this.paths, candidate.view)
     await replaceSystemPluginView(this.paths)
+    this.selectedRecordId = recordId
     return candidate
   }
 

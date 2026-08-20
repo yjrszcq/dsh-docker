@@ -69,18 +69,16 @@ const environment = new EnvironmentRunner({
 const runtime = new BootstrapRuntime({ controlPlane, environment })
 const systemPlugins = {
   list: async () => {
-    const state = await deployments.state()
-    if (state.current === null) return []
-    const resolved = await deployments.resolveRecord(state.current)
+    const resolved = await deployments.selected()
+    if (resolved === null) return []
     return listBundledSystemPlugins({
       environmentRoot: resolved.paths.environment,
       viewRoot: join(paths.viewsRoot, 'system-plugins'),
     })
   },
   reinstall: pluginId => deployments.exclusive(async () => {
-    const state = await deployments.state()
-    if (state.current === null) throw new Error('no current Deployment exists')
-    const resolved = await deployments.resolveRecord(state.current)
+    const resolved = await deployments.selected()
+    if (resolved === null) throw new Error('no Deployment is selected')
     await deployments.setOperation('restarting')
     try {
       const repaired = await rebuildBundledSystemPluginView({
