@@ -23,9 +23,11 @@ const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
 const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
 const TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'
+const LANGUAGE_KEY = 'dsh-platform:console-language'
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
+    switchLanguage: '切换为英文',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
@@ -97,6 +99,7 @@ const COPY = Object.freeze({
   }),
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
+    switchLanguage: 'Switch to Chinese',
     managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
@@ -168,7 +171,9 @@ const COPY = Object.freeze({
   }),
 })
 
-function cookieLocale() {
+function preferredLocale() {
+  const override = storageValue(LANGUAGE_KEY)
+  if (override === 'zh' || override === 'en') return override
   for (const part of document.cookie.split(';')) {
     const [name, value] = part.trim().split('=', 2)
     if (name === 'dsh_locale' && (value === 'zh' || value === 'en')) return value
@@ -180,7 +185,7 @@ function cookieLocale() {
   return 'en'
 }
 
-const locale = cookieLocale()
+const locale = preferredLocale()
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]))
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
@@ -272,6 +277,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n-aria-label]')) node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel))
   for (const node of document.querySelectorAll('[data-i18n-title]')) node.setAttribute('title', t(node.dataset.i18nTitle))
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
+  elements['language-switch'].textContent = locale === 'zh' ? 'EN' : '中文'
 }
 
 function display(value) {
@@ -1802,6 +1808,12 @@ elements['confirm-stable'].addEventListener('click', async () => {
 elements['automatic-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ enabled: event.target.checked }) })
 elements['automatic-interval'].addEventListener('change', event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) })
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
+elements['language-switch'].addEventListener('click', () => {
+  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return
+  fileEditorDirty = false
+  writeStorage(LANGUAGE_KEY, locale === 'zh' ? 'en' : 'zh')
+  window.location.reload()
+})
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))

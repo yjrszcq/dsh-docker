@@ -53,6 +53,9 @@ button { letter-spacing: 0; }
 .brand strong, .brand span { display: block; }
 .brand strong { font-size: 14px; line-height: 20px; font-weight: 600; }
 .brand div > span { color: var(--muted); font-size: 11px; line-height: 16px; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; flex: none; }
+.language-switch { min-width: 36px; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: transparent; font-size: 11px; line-height: 26px; cursor: pointer; }
+.language-switch:hover { background: var(--hover); }
 
 .connection, .log-connection {
   display: inline-flex;
