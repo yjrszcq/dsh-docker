@@ -6,6 +6,13 @@
 
 > DeepSeek Harness 目前处于 Developer Preview，可能出现不兼容更新。本项目不隶属于 DeepSeek AI。
 
+## 使用前须知
+
+- **目录权限：** bind mount 的 `data/dsh`、`data/platform` 和 `workspace` 必须允许容器 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
+- **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。即使关闭 Agent sudo，独立管理中心的终端和文件管理仍始终以容器 Root 身份运行。
+- **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
+- **远程访问：** 允许局域网或互联网访问前，必须配置强密码和可信 Host，并通过 HTTPS 或其他可信网络边界提供服务；不要同时向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
+
 | 变体 | 滚动标签 | 固定版本标签 | 内容 |
 | --- | --- | --- | --- |
 | 标准版 | `latest` | `<version>` | DSH 和正常运行所需工具 |

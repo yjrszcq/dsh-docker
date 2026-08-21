@@ -6,6 +6,13 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 
 > DeepSeek Harness is in Developer Preview and may introduce incompatible changes. This project is not affiliated with DeepSeek AI.
 
+## Before You Start
+
+- **Directory permissions:** Bind-mounted `data/dsh`, `data/platform`, and `workspace` must be writable by container UID/GID `1000:1000`. Keep both data directories when replacing or upgrading the container.
+- **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. The standalone Management Console's terminal and file manager always operate as container root, even when Agent sudo is disabled.
+- **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
+- **Remote access:** Before allowing LAN or Internet access, configure a strong password and trusted Hosts, place the service behind HTTPS or another trusted network boundary, and do not expose privileged Docker or host resources to the container.
+
 | Variant | Rolling tag | Versioned tag | Contents |
 | --- | --- | --- | --- |
 | Standard | `latest` | `<version>` | DSH and normal runtime utilities |
