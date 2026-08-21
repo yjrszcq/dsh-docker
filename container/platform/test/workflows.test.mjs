@@ -6,6 +6,7 @@ const workflowUrl = new URL('../../../.github/workflows/dsh-upstream-update.yml'
 const validationUrl = new URL('../../../.github/workflows/dsh-candidate-validation.yml', import.meta.url)
 const validationNotifyUrl = new URL('../../../.github/workflows/dsh-candidate-notify.yml', import.meta.url)
 const productionUrl = new URL('../../../.github/workflows/production-publish.yml', import.meta.url)
+const productionNotifyUrl = new URL('../../../.github/workflows/production-target-notify.yml', import.meta.url)
 const dockerUrl = new URL('../../../.github/workflows/docker.yaml', import.meta.url)
 const gotifyWorkflow = 'yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988'
 
@@ -100,6 +101,17 @@ test('production publication owns signing, advances an append-only channel, and 
   assert.match(workflow, /notify-failed:[\s\S]*if: \$\{\{ failure\(\) \}\}[\s\S]*DSH 正式发布失败/)
   assert.doesNotMatch(workflow, /platform-\$\{TARGET_SEQUENCE\}|DSH Platform \$\{TARGET_SEQUENCE\}/)
   assert.doesNotMatch(workflow, /RECOVERY_PRIVATE|secrets: inherit/)
+})
+
+test('successful signed targets notify independently from image approval', async () => {
+  const workflow = await readFile(productionNotifyUrl, 'utf8')
+  assert.match(workflow, /workflow_run:/)
+  assert.match(workflow, /Publish Supported Platform Target/)
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/)
+  assert.match(workflow, /production-image/)
+  assert.match(workflow, /actions\/workflows\/docker\.yaml/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
+  assert.doesNotMatch(workflow, /actions\/checkout|\brun:/)
 })
 
 test('Docker publication consumes one signed channel target and mirrors only standard images to GHCR', async () => {

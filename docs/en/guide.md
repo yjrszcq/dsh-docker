@@ -466,7 +466,7 @@ GitHub Releases describe only the Container Environment. A new Environment publi
 
 The Standard multi-architecture image is built once and pushed to both registries. Docker Hub receives `<dsh-version>` and `latest`; its separately tested Devtools image receives `<dsh-version>-devtools` and `latest-devtools`. GHCR receives only the Standard image under `latest`, full/minor/major Environment tags, and `dsh-<dsh-version>`. A DSH-only update moves the current Environment tags without publishing a GitHub Release. An Environment-only update intentionally replaces the existing Docker Hub DSH tags with a new image digest and publishes the new Environment hierarchy on GHCR.
 
-Repository or organization Secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow. A success notification is sent after both image variants are published and verified; signing/Environment publication and image publication failures send a failure notification with the Actions run link. Signing and Environment Release do not send an intermediate success notification, so a notification outage cannot prevent the independent image workflow from starting.
+Repository or organization Secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow. After the signed target and any required Environment Release are published, an independent `workflow_run` reports that image publication has started and may be waiting for `production-image` approval; this notification cannot block the image trigger. A final success notification is sent after both image variants are published and verified. Signing/Environment publication and image publication failures send a failure notification with the Actions run link.
 
 ## Build and Test
 

@@ -466,7 +466,7 @@ GitHub Release 只表示 Container Environment。新 Environment 发布 `v<envir
 
 标准多架构镜像只构建一次并同时推送两个 Registry。Docker Hub 获得 `<dsh-version>` 和 `latest`；单独测试的 Devtools 镜像获得 `<dsh-version>-devtools` 和 `latest-devtools`。GHCR 仅获得标准镜像的 `latest`、Environment 完整/次要/主要版本标签和 `dsh-<dsh-version>`。仅 DSH 更新会移动当前 Environment 标签，但不发布 GitHub Release；仅 Environment 更新会用新 digest 覆盖 Docker Hub 现有 DSH 标签，并在 GHCR 发布新的 Environment 标签层级。
 
-仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。两种镜像均发布并验证成功后发送成功通知；签名/Environment 发布或镜像发布失败时发送带 Actions 链接的失败通知。中间的签名与 Environment Release 不发送成功通知，避免通知服务故障阻止独立镜像工作流启动。
+仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。签名目标和必要的 Environment Release 发布成功后，独立的 `workflow_run` 会通知镜像工作流已启动、可能正在等待 `production-image` 审批；该通知不会阻塞镜像触发。两种镜像均发布并验证成功后还会发送最终成功通知；签名/Environment 发布或镜像发布失败时发送带 Actions 链接的失败通知。
 
 ## 构建与测试
 
