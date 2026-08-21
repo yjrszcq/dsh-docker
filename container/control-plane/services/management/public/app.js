@@ -84,6 +84,7 @@ const COPY = Object.freeze({
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
     files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
+    itemType: '新建类型', itemName: '名称', createItem: '创建', createLocation: '创建位置：{path}', invalidFileName: '名称不能为空，不能是 . 或 ..，不能包含 / 或控制字符，且不能超过 255 字节。',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
     locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多',
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
@@ -156,6 +157,7 @@ const COPY = Object.freeze({
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
     files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
+    itemType: 'Item type', itemName: 'Name', createItem: 'Create', createLocation: 'Create in: {path}', invalidFileName: 'The name cannot be empty, . or .., contain / or control characters, or exceed 255 bytes.',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
     locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
@@ -242,6 +244,8 @@ let fileSort = 'name'
 let fileOrder = 'asc'
 let fileHistory = []
 let fileFuture = []
+let fileCreateExpanded = false
+let fileCreateKind = 'touch'
 let fileSelected = new Set()
 let fileClipboard = null
 const fileDirectorySizes = new Map()
@@ -1534,12 +1538,59 @@ function renderFiles() {
     elements['file-list'].append(row)
   }
   renderFileSelection()
+  renderFileCreate()
 }
 
 function renderFileNavigation() {
   elements['file-back'].disabled = fileLoading || fileHistory.length === 0
   elements['file-forward'].disabled = fileLoading || fileFuture.length === 0
   elements['file-up'].disabled = fileLoading || filePath === '/'
+  elements['file-create-location'].textContent = t('createLocation', { path: filePath })
+}
+
+function fileNameIsValid(value) {
+  return typeof value === 'string'
+    && value.trim() !== ''
+    && value !== '.'
+    && value !== '..'
+    && !/[\/\u0000-\u001f\u007f]/u.test(value)
+    && new TextEncoder().encode(value).byteLength <= 255
+}
+
+function renderFileCreate() {
+  const value = elements['file-create-name'].value
+  const valid = fileNameIsValid(value)
+  elements['file-create-panel'].hidden = !fileCreateExpanded
+  elements['file-new'].setAttribute('aria-expanded', String(fileCreateExpanded))
+  for (const button of document.querySelectorAll('[data-file-create-kind]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.fileCreateKind === fileCreateKind))
+  }
+  elements['file-create-submit'].disabled = !valid || fileActiveTask !== null
+  elements['file-create-error'].hidden = value === '' || valid
+  elements['file-create-error'].textContent = valid ? '' : t('invalidFileName')
+  elements['file-create-location'].textContent = t('createLocation', { path: filePath })
+}
+
+function setFileCreateExpanded(expanded) {
+  fileCreateExpanded = expanded
+  if (!expanded) {
+    elements['file-create-name'].value = ''
+    fileCreateKind = 'touch'
+  }
+  renderFileCreate()
+  if (expanded) window.requestAnimationFrame(() => elements['file-create-name'].focus())
+}
+
+async function createFileEntry() {
+  const name = elements['file-create-name'].value
+  if (!fileNameIsValid(name)) return renderFileCreate()
+  const destination = filePath === '/' ? `/${name}` : `${filePath}/${name}`
+  const task = await startFileTask({
+    operation: fileCreateKind,
+    destination,
+    destinationRevision: fileListing.revision,
+  })
+  if (task !== undefined) setFileCreateExpanded(false)
 }
 
 async function navigateFiles(path, { history = true, append = false } = {}) {
@@ -1885,13 +1936,14 @@ elements['file-select-all'].addEventListener('change', event => {
   renderFiles()
 })
 elements['file-load-more'].addEventListener('click', () => { void navigateFiles(filePath, { history: false, append: true }) })
-elements['file-new'].addEventListener('click', () => {
-  const kind = window.prompt(`${t('newFile')} / ${t('newDirectory')}`, 'file')
-  if (kind === null) return
-  const name = window.prompt(t('enterName'))
-  if (name === null || name.trim() === '') return
-  void startFileTask({ operation: kind.toLocaleLowerCase().startsWith('d') || kind.includes('目录') ? 'mkdir' : 'touch', destination: `${filePath}/${name}`, destinationRevision: fileListing.revision })
-})
+elements['file-new'].addEventListener('click', () => setFileCreateExpanded(!fileCreateExpanded))
+for (const button of document.querySelectorAll('[data-file-create-kind]')) {
+  button.addEventListener('click', () => { fileCreateKind = button.dataset.fileCreateKind; renderFileCreate() })
+}
+elements['file-create-name'].addEventListener('input', renderFileCreate)
+elements['file-create-name'].addEventListener('keydown', event => { if (event.key === 'Escape') setFileCreateExpanded(false) })
+elements['file-create-cancel'].addEventListener('click', () => setFileCreateExpanded(false))
+elements['file-create-panel'].addEventListener('submit', event => { event.preventDefault(); void createFileEntry() })
 elements['file-upload'].addEventListener('click', () => elements['file-upload-input'].click())
 elements['file-upload-input'].addEventListener('change', event => {
   const files = [...event.target.files]

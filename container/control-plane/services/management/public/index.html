@@ -171,8 +171,18 @@
       <section class="file-section" aria-labelledby="files-title">
         <div class="section-heading file-heading">
           <div><h2 id="files-title" data-i18n="files">File management</h2><p data-i18n="filesDetail">Manage container files with administrator permissions.</p></div>
-          <div class="file-heading-actions"><button id="file-new" type="button" class="secondary" data-i18n="newItem">New</button><button id="file-upload" type="button" class="primary" data-i18n="upload">Upload</button><input id="file-upload-input" type="file" multiple hidden></div>
+          <div class="file-heading-actions"><button id="file-new" type="button" class="secondary" aria-controls="file-create-panel" aria-expanded="false" data-i18n="newItem">New</button><button id="file-upload" type="button" class="primary" data-i18n="upload">Upload</button><input id="file-upload-input" type="file" multiple hidden></div>
         </div>
+        <form id="file-create-panel" class="file-create-panel" hidden>
+          <div class="segmented file-create-kind" role="group" aria-label="Item type" data-i18n-aria-label="itemType">
+            <button type="button" data-file-create-kind="touch" aria-pressed="true" data-i18n="newFile">File</button>
+            <button type="button" data-file-create-kind="mkdir" aria-pressed="false" data-i18n="newDirectory">Directory</button>
+          </div>
+          <label class="file-create-name"><span data-i18n="itemName">Name</span><input id="file-create-name" type="text" maxlength="255" autocomplete="off" spellcheck="false" data-i18n-placeholder="enterName" aria-label="Name" data-i18n-aria-label="itemName"></label>
+          <div class="file-create-actions"><button id="file-create-cancel" type="button" class="secondary" data-i18n="cancel">Cancel</button><button id="file-create-submit" type="submit" class="primary" data-i18n="createItem" disabled>Create</button></div>
+          <p id="file-create-location" class="file-create-location"></p>
+          <p id="file-create-error" class="file-create-error" role="alert" hidden></p>
+        </form>
         <div class="file-pathbar">
           <button id="file-back" type="button" class="compact file-nav-button" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back" disabled>←</button>
           <button id="file-forward" type="button" class="compact file-nav-button" title="Forward" data-i18n-title="forward" aria-label="Forward" data-i18n-aria-label="forward" disabled>→</button>

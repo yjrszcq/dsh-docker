@@ -107,7 +107,7 @@ export async function createMaintenanceServer({
         const outcome = result.status === 'success' ? 'completed' : result.status
         await audit(`files.${result.operation}.${outcome}`, {
           taskId: result.taskId,
-          path: result.path ?? result.sources?.[0]?.path ?? null,
+          path: result.path ?? result.destination ?? result.sources?.[0]?.path ?? null,
           processedEntries: result.processedEntries ?? result.entries ?? null,
           processedBytes: result.processedBytes ?? result.bytes ?? null,
           ...(result.error === null || result.error === undefined ? {} : { error: result.error }),
@@ -181,9 +181,16 @@ export async function createMaintenanceServer({
         await audit('files.upload.completed', { path: result.path, size: result.size, privileged: true })
         send(response, 201, result)
       } else if (request.method === 'POST' && route === 'files/tasks') {
-        const task = await startTask(await jsonBody(request))
-        await audit(`files.${task.operation}.started`, { taskId: task.taskId, managed: task.managed, privileged: true })
-        send(response, 202, task)
+        const body = await jsonBody(request)
+        try {
+          const task = await startTask(body)
+          await audit(`files.${task.operation}.started`, { taskId: task.taskId, path: task.destination, managed: task.managed, privileged: true })
+          send(response, 202, task)
+        } catch (error) {
+          const operation = ['mkdir', 'touch'].includes(body?.operation) ? body.operation : 'task'
+          await audit(`files.${operation}.rejected`, { error, path: body?.destination ?? null, privileged: true })
+          throw error
+        }
       } else if (request.method === 'GET' && route === 'files/tasks') {
         send(response, 200, { tasks: tasks.list() })
       } else if (request.method === 'GET' && FILE_TASK_ROUTE.test(route)) {
