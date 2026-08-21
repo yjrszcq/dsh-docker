@@ -54,7 +54,7 @@ const COPY = Object.freeze({
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
     logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
-    refreshLogs: '刷新日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
+    refreshLogs: '刷新日志', exportLogs: '导出日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
     notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
@@ -126,7 +126,7 @@ const COPY = Object.freeze({
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
     logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
-    refreshLogs: 'Refresh logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
+    refreshLogs: 'Refresh logs', exportLogs: 'Export logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
     notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending restart',
@@ -973,6 +973,26 @@ function updateLogSources(entries) {
   elements['log-source'].value = values.includes(selected) ? selected : 'all'
 }
 
+function filteredRawLogs() {
+  const query = elements['log-search'].value.trim().toLocaleLowerCase(locale === 'zh' ? 'zh-CN' : 'en-US')
+  const source = elements['log-source'].value
+  const level = elements['log-level'].value
+  return logEntries.slice(-logDisplayLimit).map(item => item.value).filter(entry => (source === 'all' || entry.source === source)
+    && (level === 'all' || logLevel(entry) === level)
+    && (query === '' || JSON.stringify(entry).toLocaleLowerCase().includes(query)))
+}
+
+function downloadLogJsonl(entries) {
+  if (entries.length === 0) return
+  const content = `${entries.map(entry => JSON.stringify(entry)).join('\n')}\n`
+  const url = URL.createObjectURL(new Blob([content], { type: 'application/x-ndjson;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `dsh-platform-logs-${new Date().toISOString().replace(/[:.]/gu, '-')}.jsonl`
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
 function renderLogs() {
   const entries = limitProcessedLogEntries(logEntries, logDisplayLimit)
   updateLogSources(entries)
@@ -982,6 +1002,7 @@ function renderLogs() {
   const filtered = entries.filter(item => (source === 'all' || item.value.source === source)
     && (level === 'all' || logLevel(item.value) === level)
     && (query === '' || JSON.stringify(item.value).toLocaleLowerCase().includes(query)))
+  elements['export-logs'].disabled = filteredRawLogs().length === 0
   elements['log-summary'].textContent = t('logCount', { shown: filtered.length, total: logDisplayLimit })
   elements['log-list'].replaceChildren()
   elements['log-list'].hidden = filtered.length === 0
@@ -2392,6 +2413,7 @@ elements['auto-scroll'].addEventListener('click', () => {
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
 })
 elements['refresh-logs'].addEventListener('click', () => { void refreshLogs() })
+elements['export-logs'].addEventListener('click', () => downloadLogJsonl(filteredRawLogs()))
 elements['clear-logs'].addEventListener('click', () => {
   const latest = logEntries.reduce((value, entry) => {
     const timestamp = Date.parse(entry.value.timestamp)
