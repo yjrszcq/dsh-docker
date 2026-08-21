@@ -23,7 +23,7 @@ async function syncDirectory(path) {
 }
 
 function publicTask(task) {
-  const { completion, cancelRequested, abortController, ...value } = task
+  const { completion, persisted, cancelRequested, abortController, ...value } = task
   return { ...value, cancelRequested: cancelRequested === true }
 }
 
@@ -115,11 +115,13 @@ export class FileTaskManager {
     this.identity = identity ?? inventory.identity ?? new UnixIdentityResolver()
     this.tasks = new Map()
     this.activeMutation = undefined
+    this.queue = []
+    this.queueTail = Promise.resolve()
     this.search = new FileSearchManager({ inventory, onState: state => onState(state) })
     this.sizes = new FileSizeManager({ inventory, onState: state => onState(state) })
   }
 
-  get hasManagedMutation() { return this.activeMutation?.managed === true }
+  get hasManagedMutation() { return this.queue.some(task => ['queued', 'running'].includes(task.status) && task.managed === true) }
 
   wouldManage(input) {
     if (['search', 'size'].includes(input?.operation)) return false
@@ -136,6 +138,7 @@ export class FileTaskManager {
         if (task.schema !== 1 || typeof task.taskId !== 'string') continue
         this.tasks.set(task.taskId, task)
         if (task.status === 'running') await this.#recover(task)
+        else if (task.status === 'queued') this.#schedule(task)
       } catch (error) {
         this.onState({ operation: 'recovery', status: 'failed', error: error instanceof Error ? error.message : String(error) })
       }
@@ -147,8 +150,6 @@ export class FileTaskManager {
     if (input?.operation === 'search') return this.search.start(input)
     if (input?.operation === 'size') return this.sizes.start(input)
     if (input === null || typeof input !== 'object' || !OPERATIONS.has(input.operation)) throw new FileManagerError('file task operation is invalid')
-    if (this.activeMutation?.status !== 'running') this.activeMutation = undefined
-    if (this.activeMutation !== undefined) throw new FileManagerError('a file operation is already running', 409, 'FILE_TASK_CONFLICT')
     const sources = Array.isArray(input.sources) ? input.sources.map(source => ({ path: normalizeAbsolutePath(source.path), revision: source.revision })) : []
     const destination = input.destination === undefined ? null : normalizeAbsolutePath(input.destination)
     const conflict = input.conflict ?? 'reject'
@@ -161,17 +162,17 @@ export class FileTaskManager {
     const managed = sources.some(source => this.isManaged(source.path)) || (destination !== null && this.isManaged(destination))
     if (managed && this.platformBusy()) throw new FileManagerError('a platform operation is already running', 409, 'FILE_TASK_CONFLICT')
     const task = {
-      schema: 1, taskId: randomUUID(), operation: input.operation, status: 'running', phase: 'validating',
+      schema: 1, taskId: randomUUID(), operation: input.operation,
+      status: this.queue.length === 0 ? 'running' : 'queued', phase: this.queue.length === 0 ? 'validating' : 'queued',
       sources, destination, destinationRevision: input.destinationRevision ?? null, conflict, managed,
       attributes: input.operation === 'attributes' ? normalizeAttributes(input.attributes) : null,
       archiveFormat: ['archive', 'extract'].includes(input.operation) ? normalizeArchiveFormat(input.archiveFormat) : null,
       processedBytes: 0, totalBytes: 0, processedEntries: 0, totalEntries: 0, currentPath: null,
       published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
-      error: null, errorCode: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
+      error: null, errorCode: null, queuePosition: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
     }
     this.tasks.set(task.taskId, task)
-    this.activeMutation = task
-    task.completion = this.#run(task).catch(() => {}).finally(() => { if (this.activeMutation === task) this.activeMutation = undefined })
+    this.#schedule(task)
     return publicTask(task)
   }
 
@@ -201,12 +202,52 @@ export class FileTaskManager {
         return this.sizes.cancel(taskId)
       }
     }
-    if (task.status !== 'running') throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
+    if (!['queued', 'running'].includes(task.status)) throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
+    if (task.status === 'queued') {
+      task.cancelRequested = true
+      task.status = 'cancelled'
+      task.phase = 'cancelled'
+      task.updatedAt = now()
+      this.queue = this.queue.filter(value => value !== task)
+      void Promise.resolve(task.persisted).then(() => this.#terminal(task, 'cancelled', 'cancelled'))
+      this.#publishQueue()
+      return publicTask(task)
+    }
     if (['destination-committed', 'source-hidden', 'cleaning'].includes(task.phase)) throw new FileManagerError('file task passed its cancellation boundary', 409, 'FILE_TASK_COMMITTED')
     task.cancelRequested = true
     task.abortController?.abort()
     this.#publish(task)
     return publicTask(task)
+  }
+
+  #schedule(task) {
+    this.queue.push(task)
+    this.#publishQueue()
+    const previous = this.queueTail
+    task.persisted = this.#persist(task)
+    task.completion = Promise.all([previous.catch(() => {}), task.persisted]).then(async () => {
+      if (task.cancelRequested || task.status === 'cancelled') return
+      task.status = 'running'
+      task.phase = 'validating'
+      task.queuePosition = 0
+      this.activeMutation = task
+      await this.#phase(task, 'validating')
+      await this.#run(task).catch(() => {})
+    }).finally(() => {
+      if (this.activeMutation === task) this.activeMutation = undefined
+      this.queue = this.queue.filter(value => value !== task)
+      this.#publishQueue()
+    })
+    this.queueTail = task.completion
+  }
+
+  #publishQueue() {
+    let position = 0
+    for (const task of this.queue) {
+      if (task.status === 'queued') position += 1
+      task.queuePosition = task.status === 'queued' ? position : 0
+      this.#publish(task)
+    }
   }
 
   async #validate(task) {
@@ -525,7 +566,7 @@ export class FileTaskManager {
   #publish(task) { this.onState(publicTask(task)) }
 
   async #prune() {
-    const completed = [...this.tasks.values()].filter(task => task.status !== 'running').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    const completed = [...this.tasks.values()].filter(task => !['queued', 'running'].includes(task.status)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     for (const task of completed.slice(100)) {
       this.tasks.delete(task.taskId)
       await rm(join(this.root, `${task.taskId}.json`), { force: true })

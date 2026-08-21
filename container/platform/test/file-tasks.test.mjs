@@ -195,7 +195,7 @@ test('validates attribute requests and resumes an interrupted idempotent change'
   assert.equal((await stat(path)).mode & 0o7777, 0o600)
 })
 
-test('rejects stale revisions, protected roots, recursive copies, and concurrent mutations', async () => {
+test('rejects stale revisions, protected roots, and recursive copies while queueing concurrent mutations', async () => {
   const { files, manager, inventory } = await setup()
   const sourcePath = join(files, 'source')
   await writeFile(sourcePath, 'one')
@@ -209,8 +209,45 @@ test('rejects stale revisions, protected roots, recursive copies, and concurrent
   const recursive = manager.start({ operation: 'copy', sources: [{ path: tree.path, revision: tree.revision }], destination: tree.path })
   assert.equal((await finish(manager, recursive)).status, 'failed')
   const first = manager.start({ operation: 'touch', destination: join(files, 'first') })
-  assert.throws(() => manager.start({ operation: 'touch', destination: join(files, 'second') }), error => error.statusCode === 409)
+  const second = manager.start({ operation: 'touch', destination: join(files, 'second') })
+  assert.equal(second.status, 'queued')
+  assert.equal(second.queuePosition, 1)
   await finish(manager, first)
+  assert.equal((await finish(manager, second)).status, 'success')
+})
+
+test('runs queued mutations in FIFO order and cancels queued work without touching files', async () => {
+  const { files, manager } = await setup('dsh-file-queue-')
+  const first = manager.start({ operation: 'touch', destination: join(files, 'first') })
+  const second = manager.start({ operation: 'touch', destination: join(files, 'second') })
+  const third = manager.start({ operation: 'touch', destination: join(files, 'third') })
+  assert.deepEqual([second.queuePosition, third.queuePosition], [1, 2])
+  assert.equal(manager.cancel(second.taskId).status, 'cancelled')
+  assert.equal(manager.get(third.taskId).queuePosition, 1)
+  assert.equal((await finish(manager, first)).status, 'success')
+  assert.equal((await finish(manager, second)).status, 'cancelled')
+  assert.equal((await finish(manager, third)).status, 'success')
+  assert.equal(await stat(join(files, 'second')).then(() => true, error => error.code !== 'ENOENT'), false)
+})
+
+test('persists queued work before the active task releases its lease', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-queue-persisted-'))
+  const files = join(root, 'files')
+  const tasks = join(root, 'tasks')
+  await mkdir(files)
+  let releaseReport
+  const blocked = new Promise(resolve => { releaseReport = resolve })
+  const manager = new FileTaskManager({ root: tasks, report: message => message === 'file-task.touch.completed' ? blocked : undefined })
+  await manager.initialize()
+  const first = manager.start({ operation: 'touch', destination: join(files, 'first') })
+  const second = manager.start({ operation: 'touch', destination: join(files, 'second') })
+  await manager.tasks.get(second.taskId).persisted
+  const journal = JSON.parse(await readFile(join(tasks, `${second.taskId}.json`), 'utf8'))
+  assert.equal(journal.status, 'queued')
+  assert.equal(journal.queuePosition, 1)
+  releaseReport()
+  assert.equal((await finish(manager, first)).status, 'success')
+  assert.equal((await finish(manager, second)).status, 'success')
 })
 
 test('recovers committed deletes and marks uncommitted tasks interrupted', async () => {
