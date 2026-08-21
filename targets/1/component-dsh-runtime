@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "dsh-runtime",
+  "type": "service",
+  "command": {
+    "executable": "/run/dsh-platform/views/runtime/bin/dsh",
+    "args": ["web", "--patch", "/run/dsh-platform/views/system-plugins/cordis.patch.yml", "--host", "127.0.0.1", "--port", "3079"],
+    "timeoutSeconds": 30
+  },
+  "environment": {},
+  "lifecycle": {
+    "prepare": null,
+    "preStart": null,
+    "postStart": {
+      "executable": "/usr/local/bin/node",
+      "args": ["/run/dsh-platform/views/bootstrap/control-plane/hooks/dsh-web-ready.mjs"],
+      "timeoutSeconds": 30
+    },
+    "preStop": null,
+    "stop": null,
+    "postStop": null
+  },
+  "health": {
+    "type": "http",
+    "host": "127.0.0.1",
+    "port": 3079,
+    "path": "/",
+    "intervalSeconds": 1,
+    "timeoutSeconds": 30
+  },
+  "logging": {
+    "stdout": true,
+    "stderr": true
+  }
+}
