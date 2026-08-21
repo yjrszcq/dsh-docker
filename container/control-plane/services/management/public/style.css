@@ -512,8 +512,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .log-message-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .log-message-row > pre { flex: 1; min-width: 0; }
 .log-chevron { position: relative; top: 2px; flex: none; width: 10px; height: 10px; margin-right: 1px; }
-.log-chevron::before { position: absolute; top: 1px; left: 1px; width: 6px; height: 6px; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); content: ""; transform: rotate(45deg); transform-origin: 50% 50%; }
-.log-entry[aria-expanded='true'] .log-chevron::before { transform: rotate(225deg); }
+.log-chevron::before { position: absolute; top: 3px; left: 1px; width: 8px; height: 5px; background: var(--faint); clip-path: polygon(0 0, 50% 72%, 100% 0, 100% 28%, 50% 100%, 0 28%); content: ""; transform-origin: center; }
+.log-entry[aria-expanded='true'] .log-chevron::before { transform: rotate(180deg); }
 .log-level { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .log-level.debug { color: var(--faint); }
 .log-level.info { color: var(--accent); }

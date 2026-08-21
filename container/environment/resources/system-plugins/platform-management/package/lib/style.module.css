@@ -596,17 +596,16 @@ a.secondaryButton { text-decoration: none; }
 }
 .logChevron::before {
   position: absolute;
-  top: 1px;
+  top: 3px;
   left: 1px;
-  width: 6px;
-  height: 6px;
-  border-right: 1.5px solid var(--dsw-alias-label-tertiary);
-  border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
+  width: 8px;
+  height: 5px;
+  background: var(--dsw-alias-label-tertiary);
+  clip-path: polygon(0 0, 50% 72%, 100% 0, 100% 28%, 50% 100%, 0 28%);
   content: "";
-  transform: rotate(45deg);
-  transform-origin: 50% 50%;
+  transform-origin: center;
 }
-.logEntry[aria-expanded='true'] .logChevron::before { transform: rotate(225deg); }
+.logEntry[aria-expanded='true'] .logChevron::before { transform: rotate(180deg); }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .logDebug { color: var(--dsw-alias-label-tertiary); }
 .logInfo { color: var(--dsw-alias-state-business-primary); }
