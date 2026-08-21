@@ -1014,7 +1014,7 @@ function renderLogs() {
     const chevron = document.createElement('span')
     chevron.className = 'log-chevron'
     chevron.setAttribute('aria-hidden', 'true')
-    meta.append(chevron, levelLabel, sourceLabel, time)
+    meta.append(levelLabel, sourceLabel, time, chevron)
     article.append(meta, message, details)
     elements['log-list'].append(article)
   }

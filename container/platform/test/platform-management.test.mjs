@@ -233,6 +233,7 @@ test('Platform Management keeps a browser-tab log clear cutoff across refreshes'
 })
 
 test('Platform Management follows DSH settings tokens and responsive layout', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
   const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
   assert.match(style, /--dsw-alias-label-primary/)
   assert.match(style, /--dsw-alias-button-primary-fill/)
@@ -261,6 +262,10 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /\.logList \{[\s\S]*max-height: min\(320px, 42dvh\)/)
   assert.match(style, /\.logDetails \{/)
   assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron/)
+  assert.match(style, /\.logChevron \{[\s\S]*?transform: rotate\(45deg\)/)
+  assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron \{[^}]*transform: rotate\(225deg\)/)
+  const logMeta = source.slice(source.indexOf("h('div', { className: css.logMeta }"), source.indexOf("h('pre', null, display(entry.message))"))
+  assert.ok(logMeta.indexOf("h('time'") < logMeta.indexOf('className: css.logChevron'))
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.logList \{ max-height: min\(260px, 36dvh\); \}/)
   assert.match(style, /\.logWarning/)
   assert.match(style, /\.autoScrollButton/)

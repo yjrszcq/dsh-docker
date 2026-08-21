@@ -588,13 +588,13 @@ a.secondaryButton { text-decoration: none; }
   flex: none;
   width: 6px;
   height: 6px;
-  margin-right: 1px;
+  margin: -3px 2px 0 1px;
   border-right: 1.5px solid var(--dsw-alias-label-tertiary);
   border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
-  transform: rotate(-45deg);
+  transform: rotate(45deg);
   transition: transform 120ms ease;
 }
-.logEntry[aria-expanded='true'] .logChevron { transform: rotate(45deg); }
+.logEntry[aria-expanded='true'] .logChevron { margin-top: 3px; transform: rotate(225deg); }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .logDebug { color: var(--dsw-alias-label-tertiary); }
 .logInfo { color: var(--dsw-alias-state-business-primary); }
@@ -697,7 +697,7 @@ a.secondaryButton { text-decoration: none; }
   .logConnection { margin-right: auto; }
   .logFilters input { grid-column: 1 / -1; }
   .logMeta { flex-wrap: wrap; }
-  .logMeta time { width: 100%; margin-left: 0; }
+  .logMeta time { width: auto; margin-left: auto; }
   .logList { max-height: min(260px, 36dvh); }
   .updateReminder { right: 16px; bottom: 16px; }
 }
