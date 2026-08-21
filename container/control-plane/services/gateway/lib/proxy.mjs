@@ -21,7 +21,6 @@ export const HEALTH_PATH = '/_dsh_gateway/health'
 export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
-export const LEGACY_MANAGEMENT_UI_PREFIX = '/_dsh_platform/ui/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document', 'user-plugins', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'user-plugins/apply', 'terminal/sessions', 'files/upload', 'files/tasks'])],
@@ -314,17 +313,6 @@ function isExternalConsoleRoute(method, pathname) {
     && (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX))
 }
 
-function redirectLegacyConsole(response, pathname, search) {
-  const suffix = pathname === LEGACY_MANAGEMENT_UI_PREFIX.slice(0, -1)
-    ? ''
-    : pathname.slice(LEGACY_MANAGEMENT_UI_PREFIX.length)
-  response.writeHead(308, {
-    'cache-control': 'no-store',
-    location: `${MANAGEMENT_UI_PREFIX}${suffix}${search}`,
-  })
-  response.end()
-}
-
 function serializeUpgradeRequest(request, headers) {
   const lines = [`${request.method ?? 'GET'} ${request.url ?? '/'} HTTP/${request.httpVersion}`]
   for (const [name, value] of Object.entries(headers)) {
@@ -467,10 +455,6 @@ export function createGatewayServer({
           const state = await unavailableState(options)
           sendJson(response, state === 'unknown' ? 502 : 503, { ready: false, state })
         }
-        return
-      }
-      if (pathname === LEGACY_MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(LEGACY_MANAGEMENT_UI_PREFIX)) {
-        redirectLegacyConsole(response, pathname, url.search)
         return
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {

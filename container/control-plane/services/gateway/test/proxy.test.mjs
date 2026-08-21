@@ -292,9 +292,6 @@ test('bounded management and Console requests use the protected local socket ins
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/terminal/sessions/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/files/tasks/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/console/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
-    const legacyConsole = await request(gatewayPort, '/_dsh_platform/ui/app.js?revision=old', { host: 'dsh.example' })
-    assert.equal(legacyConsole.status, 308)
-    assert.equal(legacyConsole.headers.location, '/_dsh_platform/console/app.js?revision=old')
     assert.equal(upstreamRequests, 0)
   } finally {
     await Promise.all([closeGatewayServer(gateway), close(upstream), close(management), close(maintenance)])
