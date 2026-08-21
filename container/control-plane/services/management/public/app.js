@@ -80,7 +80,7 @@ const COPY = Object.freeze({
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
-    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', uploadFiles: '上传文件', uploadDirectory: '上传文件夹', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
+    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', uploadFiles: '上传文件', uploadDirectory: '上传文件夹', dropToUpload: '拖放到此处上传', dropUploadDestination: '文件和文件夹将上传到当前目录。', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
     itemType: '新建类型', itemName: '名称', createItem: '创建', createLocation: '创建位置：{path}', invalidFileName: '名称不能为空，不能是 . 或 ..，不能包含 / 或控制字符，且不能超过 255 字节。',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
     locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多', itemsPerPage: '每页', previousPage: '上一页', nextPage: '下一页', pageStatus: '第 {page} 页 · {start}-{end} / {total}',
@@ -152,7 +152,7 @@ const COPY = Object.freeze({
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
-    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', uploadFiles: 'Upload files', uploadDirectory: 'Upload folder', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
+    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', uploadFiles: 'Upload files', uploadDirectory: 'Upload folder', dropToUpload: 'Drop to upload here', dropUploadDestination: 'Files and folders will be uploaded to the current directory.', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
     itemType: 'Item type', itemName: 'Name', createItem: 'Create', createLocation: 'Create in: {path}', invalidFileName: 'The name cannot be empty, . or .., contain / or control characters, or exceed 255 bytes.',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
     locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more', itemsPerPage: 'Per page', previousPage: 'Previous', nextPage: 'Next', pageStatus: 'Page {page} · {start}-{end} / {total}',
@@ -253,6 +253,7 @@ const fileDirectorySizes = new Map()
 let fileActiveTask = null
 let fileTasksActive = []
 let fileUploadQueue = []
+let fileDragDepth = 0
 let fileTaskRefreshTimer
 let fileArchiveMode = null
 let fileEditor = null
@@ -1429,6 +1430,7 @@ function renderFileSelection() {
 function taskLabel(task) {
   const operation = {
     archive: t('compress'), extract: t('extract'), upload: t('upload'), download: t('download'),
+    mkdir: t('newDirectory'),
     copy: t('copy'), move: t('cut'), delete: t('deletePermanently'), attributes: t('attributesOperation'),
   }[task.operation] ?? task.operation
   return `${operation}: ${task.currentPath ?? task.path ?? task.destination ?? ''}`
@@ -1948,22 +1950,55 @@ async function runFileTask(body) {
   }
 }
 
-async function uploadFiles(files) {
+function readDroppedFile(entry) {
+  return new Promise((resolve, reject) => entry.file(resolve, reject))
+}
+
+async function readDroppedDirectory(entry) {
+  const reader = entry.createReader()
+  const entries = []
+  for (;;) {
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject))
+    if (batch.length === 0) return entries
+    entries.push(...batch)
+  }
+}
+
+async function collectDroppedEntry(entry, parent = '') {
+  const relativePath = parent === '' ? entry.name : `${parent}/${entry.name}`
+  if (entry.isFile) return [{ file: await readDroppedFile(entry), relativePath }]
+  if (!entry.isDirectory) return []
+  const children = await readDroppedDirectory(entry)
+  const nested = await Promise.all(children.map(child => collectDroppedEntry(child, relativePath)))
+  return [{ directory: true, relativePath }, ...nested.flat()]
+}
+
+async function droppedUploadItems(dataTransfer) {
+  const entries = [...(dataTransfer.items ?? [])]
+    .filter(item => item.kind === 'file')
+    .map(item => item.webkitGetAsEntry?.())
+    .filter(Boolean)
+  if (entries.length > 0) return (await Promise.all(entries.map(entry => collectDroppedEntry(entry)))).flat()
+  return [...dataTransfer.files].map(file => ({ file, relativePath: file.name }))
+}
+
+async function uploadFiles(values) {
   if (fileUploadQueue.some(task => ['queued', 'running'].includes(task.status))) return
+  const files = values.map(value => value?.directory === true || value?.file instanceof File
+    ? value : { file: value, relativePath: value.webkitRelativePath || value.name })
   const total = files.length
-  fileUploadQueue = files.map((file, index) => {
-    const relativePath = file.webkitRelativePath || file.name
+  fileUploadQueue = files.map(({ file, relativePath, directory = false }, index) => {
     const destination = filePath === '/' ? `/${relativePath}` : `${filePath}/${relativePath}`
     const task = {
       local: true,
       taskId: `browser-upload-${String(index)}`,
-      operation: 'upload',
+      operation: directory ? 'mkdir' : 'upload',
       path: destination,
       currentPath: destination,
       status: 'queued',
       queuePosition: index + 1,
       processedBytes: 0,
-      totalBytes: file.size,
+      totalBytes: file?.size ?? 0,
       updatedAt: new Date().toISOString(),
       cancelRequested: false,
       request: null,
@@ -1981,7 +2016,7 @@ async function uploadFiles(files) {
   let skipped = 0
   let stopped = false
   for (let index = 0; index < files.length; index += 1) {
-    const file = files[index]
+    const { file, relativePath, directory = false } = files[index]
     const uploadTask = fileUploadQueue.find(task => task.taskId === `browser-upload-${String(index)}`)
     if (uploadTask === undefined || uploadTask.cancelRequested) continue
     uploadTask.status = 'running'
@@ -1989,14 +2024,14 @@ async function uploadFiles(files) {
     for (const [position, task] of fileUploadQueue.filter(task => task.status === 'queued').entries()) task.queuePosition = position + 1
     elements['file-task-label'].textContent = t('uploadProgress', { current: index + 1, total })
     renderFileTasks()
-    const segments = (file.webkitRelativePath || file.name).split('/')
+    const segments = relativePath.split('/')
     if (segments.some(segment => !fileNameIsValid(segment))) {
       showError(new Error(t('invalidFileName')))
       stopped = true
       break
     }
     let parent = filePath
-    for (const segment of segments.slice(0, -1)) {
+    for (const segment of directory ? segments : segments.slice(0, -1)) {
       parent = parent === '/' ? `/${segment}` : `${parent}/${segment}`
       try {
         const existing = await api(`files/stat?path=${encodeURIComponent(parent)}`)
@@ -2012,6 +2047,11 @@ async function uploadFiles(files) {
       }
     }
     if (stopped) break
+    if (directory) {
+      fileUploadQueue = fileUploadQueue.filter(task => task !== uploadTask)
+      renderFileTasks()
+      continue
+    }
     const destination = parent === '/' ? `/${segments.at(-1)}` : `${parent}/${segments.at(-1)}`
     let conflict = ['overwrite', 'rename'].includes(conflictForAll) ? conflictForAll : 'reject'
     for (;;) {
@@ -2355,11 +2395,30 @@ elements['file-upload-directory-input'].addEventListener('change', event => {
   event.target.value = ''
   if (files.length > 0) void uploadFiles(files)
 })
-for (const type of ['dragenter', 'dragover']) elements['panel-files'].addEventListener(type, event => { event.preventDefault(); elements['panel-files'].classList.add('file-dragging') })
-for (const type of ['dragleave', 'drop']) elements['panel-files'].addEventListener(type, event => { event.preventDefault(); elements['panel-files'].classList.remove('file-dragging') })
-elements['panel-files'].addEventListener('drop', event => {
-  const files = [...event.dataTransfer.files]
-  if (files.length > 0) void uploadFiles(files)
+const fileDropTarget = document.querySelector('.file-main')
+fileDropTarget.addEventListener('dragenter', event => {
+  if (![...(event.dataTransfer?.types ?? [])].includes('Files')) return
+  event.preventDefault()
+  fileDragDepth += 1
+  fileDropTarget.classList.add('file-dragging')
+})
+fileDropTarget.addEventListener('dragover', event => {
+  if (![...(event.dataTransfer?.types ?? [])].includes('Files')) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'copy'
+})
+fileDropTarget.addEventListener('dragleave', event => {
+  event.preventDefault()
+  fileDragDepth = Math.max(0, fileDragDepth - 1)
+  if (fileDragDepth === 0) fileDropTarget.classList.remove('file-dragging')
+})
+fileDropTarget.addEventListener('drop', event => {
+  event.preventDefault()
+  fileDragDepth = 0
+  fileDropTarget.classList.remove('file-dragging')
+  void droppedUploadItems(event.dataTransfer).then(items => {
+    if (items.length > 0) return uploadFiles(items)
+  }).catch(showError)
 })
 elements['file-copy'].addEventListener('click', () => {
   fileClipboard = { operation: 'copy', sources: sourceDescriptors() }

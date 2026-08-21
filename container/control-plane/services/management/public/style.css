@@ -170,7 +170,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 }
 
 .file-section { gap: 14px; }
-#panel-files.file-dragging .file-browser { outline: 2px solid var(--accent); outline-offset: 2px; }
 .file-heading-actions, .file-selection > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .file-create-panel { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: end; gap: 8px 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .file-create-panel[hidden] { display: none; }
@@ -220,7 +219,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .file-shortcuts { padding: 8px; border-right: 1px solid var(--border); background: var(--surface-raised); }
 .file-shortcuts button { display: block; width: 100%; padding: 7px 8px; overflow: hidden; border: 0; border-radius: 5px; color: var(--muted); background: transparent; font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: left; text-overflow: ellipsis; cursor: pointer; }
 .file-shortcuts button:hover { color: var(--text); background: var(--hover); }
-.file-main { display: flex; min-width: 0; min-height: 0; max-height: min(52vh, 520px); overflow: auto; flex-direction: column; }
+.file-main { position: relative; display: flex; min-width: 0; min-height: 0; max-height: min(52vh, 520px); overflow: auto; flex-direction: column; }
+.file-drop-overlay { position: absolute; inset: 8px; z-index: 3; display: none; place-content: center; gap: 4px; border: 2px dashed var(--accent); border-radius: 7px; color: var(--text); background: color-mix(in srgb, var(--surface) 92%, transparent); text-align: center; pointer-events: none; }
+.file-drop-overlay strong { font-size: 14px; font-weight: 600; }
+.file-drop-overlay span { color: var(--muted); font-size: 11px; }
+.file-main.file-dragging .file-drop-overlay { display: grid; }
 .file-table thead { position: sticky; top: 0; z-index: 1; }
 .file-table { width: 100%; min-width: 600px; border-collapse: collapse; table-layout: fixed; }
 .file-table th, .file-table td { height: 38px; padding: 7px 9px; overflow: hidden; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; line-height: 18px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }

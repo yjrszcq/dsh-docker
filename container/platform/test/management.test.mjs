@@ -902,6 +902,11 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /request\.upload\.onprogress/)
   assert.match(script, /\.\.\.fileUploadQueue, \.\.\.backend/)
   assert.match(script, /task\.local === true\) task\.cancel\(\)/)
+  assert.match(script, /item\.webkitGetAsEntry\?\.\(\)/)
+  assert.match(script, /collectDroppedEntry\(child, relativePath\)/)
+  assert.match(script, /fileDropTarget\.addEventListener\('drop'/)
+  assert.match(html, /class="file-drop-overlay"/)
+  assert.match(style, /\.file-main\.file-dragging \.file-drop-overlay\s*\{[^}]*display:\s*grid;/)
 })
 
 test('standalone console keeps localized feature parity on the shared Management API', async () => {
