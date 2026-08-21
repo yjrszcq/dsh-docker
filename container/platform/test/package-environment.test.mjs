@@ -61,20 +61,19 @@ test('checked-in Component manifests satisfy the public contract', async () => {
   }
 })
 
-test('DSH Runtime isolates plugin package managers from the root login environment', async () => {
+test('DSH Runtime uses the generic node home environment without package-manager overrides', async () => {
   const component = parseComponentManifest(await readFile(
     join(containerRoot, 'environment', 'dsh-runtime', 'component.json'),
   ))
   assert.deepEqual(component.environment, {
     HOME: '/home/node',
     LOGNAME: 'node',
-    NPM_CONFIG_CACHE: '/home/node/.cache/npm',
-    PNPM_HOME: '/home/node/.local/share/pnpm',
     USER: 'node',
     XDG_CACHE_HOME: '/home/node/.cache',
     XDG_CONFIG_HOME: '/home/node/.config',
     XDG_DATA_HOME: '/home/node/.local/share',
   })
+  assert.doesNotMatch(JSON.stringify(component.environment), /NPM_CONFIG_CACHE|PNPM_HOME/)
 })
 
 test('packager rejects source escapes and duplicate Artifact IDs without publishing output', async () => {

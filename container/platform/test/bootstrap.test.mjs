@@ -151,26 +151,35 @@ test('exec health probes use only their exit status and do not emit component lo
   await runner.stop()
 })
 
-test('component environment replaces inherited root package-manager paths', async () => {
+test('component environment replaces an inherited root user environment', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-component-environment-'))
   const output = join(temp, 'environment.json')
   const inspect = join(temp, 'inspect.mjs')
-  await writeFile(inspect, `import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], JSON.stringify({ HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, PNPM_HOME: process.env.PNPM_HOME }))`)
+  await writeFile(inspect, `import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], JSON.stringify({ HOME: process.env.HOME, USER: process.env.USER, LOGNAME: process.env.LOGNAME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, XDG_CACHE_HOME: process.env.XDG_CACHE_HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME }))`)
   const candidate = component('dsh-runtime', inspect)
   candidate.command = command(inspect, [output])
   candidate.environment = {
     HOME: '/home/node',
+    USER: 'node',
+    LOGNAME: 'node',
     XDG_CONFIG_HOME: '/home/node/.config',
-    PNPM_HOME: '/home/node/.local/share/pnpm',
+    XDG_CACHE_HOME: '/home/node/.cache',
+    XDG_DATA_HOME: '/home/node/.local/share',
   }
   const original = {
     HOME: process.env.HOME,
+    USER: process.env.USER,
+    LOGNAME: process.env.LOGNAME,
     XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
-    PNPM_HOME: process.env.PNPM_HOME,
+    XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+    XDG_DATA_HOME: process.env.XDG_DATA_HOME,
   }
   process.env.HOME = '/root'
+  process.env.USER = 'root'
+  process.env.LOGNAME = 'root'
   process.env.XDG_CONFIG_HOME = '/root/.config'
-  process.env.PNPM_HOME = '/root/.local/share/pnpm'
+  process.env.XDG_CACHE_HOME = '/root/.cache'
+  process.env.XDG_DATA_HOME = '/root/.local/share'
   try {
     const runner = new EnvironmentRunner({
       environmentRoot: await environment([candidate]),

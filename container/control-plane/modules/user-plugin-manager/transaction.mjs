@@ -7,7 +7,7 @@ import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import { userPluginInternals } from './index.mjs'
 
-function pluginEnvironment(dshHome, home = userInfo().homedir) {
+function pluginEnvironment(dshHome, home = process.env.HOME ?? userInfo().homedir) {
   return {
     ...process.env,
     HOME: home,

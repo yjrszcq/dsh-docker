@@ -10,8 +10,6 @@
   "environment": {
     "HOME": "/home/node",
     "LOGNAME": "node",
-    "NPM_CONFIG_CACHE": "/home/node/.cache/npm",
-    "PNPM_HOME": "/home/node/.local/share/pnpm",
     "USER": "node",
     "XDG_CACHE_HOME": "/home/node/.cache",
     "XDG_CONFIG_HOME": "/home/node/.config",
