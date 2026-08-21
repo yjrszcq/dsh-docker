@@ -276,7 +276,7 @@ services:
     container_name: deepseek-harness
     restart: unless-stopped
     ports:
-      - "0.0.0.0:3080:3080"
+      - "3080:3080"
     group_add:
       - dsh-sudo-true
     environment:
@@ -295,7 +295,7 @@ docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
-  -p 0.0.0.0:3080:3080 \
+  -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
   -v "$(pwd)/data/platform:/data/platform" \
