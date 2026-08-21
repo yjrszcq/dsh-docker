@@ -531,6 +531,16 @@ a.secondaryButton { text-decoration: none; }
 .autoScrollButton[aria-pressed='true'] { color: var(--dsw-alias-label-primary); }
 .clearLogsButton:disabled { opacity: 0.45; cursor: default; }
 
+.logSummaryRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.logAutoScroll { display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 26px; margin-left: auto; color: var(--dsw-alias-label-secondary); font-size: 11px; cursor: pointer; }
+.logAutoScroll input { position: absolute; opacity: 0; pointer-events: none; }
+.logAutoScroll > span { box-sizing: border-box; width: 28px; height: 16px; padding: 2px; border-radius: 8px; background: var(--dsw-alias-border-l2); }
+.logAutoScroll > span::after { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--dsw-alias-label-primary-foreground); content: ''; transition: transform .15s ease; }
+.logAutoScroll input:checked + span { background: var(--dsw-alias-state-success-primary); }
+.logAutoScroll input:checked + span::after { transform: translateX(12px); }
+.logAutoScroll input:focus-visible + span { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.logAutoScroll b { font-weight: 400; }
+
 .logFilters {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(110px, auto));

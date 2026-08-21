@@ -533,6 +533,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .log-tools { display: flex; align-items: center; gap: 8px; }
 .log-filters { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(110px, auto)); gap: 8px; }
 .log-filters input::placeholder { color: var(--faint); }
+.log-summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.log-auto-scroll { display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 28px; margin-left: auto; color: var(--muted); font-size: 11px; cursor: pointer; }
+.log-auto-scroll input { position: absolute; opacity: 0; pointer-events: none; }
+.log-auto-scroll > span { box-sizing: border-box; width: 28px; height: 16px; padding: 2px; border-radius: 8px; background: var(--border); }
+.log-auto-scroll > span::after { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); content: ''; transition: transform .15s ease; }
+.log-auto-scroll input:checked + span { background: var(--success); }
+.log-auto-scroll input:checked + span::after { transform: translateX(12px); }
+.log-auto-scroll input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.log-auto-scroll strong { font-weight: 400; }
 .log-summary { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .log-list { display: flex; flex-direction: column; max-height: min(320px, 42dvh); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 .log-entry { min-width: 0; padding: 10px 12px; background: var(--surface-raised); cursor: pointer; }

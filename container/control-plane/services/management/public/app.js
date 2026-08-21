@@ -53,7 +53,7 @@ const COPY = Object.freeze({
     runtimeResetting: '正在重置运行时', runtimeResetBuilding: '正在从已验证文件重建运行时', runtimeResetVerifying: '正在验证重建结果', runtimeResetSwitching: '正在切换运行时', runtimeResetStarting: '正在启动并检查 DSH', runtimeResetRecovering: '重置失败，正在恢复原运行时', runtimeResetProgress: '运行时重置进度', runtimeResetComplete: '运行时已重置并重新启动 DSH', runtimeResetFailed: '运行时重置失败',
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
     logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
-    logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
+    logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', autoScroll: '自动滚动',
     refreshLogs: '刷新日志', exportLogs: '导出日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
@@ -125,7 +125,7 @@ const COPY = Object.freeze({
     runtimeResetting: 'Resetting runtime', runtimeResetBuilding: 'Rebuilding runtime from verified files', runtimeResetVerifying: 'Verifying rebuilt runtime', runtimeResetSwitching: 'Switching runtime', runtimeResetStarting: 'Starting and checking DSH', runtimeResetRecovering: 'Reset failed; restoring the previous runtime', runtimeResetProgress: 'Runtime reset progress', runtimeResetComplete: 'Runtime reset and DSH restarted', runtimeResetFailed: 'Runtime reset failed',
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
     logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
-    logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
+    logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', autoScroll: 'Auto-scroll',
     refreshLogs: 'Refresh logs', exportLogs: 'Export logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
@@ -2526,10 +2526,8 @@ elements['log-limit'].addEventListener('change', event => {
   writeStorage(LOG_DISPLAY_LIMIT_KEY, String(value))
   renderLogs()
 })
-elements['auto-scroll'].addEventListener('click', () => {
-  autoScroll = !autoScroll
-  elements['auto-scroll'].setAttribute('aria-pressed', String(autoScroll))
-  elements['auto-scroll'].textContent = t(autoScroll ? 'pauseAutoScroll' : 'resumeAutoScroll')
+elements['auto-scroll'].addEventListener('change', event => {
+  autoScroll = event.target.checked
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
 })
 elements['refresh-logs'].addEventListener('click', () => { void refreshLogs() })
