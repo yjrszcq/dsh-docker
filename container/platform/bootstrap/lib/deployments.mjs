@@ -506,9 +506,7 @@ export class DeploymentManager {
       ])
       const patchSet = await loadEnvironmentPatchSet(environmentRoot)
       const stagingId = `runtime-reset-${randomUUID()}`
-      const versionsRoot = current.runtime.storage === 'image'
-        ? join(this.paths.runRoot, 'runtime-reset')
-        : this.paths.runtimesRoot
+      const versionsRoot = this.paths.runtimesRoot
       const staging = join(versionsRoot, stagingId)
       const destinationId = current.runtime.storage === 'store'
         ? current.runtime.id
@@ -572,7 +570,7 @@ export class DeploymentManager {
         await this.publishStatus({ operation: 'runtime-reset-failed' }).catch(() => {})
         throw error
       } finally {
-        await rm(current.runtime.storage === 'image' ? versionsRoot : staging, { recursive: true, force: true })
+        await rm(staging, { recursive: true, force: true })
       }
     })
   }
