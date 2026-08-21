@@ -293,3 +293,18 @@ jobs:
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
       gotify_token: ${{ secrets.GOTIFY_TOKEN }}
+
+  notify-failed:
+    name: Notify container image publication failure
+    needs: build
+    if: ${{ failure() }}
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
+    with:
+      title: DSH 镜像发布失败
+      message: >-
+        Docker Hub 或 GHCR 镜像的构建、测试、推送或验证失败。请查看 GitHub Actions：
+        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      priority: 8
+    secrets:
+      gotify_url: ${{ secrets.GOTIFY_URL }}
+      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
