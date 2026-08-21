@@ -577,9 +577,12 @@ a.secondaryButton { text-decoration: none; }
   min-width: 0;
   padding: 10px 12px;
   background: var(--dsw-alias-bg-module-platform);
+  cursor: pointer;
 }
 
 .logEntry + .logEntry { border-top: 1px solid var(--dsw-alias-border-l2); }
+.logEntry:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.logEntry:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
 .logMeta { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .logDebug { color: var(--dsw-alias-label-tertiary); }
@@ -610,6 +613,13 @@ a.secondaryButton { text-decoration: none; }
   color: var(--dsw-alias-label-primary);
   font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
+}
+
+.logDetails {
+  margin-top: 9px !important;
+  padding-top: 9px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary) !important;
 }
 
 .emptyLogs {

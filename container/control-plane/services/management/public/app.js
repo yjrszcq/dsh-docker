@@ -230,6 +230,7 @@ let fileEditorOriginal = ''
 let fileEditorDirty = false
 const logEntries = []
 const logIdentities = new Set()
+const expandedLogIdentities = new Set()
 let logDisplayLimit = (() => {
   const value = Number(storageValue(LOG_DISPLAY_LIMIT_KEY))
   return LOG_DISPLAY_LIMITS.includes(value) ? value : DEFAULT_LOG_DISPLAY_LIMIT
@@ -966,8 +967,29 @@ function renderLogs() {
     time.textContent = localTime(entry.timestamp)
     const message = document.createElement('pre')
     message.textContent = display(entry.message)
+    const details = document.createElement('pre')
+    details.className = 'log-details'
+    details.textContent = JSON.stringify(entry, null, 2)
+    const expanded = expandedLogIdentities.has(item.identity)
+    details.hidden = !expanded
+    article.tabIndex = 0
+    article.setAttribute('role', 'button')
+    article.setAttribute('aria-expanded', String(expanded))
+    const toggle = () => {
+      const next = !expandedLogIdentities.has(item.identity)
+      if (next) expandedLogIdentities.add(item.identity)
+      else expandedLogIdentities.delete(item.identity)
+      article.setAttribute('aria-expanded', String(next))
+      details.hidden = !next
+    }
+    article.addEventListener('click', toggle)
+    article.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key)) return
+      event.preventDefault()
+      toggle()
+    })
     meta.append(levelLabel, sourceLabel, time)
-    article.append(meta, message)
+    article.append(meta, message, details)
     elements['log-list'].append(article)
   }
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
@@ -989,7 +1011,10 @@ function appendLog(entry) {
   logEntries.push({ identity, value: entry })
   logIdentities.add(identity)
   if (logEntries.length > LOG_STREAM_LIMIT) {
-    for (const removed of logEntries.splice(0, logEntries.length - LOG_STREAM_LIMIT)) logIdentities.delete(removed.identity)
+    for (const removed of logEntries.splice(0, logEntries.length - LOG_STREAM_LIMIT)) {
+      logIdentities.delete(removed.identity)
+      expandedLogIdentities.delete(removed.identity)
+    }
   }
   scheduleLogRender()
 }
@@ -1771,6 +1796,7 @@ elements['clear-logs'].addEventListener('click', () => {
   try { window.sessionStorage.setItem(LOG_CLEAR_CUTOFF_KEY, logClearCutoff) } catch {}
   logEntries.length = 0
   logIdentities.clear()
+  expandedLogIdentities.clear()
   renderLogs()
 })
 elements['reminder-later'].addEventListener('click', () => {

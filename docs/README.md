@@ -168,7 +168,7 @@ Both tools use the existing Gateway Host, Origin, Fetch Metadata, and optional B
 
 The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
 
-New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
+New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Both Management interfaces show a compact summary for each entry; selecting it expands the complete structured record, including error stacks, causes, task IDs, and diagnostic fields. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
 
 ```bash
 docker exec deepseek-harness dsh-platform status

@@ -7,7 +7,7 @@ import { UserPluginInventory } from '../../control-plane/modules/user-plugin-man
 import { UserPluginJournal, userPluginJournalInternals } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
 import { UserPluginSnapshots, userPluginSnapshotInternals } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore, userPluginStateInternals } from '../../control-plane/modules/user-plugin-manager/state.mjs'
-import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
+import { UserPluginTransactionManager, userPluginTransactionInternals } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-user-plugin-transaction-'))
@@ -56,6 +56,15 @@ function manager(value, overrides = {}) {
     }),
   }
 }
+
+test('runs DSH plugin removal with writable user configuration directories', () => {
+  const environment = userPluginTransactionInternals.pluginEnvironment('/data/dsh', '/home/node')
+  assert.equal(environment.HOME, '/home/node')
+  assert.equal(environment.XDG_CACHE_HOME, '/home/node/.cache')
+  assert.equal(environment.XDG_CONFIG_HOME, '/home/node/.config')
+  assert.equal(environment.XDG_DATA_HOME, '/home/node/.local/share')
+  assert.equal(environment.DSH_HOME, '/data/dsh')
+})
 
 test('snapshots and restores the complete Web Profile with hidden files, modes, and symlinks', async () => {
   const value = await fixture()
@@ -151,6 +160,30 @@ test('uninstalls one exact package name without exposing package-manager argumen
     actions: [{ name: 'alpha', action: 'uninstall' }],
   })
   assert.deepEqual(removals, [{ dshHome: value.dshHome, profile: 'web', name: 'alpha' }])
+  assert.equal(result.inventory.plugins.some(plugin => plugin.name === 'alpha'), false)
+})
+
+test('reapplies disabled Bundle selection after DSH plugin removal reconciles the Profile', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const transaction = manager(value, {
+    runPlugin: async details => {
+      const manifestPath = join(value.profileRoot, 'package.json')
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+      delete manifest.dependencies[details.name]
+      manifest.dsh.profile.bundles = ['beta']
+      await writeFile(manifestPath, JSON.stringify(manifest))
+      await rm(join(value.profileRoot, 'node_modules', details.name), { recursive: true, force: true })
+    },
+  })
+  const result = await transaction.value.apply({
+    taskId: 'task-disable-and-uninstall',
+    revision: before.revision,
+    actions: [{ name: 'beta', action: 'disable' }, { name: 'alpha', action: 'uninstall' }],
+  })
+  const manifest = JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8'))
+  assert.deepEqual(manifest.dsh.profile.bundles, [])
+  assert.equal(result.inventory.plugins.find(plugin => plugin.name === 'beta')?.enabled, false)
   assert.equal(result.inventory.plugins.some(plugin => plugin.name === 'alpha'), false)
 })
 

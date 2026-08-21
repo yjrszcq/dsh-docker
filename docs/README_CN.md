@@ -168,7 +168,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
 
-平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流；容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
+平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流。两个管理界面默认显示每条日志的简短摘要，点击后会展开包含错误堆栈、Cause、任务 ID 和其他诊断字段的完整结构化记录。容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
 
 ```bash
 docker exec deepseek-harness dsh-platform status

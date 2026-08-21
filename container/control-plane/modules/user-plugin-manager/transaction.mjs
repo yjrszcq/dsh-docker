@@ -1,15 +1,27 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import { userPluginInternals } from './index.mjs'
 
+function pluginEnvironment(dshHome, home = userInfo().homedir) {
+  return {
+    ...process.env,
+    HOME: home,
+    XDG_CACHE_HOME: join(home, '.cache'),
+    XDG_CONFIG_HOME: join(home, '.config'),
+    XDG_DATA_HOME: join(home, '.local', 'share'),
+    DSH_HOME: dshHome,
+  }
+}
+
 function runDshPlugin({ dshHome, profile, name }, timeoutMs = 300_000) {
   return new Promise((resolveRun, reject) => {
     const child = spawn('/usr/local/bin/dsh', ['plugin', '--profile', profile, 'remove', name], {
-      env: { ...process.env, DSH_HOME: dshHome },
+      env: pluginEnvironment(dshHome),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const stdout = []
@@ -42,7 +54,10 @@ function runDshPlugin({ dshHome, profile, name }, timeoutMs = 300_000) {
       ? finish(timeoutError)
       : code === 0
         ? finish()
-        : finish(new Error(`dsh plugin remove failed for ${name}: ${Buffer.concat(stderr).toString('utf8').trim()}`)))
+        : finish(new Error(`dsh plugin remove failed for ${name}: ${[
+          ['stdout', Buffer.concat(stdout).toString('utf8').trim()],
+          ['stderr', Buffer.concat(stderr).toString('utf8').trim()],
+        ].filter(([, value]) => value !== '').map(([stream, value]) => `${stream}: ${value}`).join('\\n')}`)))
   })
 }
 
@@ -91,6 +106,8 @@ async function mutateProfile({ inventory, selectionStore, actions, runPlugin }) 
     } else if (action === 'enable') {
       if (!bundles.includes(name)) bundles.splice(Math.min(disabled.get(name) ?? bundles.length, bundles.length), 0, name)
       disabled.delete(name)
+    } else if (action === 'uninstall') {
+      for (let found = bundles.indexOf(name); found !== -1; found = bundles.indexOf(name)) bundles.splice(found, 1)
     }
   }
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
@@ -100,6 +117,14 @@ async function mutateProfile({ inventory, selectionStore, actions, runPlugin }) 
       await runPlugin({ dshHome: join(inventory.profileRoot, '..', '..'), profile: inventory.profile, name })
       disabled.delete(name)
     }
+  }
+  if (actions.some(({ action }) => action === 'uninstall')) {
+    const installedManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    installedManifest.dsh = {
+      ...installedManifest.dsh,
+      profile: { ...installedManifest.dsh?.profile, bundles },
+    }
+    await durableReplace(manifestPath, `${canonicalJson(installedManifest).toString('utf8')}\n`)
   }
   await selectionStore.write({
     schema: 1,
@@ -349,4 +374,4 @@ export class UserPluginTransactionManager {
   }
 }
 
-export const userPluginTransactionInternals = Object.freeze({ mutateProfile, runDshPlugin, validateActions })
+export const userPluginTransactionInternals = Object.freeze({ mutateProfile, pluginEnvironment, runDshPlugin, validateActions })

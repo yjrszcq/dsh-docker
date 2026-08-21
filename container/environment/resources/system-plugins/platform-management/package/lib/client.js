@@ -182,6 +182,7 @@ function LogViewer({ active, t }) {
   const [streamState, setStreamState] = useState('connecting')
   const [autoScroll, setAutoScroll] = useState(true)
   const [displayLimit, setDisplayLimit] = useState(readLogDisplayLimit)
+  const [expanded, setExpanded] = useState(() => new Set())
   const listRef = useRef(null)
   const clearCutoff = useRef(readLogClearCutoff())
   const logIdentities = useRef(new Set())
@@ -256,6 +257,7 @@ function LogViewer({ active, t }) {
     renderFrame.current = undefined
     pendingEntries.current.length = 0
     logIdentities.current.clear()
+    setExpanded(new Set())
     setEntries([])
   }
 
@@ -309,12 +311,31 @@ function LogViewer({ active, t }) {
       : h('div', { className: css.logList, ref: listRef }, filtered.map(item => {
           const entry = item.value
           const entryLevel = logLevel(entry)
-          return h('article', { className: css.logEntry, key: item.identity },
+          const isExpanded = expanded.has(item.identity)
+          const toggle = () => setExpanded(value => {
+            const next = new Set(value)
+            if (next.has(item.identity)) next.delete(item.identity); else next.add(item.identity)
+            return next
+          })
+          return h('article', {
+            className: css.logEntry,
+            key: item.identity,
+            role: 'button',
+            tabIndex: 0,
+            'aria-expanded': isExpanded,
+            onClick: toggle,
+            onKeyDown: event => {
+              if (!['Enter', ' '].includes(event.key)) return
+              event.preventDefault()
+              toggle()
+            },
+          },
             h('div', { className: css.logMeta },
               h('strong', { className: `${css.logLevel} ${css[`log${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`]}` }, t(`level${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`)),
               h('span', { className: css.logSource }, display(entry.source)),
               h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode')))),
-            h('pre', null, display(entry.message)))
+            h('pre', null, display(entry.message)),
+            isExpanded ? h('pre', { className: css.logDetails }, JSON.stringify(entry, null, 2)) : null)
         })))
 }
 

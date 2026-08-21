@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import WebSocket from '/run/dsh-platform/views/bootstrap/control-plane/services/management/node_modules/ws/wrapper.mjs'
@@ -118,18 +118,22 @@ await assert.rejects(request('GET', `${API}terminal/sessions/${terminal.sessionI
 const profileRoot = '/data/dsh/profiles/web'
 const manifestPath = join(profileRoot, 'package.json')
 const faultNames = ['smoke-fault-one', 'smoke-fault-two']
+const pluginRoots = new Map()
 for (const name of faultNames) {
-  const root = join(profileRoot, 'node_modules', name)
-  await mkdir(root, { recursive: true })
-  await writeFile(join(root, 'package.json'), `${JSON.stringify({
+  const source = join('/workspace/smoke-user-plugin-sources', name)
+  const installed = join(profileRoot, 'node_modules', name)
+  pluginRoots.set(name, source)
+  await mkdir(source, { recursive: true })
+  await writeFile(join(source, 'package.json'), `${JSON.stringify({
     name,
     version: '1.0.0',
     type: 'module',
     main: './index.mjs',
     dsh: { bundle: { patch: './cordis.patch.yml' } },
   }, null, 2)}\n`)
-  await writeFile(join(root, 'index.mjs'), `throw new Error('${name} startup failure')\n`)
-  await writeFile(join(root, 'cordis.patch.yml'), `- insert:\n    - id: ${name}\n      name: ${JSON.stringify(`file://${join(root, 'index.mjs')}`)}\n`)
+  await writeFile(join(source, 'index.mjs'), `throw new Error('${name} startup failure')\n`)
+  await writeFile(join(source, 'cordis.patch.yml'), `- insert:\n    - id: ${name}\n      name: ${JSON.stringify(`file://${join(source, 'index.mjs')}`)}\n`)
+  await cp(source, installed, { recursive: true })
 }
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
 manifest.dependencies ??= {}
@@ -137,7 +141,7 @@ manifest.dsh ??= {}
 manifest.dsh.profile ??= {}
 manifest.dsh.profile.bundles ??= []
 for (const name of faultNames) {
-  manifest.dependencies[name] = '1.0.0'
+  manifest.dependencies[name] = `file:${pluginRoots.get(name)}`
   if (!manifest.dsh.profile.bundles.includes(name)) manifest.dsh.profile.bundles.push(name)
 }
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
@@ -174,6 +178,22 @@ await waitFor(async () => {
 }, 'DSH recovery completion')
 inventory = await request('GET', `${API}user-plugins`)
 for (const name of faultNames) assert.equal(inventory.plugins.find(value => value.name === name)?.enabled, false)
+
+const uninstall = await request('POST', `${API}user-plugins/apply`, {
+  profile: 'web', revision: inventory.revision,
+  actions: [{ name: faultNames[0], action: 'uninstall' }],
+})
+const uninstallOutcome = await waitTask('userPluginOperation', uninstall.taskId, ['success', 'failed'])
+if (uninstallOutcome.status !== 'success') {
+  const diagnostics = await request('GET', `${API}logs?limit=50`)
+  throw new Error(JSON.stringify({
+    error: uninstallOutcome.error,
+    manifest: JSON.parse(await readFile(manifestPath, 'utf8')),
+    logs: diagnostics.entries.slice(-10),
+  }))
+}
+inventory = await request('GET', `${API}user-plugins`)
+assert.equal(inventory.plugins.some(value => value.name === faultNames[0]), false)
 
 const logEntries = (await request('GET', `${API}logs?limit=5000`)).entries
 for (const message of [
