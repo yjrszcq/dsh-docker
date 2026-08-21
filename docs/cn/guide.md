@@ -2,7 +2,110 @@
 
 [English](../en/guide.md) | 中文 | [快速开始](../../README_CN.md)
 
-本文档说明完整配置、平台行为、在线更新、信任、发布自动化和开发流程。普通部署请从根目录的 [README](../../README_CN.md) 开始。
+本文档在根目录 [README](../../README_CN.md) 的基础上，完整说明部署、运行维护、恢复、安全、发布和开发流程。
+
+## 目录
+
+- [部署](#部署)
+- [配置参考](#配置参考)
+- [平台架构](#平台架构)
+- [Gateway](#gateway)
+- [在线更新](#在线更新)
+- [系统插件](#系统插件)
+- [独立恢复工具](#独立恢复工具)
+- [日志](#日志)
+- [更新通道与回滚](#更新通道与回滚)
+- [信任与恢复](#信任与恢复)
+- [安全模型](#安全模型)
+- [发布自动化](#发布自动化)
+- [构建与测试](#构建与测试)
+
+## 部署
+
+### 镜像变体
+
+| 变体 | 滚动标签 | 固定版本标签 | 内容 |
+| --- | --- | --- | --- |
+| 标准版 | `latest` | `<version>` | DSH 和正常运行所需工具 |
+| 开发工具版 | `latest-devtools` | `<version>-devtools` | 标准版加开发工具 |
+
+普通部署应使用标准版。开发工具版额外提供编译器、诊断工具和编辑器等开发工具，但使用相同的持久化数据布局。
+
+### 使用前须知
+
+- **目录权限：** bind mount 的 DSH 数据、平台数据和工作区目录必须允许 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
+- **端口暴露：** `127.0.0.1:3080:3080` 只允许从 Docker 宿主机访问；`3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放 DSH。
+- **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，设置强 `DSH_PROXY_PASSWORD`，并在容器外终止 HTTPS。
+- **Agent Root 权限：** `dsh-sudo-true` 附加用户组会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。不需要时应移除该用户组；使用仓库 Compose 时则设置 `DSH_SUDO_ENABLED=false`。
+- **管理中心 Root 权限：** 关闭 Agent sudo 不会限制独立 DSH 管理中心。其容器终端和文件管理会按设计使用 Root 权限，必须放在认证和可信网络边界之后。
+- **恢复入口：** `/_dsh_platform/console/` 在 DSH 停止或无法启动时仍可使用。配置 Gateway 密码时复用该密码，否则使用 `DSH_PLATFORM_PASSWORD`；两者均为空时进入临时密钥模式。
+
+### 精简 Bind Mount Compose
+
+创建直观且可从宿主机直接查看的持久化目录：
+
+```bash
+mkdir -p data/dsh data/platform workspace
+```
+
+创建 `docker-compose.yaml`：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3080:3080"
+    group_add:
+      - dsh-sudo-true
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+启动容器：
+
+```bash
+docker compose up -d
+```
+
+bind mount 无法写入时，应先修正宿主机目录所有权：
+
+```bash
+sudo chown -R 1000:1000 data workspace
+```
+
+### 等价 Docker Run
+
+不使用 Compose 时，可以用以下命令启动相同的 bind mount 部署：
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  --group-add dsh-sudo-true \
+  -p 127.0.0.1:3080:3080 \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+打开 <http://127.0.0.1:3080>。DSH 和 Agent 不需要 Root 权限时，删除 `--group-add dsh-sudo-true`。
+
+### 仓库 Compose
+
+仓库提供的 [`docker-compose.yaml`](../../docker-compose.yaml) 是面向生产配置的完整版本。它使用 `dsh-data` 和 `dsh-platform` named volumes 保存数据，将 `DSH_WORKSPACE` 指定的目录 bind mount 为工作区，并读取 [Compose 变量](#compose-变量)中列出的配置。可从环境变量模板开始：
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+普通容器替换和 `docker compose down` 不会删除 named volumes，但这些数据不会像普通项目目录一样直接显示在仓库中，备份时必须通过 Docker 同时保存两个完整 Volume。`docker compose down -v` 会删除它们，也会因此删除持久化的 DSH 和平台数据。
 
 ## 配置参考
 
@@ -186,17 +289,34 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 ## 在线更新
 
+### 检查与提醒
+
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
 自动检查默认每六小时带抖动执行一次，可在任一管理前端中关闭或调整频率。检查不会自动下载或激活更新。可选提醒只在 DSH 页面中显示，且只由自动检查触发；独立管理中心不显示更新弹窗。打开其中的“更新管理”标签会执行一次只读检查，打开页面和手动检查都只刷新已保存结果，不触发提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立管理中心；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志和系统插件操作。
+
+### Runtime 维护
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的 DSH 管理中心会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
+## 系统插件
+
+Container Environment 当前包含：
+
+| 插件 | 用途 |
+| --- | --- |
+| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志和系统插件管理 |
+| `@dsh-docker/settings-document-editor` | 将只能在桌面打开配置文件的操作替换为可选的浏览器 `settings.yaml` 编辑器 |
+
 独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
-### 独立恢复工具
+可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
+
+## 独立恢复工具
+
+### 用户插件恢复
 
 `/_dsh_platform/console/` 中的“用户插件”和“容器终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
 
@@ -204,7 +324,11 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 启用、禁用和卸载会先积累为当前页面内的草稿。提交时，Management 会幂等暂停 DSH、为完整 Web Profile 创建快照、执行精确操作、校验结果，然后只重启 DSH。提交前刷新或离开页面会丢弃草稿；revision 冲突时会重新读取清单，不会覆盖并发修改。commit 前中断会恢复快照；commit 后即使 DSH 仍启动失败，也会保留本次插件修改，方便连续处理多个故障插件。此处不提供安装功能；请使用 DSH 正常插件流程或独立终端安装。
 
+### 容器终端
+
 “容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录取自 `DSH_DEFAULT_WORKSPACE`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
+
+### 文件管理
 
 独立 DSH 管理中心的“文件管理”同样不依赖 DSH，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。初始目录取自 `DSH_DEFAULT_WORKSPACE`；快捷入口依次使用 `DSH_DEFAULT_WORKSPACE`、`DSH_HOME`、`DSH_PLATFORM_DATA` 和 `/`，重复路径会自动去除。文件操作通过 Maintenance Broker 以 root 身份执行，可计算目录大小，并可修改文件或目录的用户、用户组和八进制权限；目录属性可选择递归应用且不会跟随符号链接。它可修复普通 Management/DSH 用户无法写入的文件，但仍受只读挂载和平台托管路径互斥保护。Windows、SMB 等不支持 Unix metadata 的宿主机 bind mount 可能静默忽略 `chown`/`chmod`；平台会校验修改结果并报告失败，此时需改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。
 
@@ -216,9 +340,11 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata、Basic Auth 或独立管理中心会话校验，不增加监听端口。这是容器 root 级管理边界：能进入该页面的用户可读写容器数据并执行任意 Shell 命令，只应在[安全模型](#安全模型)所述的可信边界内开放。
 
-可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
+## 日志
 
 平台和 DSH 的新日志会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流。两个管理界面支持按文本、Source 和级别筛选，可选择最近 100、250、500 或 1000 条处理后记录，并提供手动刷新、自动滚动开关和 JSONL 导出。每条日志默认显示简短摘要，展开后显示错误堆栈、Cause、任务 ID 和其他完整诊断字段。“清空显示”只影响当前浏览器视图，不删除日志文件。容器启动时不会向 stdout 重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 是权威日志存储，默认按总量 100 MiB、保留 14 天自动轮转。
+
+## 更新通道与回滚
 
 ```bash
 docker exec deepseek-harness dsh-platform status

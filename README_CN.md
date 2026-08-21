@@ -27,7 +27,7 @@
 mkdir -p data/dsh data/platform workspace
 ```
 
-使用以下精简 `compose.yaml`：
+使用以下精简 `docker-compose.yaml`：
 
 ```yaml
 services:
@@ -152,7 +152,7 @@ Compose 默认开启不受限制的免密码 sudo。Agent 不需要 root 权限�
 
 [完整指南](docs/cn/guide.md)包括：
 
-- 全部配置变量和 Gateway 行为；
-- 平台架构、在线更新、信任、恢复和回滚；
-- 密码和浏览器兼容细节；
-- 发布自动化、本地构建、测试和开发工具。
+- 部署前提、两种 Compose 布局和 Docker Run；
+- 全部配置变量、数据存储、Gateway 和远程访问行为；
+- 平台架构、在线更新、系统插件、日志、信任、恢复和回滚；
+- 独立恢复工具、发布自动化、本地构建、测试和开发工具。

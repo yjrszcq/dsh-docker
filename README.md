@@ -27,7 +27,7 @@ Create local data directories:
 mkdir -p data/dsh data/platform workspace
 ```
 
-Use this minimal `compose.yaml`:
+Use this minimal `docker-compose.yaml`:
 
 ```yaml
 services:
@@ -152,7 +152,7 @@ Compose enables unrestricted passwordless sudo by default. Set `DSH_SUDO_ENABLED
 
 The [complete guide](docs/en/guide.md) covers:
 
-- all configuration variables and gateway behavior;
-- platform architecture, online updates, trust, recovery, and rollback;
-- password and browser compatibility details;
-- release automation, local builds, tests, and devtools.
+- deployment prerequisites, both Compose layouts, and Docker Run;
+- all configuration variables, storage, gateway, and remote-access behavior;
+- platform architecture, online updates, System Plugins, logs, trust, recovery, and rollback;
+- standalone recovery tools, release automation, local builds, tests, and devtools.

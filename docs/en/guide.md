@@ -2,7 +2,110 @@
 
 English | [中文](../cn/guide.md) | [Quick start](../../README.md)
 
-This guide documents configuration, platform behavior, online updates, trust, release automation, and development workflows. For ordinary deployment, start with the root [README](../../README.md).
+This guide expands the root [README](../../README.md) into a complete deployment, operation, recovery, security, release, and development reference.
+
+## Contents
+
+- [Deployment](#deployment)
+- [Configuration](#configuration)
+- [Platform Architecture](#platform-architecture)
+- [Gateway](#gateway)
+- [Online Updates](#online-updates)
+- [System Plugins](#system-plugins)
+- [Standalone Recovery Tools](#standalone-recovery-tools)
+- [Logs](#logs)
+- [Update Channels and Rollback](#update-channels-and-rollback)
+- [Trust and Recovery](#trust-and-recovery)
+- [Security Model](#security-model)
+- [Release Automation](#release-automation)
+- [Build and Test](#build-and-test)
+
+## Deployment
+
+### Image Variants
+
+| Variant | Rolling tag | Versioned tag | Contents |
+| --- | --- | --- | --- |
+| Standard | `latest` | `<version>` | DSH and normal runtime utilities |
+| Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus development tools |
+
+Use the Standard image for ordinary deployments. The Devtools image adds compilers, diagnostics, editors, and other development utilities but uses the same persistent data layout.
+
+### Before You Start
+
+- **Directory permissions:** Bind-mounted DSH data, platform data, and workspace directories must be writable by UID/GID `1000:1000`. Keep both data directories when replacing or upgrading a container.
+- **Port exposure:** Bind `127.0.0.1:3080:3080` for host-only access. `3080:3080` or `0.0.0.0:3080:3080` publishes DSH on every host interface.
+- **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains, set a strong `DSH_PROXY_PASSWORD`, and terminate HTTPS outside the container.
+- **Agent root authority:** The `dsh-sudo-true` supplementary group grants DSH and its Agent unrestricted passwordless root access. Omit it when root is unnecessary, or set `DSH_SUDO_ENABLED=false` when using the repository Compose file.
+- **Management root authority:** Disabling Agent sudo does not restrict the standalone DSH Management Console. Its container terminal and file manager intentionally run as root and require authentication and a trusted network boundary.
+- **Recovery access:** `/_dsh_platform/console/` remains available while DSH is stopped or cannot start. It uses the Gateway password when configured, otherwise `DSH_PLATFORM_PASSWORD`, and falls back to temporary-key mode when both are empty.
+
+### Minimal Bind-Mount Compose
+
+Create transparent, host-visible persistent directories:
+
+```bash
+mkdir -p data/dsh data/platform workspace
+```
+
+Create `docker-compose.yaml`:
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3080:3080"
+    group_add:
+      - dsh-sudo-true
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+Then start the container:
+
+```bash
+docker compose up -d
+```
+
+If a bind mount is not writable, fix the host directory ownership before retrying:
+
+```bash
+sudo chown -R 1000:1000 data workspace
+```
+
+### Equivalent Docker Run
+
+The same bind-mount deployment can be started without Compose:
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  --group-add dsh-sudo-true \
+  -p 127.0.0.1:3080:3080 \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+Open <http://127.0.0.1:3080>. Remove `--group-add dsh-sudo-true` when DSH and its Agent do not need root.
+
+### Repository Compose
+
+The checked-in [`docker-compose.yaml`](../../docker-compose.yaml) is the configurable production-oriented alternative. It uses named volumes `dsh-data` and `dsh-platform`, bind-mounts the workspace selected by `DSH_WORKSPACE`, and reads the settings documented in [Compose Variables](#compose-variables). Start from the supplied environment template:
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Named volumes survive ordinary container replacement and `docker compose down`, but they are not visible as normal project directories. Include both complete volumes in Docker-aware backups. `docker compose down -v` deletes them and therefore deletes persistent DSH and platform data.
 
 ## Configuration
 
@@ -186,17 +289,34 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 ## Online Updates
 
+### Checks and Notifications
+
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
 Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening its Updates tab performs a read-only check, while page-open and manual checks refresh the saved result without notifying. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, and System Plugin workflows.
+
+### Runtime Maintenance
 
 The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded DSH Management Console view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
+## System Plugins
+
+The Container Environment currently includes:
+
+| Plugin | Purpose |
+| --- | --- |
+| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, and System Plugin controls |
+| `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
+
 The standalone console lists every System Plugin bundled by the current Environment and can install, uninstall, enable, or disable them, including recovery of the `platform-management` DSH integration. The integration inside DSH shows missing plugins with an Install action and limits installed plugins to enable/disable; it cannot uninstall them. Changes are marked **Pending restart** and take effect only after restarting DSH. Refreshing before restart discards the pending draft. Installation rebuilds and verifies the complete System Plugin Set from the current Deployment's local trusted Environment Artifact against the Deployment Record content hash. It never contacts GitHub or npm, never copies files from a built Runtime, and never reinstalls a missing plugin automatically.
 
-### Standalone Recovery Tools
+The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
+
+## Standalone Recovery Tools
+
+### User Plugin Recovery
 
 The **User Plugins** and **Container terminal** tabs in `/_dsh_platform/console/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
 
@@ -204,7 +324,11 @@ User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles
 
 Enable, disable, and uninstall changes are accumulated as a page-local draft. Applying them pauses DSH idempotently, snapshots the complete Web Profile, performs the exact actions, validates the resulting Profile, and restarts only DSH. Refreshing or leaving before Apply discards the draft. A revision conflict returns the latest inventory instead of overwriting concurrent changes. Pre-commit interruption restores the snapshot; after commit, a plugin change is retained even if DSH still fails, so multiple faulty plugins can be removed over consecutive attempts. Installation is intentionally not offered here; use DSH's normal plugin flow or the standalone terminal.
 
+### Container Terminal
+
 The Container terminal tab uses a constrained Maintenance Broker inside Stage-0 to start a real interactive `/bin/bash` as root. Its initial directory comes from `DSH_DEFAULT_WORKSPACE`, and it receives `DSH_HOME`, PATH, and proxy variables. `DSH_SUDO_ENABLED` controls only DSH/Agent sudo access; it does not reduce this terminal's administrator privileges. Restarting only DSH does not terminate the terminal. A browser refresh or brief disconnect can reattach for 30 seconds and redraw up to 256 KiB of recent output; explicitly closing the session, stopping Stage-0, or stopping the container terminates it. Platform logs record session lifecycle only, never terminal input, output, command history, or the complete environment.
+
+### File Management
 
 The standalone DSH Management Console **Files** tab also remains available while DSH is stopped, fails to start, or is in recovery mode. The Platform Management plugin inside DSH deliberately does not expose this tab. Its initial directory comes from `DSH_DEFAULT_WORKSPACE`; shortcuts use `DSH_DEFAULT_WORKSPACE`, `DSH_HOME`, `DSH_PLATFORM_DATA`, and `/`, with duplicates removed. File operations run through the Maintenance Broker as root. They can repair files that the ordinary Management/DSH identity cannot write, while still respecting read-only mounts and the platform-managed-path mutation lease. Host bind mounts backed by Windows, SMB, or another filesystem without Unix metadata may silently ignore `chown` and `chmod`; the platform verifies the result and reports failure, so use a Linux/WSL path or named volume with Unix metadata support when ownership and mode changes are required.
 
@@ -216,9 +340,11 @@ Copy, move, archive, extraction, and permanent deletion run as persistent backgr
 
 Both tools use the existing Gateway Host, Origin, Fetch Metadata, Basic Auth, or standalone Management Console session checks and add no listener. This is a container-root management boundary: anyone admitted to the page can read or modify container data and execute arbitrary shell commands. Expose it only behind the trusted boundary described in [Security Model](#security-model).
 
-The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
+## Logs
 
 New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Both Management interfaces support text, Source, and level filters; processed-entry limits of 100, 250, 500, or 1000; manual refresh; optional automatic scrolling; and JSONL export. Each row starts with a compact summary and expands to the complete structured record, including error stacks, causes, task IDs, and diagnostic fields. **Clear view** affects only the current browser view and does not delete stored logs. Historical entries are not replayed to stdout at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative store and rotates according to `DSH_LOG_MAX_BYTES` and `DSH_LOG_RETENTION_DAYS` (100 MiB and 14 days by default).
+
+## Update Channels and Rollback
 
 ```bash
 docker exec deepseek-harness dsh-platform status
