@@ -238,16 +238,15 @@ export class FileTaskManager {
       else if (task.operation === 'move') await this.#copy(task, true)
       else if (task.operation === 'delete') await this.#delete(task)
       else if (task.operation === 'attributes') await this.#attributes(task)
-      task.status = 'success'
-      await this.#phase(task, 'completed')
+      await this.#terminal(task, 'success', 'completed')
       await this.report(`file-task.${task.operation}.completed`, publicTask(task))
     } catch (error) {
-      task.status = task.cancelRequested ? 'cancelled' : 'failed'
+      const status = task.cancelRequested ? 'cancelled' : 'failed'
       task.error = error instanceof Error ? error.message : String(error)
       task.errorCode = typeof error?.code === 'string' ? error.code : null
       await this.#cleanupStaging(task)
-      await this.#phase(task, task.status)
-      await this.report(`file-task.${task.operation}.${task.status}`, { ...publicTask(task), error })
+      await this.#terminal(task, status, status)
+      await this.report(`file-task.${task.operation}.${status}`, { ...publicTask(task), error })
       throw error
     } finally {
       await this.#prune()
@@ -408,6 +407,15 @@ export class FileTaskManager {
     task.phase = phase
     task.updatedAt = now()
     await this.#persist(task)
+    this.#publish(task)
+  }
+
+  async #terminal(task, status, phase) {
+    task.status = status
+    task.phase = phase
+    task.updatedAt = now()
+    await this.#persist(task)
+    if (this.activeMutation === task) this.activeMutation = undefined
     this.#publish(task)
   }
 

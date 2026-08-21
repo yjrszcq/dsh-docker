@@ -54,6 +54,39 @@ test('runs mkdir, touch, rename, copy, move, and permanent delete tasks', async 
   assert.equal((await readdir(join(files, 'copies'))).some(name => name.startsWith('.dsh-')), false)
 })
 
+test('releases the mutation lease before publishing a terminal task state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-terminal-lease-'))
+  const files = join(root, 'files')
+  const tasks = join(root, 'tasks')
+  const destination = join(files, 'destination')
+  await mkdir(destination, { recursive: true })
+  await writeFile(join(files, 'item.txt'), 'source')
+  await writeFile(join(destination, 'item.txt'), 'existing')
+  let releaseReport
+  const blockedReport = new Promise(resolve => { releaseReport = resolve })
+  let observeFailure
+  const failurePublished = new Promise(resolve => { observeFailure = resolve })
+  const inventory = new FileInventory()
+  const manager = new FileTaskManager({
+    root: tasks,
+    onState: task => { if (task.status === 'failed') observeFailure() },
+    report: message => message === 'file-task.copy.failed' ? blockedReport : undefined,
+  })
+  await manager.initialize()
+  const source = await inventory.stat(join(files, 'item.txt'))
+  const rejected = manager.start({
+    operation: 'copy', sources: [{ path: source.path, revision: source.revision }], destination, conflict: 'reject',
+  })
+  await failurePublished
+  const renamed = manager.start({
+    operation: 'copy', sources: [{ path: source.path, revision: source.revision }], destination, conflict: 'rename',
+  })
+  releaseReport()
+  assert.equal((await finish(manager, renamed)).status, 'success')
+  assert.equal((await finish(manager, rejected)).status, 'failed')
+  assert.equal((await readdir(destination)).length, 2)
+})
+
 test('changes file ownership and permissions recursively without following symbolic links', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-file-attributes-'))
   const files = join(root, 'files')
