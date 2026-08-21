@@ -976,6 +976,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /terminalLoading: 'Loading terminal components'/)
   assert.match(script, /cursorStyle: 'block'/)
   assert.match(script, /cursorInactiveStyle: 'outline'/)
+  assert.match(style, /#terminal-screen \.xterm-viewport \{ position: static;/)
   assert.match(script, /const badge = action[\s\S]*plugin\.pendingRestart[\s\S]*plugin\.reservedNameConflict[\s\S]*plugin\.damaged[\s\S]*plugin\.enabled/)
   assert.doesNotMatch(style, /user-plugin-badges/)
   assert.match(script, /count === 0 && userPluginInventory\.restartRequired !== true/)
