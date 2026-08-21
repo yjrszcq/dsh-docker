@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, symlink } from 'node:fs/promises'
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
 
 const API = 'http://127.0.0.1:3080/_dsh_platform/api/v1'
 const headers = {
@@ -90,6 +90,42 @@ const dshFile = `${dshRoot}/recovery.json`
 await request('files/content', { method: 'PUT', body: { path: dshFile, revision: null, content: '{"recovered":true}\n', create: true } })
 assert.equal((await request(`files/content?path=${encodeURIComponent(dshFile)}`)).content, '{"recovered":true}\n')
 
+const archiveSource = `${workspaceRoot}/archive-source`
+await task({ operation: 'mkdir', destination: archiveSource })
+await request('files/content', {
+  method: 'PUT', body: { path: `${archiveSource}/entry.txt`, revision: null, content: 'archive fixture\n', create: true },
+})
+for (const [format, extension] of [['zip', 'zip'], ['7z', '7z'], ['tar.gz', 'tar.gz']]) {
+  const source = await item(archiveSource)
+  const archivePath = `${workspaceRoot}/fixture-${format}.${extension}`
+  await task({
+    operation: 'archive', archiveFormat: format,
+    sources: [{ path: source.path, revision: source.revision }], destination: archivePath,
+  })
+  const extraction = `${workspaceRoot}/extracted-${format}`
+  await task({ operation: 'mkdir', destination: extraction })
+  const archive = await item(archivePath)
+  await task({
+    operation: 'extract', archiveFormat: format,
+    sources: [{ path: archive.path, revision: archive.revision }], destination: extraction,
+  })
+  assert.equal((await request(`files/content?path=${encodeURIComponent(`${extraction}/archive-source/entry.txt`)}`)).content, 'archive fixture\n')
+}
+const directoryDownload = await request(`files/download?path=${encodeURIComponent(archiveSource)}&revision=${encodeURIComponent((await item(archiveSource)).revision)}`, { raw: true })
+assert.equal(directoryDownload.headers.get('content-disposition').includes('archive-source.zip'), true)
+assert.deepEqual([...new Uint8Array(await directoryDownload.arrayBuffer()).slice(0, 2)], [0x50, 0x4b])
+
+const pagingRoot = `${workspaceRoot}/paging`
+await mkdir(pagingRoot)
+await Promise.all(Array.from({ length: 125 }, (_, index) => writeFile(`${pagingRoot}/${String(index).padStart(3, '0')}.txt`, 'x')))
+const firstPage = await request(`files/list?path=${encodeURIComponent(pagingRoot)}&limit=50`)
+assert.equal(firstPage.entries.length, 50)
+assert.equal(firstPage.total, 125)
+assert.equal(typeof firstPage.nextCursor, 'string')
+const secondPage = await request(`files/list?path=${encodeURIComponent(pagingRoot)}&limit=50&cursor=${encodeURIComponent(firstPage.nextCursor)}`)
+assert.equal(secondPage.entries.length, 50)
+assert.equal(secondPage.entries[0].name, '050.txt')
+
 const searchRoot = await request(`files/list?path=${encodeURIComponent(workspaceRoot)}`)
 assert.ok(searchRoot.entries.every(entry => typeof entry.user === 'string' && typeof entry.group === 'string'))
 const workspaceBeforeAttributes = await item(workspaceRoot)
@@ -138,4 +174,4 @@ await task({ operation: 'delete', sources: [{ path: workspace.path, revision: wo
 await assert.rejects(item(workspaceRoot), /returned 404/)
 await assert.rejects(item(dshRoot), /returned 404/)
 
-console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, directoryBytes: sizeResult.bytes, attributes: workspaceAttributes.mode, dshUnavailable: true }))
+console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, directoryBytes: sizeResult.bytes, attributes: workspaceAttributes.mode, archives: 3, paged: firstPage.total, dshUnavailable: true }))
