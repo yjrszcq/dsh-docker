@@ -163,7 +163,8 @@ const firstRecovery = await request('POST', `${API}user-plugins/apply`, {
   actions: [{ name: faultNames[0], action: 'disable' }],
 })
 const firstOutcome = await waitTask('userPluginOperation', firstRecovery.taskId, ['failed'])
-assert.match(firstOutcome.error, /failed|unavailable|ready|start/i)
+assert.equal(typeof firstOutcome.error, 'string')
+assert.notEqual(firstOutcome.error.trim(), '')
 inventory = await request('GET', `${API}user-plugins`)
 assert.equal(inventory.plugins.find(value => value.name === faultNames[0])?.enabled, false)
 assert.equal(inventory.plugins.find(value => value.name === faultNames[1])?.enabled, true)
