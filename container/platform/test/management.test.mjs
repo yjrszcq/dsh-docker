@@ -1056,6 +1056,17 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function fileNameIsValid\(value\)[\s\S]*new TextEncoder\(\)\.encode\(value\)\.byteLength <= 255/)
   assert.match(script, /const destination = filePath === '\/' \? `\/\$\{name\}` : `\$\{filePath\}\/\$\{name\}`/)
   assert.doesNotMatch(script, /file-new[\s\S]{0,200}window\.prompt/)
+  assert.doesNotMatch(script, /chooseConflict|window\.prompt\(t\('chooseConflict'/)
+  assert.match(html, /id="file-conflict-dialog"/)
+  assert.match(html, /name="file-conflict-choice" value="overwrite"/)
+  assert.match(html, /name="file-conflict-choice" value="rename"/)
+  assert.match(html, /name="file-conflict-choice" value="skip"/)
+  assert.match(html, /id="file-conflict-all"/)
+  assert.match(html, /id="file-conflict-confirm"[^>]*data-i18n="confirmChoice"/)
+  assert.match(script, /error\.code === 'FILE_EXISTS'/)
+  assert.match(script, /if \(decision\.applyAll\) conflictForAll = decision\.choice/)
+  assert.match(style, /\.file-conflict-options \{[^}]*display: grid/)
+  assert.match(style, /\.file-conflict-dialog \.confirm\[hidden\] \{ display: none; \}/)
   assert.match(maintenanceSource, /files\.\$\{operation\}\.rejected/)
   assert.match(maintenanceSource, /result\.path \?\? result\.destination \?\? result\.sources/)
   assert.match(style, /\.file-create-panel \{[^}]*grid-template-columns:/)
@@ -1403,6 +1414,21 @@ test('management exposes authenticated file inventory, search, upload, and range
       request.end('uploaded')
     })
     assert.equal(uploaded.status, 201)
+    assert.equal(await readFile(uploadPath, 'utf8'), 'uploaded')
+    const duplicate = await new Promise((resolve, reject) => {
+      const request = httpRequest({
+        socketPath, method: 'POST',
+        path: `${API_PREFIX}files/upload?path=${encodeURIComponent(uploadPath)}&conflict=reject`,
+        headers: { 'content-length': '9' },
+      }, response => {
+        const chunks = []
+        response.on('data', chunk => chunks.push(chunk))
+        response.on('end', () => resolve({ status: response.statusCode, value: JSON.parse(Buffer.concat(chunks)) }))
+      })
+      request.once('error', reject)
+      request.end('duplicate')
+    })
+    assert.deepEqual(duplicate, { status: 409, value: { error: 'upload target already exists', code: 'FILE_EXISTS' } })
     assert.equal(await readFile(uploadPath, 'utf8'), 'uploaded')
     const downloaded = await new Promise((resolve, reject) => {
       const request = httpRequest({

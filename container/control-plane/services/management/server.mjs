@@ -550,6 +550,7 @@ export function createManagementServer({
       })
       send(response, conflict ? 409 : (error?.statusCode ?? 400), {
         error: error instanceof Error ? error.message : 'management request failed',
+        code: error?.code ?? 'MANAGEMENT_ERROR',
       })
     }
   })

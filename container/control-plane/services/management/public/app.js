@@ -90,11 +90,11 @@ const COPY = Object.freeze({
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
     editPermissions: '编辑权限', permissions: '权限', permissionRead: '读取', permissionWrite: '写入', permissionExecute: '可执行', permissionOwner: '所有者', permissionGroup: '用户组', permissionOthers: '其他用户',
     fileUser: '用户', fileGroup: '用户组', recursiveAttributes: '同时修改子项属性', applyPermissions: '应用权限', attributesInvalid: '请填写有效的用户、用户组和 3 或 4 位八进制权限。', attributesOperation: '修改文件属性',
-    newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', conflictMode: '目标已存在', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
+    newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
-    chooseConflict: '冲突策略：reject（拒绝）、overwrite（覆盖）或 rename（自动重命名）',
+    fileConflictTitle: '目标已存在', fileConflictDetail: '请选择处理方式：', conflictOverwrite: '覆盖', conflictOverwriteDetail: '替换已有项目。', conflictRename: '自动重命名', conflictRenameDetail: '使用新名称保留两个项目。', conflictSkip: '跳过', conflictSkipDetail: '保留已有项目，不执行本项操作。', conflictApplyAll: '应用到之后的所有冲突', confirmChoice: '确认', operationCompleteWithSkipped: '文件操作已完成，已跳过 {count} 个冲突项。',
     later: '稍后提醒', dismissVersion: '不再提醒此版本',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
   }),
@@ -163,11 +163,11 @@ const COPY = Object.freeze({
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
     editPermissions: 'Edit permissions', permissions: 'Permissions', permissionRead: 'Read', permissionWrite: 'Write', permissionExecute: 'Execute', permissionOwner: 'Owner', permissionGroup: 'Group', permissionOthers: 'Others',
     fileUser: 'User', fileGroup: 'Group', recursiveAttributes: 'Also change child attributes', applyPermissions: 'Apply permissions', attributesInvalid: 'Enter a valid user, group, and a 3- or 4-digit octal mode.', attributesOperation: 'Changing file attributes',
-    newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', conflictMode: 'Destination exists', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
+    newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
-    chooseConflict: 'Conflict policy: reject, overwrite, or rename',
+    fileConflictTitle: 'Destination already exists', fileConflictDetail: 'Choose how to handle:', conflictOverwrite: 'Overwrite', conflictOverwriteDetail: 'Replace the existing item.', conflictRename: 'Auto rename', conflictRenameDetail: 'Keep both items with a new name.', conflictSkip: 'Skip', conflictSkipDetail: 'Leave the existing item unchanged.', conflictApplyAll: 'Apply to all remaining conflicts', confirmChoice: 'Confirm', operationCompleteWithSkipped: 'File operation completed; skipped {count} conflicting items.',
     later: 'Remind me later', dismissVersion: 'Do not remind for this version',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
   }),
@@ -254,6 +254,7 @@ let fileEditor = null
 let fileEditorOriginal = ''
 let fileEditorDirty = false
 let fileAttributesEntry = null
+let fileConflictResolve = null
 const logEntries = []
 const logIdentities = new Set()
 const expandedLogIdentities = new Set()
@@ -352,6 +353,7 @@ async function api(path, { method = 'GET', body } = {}) {
   if (!response.ok) {
     const error = new Error(value.error ?? `HTTP ${String(response.status)}`)
     error.statusCode = response.status
+    error.code = value.code
     throw error
   }
   return value
@@ -1687,17 +1689,19 @@ function closeFileEditor() {
   return true
 }
 
-async function waitFileTask(taskId) {
+async function waitFileTask(taskId, { report = true, refresh = true } = {}) {
   fileActiveTask = taskId
   elements['file-task-state'].hidden = false
   renderFileSelection()
+  let result = null
   try {
     for (;;) {
       const task = await api(`files/tasks/${taskId}`)
       elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation === 'attributes' ? t('attributesOperation') : task.operation })
       if (!['running'].includes(task.status)) {
-        if (task.status === 'success') fileOperationMessage(t('operationComplete'))
-        else fileOperationMessage(task.errorCode === 'FILE_ATTRIBUTES_UNSUPPORTED' ? t('attributesUnsupported') : task.error ?? t('operationFailed'), true)
+        result = task
+        if (report && task.status === 'success') fileOperationMessage(t('operationComplete'))
+        else if (report) fileOperationMessage(task.errorCode === 'FILE_ATTRIBUTES_UNSUPPORTED' ? t('attributesUnsupported') : task.error ?? t('operationFailed'), true)
         break
       }
       await new Promise(resolve => setTimeout(resolve, 300))
@@ -1705,8 +1709,9 @@ async function waitFileTask(taskId) {
   } catch (error) { showError(error) } finally {
     fileActiveTask = null
     elements['file-task-state'].hidden = true
-    await navigateFiles(filePath, { history: false })
+    if (refresh) await navigateFiles(filePath, { history: false })
   }
+  return result
 }
 
 async function startFileTask(body) {
@@ -1722,35 +1727,119 @@ function sourceDescriptors() {
   return selectedFileEntries().map(entry => ({ path: entry.path, revision: entry.revision }))
 }
 
+function fileDestination(name) {
+  return filePath === '/' ? `/${name}` : `${filePath}/${name}`
+}
+
+function finishFileConflict(value) {
+  if (fileConflictResolve === null) return
+  const resolve = fileConflictResolve
+  fileConflictResolve = null
+  elements['file-conflict-dialog'].close()
+  resolve(value)
+}
+
+function chooseFileConflict(path, multiple) {
+  elements['file-conflict-path'].textContent = path
+  elements['file-conflict-all-row'].hidden = !multiple
+  elements['file-conflict-all'].checked = false
+  elements['file-conflict-confirm'].disabled = true
+  for (const input of document.querySelectorAll('input[name="file-conflict-choice"]')) input.checked = false
+  elements['file-conflict-dialog'].showModal()
+  return new Promise(resolve => { fileConflictResolve = resolve })
+}
+
+async function runFileTask(body) {
+  clearError()
+  try {
+    const task = await api('files/tasks', { method: 'POST', body })
+    return await waitFileTask(task.taskId, { report: false, refresh: false })
+  } catch (error) {
+    showError(error)
+    return null
+  }
+}
+
 async function uploadFiles(files) {
-  let conflict = 'reject'
+  let conflictForAll = null
+  let skipped = 0
+  let stopped = false
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index]
-    elements['file-task-state'].hidden = false
-    elements['file-task-label'].textContent = t('uploadProgress', { current: index + 1, total: files.length })
-    try {
-      await new Promise((resolve, reject) => {
-        const request = new XMLHttpRequest()
-        request.open('POST', `${API}/files/upload?path=${encodeURIComponent(`${filePath}/${file.name}`)}&conflict=${conflict}`)
-        request.onload = () => {
-          if (request.status >= 200 && request.status < 300) return resolve()
-          const error = new Error(JSON.parse(request.responseText || '{}').error ?? `HTTP ${String(request.status)}`)
-          error.statusCode = request.status
-          reject(error)
+    let conflict = ['overwrite', 'rename'].includes(conflictForAll) ? conflictForAll : 'reject'
+    for (;;) {
+      elements['file-task-state'].hidden = false
+      elements['file-task-label'].textContent = t('uploadProgress', { current: index + 1, total: files.length })
+      try {
+        await new Promise((resolve, reject) => {
+          const request = new XMLHttpRequest()
+          request.open('POST', `${API}/files/upload?path=${encodeURIComponent(fileDestination(file.name))}&conflict=${conflict}`)
+          request.onload = () => {
+            if (request.status >= 200 && request.status < 300) return resolve()
+            const value = JSON.parse(request.responseText || '{}')
+            const error = new Error(value.error ?? `HTTP ${String(request.status)}`)
+            error.statusCode = request.status
+            error.code = value.code
+            reject(error)
+          }
+          request.onerror = () => reject(new Error(t('operationFailed')))
+          request.send(file)
+        })
+        break
+      } catch (error) {
+        if (error.code === 'FILE_EXISTS') {
+          if (conflictForAll === 'skip') { skipped += 1; break }
+          const decision = await chooseFileConflict(fileDestination(file.name), files.length > 1)
+          if (decision.choice === 'cancel') { stopped = true; break }
+          if (decision.applyAll) conflictForAll = decision.choice
+          if (decision.choice === 'skip') { skipped += 1; break }
+          conflict = decision.choice
+          continue
         }
-        request.onerror = () => reject(new Error(t('operationFailed')))
-        request.send(file)
-      })
-    } catch (error) {
-      if (error.statusCode === 409) {
-        const next = window.prompt(t('chooseConflict'), conflict)
-        if (['overwrite', 'rename'].includes(next)) { conflict = next; index -= 1; continue }
+        showError(error)
+        stopped = true
+        break
       }
-      showError(error); break
     }
+    if (stopped) break
   }
   elements['file-task-state'].hidden = true
   await navigateFiles(filePath, { history: false })
+  if (!stopped) fileOperationMessage(skipped > 0 ? t('operationCompleteWithSkipped', { count: skipped }) : t('operationComplete'))
+}
+
+async function pasteFiles() {
+  if (fileClipboard === null) return
+  const clipboard = fileClipboard
+  fileClipboard = null
+  renderFileSelection()
+  let conflictForAll = null
+  let skipped = 0
+  let stopped = false
+  for (const source of clipboard.sources) {
+    let conflict = ['overwrite', 'rename'].includes(conflictForAll) ? conflictForAll : 'reject'
+    for (;;) {
+      const task = await runFileTask({ operation: clipboard.operation, sources: [source], destination: filePath, conflict })
+      if (task === null) { stopped = true; break }
+      if (task.status === 'success') break
+      if (task.errorCode === 'FILE_EXISTS') {
+        if (conflictForAll === 'skip') { skipped += 1; break }
+        const name = source.path.split('/').at(-1)
+        const decision = await chooseFileConflict(fileDestination(name), clipboard.sources.length > 1)
+        if (decision.choice === 'cancel') { stopped = true; break }
+        if (decision.applyAll) conflictForAll = decision.choice
+        if (decision.choice === 'skip') { skipped += 1; break }
+        conflict = decision.choice
+        continue
+      }
+      fileOperationMessage(task.error ?? t('operationFailed'), true)
+      stopped = true
+      break
+    }
+    if (stopped) break
+  }
+  await navigateFiles(filePath, { history: false })
+  if (!stopped) fileOperationMessage(skipped > 0 ? t('operationCompleteWithSkipped', { count: skipped }) : t('operationComplete'))
 }
 
 async function recursiveFileSearch() {
@@ -1969,13 +2058,17 @@ elements['file-cut'].addEventListener('click', () => {
   fileOperationMessage(t('clipboardMove', { count: fileClipboard.sources.length }))
   renderFileSelection()
 })
-elements['file-paste'].addEventListener('click', () => {
-  if (fileClipboard === null) return
-  const conflict = window.prompt(t('chooseConflict'), 'reject')
-  if (!['reject', 'overwrite', 'rename'].includes(conflict)) return
-  const body = { ...fileClipboard, destination: filePath, destinationRevision: fileListing.revision, conflict }
-  fileClipboard = null
-  void startFileTask(body)
+elements['file-paste'].addEventListener('click', () => { void pasteFiles() })
+for (const input of document.querySelectorAll('input[name="file-conflict-choice"]')) {
+  input.addEventListener('change', () => { elements['file-conflict-confirm'].disabled = false })
+}
+elements['file-conflict-cancel'].addEventListener('click', () => finishFileConflict({ choice: 'cancel', applyAll: false }))
+elements['file-conflict-dialog'].addEventListener('cancel', event => { event.preventDefault(); finishFileConflict({ choice: 'cancel', applyAll: false }) })
+elements['file-conflict-form'].addEventListener('submit', event => {
+  event.preventDefault()
+  const choice = new FormData(event.currentTarget).get('file-conflict-choice')
+  if (!['overwrite', 'rename', 'skip'].includes(choice)) return
+  finishFileConflict({ choice, applyAll: elements['file-conflict-all'].checked })
 })
 elements['file-rename'].addEventListener('click', () => {
   const entry = selectedFileEntries()[0]

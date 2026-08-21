@@ -208,7 +208,7 @@ export async function createMaintenanceServer({
         error: failure, method: request.method ?? null, pathname: request.url ?? null,
         level: failure.statusCode === 409 ? 'warning' : 'error',
       })
-      send(response, failure.statusCode, { error: failure.message })
+      send(response, failure.statusCode, { error: failure.message, code: failure.code ?? 'FILE_ERROR' })
     })
   })
   server.on('upgrade', (request, socket, head) => {
