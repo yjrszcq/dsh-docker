@@ -587,15 +587,25 @@ a.secondaryButton { text-decoration: none; }
 .logMessageRow { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .logMessageRow > pre { flex: 1; min-width: 0; }
 .logChevron {
+  position: relative;
   flex: none;
+  width: 10px;
+  height: 10px;
+  margin-right: 1px;
+}
+.logChevron::before {
+  position: absolute;
+  top: 1px;
+  left: 1px;
   width: 6px;
   height: 6px;
-  margin-right: 2px;
   border-right: 1.5px solid var(--dsw-alias-label-tertiary);
   border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
+  content: "";
   transform: rotate(45deg);
+  transform-origin: 50% 50%;
 }
-.logEntry[aria-expanded='true'] .logChevron { transform: rotate(225deg); }
+.logEntry[aria-expanded='true'] .logChevron::before { transform: rotate(225deg); }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .logDebug { color: var(--dsw-alias-label-tertiary); }
 .logInfo { color: var(--dsw-alias-state-business-primary); }
