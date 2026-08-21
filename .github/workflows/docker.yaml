@@ -154,7 +154,6 @@ jobs:
           {
             echo 'standard<<EOF'
             echo "${DOCKERHUB_IMAGE}:${DSH_VERSION}"
-            echo "${DOCKERHUB_IMAGE}:latest"
             echo "${GHCR_IMAGE}:latest"
             echo "${GHCR_IMAGE}:${ENVIRONMENT_VERSION}"
             echo "${GHCR_IMAGE}:${major}.${minor}"
@@ -163,7 +162,6 @@ jobs:
             echo 'EOF'
             echo 'devtools<<EOF'
             echo "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
-            echo "${DOCKERHUB_IMAGE}:latest-devtools"
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -229,24 +227,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Push standard image to Docker Hub and GHCR
-        uses: docker/build-push-action@v7
-        with:
-          context: ./source
-          file: ./source/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: false
-          build-args: |
-            DSH_VERSION=${{ steps.signed-target.outputs.version }}
-            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
-            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
-            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
-          tags: ${{ steps.tags.outputs.standard }}
-          cache-from: type=gha,scope=standard
-          cache-to: type=gha,mode=max,scope=standard
-
-      - name: Push devtools image to Docker Hub
+      - name: Push versioned devtools image to Docker Hub
         uses: docker/build-push-action@v7
         with:
           context: ./source
@@ -264,6 +245,34 @@ jobs:
           cache-from: type=gha,scope=devtools
           cache-to: type=gha,mode=max,scope=devtools
 
+      - name: Push versioned standard image to Docker Hub and GHCR
+        uses: docker/build-push-action@v7
+        with:
+          context: ./source
+          file: ./source/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.signed-target.outputs.version }}
+            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
+            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
+            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
+          tags: ${{ steps.tags.outputs.standard }}
+          cache-from: type=gha,scope=standard
+          cache-to: type=gha,mode=max,scope=standard
+
+      - name: Promote Docker Hub rolling tags
+        env:
+          DSH_VERSION: ${{ steps.signed-target.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            --tag "${DOCKERHUB_IMAGE}:latest-devtools" \
+            "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
+          docker buildx imagetools create \
+            --tag "${DOCKERHUB_IMAGE}:latest" \
+            "${DOCKERHUB_IMAGE}:${DSH_VERSION}"
+
       - name: Verify published registry manifests
         env:
           DSH_VERSION: ${{ steps.signed-target.outputs.version }}
@@ -271,6 +280,8 @@ jobs:
         run: |
           docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DSH_VERSION}"
           docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:latest"
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:latest-devtools"
           docker buildx imagetools inspect "${GHCR_IMAGE}:${ENVIRONMENT_VERSION}"
           docker buildx imagetools inspect "${GHCR_IMAGE}:dsh-${DSH_VERSION}"
 
