@@ -252,6 +252,7 @@ let fileClipboard = null
 const fileDirectorySizes = new Map()
 let fileActiveTask = null
 let fileTasksActive = []
+let fileUploadQueue = []
 let fileTaskRefreshTimer
 let fileArchiveMode = null
 let fileEditor = null
@@ -1412,6 +1413,7 @@ function renderFileSelection() {
   if (fileAttributesEntry !== null && (selected.length !== 1 || selected[0].path !== fileAttributesEntry.path)) closeFileAttributes()
   elements['file-selection-count'].textContent = count === 0 ? t('noFilesSelected') : t('filesSelected', { count })
   const busy = fileTasksActive.some(task => ['queued', 'running'].includes(task.status))
+    || fileUploadQueue.some(task => ['queued', 'running'].includes(task.status))
   for (const id of ['file-copy', 'file-cut', 'file-rename', 'file-delete']) elements[id].disabled = count === 0 || busy
   elements['file-archive'].disabled = count === 0 || busy
   elements['file-extract'].disabled = count !== 1 || selected[0]?.type !== 'file' || busy
@@ -1419,6 +1421,7 @@ function renderFileSelection() {
   elements['file-download'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || busy
   elements['file-attributes'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || busy
   elements['file-paste'].disabled = fileClipboard === null || busy
+  for (const id of ['file-new', 'file-upload', 'file-upload-directory']) elements[id].disabled = busy
   elements['file-select-all'].checked = count > 0 && count === visibleFileEntries().length
   elements['file-select-all'].indeterminate = count > 0 && count !== visibleFileEntries().length
 }
@@ -1433,7 +1436,10 @@ function taskLabel(task) {
 
 function renderFileTasks() {
   const recentCutoff = Date.now() - 10_000
-  const visible = fileTasksActive.filter(task => ['queued', 'running'].includes(task.status)
+  const localPaths = new Set(fileUploadQueue.map(task => task.path))
+  const backend = fileTasksActive.filter(task => !(fileUploadQueue.length > 0 && task.operation === 'mkdir')
+    && !(task.operation === 'upload' && localPaths.has(task.path)))
+  const visible = [...fileUploadQueue, ...backend].filter(task => ['queued', 'running'].includes(task.status)
     || (task.status === 'failed' && Date.parse(task.updatedAt) >= recentCutoff))
   elements['file-task-state'].hidden = visible.length === 0
   elements['file-task-list'].replaceChildren(...visible.map(task => {
@@ -1446,7 +1452,10 @@ function renderFileTasks() {
       cancel.type = 'button'
       cancel.className = 'compact'
       cancel.textContent = t('cancelOperation')
-      cancel.addEventListener('click', () => { void api(`files/tasks/${task.taskId}`, { method: 'DELETE' }).then(refreshFileTasks).catch(showError) })
+      cancel.addEventListener('click', () => {
+        if (task.local === true) task.cancel()
+        else void api(`files/tasks/${task.taskId}`, { method: 'DELETE' }).then(refreshFileTasks).catch(showError)
+      })
     }
     const progress = document.createElement('progress')
     if (Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0) {
@@ -1940,11 +1949,46 @@ async function runFileTask(body) {
 }
 
 async function uploadFiles(files) {
+  if (fileUploadQueue.some(task => ['queued', 'running'].includes(task.status))) return
+  const total = files.length
+  fileUploadQueue = files.map((file, index) => {
+    const relativePath = file.webkitRelativePath || file.name
+    const destination = filePath === '/' ? `/${relativePath}` : `${filePath}/${relativePath}`
+    const task = {
+      local: true,
+      taskId: `browser-upload-${String(index)}`,
+      operation: 'upload',
+      path: destination,
+      currentPath: destination,
+      status: 'queued',
+      queuePosition: index + 1,
+      processedBytes: 0,
+      totalBytes: file.size,
+      updatedAt: new Date().toISOString(),
+      cancelRequested: false,
+      request: null,
+    }
+    task.cancel = () => {
+      task.cancelRequested = true
+      task.request?.abort()
+      fileUploadQueue = fileUploadQueue.filter(value => value !== task)
+      renderFileTasks()
+    }
+    return task
+  })
+  renderFileTasks()
   let conflictForAll = null
   let skipped = 0
   let stopped = false
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index]
+    const uploadTask = fileUploadQueue.find(task => task.taskId === `browser-upload-${String(index)}`)
+    if (uploadTask === undefined || uploadTask.cancelRequested) continue
+    uploadTask.status = 'running'
+    uploadTask.queuePosition = 0
+    for (const [position, task] of fileUploadQueue.filter(task => task.status === 'queued').entries()) task.queuePosition = position + 1
+    elements['file-task-label'].textContent = t('uploadProgress', { current: index + 1, total })
+    renderFileTasks()
     const segments = (file.webkitRelativePath || file.name).split('/')
     if (segments.some(segment => !fileNameIsValid(segment))) {
       showError(new Error(t('invalidFileName')))
@@ -1976,7 +2020,14 @@ async function uploadFiles(files) {
       try {
         await new Promise((resolve, reject) => {
           const request = new XMLHttpRequest()
+          uploadTask.request = request
           request.open('POST', `${API}/files/upload?path=${encodeURIComponent(destination)}&conflict=${conflict}`)
+          request.upload.onprogress = event => {
+            uploadTask.processedBytes = event.loaded
+            if (event.lengthComputable) uploadTask.totalBytes = event.total
+            uploadTask.updatedAt = new Date().toISOString()
+            renderFileTasks()
+          }
           request.onload = () => {
             if (request.status >= 200 && request.status < 300) return resolve()
             const value = JSON.parse(request.responseText || '{}')
@@ -1986,10 +2037,16 @@ async function uploadFiles(files) {
             reject(error)
           }
           request.onerror = () => reject(new Error(t('operationFailed')))
+          request.onabort = () => reject(Object.assign(new Error(t('operationCancelled')), { code: 'FILE_TASK_CANCELLED' }))
           request.send(file)
         })
+        uploadTask.request = null
+        fileUploadQueue = fileUploadQueue.filter(task => task !== uploadTask)
+        renderFileTasks()
         break
       } catch (error) {
+        uploadTask.request = null
+        if (uploadTask.cancelRequested || error.code === 'FILE_TASK_CANCELLED') break
         if (error.code === 'FILE_EXISTS') {
           if (conflictForAll === 'skip') { skipped += 1; break }
           const decision = await chooseFileConflict(destination, files.length > 1)
@@ -2004,9 +2061,13 @@ async function uploadFiles(files) {
         break
       }
     }
+    fileUploadQueue = fileUploadQueue.filter(task => task !== uploadTask)
+    renderFileTasks()
     if (stopped) break
   }
-  elements['file-task-state'].hidden = true
+  fileUploadQueue = []
+  elements['file-task-label'].textContent = ''
+  renderFileTasks()
   await navigateFiles(filePath, { history: false })
   if (!stopped) fileOperationMessage(skipped > 0 ? t('operationCompleteWithSkipped', { count: skipped }) : t('operationComplete'))
 }

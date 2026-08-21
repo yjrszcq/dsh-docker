@@ -898,6 +898,10 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(style, /\.file-pagination\s*\{[^}]*margin-top:\s*auto;/)
   assert.match(script, /task\.status === 'failed' && Date\.parse\(task\.updatedAt\) >= recentCutoff/)
   assert.doesNotMatch(script, /\['success', 'failed', 'cancelled'\]/)
+  assert.match(script, /fileUploadQueue = files\.map/)
+  assert.match(script, /request\.upload\.onprogress/)
+  assert.match(script, /\.\.\.fileUploadQueue, \.\.\.backend/)
+  assert.match(script, /task\.local === true\) task\.cancel\(\)/)
 })
 
 test('standalone console keeps localized feature parity on the shared Management API', async () => {
