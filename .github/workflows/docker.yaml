@@ -1,23 +1,11 @@
 name: Publish Container Images
 
 on:
-  workflow_call:
-    inputs:
-      source_commit:
-        description: Reviewed source commit used to publish the signed target
-        required: true
-        type: string
-      channel_commit:
-        description: Immutable release-channel commit containing the signed target
-        required: true
-        type: string
-    secrets:
-      DOCKER_TOKEN:
-        description: Docker Hub access token
-        required: true
-      DSH_RECOVERY_ROOT_PUBLIC_KEY:
-        description: Optional caller override; production-image normally supplies this public key
-        required: false
+  workflow_run:
+    workflows:
+      - Publish Supported Platform Target
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       source_commit:
@@ -26,8 +14,8 @@ on:
         default: main
         type: string
       channel_commit:
-        description: release-channel commit to consume
-        required: true
+        description: release-channel ref to search for the matching signed target
+        required: false
         default: release-channel
         type: string
 
@@ -42,6 +30,11 @@ env:
 jobs:
   build:
     name: Verify, test, and publish images
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: production-image
@@ -52,14 +45,37 @@ jobs:
       - name: Checkout reviewed source
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.source_commit }}
           path: source
 
-      - name: Checkout immutable signed channel state
+      - name: Checkout signed channel history
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.channel_commit }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.channel_commit || 'release-channel' }}
+          fetch-depth: 0
           path: channel
+
+      - name: Resolve immutable signed channel state
+        id: channel
+        run: |
+          source_commit="$(git -C source rev-parse HEAD)"
+          channel_commit=
+          while IFS= read -r candidate; do
+            candidate_source="$(git -C channel show "${candidate}:channel.json" | jq -er .sourceCommit)"
+            if test "$candidate_source" = "$source_commit"; then
+              channel_commit="$candidate"
+              break
+            fi
+          done < <(git -C channel log --format=%H -- channel.json)
+          if test -z "$channel_commit"; then
+            echo "No signed release-channel target matches source commit $source_commit" >&2
+            exit 1
+          fi
+          git -C channel checkout --detach "$channel_commit"
+          printf 'commit=%s\n' "$channel_commit" >> "$GITHUB_OUTPUT"
+          printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+          printf 'Using signed channel commit `%s` for source commit `%s`.\n' \
+            "$channel_commit" "$source_commit" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -169,7 +185,7 @@ jobs:
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
-            PLATFORM_REVISION=${{ inputs.source_commit }}
+            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
           tags: dsh-gateway-smoke:${{ github.run_id }}
           cache-from: type=gha,scope=standard
           cache-to: type=gha,mode=max,scope=standard
@@ -190,7 +206,7 @@ jobs:
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
-            PLATFORM_REVISION=${{ inputs.source_commit }}
+            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
             INSTALL_DEVTOOLS=true
           tags: dsh-gateway-devtools-smoke:${{ github.run_id }}
           cache-from: type=gha,scope=devtools
@@ -225,7 +241,7 @@ jobs:
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
-            PLATFORM_REVISION=${{ inputs.source_commit }}
+            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
           tags: ${{ steps.tags.outputs.standard }}
           cache-from: type=gha,scope=standard
           cache-to: type=gha,mode=max,scope=standard
@@ -242,7 +258,7 @@ jobs:
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
-            PLATFORM_REVISION=${{ inputs.source_commit }}
+            PLATFORM_REVISION=${{ steps.channel.outputs.source_commit }}
             INSTALL_DEVTOOLS=true
           tags: ${{ steps.tags.outputs.devtools }}
           cache-from: type=gha,scope=devtools
@@ -257,3 +273,23 @@ jobs:
           docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
           docker buildx imagetools inspect "${GHCR_IMAGE}:${ENVIRONMENT_VERSION}"
           docker buildx imagetools inspect "${GHCR_IMAGE}:dsh-${DSH_VERSION}"
+
+    outputs:
+      dsh_version: ${{ steps.signed-target.outputs.version }}
+      environment_version: ${{ steps.signed-target.outputs.environment_version }}
+      sequence: ${{ steps.signed-target.outputs.sequence }}
+
+  notify-published:
+    name: Notify container image publication
+    needs: build
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
+    with:
+      title: DSH ${{ needs.build.outputs.dsh_version }} 镜像已发布
+      message: >-
+        DSH ${{ needs.build.outputs.dsh_version }} 与 Environment
+        ${{ needs.build.outputs.environment_version }} 的标准镜像已同步到 Docker Hub 和 GHCR，Devtools 镜像已发布到 Docker Hub；签名目标序列为
+        ${{ needs.build.outputs.sequence }}。
+      priority: 7
+    secrets:
+      gotify_url: ${{ secrets.GOTIFY_URL }}
+      gotify_token: ${{ secrets.GOTIFY_TOKEN }}

@@ -462,11 +462,11 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。
 
-`Publish Container Images` 只在签名目标可用后被调用，并由独立的 `production-image` Environment 保护。将 `DSH_RECOVERY_ROOT_PUBLIC_KEY` 放入该 Environment，将 `DOCKER_TOKEN` 放入仓库或组织 Actions Secrets；调用方只向可复用工作流传递这一项 Docker Token。镜像任务不拥有 Release 私钥，只消费签名任务输出的精确 channel commit。工作流需要 `packages: write`，并使用 `GITHUB_TOKEN` 登录 GHCR。
+`Publish Container Images` 是独立的 Actions 运行：它在 `Publish Supported Platform Target` 成功结束后自动触发，并由独立的 `production-image` Environment 保护，因此 Release 工作流本身不会访问镜像环境。将 `DSH_RECOVERY_ROOT_PUBLIC_KEY` 放入该 Environment，将 `DOCKER_TOKEN` 放入仓库或组织 Actions Secrets。镜像任务不拥有 Release 私钥；它根据上游运行的源码 commit，在只追加的 `release-channel` 历史中解析并消费精确匹配的不可变 channel commit。工作流需要 `packages: write`，并使用 `GITHUB_TOKEN` 登录 GHCR。
 
 标准多架构镜像只构建一次并同时推送两个 Registry。Docker Hub 获得 `<dsh-version>` 和 `latest`；单独测试的 Devtools 镜像获得 `<dsh-version>-devtools` 和 `latest-devtools`。GHCR 仅获得标准镜像的 `latest`、Environment 完整/次要/主要版本标签和 `dsh-<dsh-version>`。仅 DSH 更新会移动当前 Environment 标签，但不发布 GitHub Release；仅 Environment 更新会用新 digest 覆盖 Docker Hub 现有 DSH 标签，并在 GHCR 发布新的 Environment 标签层级。
 
-仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会在两种镜像均发布成功后显式传给可复用 Gotify 工作流。Environment 发布与仅 DSH 镜像发布使用不同的中文通知。
+仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会在两种镜像均发布并验证成功后显式传给可复用 Gotify 工作流。中间的签名与 Environment Release 不发送成功通知，避免通知服务故障阻止独立镜像工作流启动。
 
 ## 构建与测试
 

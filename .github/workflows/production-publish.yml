@@ -26,13 +26,6 @@ jobs:
     environment: production-release
     permissions:
       contents: write
-    outputs:
-      channel_commit: ${{ steps.channel.outputs.commit }}
-      sequence: ${{ steps.sequence.outputs.sequence }}
-      dsh_version: ${{ steps.target.outputs.dsh_version }}
-      environment_version: ${{ steps.target.outputs.environment_version }}
-      environment_published: ${{ steps.environment-release.outputs.published }}
-      environment_tag: ${{ steps.environment-release.outputs.tag }}
     steps:
       - name: Checkout protected branch
         uses: actions/checkout@v6
@@ -196,7 +189,6 @@ jobs:
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
       - name: Publish signed channel target
-        id: channel
         env:
           CHANNEL: ${{ steps.sequence.outputs.channel }}
           EXISTING_CHANNEL_COMMIT: ${{ steps.sequence.outputs.channel_commit }}
@@ -226,11 +218,9 @@ jobs:
             commit="$(git -C "$CHANNEL" rev-parse HEAD)"
             git -C "$CHANNEL" push origin HEAD:refs/heads/release-channel
           fi
-          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
           printf 'Published signed channel sequence `%s` at `%s`.\n' "$TARGET_SEQUENCE" "$commit" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish Environment Release
-        id: environment-release
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_ENVIRONMENT: ${{ steps.environment-check.outputs.publish }}
@@ -240,8 +230,6 @@ jobs:
           TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
         run: |
           if test "$PUBLISH_ENVIRONMENT" != true; then
-            printf 'published=false\n' >> "$GITHUB_OUTPUT"
-            printf 'tag=%s\n' "$ENVIRONMENT_TAG" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           assets="$RUNNER_TEMP/environment-release-assets"
@@ -273,33 +261,3 @@ jobs:
           diff -u "$RUNNER_TEMP/local-environment-assets" "$RUNNER_TEMP/remote-environment-assets"
           gh release edit "$ENVIRONMENT_TAG" --draft=false --latest \
             --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
-          printf 'published=true\n' >> "$GITHUB_OUTPUT"
-          printf 'tag=%s\n' "$ENVIRONMENT_TAG" >> "$GITHUB_OUTPUT"
-
-  images:
-    name: Publish verified container images
-    needs: publish
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/docker.yaml
-    with:
-      source_commit: ${{ github.sha }}
-      channel_commit: ${{ needs.publish.outputs.channel_commit }}
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-
-  notify-published:
-    name: Notify production publication
-    needs: [publish, images]
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
-    with:
-      title: ${{ needs.publish.outputs.environment_published == 'true' && format('DSH Docker Environment {0} 已发布', needs.publish.outputs.environment_tag) || format('DSH {0} 镜像已发布', needs.publish.outputs.dsh_version) }}
-      message: >-
-        DSH ${{ needs.publish.outputs.dsh_version }} 与 Environment
-        ${{ needs.publish.outputs.environment_version }} 已发布镜像；签名目标序列为
-        ${{ needs.publish.outputs.sequence }}。${{ needs.publish.outputs.environment_published == 'true' && format(' 同时发布了 Environment Release {0}。', needs.publish.outputs.environment_tag) || ' Environment 未变化，因此未创建 GitHub Release。' }}
-      priority: 7
-    secrets:
-      gotify_url: ${{ secrets.GOTIFY_URL }}
-      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
