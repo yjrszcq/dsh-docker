@@ -66,19 +66,8 @@ jobs:
           cp container/platform/tools/supported-target.mjs "$trusted_platform/tools/supported-target.mjs"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          pr_number="$(gh pr list --state open --head "$CANDIDATE_BRANCH" --json number --jq '.[0].number // empty')"
-          replace_closed=false
-          if [ -n "$pr_number" ]; then
-            git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
-            git switch --create "$CANDIDATE_BRANCH" --track "origin/$CANDIDATE_BRANCH"
-            git merge --no-edit "$base_sha"
-          else
-            if git ls-remote --exit-code --heads origin "$CANDIDATE_BRANCH" >/dev/null 2>&1; then
-              git fetch origin "$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
-              replace_closed=true
-            fi
-            git switch --create "$CANDIDATE_BRANCH" "$base_sha"
-          fi
+          candidate_remote_sha="$(git ls-remote --heads origin "$CANDIDATE_BRANCH" | cut -f 1)"
+          git switch --create "$CANDIDATE_BRANCH" "$base_sha"
           result="$(node "$trusted_platform/tools/supported-target.mjs" advance \
             "$SUPPORTED_TARGET" "$ENVIRONMENT_DEFINITION" "$UPSTREAM_VERSION")"
           changed="$(jq -er '.changed' <<<"$result")"
@@ -88,7 +77,7 @@ jobs:
             printf 'current=%s\n' "$current"
             printf 'upstream=%s\n' "$UPSTREAM_VERSION"
             printf 'environment=%s\n' "$environment"
-            printf 'replace_closed=%s\n' "$replace_closed"
+            printf 'candidate_remote_sha=%s\n' "$candidate_remote_sha"
           } >> "$GITHUB_OUTPUT"
           # shellcheck disable=SC2016
           {
@@ -111,8 +100,10 @@ jobs:
           git add -- "$SUPPORTED_TARGET"
           git commit -m "chore(dsh): validate ${UPSTREAM_VERSION}"
 
-          if [ "${{ steps.candidate.outputs.replace_closed }}" = true ]; then
-            git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          candidate_remote_sha="${{ steps.candidate.outputs.candidate_remote_sha }}"
+          if [ -n "$candidate_remote_sha" ]; then
+            git push --force-with-lease="refs/heads/$CANDIDATE_BRANCH:$candidate_remote_sha" \
+              origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
           else
             git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
           fi
