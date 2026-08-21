@@ -102,6 +102,8 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:3080:3080"
+    group_add:
+      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
       DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
@@ -117,6 +119,7 @@ Or use the equivalent `docker run` command:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 0.0.0.0:3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
@@ -125,8 +128,6 @@ docker run -d \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
-
-These remote-access examples do not grant DSH or its Agent passwordless root access. Add the sudo group only when that authority is intentional.
 
 A reverse proxy must preserve the original `Host` header. Terminate TLS outside this container. To publish only on the Docker host, use `127.0.0.1:3080:3080` instead of `3080:3080`.
 

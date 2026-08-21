@@ -102,6 +102,8 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:3080:3080"
+    group_add:
+      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
       DSH_PROXY_PASSWORD: "请替换为强密码"
@@ -117,6 +119,7 @@ services:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 0.0.0.0:3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
@@ -125,8 +128,6 @@ docker run -d \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
-
-以上远程访问示例不会向 DSH 或 Agent 提供免密码 Root 权限；只有明确需要时才应添加 sudo 用户组。
 
 反向代理必须保留原始 `Host` 请求头，TLS 在容器外终止。如需只监听 Docker 宿主机，请使用 `127.0.0.1:3080:3080`，不要使用 `3080:3080`。
 

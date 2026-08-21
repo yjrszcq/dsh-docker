@@ -277,6 +277,8 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:3080:3080"
+    group_add:
+      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
       DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
@@ -292,6 +294,7 @@ The equivalent command without Compose is:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 0.0.0.0:3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
@@ -301,7 +304,7 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-Both examples deliberately omit `dsh-sudo-true`. Add that group only when DSH or its Agent needs unrestricted root access. A reverse proxy must preserve the original `Host` header, and remote deployments must terminate TLS outside this container. Restrict the published address with a host firewall when only selected clients should connect.
+A reverse proxy must preserve the original `Host` header, and remote deployments must terminate TLS outside this container. Restrict the published address with a host firewall when only selected clients should connect.
 
 ### Password Access
 

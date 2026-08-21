@@ -277,6 +277,8 @@ services:
     restart: unless-stopped
     ports:
       - "0.0.0.0:3080:3080"
+    group_add:
+      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
       DSH_PROXY_PASSWORD: "请替换为强密码"
@@ -292,6 +294,7 @@ services:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
+  --group-add dsh-sudo-true \
   -p 0.0.0.0:3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
@@ -301,7 +304,7 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-两个示例均有意省略 `dsh-sudo-true`，只有 DSH 或 Agent 确实需要不受限制的 Root 权限时才应添加。反向代理必须保留原始 `Host` 请求头，远程部署必须在容器外终止 TLS；只允许部分客户端连接时，还应通过宿主机防火墙限制来源。
+反向代理必须保留原始 `Host` 请求头，远程部署必须在容器外终止 TLS；只允许部分客户端连接时，还应通过宿主机防火墙限制来源。
 
 ### 密码访问
 
