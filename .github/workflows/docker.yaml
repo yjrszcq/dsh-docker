@@ -279,32 +279,27 @@ jobs:
       environment_version: ${{ steps.signed-target.outputs.environment_version }}
       sequence: ${{ steps.signed-target.outputs.sequence }}
 
-  notify-published:
-    name: Notify container image publication
+  notify-result:
+    name: Notify container image publication result
     needs: build
+    if: >-
+      always() &&
+      (needs.build.result == 'success' || needs.build.result == 'failure')
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
-      title: DSH ${{ needs.build.outputs.dsh_version }} 镜像已发布
+      title: >-
+        ${{
+          needs.build.result == 'success' &&
+          format('DSH {0} 镜像已发布', needs.build.outputs.dsh_version) ||
+          'DSH 镜像发布失败'
+        }}
       message: >-
-        DSH ${{ needs.build.outputs.dsh_version }} 与 Environment
-        ${{ needs.build.outputs.environment_version }} 的标准镜像已同步到 Docker Hub 和 GHCR，Devtools 镜像已发布到 Docker Hub；签名目标序列为
-        ${{ needs.build.outputs.sequence }}。
-      priority: 7
-    secrets:
-      gotify_url: ${{ secrets.GOTIFY_URL }}
-      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
-
-  notify-failed:
-    name: Notify container image publication failure
-    needs: build
-    if: ${{ failure() }}
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
-    with:
-      title: DSH 镜像发布失败
-      message: >-
-        Docker Hub 或 GHCR 镜像的构建、测试、推送或验证失败。请查看 GitHub Actions：
-        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      priority: 8
+        ${{
+          needs.build.result == 'success' &&
+          format('DSH {0} 与 Environment {1} 的标准镜像已同步到 Docker Hub 和 GHCR，Devtools 镜像已发布到 Docker Hub；签名目标序列为 {2}。', needs.build.outputs.dsh_version, needs.build.outputs.environment_version, needs.build.outputs.sequence) ||
+          format('Docker Hub 或 GHCR 镜像的构建、测试、推送或验证失败。请查看 GitHub Actions：{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)
+        }}
+      priority: ${{ needs.build.result == 'failure' && 8 || 7 }}
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
       gotify_token: ${{ secrets.GOTIFY_TOKEN }}

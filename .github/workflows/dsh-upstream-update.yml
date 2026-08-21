@@ -212,34 +212,30 @@ jobs:
       gotify_url: ${{ secrets.GOTIFY_URL }}
       gotify_token: ${{ secrets.GOTIFY_TOKEN }}
 
-  notify-validation-passed:
-    name: Notify candidate success
+  notify-result:
+    name: Notify upstream check result
     needs: [discover, validate-candidate]
-    if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result == 'success'
+    if: >-
+      always() &&
+      (needs.discover.result == 'failure' || needs.discover.outputs.changed == 'true')
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
-      title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证通过
+      title: >-
+        ${{
+          needs.discover.result == 'failure' && 'DSH 上游检查失败' ||
+          (needs.validate-candidate.result == 'success' &&
+           format('DSH {0} 候选版本验证通过', needs.discover.outputs.upstream) ||
+           format('DSH {0} 候选版本验证失败', needs.discover.outputs.upstream))
+        }}
       message: >-
-        DSH ${{ needs.discover.outputs.upstream }} 已通过 Environment
-        ${{ needs.discover.outputs.environment }} 兼容性验证。请审核并合并：
-        ${{ needs.discover.outputs.pull_request_url }}
-      priority: 7
-    secrets:
-      gotify_url: ${{ secrets.GOTIFY_URL }}
-      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
-
-  notify-validation-failed:
-    name: Notify candidate failure
-    needs: [discover, validate-candidate]
-    if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result != 'success'
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
-    with:
-      title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证失败
-      message: >-
-        DSH ${{ needs.discover.outputs.upstream }} 未通过 Environment
-        ${{ needs.discover.outputs.environment }} 兼容性验证，需要适配 Environment。
-        工作流：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      priority: 8
+        ${{
+          needs.discover.result == 'failure' &&
+          format('获取或生成 DSH 上游候选版本失败。工作流：{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) ||
+          (needs.validate-candidate.result == 'success' &&
+           format('DSH {0} 已通过 Environment {1} 兼容性验证。请审核并合并：{2}', needs.discover.outputs.upstream, needs.discover.outputs.environment, needs.discover.outputs.pull_request_url) ||
+           format('DSH {0} 未通过 Environment {1} 兼容性验证，需要适配 Environment。工作流：{2}/{3}/actions/runs/{4}', needs.discover.outputs.upstream, needs.discover.outputs.environment, github.server_url, github.repository, github.run_id))
+        }}
+      priority: ${{ (needs.discover.result == 'failure' || needs.validate-candidate.result != 'success') && 8 || 7 }}
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}
       gotify_token: ${{ secrets.GOTIFY_TOKEN }}

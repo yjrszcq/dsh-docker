@@ -4,9 +4,8 @@ import test from 'node:test'
 
 const workflowUrl = new URL('../../../.github/workflows/dsh-upstream-update.yml', import.meta.url)
 const validationUrl = new URL('../../../.github/workflows/dsh-candidate-validation.yml', import.meta.url)
-const validationNotifyUrl = new URL('../../../.github/workflows/dsh-candidate-notify.yml', import.meta.url)
 const productionUrl = new URL('../../../.github/workflows/production-publish.yml', import.meta.url)
-const productionNotifyUrl = new URL('../../../.github/workflows/production-target-notify.yml', import.meta.url)
+const notificationsUrl = new URL('../../../.github/workflows/workflow-notifications.yml', import.meta.url)
 const dockerUrl = new URL('../../../.github/workflows/docker.yaml', import.meta.url)
 const gotifyWorkflow = 'yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988'
 
@@ -29,7 +28,7 @@ test('upstream workflow discovers candidates without production credentials', as
 
 test('upstream workflow calls only the pinned reusable Gotify interface', async () => {
   const workflow = await readFile(workflowUrl, 'utf8')
-  assert.equal(workflow.split(gotifyWorkflow).length - 1, 3)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 2)
   assert.match(workflow, /gotify_url: \$\{\{ secrets\.GOTIFY_URL \}\}/)
   assert.match(workflow, /gotify_token: \$\{\{ secrets\.GOTIFY_TOKEN \}\}/)
   assert.doesNotMatch(workflow, /secrets: inherit/)
@@ -50,25 +49,30 @@ test('candidate validation is secret-free and exercises the complete current Env
   assert.doesNotMatch(workflow, /secrets\.|DSH_RELEASE_PRIVATE_KEY|DSH_RECOVERY|DOCKER_TOKEN/)
 })
 
-test('standalone candidate failures notify without exposing secrets to candidate code', async () => {
-  const workflow = await readFile(validationNotifyUrl, 'utf8')
+test('standalone candidate results notify without exposing secrets to candidate code', async () => {
+  const workflow = await readFile(notificationsUrl, 'utf8')
   assert.match(workflow, /workflow_run:/)
   assert.match(workflow, /DSH Candidate Validation/)
   assert.match(workflow, /github\.event\.workflow_run\.event == 'pull_request'/)
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/)
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'failure'/)
   assert.match(workflow, /github\.event\.workflow_run\.head_branch != 'automation\/dsh-upstream-candidate'/)
   assert.match(workflow, /github\.event\.workflow_run\.html_url/)
-  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
+  assert.match(workflow, /DSH 候选版本验证通过/)
+  assert.match(workflow, /DSH 候选版本验证失败/)
   assert.doesNotMatch(workflow, /actions\/checkout|\brun:/)
 })
 
-test('discovery run reports candidate status and distinct validation notifications', async () => {
+test('discovery run reports candidate status without duplicate result notifications', async () => {
   const workflow = await readFile(workflowUrl, 'utf8')
   assert.match(workflow, /uses: \.\/\.github\/workflows\/dsh-candidate-validation\.yml/)
   assert.match(workflow, /statuses: write/)
   assert.match(workflow, /DSH candidate Runtime/)
-  assert.match(workflow, /notify-validation-passed:/)
-  assert.match(workflow, /notify-validation-failed:/)
+  assert.match(workflow, /notify-discovered:[\s\S]*发现 DSH 上游新版本/)
+  assert.match(workflow, /notify-result:[\s\S]*DSH 上游检查失败/)
+  assert.match(workflow, /候选版本验证通过/)
+  assert.match(workflow, /候选版本验证失败/)
+  assert.doesNotMatch(workflow, /notify-validation-passed:|notify-validation-failed:/)
 })
 
 test('production publication owns signing, advances an append-only channel, and releases only Environment versions', async () => {
@@ -97,20 +101,23 @@ test('production publication owns signing, advances an append-only channel, and 
   assert.match(workflow, /--json isDraft/)
   assert.doesNotMatch(workflow, /uses: \.\/\.github\/workflows\/docker\.yaml/)
   assert.doesNotMatch(workflow, /environment: production-image|DOCKER_TOKEN/)
-  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
-  assert.match(workflow, /notify-failed:[\s\S]*if: \$\{\{ failure\(\) \}\}[\s\S]*DSH 正式发布失败/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 0)
   assert.doesNotMatch(workflow, /platform-\$\{TARGET_SEQUENCE\}|DSH Platform \$\{TARGET_SEQUENCE\}/)
   assert.doesNotMatch(workflow, /RECOVERY_PRIVATE|secrets: inherit/)
 })
 
 test('successful signed targets notify independently from image approval', async () => {
-  const workflow = await readFile(productionNotifyUrl, 'utf8')
+  const workflow = await readFile(notificationsUrl, 'utf8')
   assert.match(workflow, /workflow_run:/)
   assert.match(workflow, /Publish Supported Platform Target/)
+  assert.match(workflow, /github\.event\.workflow_run\.name == 'Publish Supported Platform Target'/)
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/)
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'failure'/)
+  assert.match(workflow, /DSH 正式发布失败/)
   assert.match(workflow, /production-image/)
   assert.match(workflow, /actions\/workflows\/docker\.yaml/)
   assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
+  assert.equal((workflow.match(/^  notify-result:/gm) ?? []).length, 1)
   assert.doesNotMatch(workflow, /actions\/checkout|\brun:/)
 })
 
@@ -137,8 +144,9 @@ test('Docker publication consumes one signed channel target and mirrors only sta
   assert.match(workflow, /\$\{GHCR_IMAGE\}:\$\{major\}\.\$\{minor\}/)
   assert.match(workflow, /\$\{GHCR_IMAGE\}:dsh-\$\{DSH_VERSION\}/)
   assert.match(workflow, /\$\{DOCKERHUB_IMAGE\}:\$\{DSH_VERSION\}-devtools/)
-  assert.equal(workflow.split(gotifyWorkflow).length - 1, 2)
-  assert.match(workflow, /notify-failed:[\s\S]*if: \$\{\{ failure\(\) \}\}[\s\S]*DSH 镜像发布失败/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
+  assert.match(workflow, /notify-result:[\s\S]*needs\.build\.result == 'success'[\s\S]*needs\.build\.result == 'failure'/)
+  assert.match(workflow, /DSH 镜像发布失败/)
   assert.doesNotMatch(workflow, /\$\{GHCR_IMAGE\}:[^\n]*devtools/)
   assert.doesNotMatch(workflow, /workflow_call:|gh release|DSH_RELEASE_PRIVATE_KEY|prepare-release\.mjs/)
 })

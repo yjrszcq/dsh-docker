@@ -449,7 +449,7 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 ## 发布自动化
 
-`DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。自动上游检查会通知候选验证结果；其他 PR 独立触发的候选验证失败则由一个不检出、不执行候选代码的 `workflow_run` 发送 Gotify 通知，避免向 PR 暴露 Secret。独立通知会排除自动候选分支，防止同一次失败重复提醒。
+`DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。发现新上游版本并创建候选 PR 后会通知一次；完整兼容性验证结束后再通知最终通过或失败结果。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。其他 PR 独立触发的候选验证无论成功或失败，都由一个不检出、不执行候选代码的 `workflow_run` 发送 Gotify 通知，避免向 PR 暴露 Secret。独立通知明确排除自动候选分支，因此不会重复报告同一验证结果；没有新版本时不通知。
 
 `Publish Supported Platform Target` 会在 `main` 的 Supported Target、Environment definition 或官方 DSH Registry policy 变化后运行，也支持经过审批的手动触发。创建仅允许 `main` 的受保护 `production-release` GitHub Environment，并配置：
 
@@ -466,7 +466,7 @@ GitHub Release 只表示 Container Environment。新 Environment 发布 `v<envir
 
 标准多架构镜像只构建一次并同时推送两个 Registry。Docker Hub 获得 `<dsh-version>` 和 `latest`；单独测试的 Devtools 镜像获得 `<dsh-version>-devtools` 和 `latest-devtools`。GHCR 仅获得标准镜像的 `latest`、Environment 完整/次要/主要版本标签和 `dsh-<dsh-version>`。仅 DSH 更新会移动当前 Environment 标签，但不发布 GitHub Release；仅 Environment 更新会用新 digest 覆盖 Docker Hub 现有 DSH 标签，并在 GHCR 发布新的 Environment 标签层级。
 
-仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。签名目标和必要的 Environment Release 发布成功后，独立的 `workflow_run` 会通知镜像工作流已启动、可能正在等待 `production-image` 审批；该通知不会阻塞镜像触发。两种镜像均发布并验证成功后还会发送最终成功通知；签名/Environment 发布或镜像发布失败时发送带 Actions 链接的失败通知。
+仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。统一的结果通知工作流只负责正式目标发布和人工候选 PR 验证的最终成功或失败；每个事件只命中一个通知作业。签名目标和必要的 Environment Release 发布成功后，它会通知镜像工作流已启动、可能正在等待 `production-image` 审批；通知服务不会影响正式发布结果或阻塞镜像触发。镜像工作流也只发送一条最终结果通知：两种镜像均发布并验证后通知成功，任一步骤失败则发送带 Actions 链接的失败通知。
 
 ## 构建与测试
 

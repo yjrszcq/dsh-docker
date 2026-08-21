@@ -261,18 +261,3 @@ jobs:
           diff -u "$RUNNER_TEMP/local-environment-assets" "$RUNNER_TEMP/remote-environment-assets"
           gh release edit "$ENVIRONMENT_TAG" --draft=false --latest \
             --title "$ENVIRONMENT_TAG" --notes-file "$notes"
-
-  notify-failed:
-    name: Notify supported target publication failure
-    needs: publish
-    if: ${{ failure() }}
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
-    with:
-      title: DSH 正式发布失败
-      message: >-
-        签名目标或 Environment Release 发布失败。请查看 GitHub Actions：
-        ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      priority: 8
-    secrets:
-      gotify_url: ${{ secrets.GOTIFY_URL }}
-      gotify_token: ${{ secrets.GOTIFY_TOKEN }}
