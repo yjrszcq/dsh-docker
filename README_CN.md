@@ -92,6 +92,42 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=请设置一个强密码
 ```
 
+将可信主机和密码替换为实际值后，可以使用以下支持远程访问的精简 `docker-compose.yaml`：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3080:3080"
+    environment:
+      DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
+      DSH_PROXY_PASSWORD: "请替换为强密码"
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+也可以使用等价的 `docker run` 命令：
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  -p 0.0.0.0:3080:3080 \
+  -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
+  -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+以上远程访问示例不会向 DSH 或 Agent 提供免密码 Root 权限；只有明确需要时才应添加 sudo 用户组。
+
 反向代理必须保留原始 `Host` 请求头，TLS 在容器外终止。如需只监听 Docker 宿主机，请使用 `127.0.0.1:3080:3080`，不要使用 `3080:3080`。
 
 常用设置：

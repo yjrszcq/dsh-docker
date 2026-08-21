@@ -265,6 +265,44 @@ The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optional
 
 Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
 
+### Remote Deployment Examples
+
+Remote publication requires both an external bind address and an explicit trusted-host allowlist. Replace the example IP/domain and password before use:
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3080:3080"
+    environment:
+      DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
+      DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+The equivalent command without Compose is:
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  -p 0.0.0.0:3080:3080 \
+  -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
+  -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+Both examples deliberately omit `dsh-sudo-true`. Add that group only when DSH or its Agent needs unrestricted root access. A reverse proxy must preserve the original `Host` header, and remote deployments must terminate TLS outside this container. Restrict the published address with a host firewall when only selected clients should connect.
+
 ### Password Access
 
 When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge. If `DSH_PROXY_USERNAME` is empty, Gateway ignores the submitted username and validates only the password. If both are set, both must match. A username cannot contain `:`.

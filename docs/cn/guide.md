@@ -265,6 +265,44 @@ Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP
 
 官方 DSH 根据公开 hostname 判断浏览器是否为 loopback，并可能在非 loopback 页面禁用 Host 侧设置。一个精确匹配补丁会将 Gateway 已放行的浏览器标记为 loopback，与转发给上游的 authority 保持一致。上游服务端特权 API 实现不作修改。
 
+### 远程部署示例
+
+远程发布必须同时配置外部监听地址和明确的可信 Host allowlist。使用前替换示例 IP、域名和密码：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3080:3080"
+    environment:
+      DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
+      DSH_PROXY_PASSWORD: "请替换为强密码"
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+不使用 Compose 时，等价命令为：
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  -p 0.0.0.0:3080:3080 \
+  -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
+  -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+两个示例均有意省略 `dsh-sudo-true`，只有 DSH 或 Agent 确实需要不受限制的 Root 权限时才应添加。反向代理必须保留原始 `Host` 请求头，远程部署必须在容器外终止 TLS；只允许部分客户端连接时，还应通过宿主机防火墙限制来源。
+
 ### 密码访问
 
 `DSH_PROXY_PASSWORD` 非空时，浏览器收到 HTTP Basic 认证请求。`DSH_PROXY_USERNAME` 为空时，Gateway 忽略提交的用户名，只校验密码；两者均设置时必须全部匹配。用户名不能包含 `:`。

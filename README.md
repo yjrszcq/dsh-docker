@@ -92,6 +92,42 @@ DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
 
+Use this minimal remote-access `docker-compose.yaml`, replacing the trusted hosts and password first:
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3080:3080"
+    environment:
+      DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
+      DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+Or use the equivalent `docker run` command:
+
+```bash
+docker run -d \
+  --name deepseek-harness \
+  --restart unless-stopped \
+  -p 0.0.0.0:3080:3080 \
+  -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
+  -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
+  -v "$(pwd)/data/platform:/data/platform" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
+  -v "$(pwd)/workspace:/workspace" \
+  szcq/deepseek-harness:latest
+```
+
+These remote-access examples do not grant DSH or its Agent passwordless root access. Add the sudo group only when that authority is intentional.
+
 A reverse proxy must preserve the original `Host` header. Terminate TLS outside this container. To publish only on the Docker host, use `127.0.0.1:3080:3080` instead of `3080:3080`.
 
 Common settings:
