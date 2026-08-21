@@ -24,12 +24,14 @@ This guide expands the root [README](../../README.md) into a complete deployment
 
 ### Image Variants
 
-| Variant | Rolling tag | Versioned tag | Contents |
+| Variant | Docker Hub rolling tag | Docker Hub DSH-version tag | Contents |
 | --- | --- | --- | --- |
 | Standard | `latest` | `<version>` | DSH and normal runtime utilities |
 | Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus development tools |
 
 Use the Standard image for ordinary deployments. The Devtools image adds compilers, diagnostics, editors, and other development utilities but uses the same persistent data layout.
+
+Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `1.0.0`, `1.0`, and `1`, plus the DSH lookup tag `dsh-0.1.1-rc.1`; it never publishes Devtools tags.
 
 ### Before You Start
 
@@ -411,7 +413,7 @@ Before an Experimental Runtime touches real data, Updater stops `dsh-runtime` an
 
 ## Trust and Recovery
 
-Stage-0 embeds one offline Recovery Root public key. It first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/platform/cache/downloads` until Stage-0 matches them to signed descriptors and imports them into `/data/platform/store/objects`. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
+Stage-0 embeds one offline Recovery Root public key. It reads the public machine channel from the append-only `release-channel` branch, first verifies a monotonically increasing Recovery-signed keyring, then accepts `stable.json` only from the keyring's current Release Key. Immutable target files live under `targets/<targetSequence>/`; the branch root exposes the current signed keyring and Stable pointer. Bootstrap and Environment Artifacts downloaded by Updater stay in `/data/platform/cache/downloads` until Stage-0 matches them to signed descriptors and imports them into `/data/platform/store/objects`. Every path later used by the Runtime builder comes from the resulting receipt, never from the untrusted download.
 
 Bootstrap and Updater cannot add a root key, modify keyrings, submit arbitrary expected hashes, or mint receipts. They consume only Stage-0 verification results.
 
@@ -449,16 +451,22 @@ Compose enables unrestricted passwordless root access for the agent by default. 
 
 `DSH Upstream Update` runs every six hours on the hour and on demand. It compares npm `latest` with [`release/supported-target.json`](../../release/supported-target.json), keeps the current Environment, and creates or updates a candidate PR for promotion to Latest Supported. Candidate CI verifies npm integrity, applies the current Environment, runs both project suites, and executes standard and devtools container smoke tests. These jobs have no Release or Recovery credentials; merge remains the publication gate.
 
-`Publish Latest Supported DSH` runs after a Supported Target change on `main` or by approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main` with:
+`Publish Supported Platform Target` runs when the Supported Target, Environment definition, or official DSH Registry policy changes on `main`, and also supports approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main` with:
 
 - `DSH_RECOVERY_ROOT_PUBLIC_KEY`
 - `DSH_KEYRING_JSON_BASE64`
 - `DSH_KEYRING_SIGNATURE_BASE64`
 - `DSH_RELEASE_PRIVATE_KEY`
 
-The workflow resumes `targetSequence`, creates a draft, uploads immutable Bootstrap and Environment Artifacts plus signed metadata, then publishes it as Latest. It validates the selected npm tarball and binds its npm integrity into Stable metadata, but does not republish a duplicate DSH tarball; Stage-0 imports the official npm copy. The Recovery private key has no workflow input.
+The workflow starts the first formal `targetSequence` at 1 and appends each later signed target to the `release-channel` branch. It validates the selected npm tarball and binds its npm integrity into Stable metadata, but does not republish a duplicate DSH tarball; Stage-0 imports the official npm copy. A retry of the same source commit and keyring reuses the already-published target instead of consuming another sequence. The Recovery private key has no workflow input.
 
-`Publish Docker Image` is protected by a separate `production-image` Environment. It uses `DSH_RECOVERY_ROOT_PUBLIC_KEY` and `DOCKER_TOKEN`; the signed keyring is downloaded from the Supported Release instead of being stored as additional image-workflow secrets. It has no Release private key or GitHub Release write permission. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow.
+GitHub Releases describe only the Container Environment. A new Environment publishes `v<environment-version>` (for example `v1.0.0`) and marks it Latest. A DSH-only update advances the signed channel and rebuilds images without creating a GitHub Release. Changes to packaged Environment or Bootstrap content, or to [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json), require an Environment version increase; the Environment fingerprint check rejects reuse of an existing version for different content.
+
+`Publish Container Images` is called only after the signed target is available and is protected by the separate `production-image` Environment. Put `DSH_RECOVERY_ROOT_PUBLIC_KEY` in that Environment and `DOCKER_TOKEN` in repository or organization Actions Secrets; the caller passes only that Docker token into the reusable workflow. The image job has no Release private key and consumes the exact immutable channel commit produced by the signing job. Grant the workflow `packages: write`; it logs in to GHCR with `GITHUB_TOKEN`.
+
+The Standard multi-architecture image is built once and pushed to both registries. Docker Hub receives `<dsh-version>` and `latest`; its separately tested Devtools image receives `<dsh-version>-devtools` and `latest-devtools`. GHCR receives only the Standard image under `latest`, full/minor/major Environment tags, and `dsh-<dsh-version>`. A DSH-only update moves the current Environment tags without publishing a GitHub Release. An Environment-only update intentionally replaces the existing Docker Hub DSH tags with a new image digest and publishes the new Environment hierarchy on GHCR.
+
+Repository or organization Secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow after both image variants are published. Environment publication and DSH-only image publication use distinct Chinese notification text.
 
 ## Build and Test
 
@@ -476,7 +484,7 @@ docker build --build-arg "DSH_VERSION=$DSH_VERSION" -t "deepseek-harness:$DSH_VE
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
-An arbitrary local `DSH_VERSION` produces a development-authority inventory with target sequence 0. It cannot become a formal tag or `latest`. Release workflows build only the reviewed Supported Target from verified signed Release artifacts, reject the marked non-production trust fixture, and require an offline Recovery-signed public trust bundle.
+An arbitrary local `DSH_VERSION` produces a development-authority inventory with target sequence 0. It cannot become a formal tag or `latest`. Production workflows build only the reviewed Supported Target from a verified signed channel target, reject the marked non-production trust fixture, and require an offline Recovery-signed public trust bundle.
 
 Run local checks with Node.js 24 and Docker Compose:
 

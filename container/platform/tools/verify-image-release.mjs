@@ -30,6 +30,13 @@ function assetPath(root, descriptor) {
   return join(root, name)
 }
 
+function assertChannelTarget(artifacts, targetSequence, label) {
+  const immutableTarget = `/release-channel/targets/${String(targetSequence)}/`
+  if (artifacts.some(descriptor => !new URL(descriptor.url).pathname.includes(immutableTarget))) {
+    throw new Error(`${label} Artifact URLs must use its immutable signed channel target`)
+  }
+}
+
 async function verifiedManifest({ releaseRoot, stable, desired, keyring, parser, label }) {
   const manifestDescriptor = descriptorById(stable.artifacts, desired.manifestArtifactId, `${label} manifest`)
   const signatureDescriptor = descriptorById(stable.artifacts, desired.signatureArtifactId, `${label} signature`)
@@ -42,6 +49,7 @@ async function verifiedManifest({ releaseRoot, stable, desired, keyring, parser,
     || manifest.targetSequence !== stable.targetSequence) {
     throw new Error(`${label} manifest does not match Stable metadata`)
   }
+  assertChannelTarget(manifest.artifacts, stable.targetSequence, label)
   const paths = new Map()
   for (const descriptor of manifest.artifacts) {
     const path = assetPath(releaseRoot, descriptor)
@@ -77,10 +85,7 @@ export async function verifyImageRelease({ releaseRoot, recoveryPublicKeyPath, d
     || stable.desired.environment.version !== target.environment) {
     throw new Error('Stable metadata does not match the reviewed Supported Target')
   }
-  const immutableTag = `/releases/download/platform-${String(stable.targetSequence)}/`
-  if (stable.artifacts.some(descriptor => !new URL(descriptor.url).pathname.includes(immutableTag))) {
-    throw new Error('Stable Artifact URLs must use its immutable platform Release')
-  }
+  assertChannelTarget(stable.artifacts, stable.targetSequence, 'Stable')
   const bootstrap = await verifiedManifest({
     releaseRoot: root,
     stable,

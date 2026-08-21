@@ -1,23 +1,65 @@
-name: Publish Docker Image
+name: Publish Container Images
 
 on:
+  workflow_call:
+    inputs:
+      source_commit:
+        description: Reviewed source commit used to publish the signed target
+        required: true
+        type: string
+      channel_commit:
+        description: Immutable release-channel commit containing the signed target
+        required: true
+        type: string
+    secrets:
+      DOCKER_TOKEN:
+        description: Docker Hub access token
+        required: true
+      DSH_RECOVERY_ROOT_PUBLIC_KEY:
+        description: Optional caller override; production-image normally supplies this public key
+        required: false
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Source commit to build
+        required: true
+        default: main
+        type: string
+      channel_commit:
+        description: release-channel commit to consume
+        required: true
+        default: release-channel
+        type: string
+
+concurrency:
+  group: production-container-images
+  cancel-in-progress: false
 
 env:
-  IMAGE_OWNER: szcq
-  IMAGE_NAME: deepseek-harness
+  DOCKERHUB_IMAGE: szcq/deepseek-harness
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    name: Verify, test, and publish images
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     environment: production-image
     permissions:
       contents: read
-
+      packages: write
     steps:
-      - name: Checkout code
+      - name: Checkout reviewed source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: source
+
+      - name: Checkout immutable signed channel state
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.channel_commit }}
+          path: channel
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -25,9 +67,11 @@ jobs:
           node-version: 24
 
       - name: Install Management runtime dependencies
+        working-directory: source
         run: npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
 
       - name: Verify gateway and Compose configuration
+        working-directory: source
         run: |
           npm test --prefix container/control-plane/services/gateway
           npm test --prefix container/platform
@@ -35,18 +79,25 @@ jobs:
           sh -n container/test/container-smoke.sh
           sh -n container/test/devtools-smoke.sh
 
-      - name: Download and verify latest signed Supported Release
-        id: signed-release
+      - name: Verify signed Supported Target
+        id: signed-target
+        working-directory: source
         env:
-          GH_TOKEN: ${{ github.token }}
           RECOVERY_ROOT_PUBLIC_KEY: ${{ secrets.DSH_RECOVERY_ROOT_PUBLIC_KEY }}
         run: |
           test -n "$RECOVERY_ROOT_PUBLIC_KEY"
+          source_commit="$(git rev-parse HEAD)"
+          test "$(jq -er .sourceCommit ../channel/channel.json)" = "$source_commit"
+          sequence="$(jq -er .targetSequence ../channel/stable.json)"
+          test "$(jq -er .targetSequence ../channel/channel.json)" = "$sequence"
+          release_dir="../channel/targets/$sequence"
+          test -d "$release_dir"
+          for name in stable.json stable.sig.json keyring.json keyring.sig.json; do
+            cmp "../channel/$name" "$release_dir/$name"
+          done
           image_input=container/platform/image-input
-          release_dir="$image_input/release"
-          mkdir -p "$release_dir"
-          tag="$(gh release view --json tagName --jq .tagName)"
-          gh release download "$tag" --dir "$release_dir"
+          mkdir -p "$image_input/release"
+          cp -a "$release_dir/." "$image_input/release/"
           printf '%s\n' "$RECOVERY_ROOT_PUBLIC_KEY" > "$image_input/recovery-root.spki.base64"
           cp release/supported-target.json "$image_input/supported-target.json"
           cp container/environment/definition.json "$image_input/environment-definition.json"
@@ -58,22 +109,47 @@ jobs:
           test -n "$tarball"
           cp "$tarball" "$image_input/dsh.tgz"
           verified="$(node container/platform/tools/verify-image-release.mjs \
-            "$release_dir" \
-            "$image_input/recovery-root.spki.base64" \
-            "$image_input/dsh.tgz" \
-            "$image_input/supported-target.json" \
-            "$image_input/environment-definition.json")"
+            "$image_input/release" "$image_input/recovery-root.spki.base64" "$image_input/dsh.tgz" \
+            "$image_input/supported-target.json" "$image_input/environment-definition.json")"
           test "$(jq -er .dshVersion <<<"$verified")" = "$version"
-          test "$tag" = "platform-$(jq -er .targetSequence <<<"$verified")"
+          test "$(jq -er .targetSequence <<<"$verified")" = "$sequence"
+          environment_version="$(jq -er .environmentVersion <<<"$verified")"
+          test "$environment_version" = "$(jq -er .version container/environment/definition.json)"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          printf 'sequence=%s\n' "$(jq -er .targetSequence <<<"$verified")" >> "$GITHUB_OUTPUT"
+          printf 'environment_version=%s\n' "$environment_version" >> "$GITHUB_OUTPUT"
+          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
           cp "$image_input/recovery-root.spki.base64" container/platform/seed/trust/recovery-root.spki.base64
           cp "$release_dir/keyring.json" container/platform/seed/trust/keyring.json
           cp "$release_dir/keyring.sig.json" container/platform/seed/trust/keyring.sig.json
           rm container/platform/seed/trust/DEVELOPMENT_FIXTURE
           test ! -e container/platform/seed/trust/DEVELOPMENT_FIXTURE
-          printf 'Building signed Supported DSH %s (sequence %s).\n' \
-            "$version" "$(jq -er .targetSequence <<<"$verified")" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Building signed DSH %s with Environment %s (sequence %s).\n' \
+            "$version" "$environment_version" "$sequence" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate registry tags
+        id: tags
+        env:
+          DSH_VERSION: ${{ steps.signed-target.outputs.version }}
+          ENVIRONMENT_VERSION: ${{ steps.signed-target.outputs.environment_version }}
+        run: |
+          [[ "$ENVIRONMENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          {
+            echo 'standard<<EOF'
+            echo "${DOCKERHUB_IMAGE}:${DSH_VERSION}"
+            echo "${DOCKERHUB_IMAGE}:latest"
+            echo "${GHCR_IMAGE}:latest"
+            echo "${GHCR_IMAGE}:${ENVIRONMENT_VERSION}"
+            echo "${GHCR_IMAGE}:${major}.${minor}"
+            echo "${GHCR_IMAGE}:${major}"
+            echo "${GHCR_IMAGE}:dsh-${DSH_VERSION}"
+            echo 'EOF'
+            echo 'devtools<<EOF'
+            echo "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
+            echo "${DOCKERHUB_IMAGE}:latest-devtools"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -81,88 +157,103 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build smoke-test image
+      - name: Build standard smoke-test image
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./source
+          file: ./source/Dockerfile
           platforms: linux/amd64
           load: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.signed-release.outputs.version }}
-            PLATFORM_REVISION=${{ github.sha }}
+            DSH_VERSION=${{ steps.signed-target.outputs.version }}
+            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
+            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
+            PLATFORM_REVISION=${{ inputs.source_commit }}
           tags: dsh-gateway-smoke:${{ github.run_id }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=standard
+          cache-to: type=gha,mode=max,scope=standard
 
-      - name: Run container smoke checks
+      - name: Run standard container smoke checks
+        working-directory: source
         run: container/test/container-smoke.sh "dsh-gateway-smoke:${{ github.run_id }}"
 
       - name: Build devtools smoke-test image
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./source
+          file: ./source/Dockerfile
           platforms: linux/amd64
           load: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.signed-release.outputs.version }}
-            PLATFORM_REVISION=${{ github.sha }}
+            DSH_VERSION=${{ steps.signed-target.outputs.version }}
+            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
+            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
+            PLATFORM_REVISION=${{ inputs.source_commit }}
             INSTALL_DEVTOOLS=true
           tags: dsh-gateway-devtools-smoke:${{ github.run_id }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=devtools
+          cache-to: type=gha,mode=max,scope=devtools
 
       - name: Run devtools smoke checks
+        working-directory: source
         run: container/test/devtools-smoke.sh "dsh-gateway-devtools-smoke:${{ github.run_id }}"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
-          username: ${{ env.IMAGE_OWNER }}
+          username: szcq
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push ${{ env.IMAGE_NAME }} devtools ${{ steps.signed-release.outputs.version }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push standard image to Docker Hub and GHCR
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./source
+          file: ./source/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           build-args: |
-            DSH_VERSION=${{ steps.signed-release.outputs.version }}
-            PLATFORM_REVISION=${{ github.sha }}
+            DSH_VERSION=${{ steps.signed-target.outputs.version }}
+            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
+            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
+            PLATFORM_REVISION=${{ inputs.source_commit }}
+          tags: ${{ steps.tags.outputs.standard }}
+          cache-from: type=gha,scope=standard
+          cache-to: type=gha,mode=max,scope=standard
+
+      - name: Push devtools image to Docker Hub
+        uses: docker/build-push-action@v7
+        with:
+          context: ./source
+          file: ./source/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            DSH_VERSION=${{ steps.signed-target.outputs.version }}
+            ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
+            TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
+            PLATFORM_REVISION=${{ inputs.source_commit }}
             INSTALL_DEVTOOLS=true
-          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.signed-release.outputs.version }}-devtools
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.tags.outputs.devtools }}
+          cache-from: type=gha,scope=devtools
+          cache-to: type=gha,mode=max,scope=devtools
 
-      - name: Build and push ${{ env.IMAGE_NAME }} ${{ steps.signed-release.outputs.version }}
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: false
-          build-args: |
-            DSH_VERSION=${{ steps.signed-release.outputs.version }}
-            PLATFORM_REVISION=${{ github.sha }}
-          tags: ${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.signed-release.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Publish latest-devtools tag
+      - name: Verify published registry manifests
+        env:
+          DSH_VERSION: ${{ steps.signed-target.outputs.version }}
+          ENVIRONMENT_VERSION: ${{ steps.signed-target.outputs.environment_version }}
         run: |
-          docker buildx imagetools create \
-            --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest-devtools" \
-            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.signed-release.outputs.version }}-devtools"
-
-      - name: Publish latest tag
-        run: |
-          docker buildx imagetools create \
-            --tag "${IMAGE_OWNER}/${IMAGE_NAME}:latest" \
-            "${IMAGE_OWNER}/${IMAGE_NAME}:${{ steps.signed-release.outputs.version }}"
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DSH_VERSION}"
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DSH_VERSION}-devtools"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${ENVIRONMENT_VERSION}"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:dsh-${DSH_VERSION}"

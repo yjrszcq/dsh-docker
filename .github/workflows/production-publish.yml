@@ -1,16 +1,17 @@
-name: Publish Latest Supported DSH
+name: Publish Supported Platform Target
 
 on:
   push:
     branches:
       - main
     paths:
+      - container/environment/definition.json
       - release/supported-target.json
       - release/official-dsh-policy.json
   workflow_dispatch:
 
 concurrency:
-  group: production-supported-release
+  group: production-supported-target
   cancel-in-progress: false
 
 permissions:
@@ -26,13 +27,17 @@ jobs:
     permissions:
       contents: write
     outputs:
-      tag: ${{ steps.publish.outputs.tag }}
+      channel_commit: ${{ steps.channel.outputs.commit }}
       sequence: ${{ steps.sequence.outputs.sequence }}
       dsh_version: ${{ steps.target.outputs.dsh_version }}
       environment_version: ${{ steps.target.outputs.environment_version }}
+      environment_published: ${{ steps.environment-release.outputs.published }}
+      environment_tag: ${{ steps.environment-release.outputs.tag }}
     steps:
       - name: Checkout protected branch
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -49,6 +54,7 @@ jobs:
             release/supported-target.json container/environment/definition.json)"
           dsh_version="$(jq -er '.target.latestSupportedDsh' <<<"$result")"
           environment_version="$(jq -er '.target.environment' <<<"$result")"
+          [[ "$environment_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           printf 'dsh_version=%s\n' "$dsh_version" >> "$GITHUB_OUTPUT"
           printf 'environment_version=%s\n' "$environment_version" >> "$GITHUB_OUTPUT"
 
@@ -72,49 +78,56 @@ jobs:
           printf '%s' "$KEYRING_JSON_BASE64" | base64 --decode > "$RUNNER_TEMP/production-trust/keyring.json"
           printf '%s' "$KEYRING_SIGNATURE_BASE64" | base64 --decode > "$RUNNER_TEMP/production-trust/keyring.sig.json"
 
-      - name: Resolve next monotonic target sequence
+      - name: Resolve signed channel and target sequence
         id: sequence
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
+          channel="$RUNNER_TEMP/release-channel"
+          keyring_sha256="$(sha256sum "$RUNNER_TEMP/production-trust/keyring.json" | cut -d ' ' -f 1)"
           previous=-
-          if latest_tag="$(gh release view --json tagName --jq .tagName 2>/dev/null)"; then
-            mkdir -p "$RUNNER_TEMP/previous-platform-release"
-            gh release download "$latest_tag" \
-              --pattern stable.json \
-              --pattern stable.sig.json \
-              --pattern keyring.json \
-              --pattern keyring.sig.json \
-              --dir "$RUNNER_TEMP/previous-platform-release"
-            previous="$RUNNER_TEMP/previous-platform-release"
+          reuse=false
+          if git ls-remote --exit-code origin refs/heads/release-channel >/dev/null 2>&1; then
+            git fetch origin refs/heads/release-channel
+            channel_commit="$(git rev-parse FETCH_HEAD)"
+            git worktree add --detach "$channel" "$channel_commit"
+            previous="$channel"
+            current_sequence="$(jq -er .targetSequence "$channel/stable.json")"
+            if test -f "$channel/channel.json" \
+              && test "$(jq -er .sourceCommit "$channel/channel.json")" = "$GITHUB_SHA" \
+              && test "$(jq -er .keyringSha256 "$channel/channel.json")" = "$keyring_sha256"; then
+              sequence="$current_sequence"
+              reuse=true
+            else
+              test "$current_sequence" -lt 9007199254740991
+              sequence="$((current_sequence + 1))"
+            fi
+          else
+            git worktree add --detach "$channel" "$GITHUB_SHA"
+            git -C "$channel" checkout --orphan release-channel
+            git -C "$channel" rm -rf .
+            sequence=1
+            channel_commit=
           fi
-          sequence="$(PREVIOUS_STABLE="$previous" node --input-type=module <<'NODE'
-          import { readFile } from 'node:fs/promises'
-          import { parseStable } from './container/platform/lib/contracts.mjs'
-          if (process.env.PREVIOUS_STABLE === '-') process.stdout.write('1')
-          else {
-            const previous = parseStable(await readFile(`${process.env.PREVIOUS_STABLE}/stable.json`))
-            if (previous.targetSequence === Number.MAX_SAFE_INTEGER) throw new Error('target sequence is exhausted')
-            process.stdout.write(String(previous.targetSequence + 1))
-          }
-          NODE
-          )"
-          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+          printf 'channel_commit=%s\n' "$channel_commit" >> "$GITHUB_OUTPUT"
+          printf 'keyring_sha256=%s\n' "$keyring_sha256" >> "$GITHUB_OUTPUT"
           printf 'previous=%s\n' "$previous" >> "$GITHUB_OUTPUT"
-          printf 'Next target sequence: %s\n' "$sequence" >> "$GITHUB_STEP_SUMMARY"
+          printf 'reuse=%s\n' "$reuse" >> "$GITHUB_OUTPUT"
+          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
+          printf 'Target sequence: %s (reuse: %s)\n' "$sequence" "$reuse" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download reviewed DSH npm Artifact
+        if: steps.sequence.outputs.reuse != 'true'
         env:
           DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
         run: |
           mkdir -p "$RUNNER_TEMP/platform-release-input"
-          npm pack "@deepseek-ai/dsh@${DSH_VERSION}" \
-            --pack-destination "$RUNNER_TEMP/platform-release-input" >/dev/null
+          npm pack "@deepseek-ai/dsh@${DSH_VERSION}" --pack-destination "$RUNNER_TEMP/platform-release-input" >/dev/null
           tarball="$(find "$RUNNER_TEMP/platform-release-input" -maxdepth 1 -type f -name '*.tgz' -print -quit)"
           test -n "$tarball"
           printf 'DSH_TARBALL=%s\n' "$tarball" >> "$GITHUB_ENV"
 
-      - name: Prepare signed immutable release
+      - name: Prepare signed immutable target
+        if: steps.sequence.outputs.reuse != 'true'
         env:
           RELEASE_PRIVATE_KEY: ${{ secrets.DSH_RELEASE_PRIVATE_KEY }}
           TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
@@ -125,78 +138,167 @@ jobs:
           private_key="$RUNNER_TEMP/current-release-private.pem"
           trap 'rm -f "$private_key"' EXIT
           printf '%s\n' "$RELEASE_PRIVATE_KEY" > "$private_key"
-          tag="platform-${TARGET_SEQUENCE}"
-          artifact_base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/"
+          artifact_base_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/release-channel/targets/${TARGET_SEQUENCE}/"
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
           export SOURCE_DATE_EPOCH
           node container/platform/tools/prepare-release.mjs \
-            release/supported-target.json \
-            container/environment/definition.json \
-            release/official-dsh-policy.json \
-            "$RUNNER_TEMP/production-trust" \
-            "$private_key" \
-            "$DSH_TARBALL" \
-            "$PREVIOUS_STABLE" \
-            "$TARGET_SEQUENCE" \
-            "$artifact_base_url" \
-            "$RUNNER_TEMP/platform-release"
+            release/supported-target.json container/environment/definition.json release/official-dsh-policy.json \
+            "$RUNNER_TEMP/production-trust" "$private_key" "$DSH_TARBALL" "$PREVIOUS_STABLE" \
+            "$TARGET_SEQUENCE" "$artifact_base_url" "$RUNNER_TEMP/platform-release"
           rm -f "$private_key"
           trap - EXIT
 
-      - name: Publish release atomically
-        id: publish
+      - name: Reuse an already published target after retry
+        if: steps.sequence.outputs.reuse == 'true'
+        env:
+          TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
+          CHANNEL: ${{ steps.sequence.outputs.channel }}
+          DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
+          ENVIRONMENT_VERSION: ${{ steps.target.outputs.environment_version }}
+        run: |
+          cp -a "$CHANNEL/targets/$TARGET_SEQUENCE" "$RUNNER_TEMP/platform-release"
+          test "$(jq -er .desired.dsh.version "$RUNNER_TEMP/platform-release/stable.json")" = "$DSH_VERSION"
+          test "$(jq -er .desired.environment.version "$RUNNER_TEMP/platform-release/stable.json")" = "$ENVIRONMENT_VERSION"
+
+      - name: Derive Environment release identity
+        run: |
+          node container/platform/tools/environment-release.mjs \
+            "$RUNNER_TEMP/platform-release/bootstrap.manifest.json" \
+            "$RUNNER_TEMP/platform-release/environment.manifest.json" \
+            release/official-dsh-policy.json \
+            "$RUNNER_TEMP/environment-release.json"
+
+      - name: Validate Environment version ownership
+        id: environment-check
         env:
           GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT_VERSION: ${{ steps.target.outputs.environment_version }}
+        run: |
+          tag="v${ENVIRONMENT_VERSION}"
+          publish=true
+          if gh release view "$tag" --json isDraft > "$RUNNER_TEMP/environment-release-state.json" 2>/dev/null; then
+            if test "$(jq -er .isDraft "$RUNNER_TEMP/environment-release-state.json")" = false; then
+              mkdir -p "$RUNNER_TEMP/published-environment"
+              gh release download "$tag" --pattern environment-release.json --dir "$RUNNER_TEMP/published-environment"
+              cmp "$RUNNER_TEMP/environment-release.json" "$RUNNER_TEMP/published-environment/environment-release.json"
+              publish=false
+            else
+              mkdir -p "$RUNNER_TEMP/draft-environment"
+              if gh release download "$tag" --pattern environment-release.json --dir "$RUNNER_TEMP/draft-environment" 2>/dev/null; then
+                cmp "$RUNNER_TEMP/environment-release.json" "$RUNNER_TEMP/draft-environment/environment-release.json"
+              fi
+            fi
+          elif git ls-remote --exit-code origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Git tag $tag exists without a matching Environment Release" >&2
+            exit 1
+          fi
+          printf 'publish=%s\n' "$publish" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed channel target
+        id: channel
+        env:
+          CHANNEL: ${{ steps.sequence.outputs.channel }}
+          EXISTING_CHANNEL_COMMIT: ${{ steps.sequence.outputs.channel_commit }}
+          KEYRING_SHA256: ${{ steps.sequence.outputs.keyring_sha256 }}
+          REUSE: ${{ steps.sequence.outputs.reuse }}
           TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
           DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
           ENVIRONMENT_VERSION: ${{ steps.target.outputs.environment_version }}
         run: |
-          tag="platform-${TARGET_SEQUENCE}"
-          notes="$RUNNER_TEMP/platform-release-notes.md"
-          # shellcheck disable=SC2016
-          {
-            printf 'Latest Supported DSH: `%s`\n\n' "$DSH_VERSION"
-            printf 'Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
-            printf 'Target sequence: `%s`\n' "$TARGET_SEQUENCE"
-          } > "$notes"
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --draft \
-              --target "$GITHUB_SHA" \
-              --title "DSH Platform ${TARGET_SEQUENCE}" \
-              --notes-file "$notes"
+          if test "$REUSE" = true; then
+            commit="$EXISTING_CHANNEL_COMMIT"
           else
-            is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
-            test "$is_draft" = true
-            gh release edit "$tag" \
-              --draft \
-              --target "$GITHUB_SHA" \
-              --title "DSH Platform ${TARGET_SEQUENCE}" \
-              --notes-file "$notes"
+            target="$CHANNEL/targets/$TARGET_SEQUENCE"
+            test ! -e "$target"
+            mkdir -p "$target"
+            cp -a "$RUNNER_TEMP/platform-release/." "$target/"
+            for name in stable.json stable.sig.json keyring.json keyring.sig.json; do cp "$target/$name" "$CHANNEL/$name"; done
+            jq -n --arg sourceCommit "$GITHUB_SHA" --arg keyringSha256 "$KEYRING_SHA256" \
+              --arg dshVersion "$DSH_VERSION" --arg environmentVersion "$ENVIRONMENT_VERSION" \
+              --argjson targetSequence "$TARGET_SEQUENCE" \
+              '{schema:1,sourceCommit:$sourceCommit,keyringSha256:$keyringSha256,targetSequence:$targetSequence,dshVersion:$dshVersion,environmentVersion:$environmentVersion}' \
+              > "$CHANNEL/channel.json"
+            git -C "$CHANNEL" config user.name github-actions
+            git -C "$CHANNEL" config user.email github-actions@github.com
+            git -C "$CHANNEL" add channel.json keyring.json keyring.sig.json stable.json stable.sig.json "targets/$TARGET_SEQUENCE"
+            git -C "$CHANNEL" commit -m "release: publish target sequence $TARGET_SEQUENCE"
+            commit="$(git -C "$CHANNEL" rev-parse HEAD)"
+            git -C "$CHANNEL" push origin HEAD:refs/heads/release-channel
           fi
-          gh release upload "$tag" "$RUNNER_TEMP/platform-release"/* --clobber
-          find "$RUNNER_TEMP/platform-release" -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-assets"
-          gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-assets"
-          diff -u "$RUNNER_TEMP/local-assets" "$RUNNER_TEMP/remote-assets"
-          gh release edit "$tag" \
-            --draft=false \
-            --latest \
-            --title "DSH Platform ${TARGET_SEQUENCE}" \
-            --notes-file "$notes"
-          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
-          # shellcheck disable=SC2016
-          printf 'Published `%s` as the Latest Supported metadata release.\n' "$tag" >> "$GITHUB_STEP_SUMMARY"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf 'Published signed channel sequence `%s` at `%s`.\n' "$TARGET_SEQUENCE" "$commit" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish Environment Release
+        id: environment-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_ENVIRONMENT: ${{ steps.environment-check.outputs.publish }}
+          ENVIRONMENT_TAG: ${{ steps.environment-check.outputs.tag }}
+          ENVIRONMENT_VERSION: ${{ steps.target.outputs.environment_version }}
+          DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
+          TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
+        run: |
+          if test "$PUBLISH_ENVIRONMENT" != true; then
+            printf 'published=false\n' >> "$GITHUB_OUTPUT"
+            printf 'tag=%s\n' "$ENVIRONMENT_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          assets="$RUNNER_TEMP/environment-release-assets"
+          mkdir -p "$assets"
+          cp "$RUNNER_TEMP/environment-release.json" "$assets/"
+          for name in bootstrap.manifest.json bootstrap.manifest.sig.json environment.manifest.json environment.manifest.sig.json; do
+            cp "$RUNNER_TEMP/platform-release/$name" "$assets/"
+          done
+          jq -r '.artifacts[].url' "$RUNNER_TEMP/platform-release/bootstrap.manifest.json" \
+            "$RUNNER_TEMP/platform-release/environment.manifest.json" | while IFS= read -r url; do
+              name="${url##*/}"
+              cp "$RUNNER_TEMP/platform-release/$name" "$assets/$name"
+            done
+          notes="$RUNNER_TEMP/environment-release-notes.md"
+          {
+            printf 'Container Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
+            printf 'Supported DSH at publication: `%s`\n\n' "$DSH_VERSION"
+            printf 'Initial signed target sequence: `%s`\n' "$TARGET_SEQUENCE"
+          } > "$notes"
+          if ! gh release view "$ENVIRONMENT_TAG" >/dev/null 2>&1; then
+            gh release create "$ENVIRONMENT_TAG" --draft --target "$GITHUB_SHA" \
+              --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+          fi
+          gh release edit "$ENVIRONMENT_TAG" --draft --target "$GITHUB_SHA" \
+            --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+          gh release upload "$ENVIRONMENT_TAG" "$assets"/* --clobber
+          find "$assets" -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-environment-assets"
+          gh release view "$ENVIRONMENT_TAG" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-environment-assets"
+          diff -u "$RUNNER_TEMP/local-environment-assets" "$RUNNER_TEMP/remote-environment-assets"
+          gh release edit "$ENVIRONMENT_TAG" --draft=false --latest \
+            --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+          printf 'published=true\n' >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$ENVIRONMENT_TAG" >> "$GITHUB_OUTPUT"
+
+  images:
+    name: Publish verified container images
+    needs: publish
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yaml
+    with:
+      source_commit: ${{ github.sha }}
+      channel_commit: ${{ needs.publish.outputs.channel_commit }}
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
   notify-published:
     name: Notify production publication
-    needs: publish
+    needs: [publish, images]
     uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
-      title: DSH ${{ needs.publish.outputs.dsh_version }} 正式支持版本已发布
+      title: ${{ needs.publish.outputs.environment_published == 'true' && format('DSH Docker Environment {0} 已发布', needs.publish.outputs.environment_tag) || format('DSH {0} 镜像已发布', needs.publish.outputs.dsh_version) }}
       message: >-
         DSH ${{ needs.publish.outputs.dsh_version }} 与 Environment
-        ${{ needs.publish.outputs.environment_version }} 已发布为
-        ${{ needs.publish.outputs.tag }}（目标序列 ${{ needs.publish.outputs.sequence }}）。
+        ${{ needs.publish.outputs.environment_version }} 已发布镜像；签名目标序列为
+        ${{ needs.publish.outputs.sequence }}。${{ needs.publish.outputs.environment_published == 'true' && format(' 同时发布了 Environment Release {0}。', needs.publish.outputs.environment_tag) || ' Environment 未变化，因此未创建 GitHub Release。' }}
       priority: 7
     secrets:
       gotify_url: ${{ secrets.GOTIFY_URL }}

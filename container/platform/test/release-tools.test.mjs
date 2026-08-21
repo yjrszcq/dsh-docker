@@ -10,6 +10,7 @@ import { parseEnvironmentManifest, parseStable } from '../lib/contracts.mjs'
 import { parseImageInventory } from '../lib/deployment-contracts.mjs'
 import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
+import { createEnvironmentRelease } from '../tools/environment-release.mjs'
 import { verifyManagementDependencies } from '../tools/verify-management-dependencies.mjs'
 
 const supportedTargetUrl = new URL('../../../release/supported-target.json', import.meta.url)
@@ -94,6 +95,62 @@ test('Management terminal dependencies are exact, licensed, and architecture-neu
   assert.equal(result.nativeModules, 0)
 })
 
+test('Environment release identity ignores target metadata but covers packaged content and official DSH policy', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-environment-release-'))
+  const bootstrapPath = join(root, 'bootstrap.json')
+  const environmentPath = join(root, 'environment.json')
+  const policyPath = new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname
+  const common = {
+    schema: 1,
+    keyringGeneration: 1,
+    targetSequence: 1,
+    issuedAt: '2026-08-21T00:00:00.000Z',
+    artifacts: [{
+      id: 'artifact', mediaType: 'application/octet-stream', sha256: 'a'.repeat(64), size: 1,
+      url: 'https://release.example/targets/1/artifact',
+    }],
+  }
+  const bootstrap = { ...common, manifestType: 'bootstrap', version: '1.0.0', bootstrapApi: 1, entrypoint: '/platform/bootstrap/index.mjs' }
+  const environment = {
+    ...common, manifestType: 'environment', version: '1.0.0', bootstrapApi: 1,
+    components: [{ id: 'component', sha256: 'a'.repeat(64) }], patches: [], systemPlugins: [],
+  }
+  await writeFile(bootstrapPath, JSON.stringify(bootstrap))
+  await writeFile(environmentPath, JSON.stringify(environment))
+  const first = await createEnvironmentRelease({ bootstrapManifestPath: bootstrapPath, environmentManifestPath: environmentPath, officialDshPolicyPath: policyPath })
+
+  bootstrap.targetSequence = 2
+  bootstrap.issuedAt = '2026-08-22T00:00:00.000Z'
+  bootstrap.artifacts[0].url = 'https://release.example/targets/2/artifact'
+  environment.targetSequence = 2
+  environment.issuedAt = '2026-08-22T00:00:00.000Z'
+  environment.artifacts[0].url = 'https://release.example/targets/2/artifact'
+  await writeFile(bootstrapPath, JSON.stringify(bootstrap))
+  await writeFile(environmentPath, JSON.stringify(environment))
+  const second = await createEnvironmentRelease({ bootstrapManifestPath: bootstrapPath, environmentManifestPath: environmentPath, officialDshPolicyPath: policyPath })
+  assert.deepEqual(second, first)
+
+  environment.artifacts[0].sha256 = 'b'.repeat(64)
+  environment.components[0].sha256 = 'b'.repeat(64)
+  await writeFile(environmentPath, JSON.stringify(environment))
+  const changed = await createEnvironmentRelease({ bootstrapManifestPath: bootstrapPath, environmentManifestPath: environmentPath, officialDshPolicyPath: policyPath })
+  assert.notEqual(changed.environmentContentSha256, first.environmentContentSha256)
+
+  environment.artifacts[0].sha256 = 'a'.repeat(64)
+  environment.components[0].sha256 = 'a'.repeat(64)
+  await writeFile(environmentPath, JSON.stringify(environment))
+  const changedPolicyPath = join(root, 'official-dsh-policy.json')
+  const changedPolicy = JSON.parse(await readFile(policyPath, 'utf8'))
+  changedPolicy.keys[0].expires = '2027-08-21T00:00:00.000Z'
+  await writeFile(changedPolicyPath, JSON.stringify(changedPolicy))
+  const policyChanged = await createEnvironmentRelease({
+    bootstrapManifestPath: bootstrapPath,
+    environmentManifestPath: environmentPath,
+    officialDshPolicyPath: changedPolicyPath,
+  })
+  assert.notEqual(policyChanged.officialDshPolicySha256, first.officialDshPolicySha256)
+})
+
 test('prepares one flat Recovery-rooted release from the reviewed Supported Target', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-prepare-release-'))
   const recovery = await pair(root, 'recovery')
@@ -126,7 +183,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     supportedTargetUrl.pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
-    trust, current.privatePath, tarball, '-', '1', 'https://release.example/releases/download/platform-1/', output,
+    trust, current.privatePath, tarball, '-', '1', 'https://release.example/release-channel/targets/1/', output,
   ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
   assert.equal(result.status, 0, result.stderr)
 

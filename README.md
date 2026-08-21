@@ -19,6 +19,8 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 | Standard | `latest` | `<version>` | DSH and normal runtime utilities |
 | Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus development tools |
 
+Docker Hub tags follow the DSH version. `ghcr.io/yjrszcq/dsh-docker` mirrors only the Standard image with Environment version tags and `dsh-<version>` lookup tags; it does not publish Devtools images.
+
 ## Quick Start
 
 Create local data directories:

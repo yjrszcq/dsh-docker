@@ -19,6 +19,8 @@
 | 标准版 | `latest` | `<version>` | DSH 和正常运行所需工具 |
 | 开发工具版 | `latest-devtools` | `<version>-devtools` | 标准版加开发工具 |
 
+Docker Hub 标签跟随 DSH 版本。`ghcr.io/yjrszcq/dsh-docker` 仅备份标准镜像，使用 Environment 版本标签和 `dsh-<version>` 定位标签，不发布 Devtools 镜像。
+
 ## 快速开始
 
 创建本地数据目录：

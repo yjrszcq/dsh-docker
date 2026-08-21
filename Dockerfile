@@ -1,5 +1,9 @@
-FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION=latest
+ARG ENVIRONMENT_VERSION=development
+ARG TARGET_SEQUENCE=0
+
+FROM node:24-bookworm-slim AS installer
+ARG DSH_VERSION
 COPY container/platform/image-input /opt/dsh-platform-image-input
 
 RUN apt-get update \
@@ -30,11 +34,17 @@ RUN npm ci --omit=dev --ignore-scripts \
 
 FROM node:24-bookworm-slim AS runtime
 ARG PNPM_VERSION=11.7.0
+ARG DSH_VERSION
+ARG ENVIRONMENT_VERSION
+ARG TARGET_SEQUENCE
 
 LABEL org.opencontainers.image.title="DeepSeek Harness" \
       org.opencontainers.image.description="Unofficial container image for DeepSeek Harness" \
       org.opencontainers.image.source="https://github.com/yjrszcq/dsh-docker" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="$DSH_VERSION" \
+      io.dsh-docker.environment.version="$ENVIRONMENT_VERSION" \
+      io.dsh-docker.target-sequence="$TARGET_SEQUENCE"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -77,7 +87,7 @@ ENV DSH_PLATFORM_DATA=/data/platform \
     DSH_DEFAULT_WORKSPACE=/workspace \
     DSH_PROXY_POLYFILL=true \
     DSH_TELEMETRY_DISABLED=true \
-    DSH_UPDATE_METADATA_URL=https://github.com/yjrszcq/dsh-docker/releases/latest/download/ \
+    DSH_UPDATE_METADATA_URL=https://raw.githubusercontent.com/yjrszcq/dsh-docker/release-channel/ \
     DSH_LOG_MAX_BYTES=104857600 \
     DSH_LOG_RETENTION_DAYS=14 \
     DSH_ACTIVATION_TIMEOUT_SECONDS=60 \

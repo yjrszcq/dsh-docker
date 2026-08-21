@@ -24,12 +24,14 @@
 
 ### 镜像变体
 
-| 变体 | 滚动标签 | 固定版本标签 | 内容 |
+| 变体 | Docker Hub 滚动标签 | Docker Hub DSH 版本标签 | 内容 |
 | --- | --- | --- | --- |
 | 标准版 | `latest` | `<version>` | DSH 和正常运行所需工具 |
 | 开发工具版 | `latest-devtools` | `<version>-devtools` | 标准版加开发工具 |
 
 普通部署应使用标准版。开发工具版额外提供编译器、诊断工具和编辑器等开发工具，但使用相同的持久化数据布局。
+
+Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`1.0.0`、`1.0`、`1`，并提供 DSH 定位标签 `dsh-0.1.1-rc.1`；GHCR 不发布任何 Devtools 标签。
 
 ### 使用前须知
 
@@ -411,7 +413,7 @@ Experimental Runtime 接触真实数据前，Updater 停止 `dsh-runtime`，并�
 
 ## 信任与恢复
 
-Stage-0 只内置一个离线 Recovery Root 公钥。它先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/platform/cache/downloads`，直到 Stage-0 按签名描述验证并导入 `/data/platform/store/objects`；Runtime 构建后续使用的每条路径都来自 receipt，不再读取未验证的下载文件。
+Stage-0 只内置一个离线 Recovery Root 公钥。它从只追加公开产物的 `release-channel` 分支读取机器更新通道，先验证单调递增、由 Recovery 签署的 keyring，再只接受 keyring 中 current Release Key 签署的 `stable.json`。不可变目标位于 `targets/<targetSequence>/`，分支根目录只暴露当前签名 keyring 和 Stable 指针。Updater 下载的 Bootstrap、Environment 等平台 Artifact 会保留在 `/data/platform/cache/downloads`，直到 Stage-0 按签名描述验证并导入 `/data/platform/store/objects`；Runtime 构建后续使用的每条路径都来自 receipt，不再读取未验证的下载文件。
 
 Bootstrap 和 Updater 不能添加根公钥、修改 keyring、提交任意 expected hash 或自行签发 receipt；它们只消费 Stage-0 验证结果。
 
@@ -449,16 +451,22 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 `DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。
 
-`Publish Latest Supported DSH` 在 `main` 的 Supported Target 变更后运行，也可以通过已审批的手动任务触发。创建仅允许 `main` 的受保护 `production-release` GitHub Environment，并配置：
+`Publish Supported Platform Target` 会在 `main` 的 Supported Target、Environment definition 或官方 DSH Registry policy 变化后运行，也支持经过审批的手动触发。创建仅允许 `main` 的受保护 `production-release` GitHub Environment，并配置：
 
 - `DSH_RECOVERY_ROOT_PUBLIC_KEY`
 - `DSH_KEYRING_JSON_BASE64`
 - `DSH_KEYRING_SIGNATURE_BASE64`
 - `DSH_RELEASE_PRIVATE_KEY`
 
-工作流接续 `targetSequence`，创建 draft，上传不可变 Bootstrap/Environment Artifact 和签名元数据，最后发布为 Latest。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。Recovery 私钥没有任何工作流输入。
+工作流从首个正式 `targetSequence: 1` 开始，将后续签名目标依次追加到 `release-channel` 分支。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。同一源码提交和 keyring 的失败任务重试会复用已经发布的目标，不会额外消耗序列。Recovery 私钥没有任何工作流输入。
 
-`Publish Docker Image` 由独立的 `production-image` Environment 保护。它只使用 `DSH_RECOVERY_ROOT_PUBLIC_KEY` 和 `DOCKER_TOKEN`；签名 keyring 从 Supported Release 下载，不再作为额外的镜像工作流 Secret。该工作流不拥有 Release 私钥或 GitHub Release 写权限。仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。
+GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。
+
+`Publish Container Images` 只在签名目标可用后被调用，并由独立的 `production-image` Environment 保护。将 `DSH_RECOVERY_ROOT_PUBLIC_KEY` 放入该 Environment，将 `DOCKER_TOKEN` 放入仓库或组织 Actions Secrets；调用方只向可复用工作流传递这一项 Docker Token。镜像任务不拥有 Release 私钥，只消费签名任务输出的精确 channel commit。工作流需要 `packages: write`，并使用 `GITHUB_TOKEN` 登录 GHCR。
+
+标准多架构镜像只构建一次并同时推送两个 Registry。Docker Hub 获得 `<dsh-version>` 和 `latest`；单独测试的 Devtools 镜像获得 `<dsh-version>-devtools` 和 `latest-devtools`。GHCR 仅获得标准镜像的 `latest`、Environment 完整/次要/主要版本标签和 `dsh-<dsh-version>`。仅 DSH 更新会移动当前 Environment 标签，但不发布 GitHub Release；仅 Environment 更新会用新 digest 覆盖 Docker Hub 现有 DSH 标签，并在 GHCR 发布新的 Environment 标签层级。
+
+仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会在两种镜像均发布成功后显式传给可复用 Gotify 工作流。Environment 发布与仅 DSH 镜像发布使用不同的中文通知。
 
 ## 构建与测试
 
@@ -476,7 +484,7 @@ docker build --build-arg "DSH_VERSION=$DSH_VERSION" -t "deepseek-harness:$DSH_VE
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
-任意本地 `DSH_VERSION` 都会生成 target sequence 为 0 的 development-authority inventory，不能成为正式版本标签或 `latest`。发布工作流只使用经过验证的签名 Release Artifact 构建已审核 Supported Target，拒绝带标记的非生产信任 fixture，并要求由离线 Recovery 签署的公开 trust bundle。
+任意本地 `DSH_VERSION` 都会生成 target sequence 为 0 的 development-authority inventory，不能成为正式版本标签或 `latest`。生产工作流只使用经过验证的签名 channel target 构建已审核 Supported Target，拒绝带标记的非生产信任 fixture，并要求由离线 Recovery 签署的公开 trust bundle。
 
 使用 Node.js 24 和 Docker Compose 运行本地检查：
 

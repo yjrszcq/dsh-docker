@@ -95,3 +95,12 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
   assert.match(seed, /paths\.userPluginSnapshotsRoot/)
   assert.match(buildSeed, /file-manager/)
 })
+
+test('formal images identify DSH, Environment, target sequence, and the signed update channel', async () => {
+  const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
+  assert.match(dockerfile, /org\.opencontainers\.image\.version="\$DSH_VERSION"/)
+  assert.match(dockerfile, /io\.dsh-docker\.environment\.version="\$ENVIRONMENT_VERSION"/)
+  assert.match(dockerfile, /io\.dsh-docker\.target-sequence="\$TARGET_SEQUENCE"/)
+  assert.match(dockerfile, /DSH_UPDATE_METADATA_URL=https:\/\/raw\.githubusercontent\.com\/yjrszcq\/dsh-docker\/release-channel\//)
+  assert.doesNotMatch(dockerfile, /releases\/latest\/download/)
+})
