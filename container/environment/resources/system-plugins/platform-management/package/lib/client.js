@@ -333,9 +333,10 @@ function LogViewer({ active, t }) {
             h('div', { className: css.logMeta },
               h('strong', { className: `${css.logLevel} ${css[`log${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`]}` }, t(`level${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`)),
               h('span', { className: css.logSource }, display(entry.source)),
-              h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode'))),
+              h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode')))),
+            h('div', { className: css.logMessageRow },
+              h('pre', null, display(entry.message)),
               h('span', { className: css.logChevron, 'aria-hidden': true })),
-            h('pre', null, display(entry.message)),
             isExpanded ? h('pre', { className: css.logDetails }, JSON.stringify(entry, null, 2)) : null)
         })))
 }

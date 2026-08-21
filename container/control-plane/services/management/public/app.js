@@ -990,6 +990,8 @@ function renderLogs() {
     time.textContent = localTime(entry.timestamp)
     const message = document.createElement('pre')
     message.textContent = display(entry.message)
+    const messageRow = document.createElement('div')
+    messageRow.className = 'log-message-row'
     const details = document.createElement('pre')
     details.className = 'log-details'
     details.textContent = JSON.stringify(entry, null, 2)
@@ -1014,8 +1016,9 @@ function renderLogs() {
     const chevron = document.createElement('span')
     chevron.className = 'log-chevron'
     chevron.setAttribute('aria-hidden', 'true')
-    meta.append(levelLabel, sourceLabel, time, chevron)
-    article.append(meta, message, details)
+    meta.append(levelLabel, sourceLabel, time)
+    messageRow.append(message, chevron)
+    article.append(meta, messageRow, details)
     elements['log-list'].append(article)
   }
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
