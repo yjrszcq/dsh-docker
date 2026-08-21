@@ -275,6 +275,23 @@ test('reports real transfer progress and cancels a queued transfer', async () =>
   await active.result
 })
 
+test('marks persisted transfers interrupted because HTTP streams cannot resume', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-transfer-recovery-'))
+  const tasks = join(root, 'tasks')
+  await mkdir(tasks)
+  for (const [index, status] of ['running', 'queued'].entries()) {
+    const taskId = `${String(index + 8).repeat(8)}-${String(index + 8).repeat(4)}-4${String(index + 8).repeat(3)}-8${String(index + 8).repeat(3)}-${String(index + 8).repeat(12)}`
+    await writeFile(join(tasks, `${taskId}.json`), JSON.stringify({
+      schema: 1, taskId, operation: index === 0 ? 'upload' : 'download', status,
+      phase: status === 'queued' ? 'queued' : 'transferring', path: join(root, 'value'),
+      managed: false, staging: [], hidden: [], published: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }))
+  }
+  const recovered = new FileTaskManager({ root: tasks })
+  await recovered.initialize()
+  assert.equal(recovered.list().filter(task => ['upload', 'download'].includes(task.operation)).every(task => task.status === 'interrupted'), true)
+})
+
 test('recovers committed deletes and marks uncommitted tasks interrupted', async () => {
   const { files, tasks } = await setup()
   const hidden = join(files, '.dsh-delete-task.tmp')

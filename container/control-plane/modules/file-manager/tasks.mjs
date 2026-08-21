@@ -138,7 +138,10 @@ export class FileTaskManager {
         if (task.schema !== 1 || typeof task.taskId !== 'string') continue
         this.tasks.set(task.taskId, task)
         if (task.status === 'running') await this.#recover(task)
-        else if (task.status === 'queued') this.#schedule(task)
+        else if (task.status === 'queued' && ['upload', 'download'].includes(task.operation)) {
+          task.status = 'running'
+          await this.#recover(task)
+        } else if (task.status === 'queued') this.#schedule(task)
       } catch (error) {
         this.onState({ operation: 'recovery', status: 'failed', error: error instanceof Error ? error.message : String(error) })
       }
