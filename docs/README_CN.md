@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | `DSH_PLATFORM_DATA` | `/data/platform` | 平台状态、受管理资产、快照和日志目录 |
 | `DSH_HOME` | `/data/dsh` | DSH 配置和数据目录 |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径；必须是可访问的绝对目录 |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器和独立文件管理的默认目录；必须是可访问的绝对目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；`true` 或 `false` |
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名；密码为空时忽略 |
@@ -45,7 +45,7 @@
 
 ### Workspace 行为
 
-`DSH_DEFAULT_WORKSPACE` 只修改目录选择器初始路径，不是文件系统沙箱。用户仍可选择容器 `node` 用户有权访问的其他路径。DSH 在 Environment 组件启动时验证访问权限。
+`DSH_DEFAULT_WORKSPACE` 会设置目录选择器和独立文件管理的初始目录，但不是文件系统沙箱。用户仍可访问容器 `node` 用户有权访问的其他路径。DSH 在 Environment 组件启动时验证访问权限。
 
 镜像通过精确匹配编译产物实现此行为。补丁必须恰好匹配一次，因此不兼容的上游版本会使构建失败，而不会修改错误位置。
 
@@ -158,7 +158,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 “容器终端”会在 `/workspace` 启动真实的交互式 `/bin/bash`，其 UID、GID、补充组、`DSH_HOME=/data/dsh`、PATH、代理变量和 sudo 策略均与 DSH 一致。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Management 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
 
-独立 DSH 管理中心的“文件管理”同样由 Management 提供，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。它默认打开 `/workspace`，并提供 `/data/dsh`、`/data/platform` 和 `/` 快捷入口。文件操作以 Management/DSH 的容器用户身份执行，遵守原有 UID、GID、补充组、只读挂载和文件权限，不会自动调用 `sudo`。需要提权、chmod/chown、归档或其他高级操作时使用独立终端。
+独立 DSH 管理中心的“文件管理”同样由 Management 提供，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。初始目录取自 `DSH_DEFAULT_WORKSPACE`；快捷入口依次使用 `DSH_DEFAULT_WORKSPACE`、`DSH_HOME`、`DSH_PLATFORM_DATA` 和 `/`，重复路径会自动去除。文件操作以 Management/DSH 的容器用户身份执行，遵守原有 UID、GID、补充组、只读挂载和文件权限，不会自动调用 `sudo`。需要提权、chmod/chown、归档或其他高级操作时使用独立终端。
 
 文件清单支持隐藏文件、排序、分页、当前目录筛选和有上限的递归搜索；符号链接按链接本身列出、复制和删除，不递归跟随。普通 UTF-8 文本可在带行号的编辑器中修改，最大 2 MiB；保存会携带 revision，若终端、Agent 或其他页面已经修改文件则返回冲突，不会静默覆盖。上传与下载均为流式传输，下载支持 HTTP Range；多文件上传由当前浏览器标签逐文件排队，关闭页面后尚未开始的文件不会继续。
 

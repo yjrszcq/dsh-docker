@@ -22,7 +22,7 @@ This guide documents configuration, platform behavior, online updates, trust, re
 | --- | --- | --- |
 | `DSH_PLATFORM_DATA` | `/data/platform` | Platform state, managed assets, snapshots, and logs |
 | `DSH_HOME` | `/data/dsh` | DSH configuration and data directory |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path; must be an accessible absolute directory |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Default directory for directory pickers and standalone file management; must be an accessible absolute directory |
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
@@ -45,7 +45,7 @@ Values must not contain a scheme, path, credentials, or subdomain wildcard. Vali
 
 ### Workspace Behavior
 
-`DSH_DEFAULT_WORKSPACE` changes only the initial directory-picker path. It is not a filesystem sandbox: users can select other paths accessible to the container's `node` user. DSH validates access while its Environment component starts.
+`DSH_DEFAULT_WORKSPACE` selects the initial directory for directory pickers and standalone file management. It is not a filesystem sandbox: users can access other paths available to the container's `node` user. DSH validates access while its Environment component starts.
 
 The image implements this with an exact-match compiled-output patch. The patch must match exactly once, so an incompatible upstream release fails the build instead of modifying an unintended location.
 
@@ -158,7 +158,7 @@ Enable, disable, and uninstall changes are accumulated as a page-local draft. Ap
 
 The Container terminal tab starts a real interactive `/bin/bash` in `/workspace` with the same UID, GID, supplementary groups, `DSH_HOME=/data/dsh`, PATH, proxy variables, and sudo policy as DSH. Restarting only DSH does not terminate the terminal. A browser refresh or brief disconnect can reattach for 30 seconds and redraw up to 256 KiB of recent output; explicitly closing the session, stopping Management, or stopping the container terminates it. Platform logs record session lifecycle only, never terminal input, output, command history, or the complete environment.
 
-The standalone DSH Management Console **Files** tab is also served by Management, so it remains available while DSH is stopped, fails to start, or is in recovery mode. The Platform Management plugin inside DSH deliberately does not expose this tab. Files opens at `/workspace` and provides shortcuts to `/data/dsh`, `/data/platform`, and `/`. Operations run as the Management/DSH container identity and retain the existing UID, GID, supplementary groups, read-only mounts, and filesystem permissions. They never invoke `sudo`; use the standalone terminal for privilege elevation, chmod/chown, archives, and other advanced work.
+The standalone DSH Management Console **Files** tab is also served by Management, so it remains available while DSH is stopped, fails to start, or is in recovery mode. The Platform Management plugin inside DSH deliberately does not expose this tab. Its initial directory comes from `DSH_DEFAULT_WORKSPACE`; shortcuts use `DSH_DEFAULT_WORKSPACE`, `DSH_HOME`, `DSH_PLATFORM_DATA`, and `/`, with duplicates removed. Operations run as the Management/DSH container identity and retain the existing UID, GID, supplementary groups, read-only mounts, and filesystem permissions. They never invoke `sudo`; use the standalone terminal for privilege elevation, chmod/chown, archives, and other advanced work.
 
 Directory inventory supports hidden files, sorting, pagination, local filtering, and bounded recursive search. Symbolic links are listed, copied, and deleted as links and are not followed recursively. Regular UTF-8 text up to 2 MiB can be edited in the line-number editor. Saves include a revision and return a conflict instead of overwriting changes made by a terminal, Agent, or another page. Uploads and downloads are streamed, downloads support HTTP Range, and multi-file uploads are queued one file at a time in the current browser tab. Files that have not started uploading do not continue after the page closes.
 

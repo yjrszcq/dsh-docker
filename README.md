@@ -77,7 +77,7 @@ Common settings:
 | `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username |
 | `DSH_PROXY_PASSWORD` | Empty | HTTP Basic password; empty disables authentication |
 | `DSH_PLATFORM_PASSWORD` | Empty | Protects DSH Management Console when the gateway password is empty; empty uses temporary-key mode |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Initial directory-picker path |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | Default workspace for directory pickers and standalone file management |
 | `DSH_SUDO_ENABLED` | `true` | Compose-only passwordless sudo switch |
 
 See the [complete configuration reference](docs/README.md#configuration) for all variables and validation rules.

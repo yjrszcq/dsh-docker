@@ -8,7 +8,7 @@ import {
 } from './index.mjs'
 
 const OPERATIONS = new Set(['mkdir', 'touch', 'rename', 'copy', 'move', 'delete'])
-const PROTECTED_DELETE_ROOTS = new Set(['/', '/data', '/data/dsh', '/data/platform', '/workspace', '/run/dsh-platform/deployment'])
+const DEFAULT_PROTECTED_DELETE_ROOTS = ['/', '/data', '/data/dsh', '/data/platform', '/workspace', '/run/dsh-platform/deployment']
 
 function now() { return new Date().toISOString() }
 
@@ -78,10 +78,16 @@ async function treeMetrics(path) {
 }
 
 export class FileTaskManager {
-  constructor({ root, inventory = new FileInventory(), onState = () => {}, platformBusy = () => false, report = async () => {} } = {}) {
+  constructor({
+    root, inventory = new FileInventory(), isManaged = isManagedPath,
+    protectedRoots = DEFAULT_PROTECTED_DELETE_ROOTS,
+    onState = () => {}, platformBusy = () => false, report = async () => {},
+  } = {}) {
     if (typeof root !== 'string') throw new Error('file task root is required')
     this.root = root
     this.inventory = inventory
+    this.isManaged = isManaged
+    this.protectedRoots = new Set(protectedRoots.map(normalizeAbsolutePath))
     this.onState = onState
     this.platformBusy = platformBusy
     this.report = report
@@ -94,8 +100,8 @@ export class FileTaskManager {
 
   wouldManage(input) {
     if (input?.operation === 'search') return false
-    const sourceManaged = Array.isArray(input?.sources) && input.sources.some(source => typeof source?.path === 'string' && isManagedPath(source.path))
-    return sourceManaged || (typeof input?.destination === 'string' && isManagedPath(input.destination))
+    const sourceManaged = Array.isArray(input?.sources) && input.sources.some(source => typeof source?.path === 'string' && this.isManaged(source.path))
+    return sourceManaged || (typeof input?.destination === 'string' && this.isManaged(input.destination))
   }
 
   async initialize() {
@@ -124,8 +130,8 @@ export class FileTaskManager {
     if (!['reject', 'overwrite', 'rename'].includes(conflict)) throw new FileManagerError('file task conflict mode is invalid')
     if (['copy', 'move', 'delete', 'rename'].includes(input.operation) && sources.length === 0) throw new FileManagerError('file task sources are required')
     if (['mkdir', 'touch', 'copy', 'move', 'rename'].includes(input.operation) && destination === null) throw new FileManagerError('file task destination is required')
-    if (input.operation === 'delete' && sources.some(source => PROTECTED_DELETE_ROOTS.has(source.path))) throw new FileManagerError('protected root cannot be deleted', 403, 'PROTECTED_ROOT')
-    const managed = sources.some(source => isManagedPath(source.path)) || (destination !== null && isManagedPath(destination))
+    if (input.operation === 'delete' && sources.some(source => this.protectedRoots.has(source.path))) throw new FileManagerError('protected root cannot be deleted', 403, 'PROTECTED_ROOT')
+    const managed = sources.some(source => this.isManaged(source.path)) || (destination !== null && this.isManaged(destination))
     if (managed && this.platformBusy()) throw new FileManagerError('a platform operation is already running', 409, 'FILE_TASK_CONFLICT')
     const task = {
       schema: 1, taskId: randomUUID(), operation: input.operation, status: 'running', phase: 'validating',
@@ -333,4 +339,4 @@ export class FileTaskManager {
   }
 }
 
-export const fileTaskInternals = Object.freeze({ PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics })
+export const fileTaskInternals = Object.freeze({ protectedDeleteRoots: DEFAULT_PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics })

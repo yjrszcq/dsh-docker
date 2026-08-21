@@ -214,6 +214,7 @@ let terminalRestored = false
 let terminalLeaving = false
 let runtimeResetExpanded = false
 let filesLoaded = false
+let fileConfigLoad
 let fileLoading = false
 let filePath = '/workspace'
 let fileListing = { revision: null, entries: [], nextCursor: null, total: 0 }
@@ -1236,6 +1237,30 @@ function fileOperationMessage(value, failed = false) {
   elements['file-operation'].classList.toggle('failed', failed)
 }
 
+async function initializeFiles() {
+  if (filesLoaded) return
+  if (fileConfigLoad === undefined) {
+    fileConfigLoad = api('files/config').then(config => {
+      if (typeof config?.defaultPath !== 'string' || !Array.isArray(config.shortcuts)) throw new Error('file management configuration is invalid')
+      filePath = config.defaultPath
+      elements['file-path'].value = filePath
+      elements['file-shortcuts'].replaceChildren(...config.shortcuts.map(path => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.dataset.fileLocation = path
+        button.textContent = path
+        button.addEventListener('click', () => { void navigateFiles(path) })
+        return button
+      }))
+      return navigateFiles(filePath, { history: false })
+    }).catch(error => {
+      fileConfigLoad = undefined
+      showError(error)
+    })
+  }
+  return fileConfigLoad
+}
+
 function selectedFileEntries() {
   return fileListing.entries.filter(entry => fileSelected.has(entry.path))
 }
@@ -1266,7 +1291,7 @@ function renderFiles() {
   elements['file-list'].replaceChildren()
   elements['file-empty'].hidden = values.length !== 0 || fileLoading
   elements['file-load-more'].hidden = fileListing.nextCursor === null || fileLoading
-  elements['file-managed-warning'].hidden = !fileListing.managed && !['/opt/dsh-platform', '/run/dsh-platform', '/data/platform/state', '/data/platform/store'].some(root => filePath === root || filePath.startsWith(`${root}/`))
+  elements['file-managed-warning'].hidden = !fileListing.managed
   for (const entry of values) {
     const row = document.createElement('tr')
     row.dataset.type = entry.type
@@ -1498,7 +1523,7 @@ function selectTab(tab) {
     void restoreTerminalSession()
     fitTerminal()
   }
-  if (tab === 'files' && !filesLoaded) void navigateFiles(filePath, { history: false })
+  if (tab === 'files' && !filesLoaded) void initializeFiles()
 }
 
 function connectEvents() {
@@ -1594,7 +1619,6 @@ elements['file-up'].addEventListener('click', () => {
 })
 elements['file-path'].addEventListener('keydown', event => { if (event.key === 'Enter') void navigateFiles(event.target.value) })
 elements['file-refresh'].addEventListener('click', () => { void navigateFiles(filePath, { history: false }) })
-for (const button of document.querySelectorAll('[data-file-location]')) button.addEventListener('click', () => { void navigateFiles(button.dataset.fileLocation) })
 for (const button of document.querySelectorAll('[data-file-sort]')) button.addEventListener('click', () => {
   if (fileSort === button.dataset.fileSort) fileOrder = fileOrder === 'asc' ? 'desc' : 'asc'
   else { fileSort = button.dataset.fileSort; fileOrder = 'asc' }

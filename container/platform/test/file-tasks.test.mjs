@@ -141,4 +141,9 @@ test('managed mutations expose a lease and reject active platform work', async (
   await manager.initialize()
   assert.equal(manager.wouldManage({ operation: 'touch', destination: '/data/platform/state/test' }), true)
   assert.throws(() => manager.start({ operation: 'touch', destination: '/data/platform/state/test' }), error => error.statusCode === 409)
+
+  const custom = new FileTaskManager({ root: join(root, 'custom-tasks'), protectedRoots: ['/custom/workspace'] })
+  assert.throws(() => custom.start({
+    operation: 'delete', sources: [{ path: '/custom/workspace', revision: 'sha256:unused' }],
+  }), error => error.statusCode === 403)
 })

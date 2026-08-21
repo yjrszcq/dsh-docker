@@ -77,7 +77,7 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 | `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名 |
 | `DSH_PROXY_PASSWORD` | 空 | HTTP Basic 密码；留空关闭认证 |
 | `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时保护 DSH 管理中心；留空进入临时密钥模式 |
-| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器初始路径 |
+| `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器和独立文件管理的默认工作目录 |
 | `DSH_SUDO_ENABLED` | `true` | 仅供 Compose 使用的免密码 sudo 开关 |
 
 全部变量和校验规则见[完整配置参考](docs/README_CN.md#配置参考)。

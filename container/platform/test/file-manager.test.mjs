@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
-  FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager,
-  isManagedPath, normalizeAbsolutePath,
+  createManagedPathMatcher, fileManagerLocations, FileInventory, FileManagerError,
+  FileRevisionConflictError, FileSearchManager, isManagedPath, normalizeAbsolutePath,
 } from '../../control-plane/modules/file-manager/index.mjs'
 
 test('normalizes absolute paths and rejects unsafe path representations', () => {
@@ -20,6 +20,19 @@ test('identifies only exact platform-managed roots and descendants', () => {
   assert.equal(isManagedPath('/data/platform/state/updater/status.json'), true)
   assert.equal(isManagedPath('/data/platform/stateful'), false)
   assert.equal(isManagedPath('/data/dsh'), false)
+  const custom = createManagedPathMatcher('/srv/platform')
+  assert.equal(custom('/srv/platform/store/objects'), true)
+  assert.equal(custom('/data/platform/store/objects'), false)
+})
+
+test('derives the default directory and unique shortcuts from existing environment paths', () => {
+  assert.deepEqual(fileManagerLocations({
+    defaultWorkspace: '/work/current', dshHome: '/srv/dsh', platformData: '/srv/platform',
+  }), {
+    defaultPath: '/work/current', shortcuts: ['/work/current', '/srv/dsh', '/srv/platform', '/'],
+  })
+  assert.deepEqual(fileManagerLocations({ defaultWorkspace: '/data/dsh' }).shortcuts, ['/data/dsh', '/data/platform', '/'])
+  assert.throws(() => fileManagerLocations({ defaultWorkspace: 'relative' }), /absolute/)
 })
 
 test('lists directories with stable metadata, directory-first sorting, and revision cursors', async () => {

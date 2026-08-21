@@ -890,7 +890,7 @@ test('standalone console keeps localized feature parity on the shared Management
     'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
     'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
-    'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
+    'files/config', 'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(script, /name === 'dsh_locale'/)
@@ -977,7 +977,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /terminalFit\.fit\(\)/)
   assert.match(script, /filesTab: '文件管理'/)
   assert.match(script, /filesTab: 'Files'/)
-  assert.match(script, /if \(tab === 'files' && !filesLoaded\) void navigateFiles/)
+  assert.match(script, /if \(tab === 'files' && !filesLoaded\) void initializeFiles/)
+  assert.match(script, /api\('files\/config'\)/)
+  assert.match(script, /elements\['file-shortcuts'\]\.replaceChildren/)
+  assert.doesNotMatch(html, /data-file-location="\/workspace"/)
   assert.match(script, /scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\)/)
   assert.match(script, /new XMLHttpRequest\(\)/)
   assert.match(script, /fileClipboard = null/)
@@ -1267,11 +1270,15 @@ test('management exposes authenticated file inventory, search, upload, and range
   server = createManagementServer({
     coordinator: new Coordinator(), logs,
     fileInventory: new FileInventory(), fileTransfers: new FileTransferManager(), fileTasks, fileEditor: new AtomicFileEditor(),
+    fileLocations: { defaultPath: '/custom/workspace', shortcuts: ['/custom/workspace', '/custom/dsh', '/custom/platform', '/'] },
   })
   const socketPath = join(root, 'management.sock')
   await listenManagement(server, socketPath)
   const client = new LocalApiClient(socketPath)
   try {
+    assert.deepEqual(await client.request('GET', `${API_PREFIX}files/config`), {
+      defaultPath: '/custom/workspace', shortcuts: ['/custom/workspace', '/custom/dsh', '/custom/platform', '/'],
+    })
     const encodedRoot = encodeURIComponent(files)
     const listed = await client.request('GET', `${API_PREFIX}files/list?path=${encodedRoot}`)
     assert.deepEqual(listed.entries.map(entry => entry.name), ['alpha.txt'])

@@ -58,6 +58,10 @@ function renamedPath(path, index) {
 }
 
 export class FileTransferManager {
+  constructor({ isManaged = isManagedPath } = {}) {
+    this.isManaged = isManaged
+  }
+
   async openDownload(value, { revision, range } = {}) {
     const path = normalizeAbsolutePath(value)
     let handle
@@ -156,7 +160,7 @@ export class FileTransferManager {
         path,
         size: received,
         revision: fileManagerInternals.revisionFor(path, result),
-        managed: isManagedPath(path),
+        managed: this.isManaged(path),
       }
     } catch (error) {
       await handle?.close().catch(() => {})

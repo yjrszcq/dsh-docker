@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, lstat, readFile, readdir, readlink, realpath, stat } from 'node:fs/promises'
-import { basename, dirname, normalize, resolve } from 'node:path'
+import { basename, dirname, join, normalize, resolve } from 'node:path'
 
 export const MAX_PATH_BYTES = 4096
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024
@@ -11,12 +11,6 @@ export const SEARCH_MAX_DEPTH = 16
 export const SEARCH_MAX_SCANNED = 10_000
 export const SEARCH_MAX_RESULTS = 1000
 
-const MANAGED_ROOTS = Object.freeze([
-  '/opt/dsh-platform',
-  '/run/dsh-platform',
-  '/data/platform/state',
-  '/data/platform/store',
-])
 const SORTS = new Set(['name', 'size', 'type', 'modifiedAt'])
 const ORDERS = new Set(['asc', 'desc'])
 
@@ -60,9 +54,23 @@ export function normalizeAbsolutePath(value) {
   return path
 }
 
-export function isManagedPath(value) {
-  const path = normalizeAbsolutePath(value)
-  return MANAGED_ROOTS.some(root => path === root || path.startsWith(`${root}/`))
+export function createManagedPathMatcher(platformData = '/data/platform') {
+  const data = normalizeAbsolutePath(platformData)
+  const roots = Object.freeze(['/opt/dsh-platform', '/run/dsh-platform', join(data, 'state'), join(data, 'store')])
+  return value => {
+    const path = normalizeAbsolutePath(value)
+    return roots.some(root => path === root || path.startsWith(`${root}/`))
+  }
+}
+
+export const isManagedPath = createManagedPathMatcher()
+
+export function fileManagerLocations({
+  platformData = '/data/platform', dshHome = '/data/dsh', defaultWorkspace = '/workspace',
+} = {}) {
+  const defaultPath = normalizeAbsolutePath(defaultWorkspace)
+  const shortcuts = [...new Set([defaultPath, normalizeAbsolutePath(dshHome), normalizeAbsolutePath(platformData), '/'])]
+  return Object.freeze({ defaultPath, shortcuts: Object.freeze(shortcuts) })
 }
 
 function kind(stats) {
@@ -113,7 +121,7 @@ async function symlinkDetails(path, stats) {
   }
 }
 
-async function describe(path, stats = undefined) {
+async function describe(path, stats = undefined, managed = isManagedPath) {
   const value = stats ?? await lstat(path, { bigint: true })
   const link = await symlinkDetails(path, value)
   return {
@@ -121,7 +129,7 @@ async function describe(path, stats = undefined) {
     path,
     ...metadata(value),
     ...await permissions(path),
-    managed: isManagedPath(path),
+    managed: managed(path),
     revision: revisionFor(path, value, link.linkTarget ?? ''),
     ...link,
   }
@@ -170,10 +178,14 @@ function parseLimit(value, fallback = DEFAULT_LIST_LIMIT) {
 }
 
 export class FileInventory {
+  constructor({ isManaged = isManagedPath } = {}) {
+    this.isManaged = isManaged
+  }
+
   async stat(value) {
     const path = normalizeAbsolutePath(value)
     try {
-      const item = await describe(path)
+      const item = await describe(path, undefined, this.isManaged)
       return { ...item, realPath: item.realPath ?? await realpath(path).catch(() => path), parent: dirname(path) }
     } catch (error) {
       throw fileError(error)
@@ -190,7 +202,7 @@ export class FileInventory {
       const names = await readdir(path)
       const entries = await Promise.all(names.map(async name => {
         const child = resolve(path, name)
-        return describe(child)
+        return describe(child, undefined, this.isManaged)
       }))
       entries.sort((left, right) => compareEntries(left, right, sort, order))
       const revision = listRevision(path, root, entries)
@@ -205,6 +217,7 @@ export class FileInventory {
         entries: page,
         nextCursor: nextOffset < entries.length ? encodeCursor(revision, nextOffset) : null,
         total: entries.length,
+        managed: this.isManaged(path),
       }
     } catch (error) {
       throw fileError(error)
@@ -233,7 +246,7 @@ export class FileInventory {
         mode: Number(before.mode & 0o7777n),
         size: bytes.byteLength,
         modifiedAt: new Date(Number(before.mtimeNs / 1_000_000n)).toISOString(),
-        managed: isManagedPath(path),
+        managed: this.isManaged(path),
       }
     } catch (error) {
       throw fileError(error)
@@ -320,7 +333,7 @@ export class FileSearchManager {
         task.scanned += 1
         const child = resolve(current.path, entry.name)
         const relative = child.slice(task.path === '/' ? 1 : task.path.length + 1)
-        if (relative.toLocaleLowerCase().includes(needle)) task.matches.push(await describe(child))
+        if (relative.toLocaleLowerCase().includes(needle)) task.matches.push(await describe(child, undefined, this.inventory.isManaged))
         if (entry.isDirectory() && !entry.isSymbolicLink() && current.depth < SEARCH_MAX_DEPTH) pending.push({ path: child, depth: current.depth + 1 })
         if (task.scanned >= SEARCH_MAX_SCANNED || task.matches.length >= SEARCH_MAX_RESULTS) break
       }
@@ -333,4 +346,4 @@ export class FileSearchManager {
   }
 }
 
-export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseLimit, MANAGED_ROOTS })
+export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseLimit })

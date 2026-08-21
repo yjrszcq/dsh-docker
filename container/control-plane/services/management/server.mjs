@@ -114,6 +114,7 @@ export function createManagementServer({
   fileTransfers,
   fileTasks,
   fileEditor,
+  fileLocations = Object.freeze({ defaultPath: '/workspace', shortcuts: Object.freeze(['/workspace', '/data/dsh', '/data/platform', '/']) }),
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
@@ -345,6 +346,8 @@ export function createManagementServer({
         const saved = await settingsDocument.write(body.content, body.revision)
         await audit('settings-document.saved', { revision: saved.revision })
         send(response, 200, saved)
+      } else if (request.method === 'GET' && route === 'files/config') {
+        send(response, 200, fileLocations)
       } else if (request.method === 'GET' && route === 'files/list') {
         if (fileInventory === undefined) throw new Error('file management is not configured')
         const result = await fileInventory.list(url.searchParams.get('path'), {

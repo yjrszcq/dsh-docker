@@ -169,7 +169,7 @@
         <div class="file-pathbar">
           <button id="file-back" type="button" class="compact" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back">←</button>
           <button id="file-up" type="button" class="compact" title="Parent directory" data-i18n-title="parentDirectory" aria-label="Parent directory" data-i18n-aria-label="parentDirectory">↑</button>
-          <input id="file-path" type="text" value="/workspace" spellcheck="false" aria-label="Path" data-i18n-aria-label="path">
+          <input id="file-path" type="text" value="" spellcheck="false" aria-label="Path" data-i18n-aria-label="path">
           <button id="file-refresh" type="button" class="compact" data-i18n="refresh">Refresh</button>
         </div>
         <div class="file-searchbar">
@@ -180,7 +180,7 @@
         <div id="file-managed-warning" class="message notice" data-i18n="managedPathWarning" hidden>This path is platform-managed. Changes may be replaced and can damage the current deployment.</div>
         <div id="file-task-state" class="file-task-state" role="status" hidden><span class="spinner" aria-hidden="true"></span><strong id="file-task-label"></strong><button id="file-task-cancel" type="button" class="compact" data-i18n="cancel">Cancel</button></div>
         <div class="file-browser">
-          <nav class="file-shortcuts" aria-label="Locations" data-i18n-aria-label="locations"><button type="button" data-file-location="/workspace">/workspace</button><button type="button" data-file-location="/data/dsh">/data/dsh</button><button type="button" data-file-location="/data/platform">/data/platform</button><button type="button" data-file-location="/">/</button></nav>
+          <nav id="file-shortcuts" class="file-shortcuts" aria-label="Locations" data-i18n-aria-label="locations"></nav>
           <div class="file-main">
             <table class="file-table"><thead><tr><th class="file-check"><input id="file-select-all" type="checkbox" aria-label="Select all" data-i18n-aria-label="selectAll"></th><th><button type="button" data-file-sort="name" data-i18n="fileName">Name</button></th><th><button type="button" data-file-sort="size" data-i18n="fileSize">Size</button></th><th><button type="button" data-file-sort="modifiedAt" data-i18n="fileModified">Modified</button></th><th data-i18n="fileMode">Mode</th></tr></thead><tbody id="file-list"></tbody></table>
             <p id="file-empty" class="empty-state" data-i18n="emptyDirectory" hidden>This directory is empty.</p>

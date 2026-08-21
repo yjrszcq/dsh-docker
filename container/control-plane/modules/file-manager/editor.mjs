@@ -20,6 +20,10 @@ function bytes(value) {
 }
 
 export class AtomicFileEditor {
+  constructor({ isManaged = isManagedPath } = {}) {
+    this.isManaged = isManaged
+  }
+
   async write(value, content, revision, { create = false } = {}) {
     const path = normalizeAbsolutePath(value)
     const body = bytes(content)
@@ -63,7 +67,7 @@ export class AtomicFileEditor {
       return {
         path, revision: fileManagerInternals.revisionFor(path, saved), size: body.byteLength,
         mode: Number(saved.mode & 0o7777n), modifiedAt: new Date(Number(saved.mtimeNs / 1_000_000n)).toISOString(),
-        managed: isManagedPath(path),
+        managed: this.isManaged(path),
       }
     } catch (error) {
       await handle?.close().catch(() => {})
