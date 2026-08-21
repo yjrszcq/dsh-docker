@@ -120,6 +120,7 @@ async function inspectDependency(profileRoot, name, spec, enabledBundles, disabl
     spec,
     source: sourceForSpec(spec),
     version: typeof metadata?.version === 'string' ? metadata.version : null,
+    description: typeof metadata?.description === 'string' && metadata.description.trim() !== '' ? metadata.description.trim() : null,
     enabled: !reservedNameConflict && enabledBundles.has(name),
     previousIndex: disabled.get(name) ?? null,
     damaged: metadataError !== null,

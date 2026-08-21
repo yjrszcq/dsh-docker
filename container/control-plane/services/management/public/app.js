@@ -183,6 +183,7 @@ let plugins = []
 let userPluginInventory = { revision: null, plugins: [] }
 let inventoriesLoaded = false
 const userPluginDraft = new Map()
+const expandedUserPluginDescriptions = new Set()
 let rollbackPlan
 let statusLoad
 let statusLoadRevision = 0
@@ -488,8 +489,30 @@ function renderUserPlugins(busy) {
     row.className = `user-plugin-row${action ? ' pending' : ''}`
     const identity = document.createElement('div')
     identity.className = 'user-plugin-main'
+    const heading = document.createElement('div')
+    heading.className = 'user-plugin-heading'
     const name = document.createElement('strong')
     name.textContent = plugin.name
+    heading.append(name)
+    if (plugin.description) {
+      const description = document.createElement('button')
+      const descriptionExpanded = expandedUserPluginDescriptions.has(plugin.name)
+      description.type = 'button'
+      description.className = `user-plugin-description${descriptionExpanded ? ' expanded expandable' : ''}`
+      description.textContent = plugin.description
+      description.title = plugin.description
+      description.setAttribute('aria-expanded', String(descriptionExpanded))
+      description.addEventListener('click', () => {
+        if (!description.classList.contains('expandable')) return
+        if (expandedUserPluginDescriptions.has(plugin.name)) expandedUserPluginDescriptions.delete(plugin.name)
+        else expandedUserPluginDescriptions.add(plugin.name)
+        renderUserPlugins(runtimeBusy())
+      })
+      heading.append(description)
+      if (!descriptionExpanded) window.requestAnimationFrame(() => {
+        if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
+      })
+    }
     const badges = document.createElement('div')
     badges.className = 'user-plugin-badges'
     badges.append(userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : ''))
@@ -508,7 +531,7 @@ function renderUserPlugins(busy) {
       field.append(term, description)
       metadata.append(field)
     }
-    identity.append(name, badges, metadata)
+    identity.append(heading, badges, metadata)
     if (plugin.metadataError) {
       const detail = document.createElement('p')
       detail.className = 'user-plugin-error'
@@ -988,7 +1011,10 @@ function renderLogs() {
       event.preventDefault()
       toggle()
     })
-    meta.append(levelLabel, sourceLabel, time)
+    const chevron = document.createElement('span')
+    chevron.className = 'log-chevron'
+    chevron.setAttribute('aria-hidden', 'true')
+    meta.append(chevron, levelLabel, sourceLabel, time)
     article.append(meta, message, details)
     elements['log-list'].append(article)
   }

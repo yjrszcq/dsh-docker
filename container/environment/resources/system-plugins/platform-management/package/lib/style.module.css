@@ -584,6 +584,17 @@ a.secondaryButton { text-decoration: none; }
 .logEntry:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .logEntry:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
 .logMeta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.logChevron {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 1px;
+  border-right: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+.logEntry[aria-expanded='true'] .logChevron { transform: rotate(45deg); }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .logDebug { color: var(--dsw-alias-label-tertiary); }
 .logInfo { color: var(--dsw-alias-state-business-primary); }

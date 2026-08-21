@@ -331,6 +331,7 @@ function LogViewer({ active, t }) {
             },
           },
             h('div', { className: css.logMeta },
+              h('span', { className: css.logChevron, 'aria-hidden': true }),
               h('strong', { className: `${css.logLevel} ${css[`log${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`]}` }, t(`level${entryLevel[0].toUpperCase()}${entryLevel.slice(1)}`)),
               h('span', { className: css.logSource }, display(entry.source)),
               h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode')))),

@@ -47,7 +47,7 @@ test('inventories only profile Bundle dependencies without importing their entry
     },
     bundles: ['@deepseek-ai/dsh-base', 'working-plugin', 'git-plugin'],
     packages: {
-      'working-plugin': { dsh: { bundle: { patch: './cordis.patch.yml' } }, main: './throw-if-imported.mjs' },
+      'working-plugin': { description: 'Adds useful workflow tools.', dsh: { bundle: { patch: './cordis.patch.yml' } }, main: './throw-if-imported.mjs' },
       'plain-library': {},
       'git-plugin': { dsh: { bundle: { patch: './plugin.patch.yml' } } },
       'local-plugin': { dsh: { bundle: { patch: './plugin.patch.yml' } } },
@@ -62,6 +62,8 @@ test('inventories only profile Bundle dependencies without importing their entry
     ['local-plugin', 'file', false, 2],
   ])
   assert.equal(inventory.plugins[0].version, '1.2.3')
+  assert.equal(inventory.plugins[0].description, 'Adds useful workflow tools.')
+  assert.equal(inventory.plugins[1].description, null)
   assert.equal(inventory.plugins[0].damaged, false)
 })
 
