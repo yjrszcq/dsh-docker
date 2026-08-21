@@ -110,7 +110,7 @@ For routine backups, preserve `/data/dsh` and `/data/platform/state`. To retain 
 
 ## Gateway
 
-The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/ui/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values.
+The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values. The legacy `/_dsh_platform/ui/` path permanently redirects to the console.
 
 Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
 
@@ -120,7 +120,7 @@ When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge
 
 Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
 
-When `DSH_PROXY_PASSWORD` is empty, every external `/_dsh_platform/ui/*` route, management API, SSE stream, and terminal WebSocket is protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. The DSH settings integration and standalone console share this session.
+When `DSH_PROXY_PASSWORD` is empty, every external `/_dsh_platform/console/*` route, management API, SSE stream, and terminal WebSocket is protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. The DSH settings integration and standalone console share this session.
 
 When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
 
@@ -140,7 +140,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either DSH Management Console frontend. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The Management component serves the standalone console at `/_dsh_platform/ui/`; it follows the saved DSH locale when available, exposes the same update, maintenance, log, and System Plugin workflows, and renders notifications only inside its own page.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either DSH Management Console frontend. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, and System Plugin workflows.
 
 The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded DSH Management Console view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
@@ -150,7 +150,7 @@ The standalone console also lists System Plugins bundled by the current Environm
 
 ### Standalone Recovery Tools
 
-The **User Plugins** and **Container terminal** tabs in `/_dsh_platform/ui/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
+The **User Plugins** and **Container terminal** tabs in `/_dsh_platform/console/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
 
 User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
 

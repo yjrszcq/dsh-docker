@@ -84,7 +84,7 @@ See the [complete configuration reference](docs/README.md#configuration) for all
 
 ## Updates
 
-Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/ui/>. Checks do not download or activate anything until you confirm an update.
+Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/console/>. Checks do not download or activate anything until you confirm an update.
 
 The standalone page remains available when DSH is down and includes User Plugin recovery, file management, and a container terminal.
 

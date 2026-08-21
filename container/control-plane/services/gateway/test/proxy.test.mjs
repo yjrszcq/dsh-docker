@@ -278,8 +278,8 @@ test('bounded management and Console requests use the protected local socket ins
       ['PUT', '/_dsh_platform/api/v1/automatic-check'],
       ['PUT', '/_dsh_platform/api/v1/settings-document'],
       ['PUT', '/_dsh_platform/api/v1/files/content'],
-      ['GET', '/_dsh_platform/ui/'],
-      ['HEAD', '/_dsh_platform/ui/style.css'],
+      ['GET', '/_dsh_platform/console/'],
+      ['HEAD', '/_dsh_platform/console/style.css'],
     ]) {
       const proxied = await request(gatewayPort, path, { host: 'dsh.example' }, method)
       const maintenanceRoute = path.startsWith('/_dsh_platform/api/v1/files/')
@@ -291,7 +291,10 @@ test('bounded management and Console requests use the protected local socket ins
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/user-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/terminal/sessions/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/files/tasks/not-a-uuid', { host: 'dsh.example' })).status, 404)
-    assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/console/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
+    const legacyConsole = await request(gatewayPort, '/_dsh_platform/ui/app.js?revision=old', { host: 'dsh.example' })
+    assert.equal(legacyConsole.status, 308)
+    assert.equal(legacyConsole.headers.location, '/_dsh_platform/console/app.js?revision=old')
     assert.equal(upstreamRequests, 0)
   } finally {
     await Promise.all([closeGatewayServer(gateway), close(upstream), close(management), close(maintenance)])

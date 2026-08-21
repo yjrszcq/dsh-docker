@@ -185,7 +185,7 @@ test('platform routes fail closed and accept a dedicated platform session', asyn
   const port = await listen(gateway)
   try {
     const page = await request(port, {
-      path: '/_dsh_platform/ui/',
+      path: '/_dsh_platform/console/',
       headers: { accept: 'text/html', host: '127.0.0.1' },
     })
     assert.equal(page.status, 303)
@@ -204,7 +204,7 @@ test('platform routes fail closed and accept a dedicated platform session', asyn
     assert.match(login.headers['set-cookie'][0], /^dsh_platform_session=dshps_/)
     assert.match(login.headers['set-cookie'][0], /HttpOnly; SameSite=Strict; Path=\/_dsh_platform\//)
     const authenticated = await request(port, {
-      path: '/_dsh_platform/ui/',
+      path: '/_dsh_platform/console/',
       headers: { cookie: login.headers['set-cookie'][0].split(';')[0], host: '127.0.0.1' },
     })
     assert.equal(authenticated.status, 200)

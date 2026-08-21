@@ -772,7 +772,7 @@ function PlatformManagement({ t }) {
       h('span', null, t('platformAuthRequired')),
       h('a', {
         className: css.secondaryButton,
-        href: '/_dsh_platform/auth/?next=/_dsh_platform/ui/',
+        href: '/_dsh_platform/auth/?next=/_dsh_platform/console/',
         target: '_blank',
         rel: 'noopener noreferrer',
       }, t('platformSignIn'))) : null,
@@ -890,7 +890,7 @@ function PlatformManagement({ t }) {
           h('p', null, t('standaloneManagementDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.maintenanceButton}`,
-          href: '/_dsh_platform/ui/',
+          href: '/_dsh_platform/console/',
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement')))),

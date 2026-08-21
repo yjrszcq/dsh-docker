@@ -97,7 +97,7 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | rg --fixed-strings 'DSH Management Console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
@@ -180,7 +180,7 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   sleep 0.2
 done
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | rg --fixed-strings 'Standalone console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
@@ -280,7 +280,7 @@ dsh_pid="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runt
 docker exec "$container" kill -9 "$dsh_pid"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | rg --fixed-strings 'DSH Management Console' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 20 ] || exit 1
@@ -486,7 +486,7 @@ done
 docker exec --user node "$container" curl --fail --silent --unix-socket /run/dsh-platform/bootstrap.sock \
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/ui/ \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | rg --fixed-strings 'DSH Management Console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status >/dev/null

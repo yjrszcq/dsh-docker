@@ -117,7 +117,7 @@ html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#
 </style>
 </head>
 <body>
-<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><a class="management" href="/_dsh_platform/ui/">${managementLink}</a></main>
+<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><a class="management" href="/_dsh_platform/console/">${managementLink}</a></main>
 <script>
 const messages=${messages};const status=document.querySelector('.status');
 async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){location.reload();return}if(messages[value.state])status.textContent=messages[value.state]}catch{}setTimeout(check,1000)}

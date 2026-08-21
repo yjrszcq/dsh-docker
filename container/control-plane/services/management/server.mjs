@@ -6,7 +6,8 @@ import { UpdateConflictError } from '../../modules/updater/lib/coordinator.mjs'
 import { MAX_SETTINGS_DOCUMENT_BYTES, SettingsDocumentConflictError } from './settings-document.mjs'
 
 export const API_PREFIX = '/_dsh_platform/api/v1/'
-export const CONSOLE_PREFIX = '/_dsh_platform/ui/'
+export const CONSOLE_PREFIX = '/_dsh_platform/console/'
+export const LEGACY_CONSOLE_PREFIX = '/_dsh_platform/ui/'
 const MAX_BODY_BYTES = 16 * 1024
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
@@ -45,6 +46,14 @@ function send(response, status, value) {
 }
 
 async function sendConsoleAsset(request, response, pathname, consoleRoots) {
+  if (pathname === LEGACY_CONSOLE_PREFIX.slice(0, -1) || pathname.startsWith(LEGACY_CONSOLE_PREFIX)) {
+    const suffix = pathname === LEGACY_CONSOLE_PREFIX.slice(0, -1)
+      ? ''
+      : pathname.slice(LEGACY_CONSOLE_PREFIX.length)
+    response.writeHead(308, { location: `${CONSOLE_PREFIX}${suffix}`, ...CONSOLE_HEADERS })
+    response.end()
+    return true
+  }
   if (pathname === CONSOLE_PREFIX.slice(0, -1)) {
     response.writeHead(308, { location: CONSOLE_PREFIX, ...CONSOLE_HEADERS })
     response.end()

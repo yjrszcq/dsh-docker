@@ -110,7 +110,7 @@ current Deployment 资产无法解析、Patch 校验失败或 DSH 启动失败�
 
 ## Gateway
 
-Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/ui/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。
+Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。旧的 `/_dsh_platform/ui/` 路径会永久重定向到管理中心。
 
 官方 DSH 根据公开 hostname 判断浏览器是否为 loopback，并可能在非 loopback 页面禁用 Host 侧设置。一个精确匹配补丁会将 Gateway 已放行的浏览器标记为 loopback，与转发给上游的 authority 保持一致。上游服务端特权 API 实现不作修改。
 
@@ -120,7 +120,7 @@ Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/ui/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的管理中心集成与独立页共用这个会话。
+`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/console/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的管理中心集成与独立页共用这个会话。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 
@@ -140,7 +140,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-自动检查默认每六小时带抖动执行一次，可在任一 DSH 管理中心前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/ui/` 提供独立控制台；它优先使用已保存的 DSH 语言，提供相同的更新、运行维护、日志和系统插件操作，并且只在自己的页面内显示更新提醒。
+自动检查默认每六小时带抖动执行一次，可在任一 DSH 管理中心前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立控制台；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志和系统插件操作。
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的 DSH 管理中心会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
@@ -150,7 +150,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 ### 独立恢复工具
 
-`/_dsh_platform/ui/` 中的“用户插件”和“容器终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
+`/_dsh_platform/console/` 中的“用户插件”和“容器终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
 
 用户插件恢复只管理 `/data/dsh/profiles/web/package.json` 声明的 Bundle Plugin：包必须同时存在于 dependencies 和有序的 `dsh.profile.bundles` 中。普通依赖和用户手写的 `cordis.patch.yml` Entry 不会被改写。本地 metadata 损坏时仍会显示并允许卸载。System Plugin 身份来自已验证的 Environment 清单；与其同名的用户包不能启用，与包名前缀或 scope 无关。
 
