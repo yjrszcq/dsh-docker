@@ -74,6 +74,8 @@ test('production publication owns signing, advances an append-only channel, and 
   assert.match(workflow, /release-channel\/targets\/\$\{TARGET_SEQUENCE\}/)
   assert.match(workflow, /test ! -e "\$target"/)
   assert.match(workflow, /tag="v\$\{ENVIRONMENT_VERSION\}"/)
+  assert.match(workflow, /--title "\$ENVIRONMENT_TAG"/)
+  assert.doesNotMatch(workflow, /--title "DSH Docker Environment/)
   assert.match(workflow, /cmp "\$RUNNER_TEMP\/environment-release\.json"/)
   assert.match(workflow, /--draft/)
   assert.match(workflow, /--draft=false/)

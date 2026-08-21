@@ -251,13 +251,13 @@ jobs:
           } > "$notes"
           if ! gh release view "$ENVIRONMENT_TAG" >/dev/null 2>&1; then
             gh release create "$ENVIRONMENT_TAG" --draft --target "$GITHUB_SHA" \
-              --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+              --title "$ENVIRONMENT_TAG" --notes-file "$notes"
           fi
           gh release edit "$ENVIRONMENT_TAG" --draft --target "$GITHUB_SHA" \
-            --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+            --title "$ENVIRONMENT_TAG" --notes-file "$notes"
           gh release upload "$ENVIRONMENT_TAG" "$assets"/* --clobber
           find "$assets" -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-environment-assets"
           gh release view "$ENVIRONMENT_TAG" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-environment-assets"
           diff -u "$RUNNER_TEMP/local-environment-assets" "$RUNNER_TEMP/remote-environment-assets"
           gh release edit "$ENVIRONMENT_TAG" --draft=false --latest \
-            --title "DSH Docker Environment $ENVIRONMENT_TAG" --notes-file "$notes"
+            --title "$ENVIRONMENT_TAG" --notes-file "$notes"
