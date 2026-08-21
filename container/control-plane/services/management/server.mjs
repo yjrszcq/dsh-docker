@@ -115,6 +115,7 @@ export function createManagementServer({
   fileTasks,
   fileEditor,
   fileLocations = Object.freeze({ defaultPath: '/workspace', shortcuts: Object.freeze(['/workspace', '/data/dsh', '/data/platform', '/']) }),
+  privilegedMutationActive = () => false,
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
@@ -171,6 +172,7 @@ export function createManagementServer({
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
     if (userPluginTask !== undefined) throw new UpdateConflictError('a User Plugin operation is already running')
     if (fileTasks?.hasManagedMutation === true) throw new UpdateConflictError('a managed file operation is already running')
+    if (privilegedMutationActive()) throw new UpdateConflictError('a privileged file operation is already running')
   }
 
   const startUserPluginAction = async body => {

@@ -156,15 +156,15 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 启用、禁用和卸载会先积累为当前页面内的草稿。提交时，Management 会幂等暂停 DSH、为完整 Web Profile 创建快照、执行精确操作、校验结果，然后只重启 DSH。提交前刷新或离开页面会丢弃草稿；revision 冲突时会重新读取清单，不会覆盖并发修改。commit 前中断会恢复快照；commit 后即使 DSH 仍启动失败，也会保留本次插件修改，方便连续处理多个故障插件。此处不提供安装功能；请使用 DSH 正常插件流程或独立终端安装。
 
-“容器终端”会在 `/workspace` 启动真实的交互式 `/bin/bash`，其 UID、GID、补充组、`DSH_HOME=/data/dsh`、PATH、代理变量和 sudo 策略均与 DSH 一致。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Management 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
+“容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录取自 `DSH_DEFAULT_WORKSPACE`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
 
-独立 DSH 管理中心的“文件管理”同样由 Management 提供，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。初始目录取自 `DSH_DEFAULT_WORKSPACE`；快捷入口依次使用 `DSH_DEFAULT_WORKSPACE`、`DSH_HOME`、`DSH_PLATFORM_DATA` 和 `/`，重复路径会自动去除。文件操作以 Management/DSH 的容器用户身份执行，遵守原有 UID、GID、补充组、只读挂载和文件权限，不会自动调用 `sudo`。需要提权、chmod/chown、归档或其他高级操作时使用独立终端。
+独立 DSH 管理中心的“文件管理”同样不依赖 DSH，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。初始目录取自 `DSH_DEFAULT_WORKSPACE`；快捷入口依次使用 `DSH_DEFAULT_WORKSPACE`、`DSH_HOME`、`DSH_PLATFORM_DATA` 和 `/`，重复路径会自动去除。文件操作通过 Maintenance Broker 以 root 身份执行，可修复普通 Management/DSH 用户无法写入的文件，但仍受只读挂载和平台托管路径互斥保护。
 
 文件清单支持隐藏文件、排序、分页、当前目录筛选、用户:用户组显示和有上限的递归搜索；文件夹大小只有点击“计算”后才会作为可取消的只读任务计算，且不跟随符号链接。符号链接按链接本身列出、复制和删除，不递归跟随。普通 UTF-8 文本可在带行号的编辑器中修改，最大 2 MiB；保存会携带 revision，若终端、Agent 或其他页面已经修改文件则返回冲突，不会静默覆盖。上传与下载均为流式传输，下载支持 HTTP Range；多文件上传由当前浏览器标签逐文件排队，关闭页面后尚未开始的文件不会继续。
 
 复制、移动和永久删除作为持久化后台任务执行。移动和删除在提交边界写入 journal，Management 重启后会完成可以证明安全的收尾；无法证明幂等的未提交任务标记为中断，并保留源文件。删除没有回收站，`/`、`/data`、`/data/dsh`、`/data/platform`、`/workspace` 和当前 Deployment view 根本身不能作为递归删除目标。平台托管路径可查看和修改，但界面会警告这些修改可能被更新、重启、Runtime 重建或 GC 覆盖，并可能破坏当前 Deployment。平台日志记录路径、操作、字节数、耗时和结果，但不记录文件内容。
 
-两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata 和可选 Basic Auth 校验，不增加独立密码或监听端口。因此，能进入这个页面的用户已经拥有与 DSH 等价的命令和数据权限，只应在[安全模型](#安全模型)所述的可信边界内开放。
+两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata、Basic Auth 或独立管理中心会话校验，不增加监听端口。这是容器 root 级管理边界：能进入该页面的用户可读写容器数据并执行任意 Shell 命令，只应在[安全模型](#安全模型)所述的可信边界内开放。
 
 可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
 
@@ -216,7 +216,7 @@ Recovery 私钥绝不能进入 GitHub secrets。CI 只接收已签好的公开 k
 
 ## 安全模型
 
-能通过 Gateway 访问，就等同于拥有完整 DSH 权限。被放行的用户可能读取或替换模型凭据、通过 DSH 或独立终端执行命令，并访问容器 `node` 用户可用的所有路径，而不只是 `/workspace`。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
+能通过 Gateway 访问 DSH，就等同于拥有完整 DSH 权限；通过独立管理中心认证后，容器终端和文件管理还拥有 root 权限。被放行的用户可能读取或替换模型凭据、执行命令并访问容器内的任意可写路径。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
 
 允许不可信网络访问前，应使用强 Gateway 密码、带认证的反向代理、VPN 或其他可信边界。显式绑定 loopback 后可以使用 SSH 隧道：
 

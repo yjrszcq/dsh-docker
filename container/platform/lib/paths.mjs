@@ -27,6 +27,7 @@ export class PlatformPaths {
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
     this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
     this.fileTasksRoot = join(this.managementStateRoot, 'file-tasks')
+    this.maintenanceLeasePath = join(this.managementStateRoot, 'maintenance-mutation.lock')
     this.objectsRoot = join(this.storeRoot, 'objects')
     this.bootstrapStoreRoot = join(this.storeRoot, 'bootstrap')
     this.environmentsRoot = join(this.storeRoot, 'environments')
@@ -43,6 +44,7 @@ export class PlatformPaths {
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
+    this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
     this.recoverySocket = join(this.runRoot, 'recovery.sock')
   }

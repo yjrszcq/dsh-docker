@@ -217,6 +217,11 @@ export function createPlatformAccessControlServer(access, { report = async () =>
   return createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url ?? '/', 'http://gateway-access.internal').pathname
+      if (request.method === 'POST' && pathname === '/v1/sessions/validate') {
+        const body = await jsonBody(request)
+        sendJson(response, 200, { authenticated: access.isAuthenticated({ headers: { cookie: body?.cookie } }) })
+        return
+      }
       if (request.method !== 'POST' || pathname !== '/v1/keys') {
         sendJson(response, 404, { error: 'not found' })
         return

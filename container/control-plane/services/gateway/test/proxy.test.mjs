@@ -213,6 +213,7 @@ test('serves trusted System Plugin bundles across DSH restart and uninstall race
 test('bounded management and Console requests use the protected local socket instead of DSH upstream', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-management-'))
   const socketPath = join(root, 'management.sock')
+  const maintenanceSocketPath = join(root, 'maintenance.sock')
   const management = createServer((incoming, response) => {
     response.writeHead(202, { 'content-type': 'application/json' })
     response.end(JSON.stringify({ method: incoming.method, path: incoming.url }))
@@ -221,12 +222,21 @@ test('bounded management and Console requests use the protected local socket ins
     management.once('error', reject)
     management.listen(socketPath, resolve)
   })
+  const maintenance = createServer((incoming, response) => {
+    response.writeHead(203, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ method: incoming.method, path: incoming.url, privileged: true }))
+  })
+  await new Promise((resolve, reject) => {
+    maintenance.once('error', reject)
+    maintenance.listen(maintenanceSocketPath, resolve)
+  })
   let upstreamRequests = 0
   const upstream = createServer((_incoming, response) => { upstreamRequests += 1; response.end('dsh') })
   const upstreamPort = await listen(upstream)
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     managementSocketPath: socketPath,
+    maintenanceSocketPath,
     platformAccess: PLATFORM_ACCESS_ALLOWED,
     upstreamPort,
   })
@@ -272,7 +282,9 @@ test('bounded management and Console requests use the protected local socket ins
       ['HEAD', '/_dsh_platform/ui/style.css'],
     ]) {
       const proxied = await request(gatewayPort, path, { host: 'dsh.example' }, method)
-      assert.equal(proxied.status, 202, `${method} ${path}`)
+      const maintenanceRoute = path.startsWith('/_dsh_platform/api/v1/files/')
+        || path.startsWith('/_dsh_platform/api/v1/terminal/sessions')
+      assert.equal(proxied.status, maintenanceRoute ? 203 : 202, `${method} ${path}`)
       if (method !== 'HEAD') assert.equal(JSON.parse(proxied.body).path, path)
     }
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
@@ -282,7 +294,7 @@ test('bounded management and Console requests use the protected local socket ins
     assert.equal((await request(gatewayPort, '/_dsh_platform/ui/app.js', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal(upstreamRequests, 0)
   } finally {
-    await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
+    await Promise.all([closeGatewayServer(gateway), close(upstream), close(management), close(maintenance)])
   }
 })
 
@@ -418,21 +430,21 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
   }
 })
 
-test('only exact terminal WebSocket upgrades reach the Management Unix socket', async () => {
+test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-terminal-'))
-  const socketPath = join(root, 'management.sock')
-  const management = createServer()
+  const socketPath = join(root, 'maintenance.sock')
+  const maintenance = createServer()
   let seenHeaders
   let upgradedSocket
-  management.on('upgrade', (incoming, socket) => {
+  maintenance.on('upgrade', (incoming, socket) => {
     seenHeaders = incoming.headers
     upgradedSocket = socket
     socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
     socket.on('data', data => socket.write(data))
   })
   await new Promise((resolve, reject) => {
-    management.once('error', reject)
-    management.listen(socketPath, resolve)
+    maintenance.once('error', reject)
+    maintenance.listen(socketPath, resolve)
   })
   const upstream = createServer((_incoming, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
@@ -440,7 +452,7 @@ test('only exact terminal WebSocket upgrades reach the Management Unix socket', 
   const platformSession = platformAccess.signIn('platform-secret')
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
-    managementSocketPath: socketPath,
+    maintenanceSocketPath: socketPath,
     platformAccess,
     upstreamPort,
   })
@@ -493,6 +505,6 @@ test('only exact terminal WebSocket upgrades reach the Management Unix socket', 
   } finally {
     client.destroy()
     upgradedSocket?.destroy()
-    await Promise.all([closeGatewayServer(gateway), close(upstream), close(management)])
+    await Promise.all([closeGatewayServer(gateway), close(upstream), close(maintenance)])
   }
 })

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { JsonlLogManager } from '../../modules/log-manager/index.mjs'
 import { createManagementServer, listenManagement } from './server.mjs'
@@ -26,11 +27,6 @@ import { UserPluginJournal } from '../../modules/user-plugin-manager/journal.mjs
 import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/transaction.mjs'
-import { TerminalSessionManager } from './terminal/sessions.mjs'
-import { createManagedPathMatcher, fileManagerLocations, FileInventory } from '../../modules/file-manager/index.mjs'
-import { FileTransferManager } from '../../modules/file-manager/transfers.mjs'
-import { AtomicFileEditor } from '../../modules/file-manager/editor.mjs'
-import { FileTaskManager } from '../../modules/file-manager/tasks.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -40,9 +36,6 @@ const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'invent
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
-const defaultWorkspace = process.env.DSH_DEFAULT_WORKSPACE ?? '/workspace'
-const fileLocations = fileManagerLocations({ platformData: dataRoot, dshHome, defaultWorkspace })
-const isManagedFilePath = createManagedPathMatcher(dataRoot)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
   maxBytes: Number(process.env.DSH_LOG_MAX_BYTES ?? 104857600),
@@ -127,28 +120,7 @@ const scheduler = new UpdateScheduler({
   check: () => coordinator.check('automatic'),
   onError: error => logs.diagnostic('updater', 'update.automatic-check.failed', { error }),
 })
-const terminalSessions = new TerminalSessionManager({
-  cwd: '/workspace',
-  dshHome,
-  report: (message, fields) => logs.diagnostic('terminal', message, fields),
-})
-const fileInventory = new FileInventory({ isManaged: isManagedFilePath })
-const fileTransfers = new FileTransferManager({ isManaged: isManagedFilePath })
-const fileEditor = new AtomicFileEditor({ isManaged: isManagedFilePath })
 let server
-const fileTasks = new FileTaskManager({
-  root: paths.fileTasksRoot,
-  inventory: fileInventory,
-  isManaged: isManagedFilePath,
-  protectedRoots: [
-    '/', '/data', '/data/dsh', '/data/platform', '/workspace',
-    dataRoot, dshHome, defaultWorkspace, paths.deploymentView,
-  ],
-  platformBusy: () => coordinator.hasActiveTask?.() === true,
-  onState: state => server?.emit('management-state', { fileTask: state }),
-  report: (message, fields) => logs.diagnostic('file-manager', message, fields),
-})
-await fileTasks.initialize()
 server = createManagementServer({
   coordinator,
   logs,
@@ -183,12 +155,7 @@ server = createManagementServer({
     }
   } : undefined,
   settingsDocument,
-  terminalSessions,
-  fileInventory,
-  fileTransfers,
-  fileTasks,
-  fileEditor,
-  fileLocations,
+  privilegedMutationActive: () => existsSync(paths.maintenanceLeasePath),
   updateAutomaticCheck: async value => {
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)
@@ -226,7 +193,6 @@ const stop = signal => {
   stopping = true
   scheduler.stop()
   void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(async () => {
-    await terminalSessions.shutdown()
     server.close(() => {
       void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
     })

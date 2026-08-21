@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { symlink } from 'node:fs/promises'
+import { mkdir, symlink } from 'node:fs/promises'
 
 const API = 'http://127.0.0.1:3080/_dsh_platform/api/v1'
 const headers = {
@@ -30,9 +30,22 @@ async function task(body) {
 
 async function item(path) { return request(`files/stat?path=${encodeURIComponent(path)}`) }
 
+const config = await request('files/config')
+assert.equal(config.privileged, true)
+const rootFile = `/root/dsh-maintenance-smoke-${String(process.pid)}.txt`
+await request('files/content', {
+  method: 'PUT', body: { path: rootFile, revision: null, content: 'root maintenance\n', create: true },
+})
+const rootItem = await item(rootFile)
+assert.equal(rootItem.user, 'root')
+assert.equal(rootItem.group, 'root')
+assert.equal((await request(`files/content?path=${encodeURIComponent(rootFile)}`)).content, 'root maintenance\n')
+await task({ operation: 'delete', sources: [{ path: rootItem.path, revision: rootItem.revision }] })
+await assert.rejects(item(rootFile), /returned 404/)
+
 const workspaceRoot = `/workspace/file-management-smoke-${String(process.pid)}`
 const dshRoot = `/data/dsh/file-management-smoke-${String(process.pid)}`
-await task({ operation: 'mkdir', destination: workspaceRoot })
+await mkdir(workspaceRoot)
 await task({ operation: 'mkdir', destination: dshRoot })
 
 const uploadedPath = `${workspaceRoot}/uploaded-中文.txt`

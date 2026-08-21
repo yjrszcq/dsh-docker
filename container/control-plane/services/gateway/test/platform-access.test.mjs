@@ -75,7 +75,14 @@ test('local gateway control socket creates only the latest temporary key', async
     const second = await client.request('POST', '/v1/keys')
     assert.notEqual(first.key, second.key)
     assert.equal(access.signIn(first.key), undefined)
-    assert.match(access.signIn(second.key), /^dshps_/)
+    const session = access.signIn(second.key)
+    assert.match(session, /^dshps_/)
+    assert.deepEqual(await client.request('POST', '/v1/sessions/validate', {
+      cookie: `dsh_platform_session=${session}`,
+    }), { authenticated: true })
+    assert.deepEqual(await client.request('POST', '/v1/sessions/validate', {
+      cookie: 'dsh_platform_session=invalid',
+    }), { authenticated: false })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

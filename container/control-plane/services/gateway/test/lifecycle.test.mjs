@@ -38,6 +38,7 @@ test('gateway owns only its listener and forwards management socket configuratio
     externalHost: '127.0.0.1',
     externalPort: 8080,
     managementSocketPath: '/run/platform.sock',
+    maintenanceSocketPath: '/run/maintenance.sock',
     gatewayAccessSocketPath: '/run/access.sock',
     accessServerFactory: () => accessServer,
     listenAccessServer: async (value, path) => {
@@ -51,6 +52,7 @@ test('gateway owns only its listener and forwards management socket configuratio
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(server.bound, { host: '127.0.0.1', port: 8080 })
   assert.equal(options.managementSocketPath, '/run/platform.sock')
+  assert.equal(options.maintenanceSocketPath, '/run/maintenance.sock')
   assert.equal(accessServer.bound, '/run/access.sock')
   assert.equal(typeof options.platformStatus, 'function')
   signalSource.emit('SIGTERM')

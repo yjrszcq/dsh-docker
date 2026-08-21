@@ -87,6 +87,7 @@ async function waitTask(kind, taskId, expected) {
 }
 
 const terminal = await request('POST', `${API}terminal/sessions`, { cols: 100, rows: 32 })
+assert.equal(terminal.privileged, true)
 const first = connectTerminal(terminal.sessionId)
 await first.opened
 first.socket.send(JSON.stringify({
@@ -95,10 +96,10 @@ first.socket.send(JSON.stringify({
 }))
 const identity = await first.waitOutput('sudo=ok', 3)
 assert.match(identity, /terminal-before-restart/)
-assert.match(identity, /uid=1000/)
+assert.match(identity, /uid=0/)
 assert.match(identity, /gids=.+/)
 assert.match(identity, /cwd=\/workspace/)
-assert.match(identity, /home=\/home\/node/)
+assert.match(identity, /home=\/root/)
 assert.match(identity, /dsh=\/data\/dsh/)
 
 const restart = await request('POST', `${API}restart-dsh`)

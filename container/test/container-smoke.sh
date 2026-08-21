@@ -40,7 +40,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 docker run --detach --name "$container" \
-  --group-add dsh-sudo-true \
+  --group-add dsh-sudo-false \
   --env DSH_PROXY_USERNAME=smoke-user \
   --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
@@ -49,6 +49,14 @@ docker run --detach --name "$container" \
   "$image" >/dev/null
 
 startup_one="$(wait_platform_ready)"
+if docker exec --user node "$container" sudo -n true >/dev/null 2>&1; then
+  echo "DSH node identity unexpectedly retained sudo while DSH_SUDO_ENABLED=false" >&2
+  exit 1
+fi
+status="$(docker exec --user node "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
+  --unix-socket /run/dsh-platform/maintenance.sock \
+  http://localhost/_dsh_platform/api/v1/files/config)"
+[ "$status" = 401 ]
 attempt=0
 until docker logs "$container" 2>&1 \
   | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform.ready"' >/dev/null; do

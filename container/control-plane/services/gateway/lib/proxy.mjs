@@ -30,6 +30,12 @@ const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
 const FILE_TASK_ROUTE = /^files\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
+function isMaintenanceRoute(pathname) {
+  if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
+  const route = pathname.slice(MANAGEMENT_PREFIX.length)
+  return route.startsWith('files/') || route === 'terminal/sessions' || TERMINAL_SESSION_ROUTE.test(route)
+}
+
 const MAX_HTML_BYTES = 5 * 1024 * 1024
 const SYSTEM_PLUGIN_BUNDLE = /^\/plugins\/@dsh-docker\/([a-z0-9][a-z0-9._-]{0,127})\/client\.js$/
 const upgradedSocketsByServer = new WeakMap()
@@ -245,13 +251,17 @@ async function rejectDshFailure(request, response, options) {
 function proxyHttp(request, response, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const context = requestContext(request)
+  const headers = upstreamRequestHeaders(request.headers)
+  if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
+    headers.authorization = request.headers.authorization
+  }
   const upstream = httpRequest({
     ...(options.socketPath === undefined
       ? { hostname: options.upstreamHost, port: options.upstreamPort }
       : { socketPath: options.socketPath }),
     method: request.method,
     path: request.url,
-    headers: upstreamRequestHeaders(request.headers),
+    headers,
   })
   upstream.on('response', (upstreamResponse) => {
     options.reportRecovered(`${upstreamType}-http`, 'gateway.upstream.recovered', { upstream: upstreamType })
@@ -320,6 +330,9 @@ function proxyUpgrade(request, clientSocket, head, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const failureKey = `${upstreamType}-websocket`
   const headers = upstreamRequestHeaders(request.headers)
+  if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
+    headers.authorization = request.headers.authorization
+  }
   headers.connection = 'Upgrade'
   headers.upgrade = request.headers.upgrade ?? 'websocket'
   const upstreamSocket = options.socketPath === undefined
@@ -363,6 +376,7 @@ export function createGatewayServer({
   upstreamHost = INTERNAL_HOST,
   upstreamPort = INTERNAL_PORT,
   managementSocketPath = '/run/dsh-platform/management.sock',
+  maintenanceSocketPath = '/run/dsh-platform/maintenance.sock',
   systemPluginRoot = '/run/dsh-platform/deployment/system-plugins/packages',
   platformStatus = async () => ({}),
   availability = new DshAvailability(),
@@ -401,7 +415,7 @@ export function createGatewayServer({
     })
   }
   const options = {
-    trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, systemPluginRoot, platformStatus,
+    trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, maintenanceSocketPath, systemPluginRoot, platformStatus,
     availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
   }
   const upgradedSockets = new Set()
@@ -464,7 +478,11 @@ export function createGatewayServer({
           rejectHttp(response, 404, 'not found')
           return
         }
-        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        const socketPath = isMaintenanceRoute(pathname) ? options.maintenanceSocketPath : options.managementSocketPath
+        proxyHttp(request, response, {
+          ...options, socketPath, polyfill: false,
+          preserveAuthorization: socketPath === options.maintenanceSocketPath,
+        })
         return
       }
       proxyHttp(request, response, { ...options, trackDsh: true })
@@ -492,7 +510,9 @@ export function createGatewayServer({
         }
         upgradedSockets.add(socket)
         socket.once('close', () => upgradedSockets.delete(socket))
-        proxyUpgrade(request, socket, head, { ...options, socketPath: options.managementSocketPath })
+        proxyUpgrade(request, socket, head, {
+          ...options, socketPath: options.maintenanceSocketPath, preserveAuthorization: true,
+        })
         return
       }
       if (pathname.startsWith(MANAGEMENT_PREFIX)) {
