@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -218,7 +218,6 @@ test('initializes an Image Deployment through one atomic runtime view', async ()
 
 test('rebuilds image and managed Runtime bytes without changing versions or previous Deployment', async () => {
   const context = await repairableFixture()
-  await writeFile(join(context.seedRoot, 'runtimes', 'dsh', 'package', 'patched.txt'), 'corrupt\n')
   let pauses = 0
   let restarts = 0
   const reset = () => context.manager.resetCurrentRuntime({
@@ -229,19 +228,23 @@ test('rebuilds image and managed Runtime bytes without changing versions or prev
     },
   })
   const first = await reset()
-  assert.notEqual(first.recordId, context.image.id)
+  assert.equal(first.recordId, context.image.id)
   assert.equal(first.slots.previous, null)
   const repaired = await context.manager.record(first.recordId)
-  assert.equal(repaired.runtime.storage, 'store')
+  assert.equal(repaired.runtime.storage, 'image')
   assert.equal(repaired.dshVersion, context.image.dshVersion)
   assert.equal(repaired.environmentVersion, context.image.environmentVersion)
+  assert.deepEqual(await readdir(context.paths.runtimesRoot), [])
 
-  const managedRuntime = join(context.paths.runtimesRoot, repaired.runtime.id)
+  const materialized = await context.manager.materializeCurrent()
+  assert.equal(materialized.runtime.storage, 'store')
+  assert.equal((await context.manager.state()).previous, null)
+  const managedRuntime = join(context.paths.runtimesRoot, materialized.runtime.id)
   await writeFile(join(managedRuntime, 'package', 'patched.txt'), 'corrupt-again\n')
   const second = await reset()
-  assert.equal(second.recordId, first.recordId)
+  assert.equal(second.recordId, materialized.id)
   assert.equal(second.slots.previous, null)
-  assert.equal(await hashTree(managedRuntime), repaired.runtime.sha256)
+  assert.equal(await hashTree(managedRuntime), materialized.runtime.sha256)
   assert.equal(pauses, 2)
   assert.equal(restarts, 2)
 
@@ -263,8 +266,8 @@ test('rebuilds image and managed Runtime bytes without changing versions or prev
   assert.equal(await readFile(join(managedRuntime, 'package', 'patched.txt'), 'utf8'), 'runtime-before-failed-reset\n')
   assert.deepEqual(await context.manager.state(), second.slots)
 
-  await writeFile(join(context.environmentRoot, 'artifacts', 'runtime-patch'), 'corrupt artifact\n')
-  await assert.rejects(reset(), /differs from the Environment Manifest/)
+  await writeFile(join(context.paths.environmentsRoot, materialized.environment.id, 'artifacts', 'runtime-patch'), 'corrupt artifact\n')
+  await assert.rejects(reset(), /differs from (?:its Record|the Environment Manifest)/)
   assert.equal(pauses, 3)
   assert.equal(restarts, 2)
 })

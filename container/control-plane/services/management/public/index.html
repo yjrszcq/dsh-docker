@@ -97,14 +97,18 @@
       <section aria-labelledby="runtime-reset-title">
         <div class="section-heading">
           <div><h2 id="runtime-reset-title" data-i18n="runtimeReset">Reset runtime</h2><p data-i18n="runtimeResetDetail">Rebuild the runtime from verified DSH files and current platform patches without deleting user data.</p></div>
-          <button type="button" id="runtime-reset" class="secondary" aria-controls="runtime-reset-confirmation" aria-expanded="false" data-i18n="runtimeReset">Reset runtime</button>
+          <button type="button" id="runtime-reset" class="secondary" aria-controls="runtime-reset-confirmation" aria-expanded="false" data-i18n="runtimeReset" disabled>Reset runtime</button>
         </div>
         <div id="runtime-reset-confirmation" class="inline-confirmation" role="alertdialog" aria-labelledby="runtime-reset-confirmation-title" hidden>
           <h3 id="runtime-reset-confirmation-title" data-i18n="runtimeResetConfirmTitle">Reset the current runtime?</h3>
           <p data-i18n="runtimeResetWarning">DSH stops briefly. The current version and user data remain unchanged.</p>
-          <div class="dialog-actions"><button type="button" id="cancel-runtime-reset" class="secondary" data-i18n="cancel">Cancel</button><button type="button" id="confirm-runtime-reset" class="primary" data-i18n="confirmRuntimeReset">Reset and restart DSH</button></div>
+          <div class="dialog-actions"><button type="button" id="cancel-runtime-reset" class="secondary" data-i18n="cancel">Cancel</button><button type="button" id="confirm-runtime-reset" class="primary" data-i18n="confirmRuntimeReset" disabled>Reset and restart DSH</button></div>
         </div>
-        <p id="runtime-reset-state" class="operation-result" hidden></p>
+        <div id="runtime-reset-progress" class="runtime-reset-progress" hidden>
+          <div class="status-line"><p id="runtime-reset-state" class="operation-result"></p><output id="runtime-reset-progress-value">0%</output></div>
+          <div id="runtime-reset-progress-track" class="progress" role="progressbar" aria-label="Runtime reset progress" data-i18n-aria-label="runtimeResetProgress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="runtime-reset-progress-bar"></span></div>
+        </div>
+        <p id="runtime-reset-result" class="operation-result" hidden></p>
       </section>
 
       <section class="log-section" aria-labelledby="logs-title">

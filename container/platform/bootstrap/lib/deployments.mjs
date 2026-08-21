@@ -506,28 +506,42 @@ export class DeploymentManager {
       ])
       const patchSet = await loadEnvironmentPatchSet(environmentRoot)
       const stagingId = `runtime-reset-${randomUUID()}`
-      const staging = join(this.paths.runtimesRoot, stagingId)
+      const versionsRoot = current.runtime.storage === 'image'
+        ? join(this.paths.runRoot, 'runtime-reset')
+        : this.paths.runtimesRoot
+      const staging = join(versionsRoot, stagingId)
       const destinationId = current.runtime.storage === 'store'
         ? current.runtime.id
         : `reset-${current.runtime.sha256}`
       const destination = join(this.paths.runtimesRoot, destinationId)
       let replacement
       let paused = false
-      await this.publishStatus({ operation: 'resetting-runtime' })
+      await this.publishStatus({ operation: 'runtime-reset-building' })
       try {
         await buildRuntime({
           pristineRoot,
-          versionsRoot: this.paths.runtimesRoot,
+          versionsRoot,
           runtimeId: stagingId,
           patchPaths: patchSet.paths,
         })
+        await this.publishStatus({ operation: 'runtime-reset-verifying' })
         const sha256 = await hashTree(staging)
         if (sha256 !== current.runtime.sha256) {
           throw new TrustError('rebuilt Runtime differs from the current Deployment Record')
         }
 
+        await this.publishStatus({ operation: 'runtime-reset-switching' })
         await pauseDsh()
         paused = true
+        if (current.runtime.storage === 'image') {
+          // Image assets are immutable and already content-addressed. Re-selecting the
+          // Deployment rebuilds its volatile view without copying it into the Store.
+          await this.select(current.id)
+          await this.publishStatus({ operation: 'runtime-reset-starting' })
+          await restartDsh()
+          await this.publishStatus({ recoveryMode: null })
+          return Object.freeze({ recordId: current.id, slots: state })
+        }
         replacement = await replaceRuntimeDirectory(staging, destination)
         const runtime = Object.freeze({
           storage: 'store', kind: 'runtime', id: destinationId, sha256,
@@ -549,6 +563,7 @@ export class DeploymentManager {
           ? current
           : await this.writeRecord({ ...content, id: deriveRecordId('deployment-record', content) })
         await this.select(repaired.id)
+        await this.publishStatus({ operation: 'runtime-reset-starting' })
         await restartDsh()
         const slots = repaired.id === current.id
           ? state
@@ -559,13 +574,14 @@ export class DeploymentManager {
       } catch (error) {
         if (replacement !== undefined) await replacement.rollback().catch(() => {})
         if (paused) {
+          await this.publishStatus({ operation: 'runtime-reset-recovering' }).catch(() => {})
           await this.select(current.id).catch(() => {})
           await restartDsh().catch(() => {})
         }
         await this.publishStatus({ operation: 'runtime-reset-failed' }).catch(() => {})
         throw error
       } finally {
-        await rm(staging, { recursive: true, force: true })
+        await rm(current.runtime.storage === 'image' ? versionsRoot : staging, { recursive: true, force: true })
       }
     })
   }

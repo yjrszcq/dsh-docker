@@ -49,7 +49,7 @@ const COPY = Object.freeze({
     restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，此独立控制台保持可用。', confirmRestart: '确认重启',
     runtimeReset: '重置运行时', runtimeResetDetail: '从已验证的 DSH 原始文件和当前平台补丁重新构建运行时，不会删除配置、会话、用户插件或工作区。',
     cancelRuntimeReset: '取消重置', runtimeResetConfirmTitle: '重置当前运行时', runtimeResetWarning: 'DSH 会短暂停止，当前版本和用户数据保持不变。', confirmRuntimeReset: '重置并重启 DSH',
-    runtimeResetting: '正在重置运行时', runtimeResetComplete: '运行时已重置并重新启动 DSH', runtimeResetFailed: '运行时重置失败',
+    runtimeResetting: '正在重置运行时', runtimeResetBuilding: '正在从已验证文件重建运行时', runtimeResetVerifying: '正在验证重建结果', runtimeResetSwitching: '正在切换运行时', runtimeResetStarting: '正在启动并检查 DSH', runtimeResetRecovering: '重置失败，正在恢复原运行时', runtimeResetProgress: '运行时重置进度', runtimeResetComplete: '运行时已重置并重新启动 DSH', runtimeResetFailed: '运行时重置失败',
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
     logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
@@ -119,7 +119,7 @@ const COPY = Object.freeze({
     restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This standalone console remains available.', confirmRestart: 'Restart',
     runtimeReset: 'Reset runtime', runtimeResetDetail: 'Rebuild the runtime from verified DSH files and current platform patches without deleting configuration, sessions, user plugins, or workspaces.',
     cancelRuntimeReset: 'Cancel reset', runtimeResetConfirmTitle: 'Reset the current runtime', runtimeResetWarning: 'DSH stops briefly. The current version and user data remain unchanged.', confirmRuntimeReset: 'Reset and restart DSH',
-    runtimeResetting: 'Resetting runtime', runtimeResetComplete: 'Runtime reset and DSH restarted', runtimeResetFailed: 'Runtime reset failed',
+    runtimeResetting: 'Resetting runtime', runtimeResetBuilding: 'Rebuilding runtime from verified files', runtimeResetVerifying: 'Verifying rebuilt runtime', runtimeResetSwitching: 'Switching runtime', runtimeResetStarting: 'Starting and checking DSH', runtimeResetRecovering: 'Reset failed; restoring the previous runtime', runtimeResetProgress: 'Runtime reset progress', runtimeResetComplete: 'Runtime reset and DSH restarted', runtimeResetFailed: 'Runtime reset failed',
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
     logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
@@ -182,6 +182,13 @@ const locale = cookieLocale()
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]))
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
+const RUNTIME_RESET_PHASES = Object.freeze({
+  'runtime-reset-building': Object.freeze({ progress: 20, label: 'runtimeResetBuilding' }),
+  'runtime-reset-verifying': Object.freeze({ progress: 55, label: 'runtimeResetVerifying' }),
+  'runtime-reset-switching': Object.freeze({ progress: 70, label: 'runtimeResetSwitching' }),
+  'runtime-reset-starting': Object.freeze({ progress: 85, label: 'runtimeResetStarting' }),
+  'runtime-reset-recovering': Object.freeze({ progress: 90, label: 'runtimeResetRecovering' }),
+})
 let status
 let plugins = []
 let userPluginInventory = { revision: null, plugins: [] }
@@ -686,18 +693,24 @@ function render(next) {
   elements['restart-state'].hidden = !restartVisible
   elements['restart-state'].textContent = restart.status === 'restarting'
     ? t('restarting') : restart.status === 'success' ? t('restartComplete') : restart.status === 'failed' ? t('restartFailed') : ''
-  elements['runtime-reset'].disabled = busy
-  elements['confirm-runtime-reset'].disabled = busy
+  elements['runtime-reset'].disabled = busy || next.current === null || next.current === undefined
+  elements['confirm-runtime-reset'].disabled = busy || next.current === null || next.current === undefined
   elements['runtime-reset'].textContent = runtimeReset.status === 'resetting'
     ? t('runtimeResetting') : t(runtimeResetExpanded ? 'cancelRuntimeReset' : 'runtimeReset')
-  elements['runtime-reset-state'].hidden = !runtimeResetVisible
-  elements['runtime-reset-state'].textContent = runtimeReset.status === 'resetting'
-    ? t('runtimeResetting')
-    : runtimeReset.status === 'success'
-      ? t('runtimeResetComplete')
-      : runtimeReset.status === 'failed'
-        ? `${t('runtimeResetFailed')}: ${localizedError(runtimeReset.error ?? '')}`
-        : ''
+  const resetActive = runtimeReset.status === 'resetting'
+  const resetPhase = RUNTIME_RESET_PHASES[next.operation] ?? { progress: 5, label: 'runtimeResetting' }
+  elements['runtime-reset-progress'].hidden = !resetActive
+  elements['runtime-reset-state'].textContent = t(resetPhase.label)
+  elements['runtime-reset-progress-value'].value = `${String(resetPhase.progress)}%`
+  elements['runtime-reset-progress-value'].textContent = `${String(resetPhase.progress)}%`
+  elements['runtime-reset-progress-track'].setAttribute('aria-valuenow', String(resetPhase.progress))
+  elements['runtime-reset-progress-bar'].style.width = `${String(resetPhase.progress)}%`
+  elements['runtime-reset-result'].hidden = resetActive || !runtimeResetVisible
+  elements['runtime-reset-result'].textContent = runtimeReset.status === 'success'
+    ? t('runtimeResetComplete')
+    : runtimeReset.status === 'failed'
+      ? `${t('runtimeResetFailed')}: ${localizedError(runtimeReset.error ?? '')}`
+      : ''
   elements['plugin-operation'].hidden = !pluginOperationVisible
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
@@ -1963,3 +1976,6 @@ void (async () => {
   if (initial !== undefined && UPDATE_TERMINAL_STATES.has(initial.update?.status ?? 'idle')) void checkUpdates('page-open')
 })()
 window.setInterval(() => { void loadStatus() }, 15_000)
+window.setInterval(() => {
+  if (status?.runtimeReset?.status === 'resetting') void loadStatus()
+}, 1_000)
