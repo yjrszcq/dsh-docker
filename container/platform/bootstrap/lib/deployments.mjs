@@ -533,15 +533,6 @@ export class DeploymentManager {
         await this.publishStatus({ operation: 'runtime-reset-switching' })
         await pauseDsh()
         paused = true
-        if (current.runtime.storage === 'image') {
-          // Image assets are immutable and already content-addressed. Re-selecting the
-          // Deployment rebuilds its volatile view without copying it into the Store.
-          await this.select(current.id)
-          await this.publishStatus({ operation: 'runtime-reset-starting' })
-          await restartDsh()
-          await this.publishStatus({ recoveryMode: null })
-          return Object.freeze({ recordId: current.id, slots: state })
-        }
         replacement = await replaceRuntimeDirectory(staging, destination)
         const runtime = Object.freeze({
           storage: 'store', kind: 'runtime', id: destinationId, sha256,
