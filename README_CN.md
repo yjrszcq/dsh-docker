@@ -131,6 +131,17 @@ docker exec deepseek-harness dsh-platform rollback
 
 Stable 跟随受支持的 DSH 版本。Experimental 可以安装经过验证的更新上游 DSH，并在激活前创建数据快照。返回 Stable 可能丢弃快照之后写入的数据。
 
+## 系统插件
+
+Container Environment 包含以下 DSH-Docker 集成：
+
+| 插件 | 用途 |
+| --- | --- |
+| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志和系统插件管理；该集成由平台托管 |
+| `@dsh-docker/settings-document-editor` | 将只能在桌面打开配置文件的操作替换为可选的浏览器 `settings.yaml` 编辑器 |
+
+除“平台管理”本身外，已安装的系统插件可在 DSH 的“平台管理”中启用或禁用；“平台管理”不能修改自身。独立的“DSH 管理中心”可以安装、卸载、启用或禁用 Environment 随附的系统插件，并能在“平台管理”缺失时将其恢复。变更会标记为待重启，并在重新启动 DSH 后生效。安装只使用经过验证的本地 Environment 资产，不会从 GitHub 或 npm 下载。第三方用户插件与系统插件分开管理，不会被视为系统插件。
+
 ## 安全提醒
 
 能通过 Gateway 访问，就等同于拥有完整 DSH 权限。独立管理中心还提供 root 容器终端和 root 文件操作，因此被放行的用户可以读取凭据、执行命令并修改容器数据。远程访问必须使用 HTTPS 和可信网络边界。

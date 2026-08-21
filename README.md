@@ -131,6 +131,17 @@ docker exec deepseek-harness dsh-platform rollback
 
 Stable follows the supported DSH release. Experimental can install a newer verified upstream DSH and creates a data snapshot before activation. Returning to Stable may discard data written after that snapshot.
 
+## System Plugins
+
+The Container Environment includes these DSH-Docker integrations:
+
+| Plugin | Purpose |
+| --- | --- |
+| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, and System Plugin controls; this integration is platform-managed |
+| `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
+
+Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Changes are marked pending and take effect after restarting DSH. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.
+
 ## Security
 
 Anyone admitted by the gateway has full DSH authority. The standalone Management Console also provides a root container terminal and root file operations, so an admitted user can read credentials, execute commands, and modify container data. Use HTTPS and a trusted network boundary for remote access.
