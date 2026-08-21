@@ -316,7 +316,7 @@ docker run -d \
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，所有外部 `/_dsh_platform/console/*`、管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的管理中心集成与独立页共用这个会话。
+`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”插件使用单独的受限 API，不要求管理中心会话；它只开放插件自身所需的更新、DSH 重启、日志和系统插件操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些插件操作。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 

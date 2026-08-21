@@ -214,6 +214,51 @@ test('platform routes fail closed and accept a dedicated platform session', asyn
   }
 })
 
+test('DSH Platform Management uses only its restricted API without a console session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-plugin-auth-'))
+  const socketPath = join(root, 'management.sock')
+  const received = []
+  const management = createServer((incoming, response) => {
+    received.push(`${incoming.method} ${incoming.url}`)
+    response.end('management')
+  })
+  await new Promise((resolve, reject) => {
+    management.once('error', reject)
+    management.listen(socketPath, resolve)
+  })
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    managementSocketPath: socketPath,
+    platformAccess: new PlatformAccess({ password: 'platform secret' }),
+    upstreamPort: 1,
+  })
+  const port = await listen(gateway)
+  try {
+    const plugin = await request(port, {
+      path: '/_dsh_platform/plugin-api/v1/status?source=plugin',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(plugin.status, 200)
+    assert.equal(plugin.body, 'management')
+    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+
+    const privileged = await request(port, {
+      path: '/_dsh_platform/plugin-api/v1/files/list',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(privileged.status, 404)
+    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+
+    const consoleApi = await request(port, {
+      path: '/_dsh_platform/api/v1/status',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(consoleApi.status, 401)
+  } finally {
+    await Promise.all([closeGatewayServer(gateway), close(management)])
+  }
+})
+
 test('Gateway Basic authentication replaces the dedicated platform session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-platform-basic-'))
   const socketPath = join(root, 'management.sock')

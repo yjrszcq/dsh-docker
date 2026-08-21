@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import css from './style.module.css'
 
-const API = '/_dsh_platform/api/v1'
+const API = '/_dsh_platform/plugin-api/v1'
 const TERMINAL = new Set(['idle', 'success', 'failed'])
 const STATUS_LABELS = Object.freeze({
   idle: 'statusIdle',
@@ -592,7 +592,6 @@ function PlatformManagement({ t }) {
   const [status, setStatus] = useState(null)
   const [plugins, setPlugins] = useState([])
   const [error, setError] = useState('')
-  const [authRequired, setAuthRequired] = useState(false)
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -617,14 +616,12 @@ function PlatformManagement({ t }) {
           setStatus(nextStatus)
           setPlugins(bundled.plugins ?? [])
           setError('')
-          setAuthRequired(false)
           setConnection('online')
         } catch (nextError) {
           setStatus(null)
           setPlugins([])
           setError(nextError instanceof Error ? nextError.message : String(nextError))
-          setAuthRequired(nextError?.statusCode === 401)
-          setConnection(nextError?.statusCode === 401 ? 'locked' : 'offline')
+          setConnection('offline')
           value = undefined
         }
       } while (loadedRevision !== statusLoadRevision.current)
@@ -642,7 +639,6 @@ function PlatformManagement({ t }) {
       return true
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
-      setAuthRequired(nextError?.statusCode === 401)
       return false
     } finally {
       setActing(false)
@@ -814,15 +810,6 @@ function PlatformManagement({ t }) {
           t(connection))),
       h('p', { className: css.intro }, t('intro'))),
 
-    authRequired ? h('div', { className: css.authRequired, role: 'alert' },
-      h('span', null, t('platformAuthRequired')),
-      h('a', {
-        className: css.secondaryButton,
-        href: '/_dsh_platform/auth/?next=/_dsh_platform/console/',
-        target: '_blank',
-        rel: 'noopener noreferrer',
-      }, t('platformSignIn'))) : null,
-
     h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
       ['updates', 'maintenance', 'plugins'].map(tab => h('button', {
         key: tab,
@@ -936,7 +923,7 @@ function PlatformManagement({ t }) {
           h('p', null, t('standaloneManagementDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.maintenanceButton}`,
-          href: '/_dsh_platform/console/',
+          href: '/_dsh_platform/console',
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement')))),
@@ -993,7 +980,6 @@ export function apply(ctx) {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
       managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件',
-      platformAuthRequired: 'DSH 管理中心访问已锁定，请先完成独立验证。', platformSignIn: '验证管理中心访问',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
@@ -1009,13 +995,12 @@ export function apply(ctx) {
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
-      online: '已连接', connecting: '正在重连', offline: '连接中断', locked: '需要验证',
+      online: '已连接', connecting: '正在重连', offline: '连接中断',
     },
     en: {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins',
-      platformAuthRequired: 'DSH Management Console is locked. Complete its separate sign-in first.', platformSignIn: 'Sign in to DSH Management Console',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
@@ -1031,7 +1016,7 @@ export function apply(ctx) {
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
-      online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected', locked: 'Sign-in required',
+      online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
     },
   }), 'dsh-platform-management: locale')
   ctx.slots.inject('settings.section', () => ctx.slots.register({

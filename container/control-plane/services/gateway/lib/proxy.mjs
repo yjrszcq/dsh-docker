@@ -20,6 +20,7 @@ export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
 export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
+export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'settings-document', 'user-plugins', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
@@ -29,6 +30,11 @@ const EXTERNAL_MANAGEMENT_ROUTES = new Map([
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
 const FILE_TASK_ROUTE = /^files\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const PLUGIN_MANAGEMENT_ROUTES = new Map([
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard'])],
+  ['PUT', new Set(['channel', 'automatic-check'])],
+])
 
 function isMaintenanceRoute(pathname) {
   if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
@@ -260,7 +266,7 @@ function proxyHttp(request, response, options) {
       ? { hostname: options.upstreamHost, port: options.upstreamPort }
       : { socketPath: options.socketPath }),
     method: request.method,
-    path: request.url,
+    path: options.upstreamPath ?? request.url,
     headers,
   })
   upstream.on('response', (upstreamResponse) => {
@@ -306,6 +312,13 @@ function isExternalManagementRoute(method, pathname) {
   if (['GET', 'DELETE'].includes(method ?? 'GET') && TERMINAL_SESSION_ROUTE.test(route)) return true
   if (['GET', 'DELETE'].includes(method ?? 'GET') && FILE_TASK_ROUTE.test(route)) return true
   return EXTERNAL_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(route) ?? false
+}
+
+function pluginManagementUpstreamPath(method, url) {
+  if (!url.pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) return undefined
+  const route = url.pathname.slice(MANAGEMENT_PLUGIN_PREFIX.length)
+  if (!(PLUGIN_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(route) ?? false)) return null
+  return `${MANAGEMENT_PREFIX}${route}${url.search}`
 }
 
 function isExternalConsoleRoute(method, pathname) {
@@ -472,6 +485,17 @@ export function createGatewayServer({
           return
         }
         proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        return
+      }
+      if (pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) {
+        const upstreamPath = pluginManagementUpstreamPath(request.method, url)
+        if (upstreamPath === null) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        proxyHttp(request, response, {
+          ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
+        })
         return
       }
       if (pathname.startsWith(MANAGEMENT_PREFIX)) {

@@ -316,7 +316,7 @@ When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge
 
 Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
 
-When `DSH_PROXY_PASSWORD` is empty, every external `/_dsh_platform/console/*` route, management API, SSE stream, and terminal WebSocket is protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. The DSH settings integration and standalone console share this session.
+When `DSH_PROXY_PASSWORD` is empty, the standalone console's `/_dsh_platform/console/*` routes, full management API, SSE streams, and terminal WebSocket are protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. Platform Management inside DSH settings uses a separate restricted API and does not require a console session. That API exposes only the plugin's update, DSH restart, log, and System Plugin operations; it does not expose the container terminal, file manager, or User Plugin recovery. Anyone who can access the DSH page can therefore use those plugin operations.
 
 When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
 
