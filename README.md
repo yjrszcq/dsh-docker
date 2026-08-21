@@ -107,7 +107,7 @@ Common settings:
 
 See the [complete configuration reference](docs/en/guide.md#configuration) for all variables and validation rules.
 
-## Updates
+## Online Updates
 
 Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/console/>. Checks do not download or activate anything until you confirm an update.
 
