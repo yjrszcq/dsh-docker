@@ -59,13 +59,13 @@ status="$(docker exec --user node "$container" curl --silent --output /dev/null 
 [ "$status" = 401 ]
 attempt=0
 until docker logs "$container" 2>&1 \
-  | rg '"source":"bootstrap".*"stream":"platform".*"message":"platform.ready"' >/dev/null; do
+  | grep -E '"source":"bootstrap".*"stream":"platform".*"message":"platform.ready"' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 50 ] || exit 1
   sleep 0.2
 done
 docker logs "$container" 2>&1 \
-  | rg '"source":"stage0".*"stream":"platform".*"message":"stage0.ready"' >/dev/null
+  | grep -E '"source":"stage0".*"stream":"platform".*"message":"stage0.ready"' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?limit=5000' \
   | jq -e 'any(.entries[]; .source == "stage0" and .message == "stage0.ready")
@@ -98,7 +98,7 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
-  | rg --fixed-strings 'DSH Management Console' >/dev/null
+  | grep -F 'DSH Management Console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.updateChannel == "stable"
@@ -144,7 +144,7 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 docker exec "$container" sh -c '
   [ "$(cat /data/dsh/settings.yaml)" = "{}" ]
   [ "$(stat -c %U /data/dsh/settings.yaml)" = node ]
-  rg --fixed-strings "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
+  grep -F "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 '
 dsh_pid_before_plugin_changes="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
@@ -181,7 +181,7 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
-  | rg --fixed-strings 'Standalone console' >/dev/null
+  | grep -F 'Standalone console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | (.installed | not) and (.enabled | not) and .protected' >/dev/null
@@ -219,7 +219,7 @@ done
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[1] | .installed and (.enabled | not)' >/dev/null
-docker exec "$container" rg --fixed-strings '@dsh-docker/settings-document-editor' \
+docker exec "$container" grep -F '@dsh-docker/settings-document-editor' \
   /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
@@ -263,16 +263,16 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 dsh_pid_after="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 [ "$dsh_pid_before" != "$dsh_pid_after" ]
-if docker exec "$container" rg --fixed-strings '@dsh-docker/settings-document-editor' \
+if docker exec "$container" grep -F '@dsh-docker/settings-document-editor' \
   /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null; then
   exit 1
 fi
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 docker exec "$container" sh -c "
-  rg --fixed-strings '\"message\":\"component.stopping\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
-  rg --fixed-strings '\"message\":\"component.ready\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
-  rg --fixed-strings '\"message\":\"system-plugin.changes.discarded\"' /data/platform/logs/audit.jsonl >/dev/null
+  grep -F '\"message\":\"component.stopping\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
+  grep -F '\"message\":\"component.ready\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
+  grep -F '\"message\":\"system-plugin.changes.discarded\"' /data/platform/logs/audit.jsonl >/dev/null
 "
 
 bootstrap_pid="$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')"
@@ -281,7 +281,7 @@ docker exec "$container" kill -9 "$dsh_pid"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
-  | rg --fixed-strings 'DSH Management Console' >/dev/null; do
+  | grep -F 'DSH Management Console' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 20 ] || exit 1
   sleep 0.1
@@ -300,13 +300,13 @@ docker exec -i --user node "$container" /usr/local/bin/node --input-type=module 
   < container/test/standalone-file-management-smoke.mjs \
   | jq -e '.range == "3456" and .searched >= 2 and .attributes == 488 and .dshUnavailable == true' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"file-manager".*"message":"file-task.copy.completed"' >/dev/null
+  | grep -E '"source":"file-manager".*"message":"file-task.copy.completed"' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"audit".*"message":"files.content.saved"' >/dev/null
+  | grep -E '"source":"audit".*"message":"files.content.saved"' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"error":"size target changed".*"source":"audit".*"message":"files.size.failed"' >/dev/null
+  | grep -E '"error":"size target changed".*"source":"audit".*"message":"files.size.failed"' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"audit".*"message":"files.attributes.completed"' >/dev/null
+  | grep -E '"source":"audit".*"message":"files.attributes.completed"' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 attempt=0
@@ -318,7 +318,7 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   sleep 0.1
 done
 docker logs "$container" 2>&1 \
-  | rg '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
+  | grep -E '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
 restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
@@ -343,17 +343,17 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   sleep 0.1
 done
 docker logs "$container" 2>&1 \
-  | rg '"source":"gateway".*"message":"gateway.upstream.recovered"' >/dev/null
+  | grep -E '"source":"gateway".*"message":"gateway.upstream.recovered"' >/dev/null
 
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-recovery-smoke.mjs \
   | jq -e '.faultNames == ["smoke-fault-one","smoke-fault-two"]' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"terminal".*"message":"terminal.session.created"' >/dev/null
+  | grep -E '"source":"terminal".*"message":"terminal.session.created"' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"audit".*"message":"user-plugin.apply.failed"' >/dev/null
+  | grep -E '"source":"audit".*"message":"user-plugin.apply.failed"' >/dev/null
 docker logs "$container" 2>&1 \
-  | rg '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
+  | grep -E '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
 docker exec "$container" curl --fail --silent --noproxy '*' http://127.0.0.1:3079/ >/dev/null
 
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
@@ -362,9 +362,8 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check \
   | jq -e '. == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' >/dev/null
 
-loopback_patch_count="$(docker exec "$container" rg --fixed-strings --count-matches \
-  'isLoopback: true,' \
-  /run/dsh-platform/views/runtime/package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js)"
+loopback_patch_count="$(docker exec "$container" sh -c \
+  "grep -F -o 'isLoopback: true,' /run/dsh-platform/views/runtime/package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js | wc -l")"
 [ "$loopback_patch_count" = 1 ]
 
 docker exec "$container" sh -c '
@@ -379,7 +378,7 @@ docker exec "$container" sh -c '
   [ "$(stat -c %a /run/dsh-platform/recovery.sock)" = 600 ]
   [ "$(stat -c %U /run/dsh-platform/recovery.sock)" = root ]
   [ "$(readlink /usr/local/bin/dsh 2>/dev/null || true)" = "" ]
-  rg --fixed-strings "exec /run/dsh-platform/views/runtime/bin/dsh" /usr/local/bin/dsh >/dev/null
+  grep -F "exec /run/dsh-platform/views/runtime/bin/dsh" /usr/local/bin/dsh >/dev/null
 '
 
 docker exec "$container" sh -c 'printf runtime-reset-smoke > /data/dsh/runtime-reset-sentinel'
@@ -408,8 +407,8 @@ docker exec "$container" jq -e --slurpfile before /tmp/slots-before-runtime-rese
   /data/platform/state/deployments/slots.json >/dev/null
 docker exec "$container" dsh-platform status \
   | jq -e '.current.source == "managed" and .recoveryMode == null' >/dev/null
-docker logs "$container" 2>&1 | rg '"source":"audit".*"message":"runtime.reset.started"' >/dev/null
-docker logs "$container" 2>&1 | rg '"source":"audit".*"message":"runtime.reset.completed"' >/dev/null
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"runtime.reset.started"' >/dev/null
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"runtime.reset.completed"' >/dev/null
 
 stage0_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$')"
 bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')"
@@ -487,7 +486,7 @@ docker exec --user node "$container" curl --fail --silent --unix-socket /run/dsh
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
-  | rg --fixed-strings 'DSH Management Console' >/dev/null
+  | grep -F 'DSH Management Console' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status >/dev/null
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'
@@ -551,8 +550,8 @@ legacy_output="$(timeout 15s docker run --rm \
 status=$?
 set -e
 [ "$status" -ne 0 ]
-echo "$legacy_output" | rg --fixed-strings 'clear only /data/platform' >/dev/null
-echo "$legacy_output" | rg --fixed-strings 'Do not delete /data/dsh' >/dev/null
+echo "$legacy_output" | grep -F 'clear only /data/platform' >/dev/null
+echo "$legacy_output" | grep -F 'Do not delete /data/dsh' >/dev/null
 docker run --rm --entrypoint sh --volume "$home_volume:/data/dsh" "$image" \
   -c '[ "$(cat /data/dsh/sentinel)" = preserved ]'
 cleanup
