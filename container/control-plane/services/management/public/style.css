@@ -541,22 +541,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
 .confirm input { margin-top: 3px; accent-color: var(--danger); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
-.update-reminder {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 10;
-  width: min(360px, calc(100vw - 32px));
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 20%);
-}
-.update-reminder > strong { display: block; font-size: 14px; line-height: 22px; }
-.update-reminder > p { margin: 4px 0 12px; color: var(--muted); font-size: 13px; line-height: 20px; }
-.update-reminder > div { display: flex; justify-content: flex-end; gap: 8px; }
-
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #202022;
@@ -639,7 +623,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .log-meta { flex-wrap: wrap; }
   .log-meta time { width: auto; margin-left: auto; }
   .log-list { max-height: min(260px, 36dvh); }
-  .update-reminder { right: 16px; bottom: 16px; }
 }
 
 @media (max-width: 440px) {
@@ -648,5 +631,4 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .setting-row select { width: 100%; }
   .user-plugin-main dl { grid-template-columns: 1fr; }
   .draft-actions > div { flex-direction: column; }
-  .update-reminder > div { flex-direction: column; }
 }

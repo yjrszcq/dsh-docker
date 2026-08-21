@@ -15,7 +15,6 @@ const STATUS_LABELS = Object.freeze({
   success: 'statusSuccess',
   failed: 'statusFailed',
 })
-const NOTICE_PREFIX = 'dsh-platform:console-update-notice'
 const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
 const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
 const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
@@ -44,7 +43,7 @@ const COPY = Object.freeze({
     returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：',
     confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
     automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭',
-    checkInterval: '检查频率', updateNotifications: '网页更新提醒', updateNotificationsDetail: '仅在此页面中，于自动检查发现新版本时提醒。',
+    checkInterval: '检查频率', updateNotifications: 'DSH 页面更新提醒', updateNotificationsDetail: '自动检查发现新版本时，在 DSH 页面中提醒。',
     interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
     maintenance: '重启 DSH', maintenanceDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH',
     restarting: '正在重新启动 DSH', restartComplete: 'DSH 已重新启动', restartFailed: 'DSH 重启失败',
@@ -76,8 +75,6 @@ const COPY = Object.freeze({
     userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，可在运行维护中查看日志。',
     userPluginPhaseValidated: '正在验证修改', userPluginPhasePaused: '正在暂停 DSH', userPluginPhaseSnapshotted: '已备份 Web Profile',
     userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
-    stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。',
-    upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。',
     terminal: '容器终端', terminalDetail: '使用管理员权限打开交互式容器 Shell；仅重新启动 DSH 时终端会话保持运行。',
     newTerminal: '新建会话', closeTerminal: '关闭会话', terminalIdle: '没有活动会话', terminalLoading: '正在加载终端组件', terminalLoadFailed: '终端组件加载失败，请重试', terminalStarting: '正在创建会话',
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
@@ -95,7 +92,6 @@ const COPY = Object.freeze({
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
     fileConflictTitle: '目标已存在', fileConflictDetail: '请选择处理方式：', conflictOverwrite: '覆盖', conflictOverwriteDetail: '替换已有项目。', conflictRename: '自动重命名', conflictRenameDetail: '使用新名称保留两个项目。', conflictSkip: '跳过', conflictSkipDetail: '保留已有项目，不执行本项操作。', conflictApplyAll: '应用到之后的所有冲突', confirmChoice: '确认', operationCompleteWithSkipped: '文件操作已完成，已跳过 {count} 个冲突项。',
-    later: '稍后提醒', dismissVersion: '不再提醒此版本',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
   }),
   en: Object.freeze({
@@ -117,7 +113,7 @@ const COPY = Object.freeze({
     returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:',
     confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
     automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off',
-    checkInterval: 'Check frequency', updateNotifications: 'Web update notifications', updateNotificationsDetail: 'Shown only on this page when an automatic check finds a new version.',
+    checkInterval: 'Check frequency', updateNotifications: 'DSH page update notifications', updateNotificationsDetail: 'Shown on DSH pages when an automatic check finds a new version.',
     interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
     maintenance: 'Restart DSH', maintenanceDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH',
     restarting: 'Restarting DSH', restartComplete: 'DSH restarted', restartFailed: 'DSH restart failed',
@@ -149,8 +145,6 @@ const COPY = Object.freeze({
     userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly. Review the Maintenance logs for details.',
     userPluginPhaseValidated: 'Validating changes', userPluginPhasePaused: 'Pausing DSH', userPluginPhaseSnapshotted: 'Web Profile backed up',
     userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
-    stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.',
-    upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.',
     terminal: 'Container terminal', terminalDetail: 'Open an interactive container shell with administrator privileges. The session remains running when only DSH restarts.',
     newTerminal: 'New session', closeTerminal: 'Close session', terminalIdle: 'No active session', terminalLoading: 'Loading terminal components', terminalLoadFailed: 'Terminal components failed to load. Try again.', terminalStarting: 'Creating session',
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
@@ -168,7 +162,6 @@ const COPY = Object.freeze({
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
     fileConflictTitle: 'Destination already exists', fileConflictDetail: 'Choose how to handle:', conflictOverwrite: 'Overwrite', conflictOverwriteDetail: 'Replace the existing item.', conflictRename: 'Auto rename', conflictRenameDetail: 'Keep both items with a new name.', conflictSkip: 'Skip', conflictSkipDetail: 'Leave the existing item unchanged.', conflictApplyAll: 'Apply to all remaining conflicts', confirmChoice: 'Confirm', operationCompleteWithSkipped: 'File operation completed; skipped {count} conflicting items.',
-    later: 'Remind me later', dismissVersion: 'Do not remind for this version',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
   }),
 })
@@ -218,7 +211,6 @@ let eventSource
 let logSource
 let logRenderFrame
 let autoScroll = true
-let reminder
 let terminalRuntime
 let terminalRuntimeLoad
 let terminalStyleLoad
@@ -738,7 +730,6 @@ function render(next) {
     renderBundledPlugins(plugins, pluginBusy)
     renderUserPlugins(busy)
   }
-  renderReminder(next)
 }
 
 function loadInventories() {
@@ -904,50 +895,6 @@ function writeStorage(key, value) {
     if (value === null) window.localStorage.removeItem(key)
     else window.localStorage.setItem(key, value)
   } catch {}
-}
-
-function parsedStorage(key) {
-  try { return JSON.parse(storageValue(key) ?? 'null') } catch { return null }
-}
-
-function candidateIdentity(candidate) {
-  return candidate.kind === 'stable' ? `stable:${String(candidate.targetSequence)}` : `upstream:${candidate.version}`
-}
-
-function notificationCandidates(next) {
-  if (next?.automaticCheck?.notificationsEnabled !== true) return []
-  const candidates = []
-  if (next.latestAutomatic?.stable) candidates.push({ kind: 'stable', ...next.latestAutomatic.stable })
-  const upstream = next.latestAutomatic?.upstream
-  const held = upstream && (next.holds ?? []).some(hold => hold.dshVersion === upstream.version)
-  if (next.updateChannel === 'experimental' && upstream && !held) candidates.push({ kind: 'upstream', ...upstream })
-  return candidates
-}
-
-function clearSatisfiedDismissals(next) {
-  if (next?.update?.status !== 'success') return
-  const completion = next.update.taskId ?? next.update.updatedAt
-  if (!completion || storageValue(`${NOTICE_PREFIX}:cleared-completion`) === completion) return
-  writeStorage(`${NOTICE_PREFIX}:dismissed:stable`, null)
-  writeStorage(`${NOTICE_PREFIX}:dismissed:upstream`, null)
-  writeStorage(`${NOTICE_PREFIX}:cleared-completion`, completion)
-}
-
-function renderReminder(next) {
-  clearSatisfiedDismissals(next)
-  const now = Date.now()
-  reminder = notificationCandidates(next).find(candidate => {
-    const identity = candidateIdentity(candidate)
-    const snooze = parsedStorage(`${NOTICE_PREFIX}:snooze`)
-    return storageValue(`${NOTICE_PREFIX}:dismissed:${candidate.kind}`) !== identity
-      && !(snooze?.identity === identity && snooze.until > now)
-  })
-  elements['update-reminder'].hidden = reminder === undefined
-  if (reminder === undefined) return
-  elements['reminder-title'].textContent = t(reminder.kind === 'stable' ? 'stableNoticeTitle' : 'upstreamNoticeTitle')
-  elements['reminder-body'].textContent = t(reminder.kind === 'stable' ? 'stableNoticeBody' : 'upstreamNoticeBody', {
-    version: reminder.kind === 'stable' ? reminder.dsh : reminder.version,
-  })
 }
 
 function logLevel(entry) {
@@ -2147,17 +2094,6 @@ elements['clear-logs'].addEventListener('click', () => {
   expandedLogIdentities.clear()
   renderLogs()
 })
-elements['reminder-later'].addEventListener('click', () => {
-  if (reminder === undefined) return
-  writeStorage(`${NOTICE_PREFIX}:snooze`, JSON.stringify({ identity: candidateIdentity(reminder), until: Date.now() + 3_600_000 }))
-  renderReminder(status)
-})
-elements['reminder-dismiss'].addEventListener('click', () => {
-  if (reminder === undefined) return
-  writeStorage(`${NOTICE_PREFIX}:dismissed:${reminder.kind}`, candidateIdentity(reminder))
-  renderReminder(status)
-})
-
 window.addEventListener('beforeunload', () => {
   terminalLeaving = true
   clearTimeout(terminalReconnectTimer)
