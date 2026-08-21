@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { chmod, cp, lchown, lstat, mkdir, open, readdir, readFile, readlink, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
+import { createArchive, extractArchive, normalizeArchiveFormat } from './archives.mjs'
 import {
   FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager, FileSizeManager, UnixIdentityResolver,
   fileError, isManagedPath, normalizeAbsolutePath,
 } from './index.mjs'
 
-const OPERATIONS = new Set(['mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'attributes'])
+const OPERATIONS = new Set(['mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'attributes', 'archive', 'extract'])
 const DEFAULT_PROTECTED_DELETE_ROOTS = ['/', '/data', '/data/dsh', '/data/platform', '/workspace', '/run/dsh-platform/deployment']
 
 function now() { return new Date().toISOString() }
@@ -22,7 +23,7 @@ async function syncDirectory(path) {
 }
 
 function publicTask(task) {
-  const { completion, cancelRequested, ...value } = task
+  const { completion, cancelRequested, abortController, ...value } = task
   return { ...value, cancelRequested: cancelRequested === true }
 }
 
@@ -152,9 +153,10 @@ export class FileTaskManager {
     const destination = input.destination === undefined ? null : normalizeAbsolutePath(input.destination)
     const conflict = input.conflict ?? 'reject'
     if (!['reject', 'overwrite', 'rename'].includes(conflict)) throw new FileManagerError('file task conflict mode is invalid')
-    if (['copy', 'move', 'delete', 'rename'].includes(input.operation) && sources.length === 0) throw new FileManagerError('file task sources are required')
+    if (['copy', 'move', 'delete', 'rename', 'archive', 'extract'].includes(input.operation) && sources.length === 0) throw new FileManagerError('file task sources are required')
+    if (input.operation === 'extract' && sources.length !== 1) throw new FileManagerError('archive extraction requires one source')
     if (input.operation === 'attributes' && sources.length !== 1) throw new FileManagerError('attribute changes require one source')
-    if (['mkdir', 'touch', 'copy', 'move', 'rename'].includes(input.operation) && destination === null) throw new FileManagerError('file task destination is required')
+    if (['mkdir', 'touch', 'copy', 'move', 'rename', 'archive', 'extract'].includes(input.operation) && destination === null) throw new FileManagerError('file task destination is required')
     if (input.operation === 'delete' && sources.some(source => this.protectedRoots.has(source.path))) throw new FileManagerError('protected root cannot be deleted', 403, 'PROTECTED_ROOT')
     const managed = sources.some(source => this.isManaged(source.path)) || (destination !== null && this.isManaged(destination))
     if (managed && this.platformBusy()) throw new FileManagerError('a platform operation is already running', 409, 'FILE_TASK_CONFLICT')
@@ -162,6 +164,7 @@ export class FileTaskManager {
       schema: 1, taskId: randomUUID(), operation: input.operation, status: 'running', phase: 'validating',
       sources, destination, destinationRevision: input.destinationRevision ?? null, conflict, managed,
       attributes: input.operation === 'attributes' ? normalizeAttributes(input.attributes) : null,
+      archiveFormat: ['archive', 'extract'].includes(input.operation) ? normalizeArchiveFormat(input.archiveFormat) : null,
       processedBytes: 0, totalBytes: 0, processedEntries: 0, totalEntries: 0, currentPath: null,
       published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
       error: null, errorCode: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
@@ -201,6 +204,7 @@ export class FileTaskManager {
     if (task.status !== 'running') throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
     if (['destination-committed', 'source-hidden', 'cleaning'].includes(task.phase)) throw new FileManagerError('file task passed its cancellation boundary', 409, 'FILE_TASK_COMMITTED')
     task.cancelRequested = true
+    task.abortController?.abort()
     this.#publish(task)
     return publicTask(task)
   }
@@ -239,6 +243,8 @@ export class FileTaskManager {
       else if (task.operation === 'move') await this.#copy(task, true)
       else if (task.operation === 'delete') await this.#delete(task)
       else if (task.operation === 'attributes') await this.#attributes(task)
+      else if (task.operation === 'archive') await this.#archive(task)
+      else if (task.operation === 'extract') await this.#extract(task)
       await this.#terminal(task, 'success', 'completed')
       await this.report(`file-task.${task.operation}.completed`, publicTask(task))
     } catch (error) {
@@ -354,6 +360,75 @@ export class FileTaskManager {
       if (details.isFile()) task.processedBytes += details.size
       if (task.processedEntries % 100 === 0) await this.#phase(task, 'mutating')
     }
+    task.currentPath = null
+  }
+
+  async #archive(task) {
+    const output = await uniqueDestination(task.destination, task.conflict)
+    const sourceRoot = join(dirname(output), `.dsh-archive-input-${task.taskId}`)
+    const staging = join(dirname(output), `.dsh-archive-${task.taskId}.tmp`)
+    task.staging.push(sourceRoot, staging)
+    await mkdir(sourceRoot)
+    const names = new Set()
+    for (const source of task.sources) {
+      const name = cleanName(source.path)
+      if (names.has(name)) throw new FileManagerError('archive source names must be unique', 409, 'FILE_EXISTS')
+      names.add(name)
+      task.currentPath = source.path
+      await copyEntry(source.path, join(sourceRoot, name))
+      task.processedEntries += 1
+      await this.#phase(task, 'staging')
+    }
+    if (task.cancelRequested) throw new Error('file task cancelled')
+    const controller = new AbortController()
+    task.abortController = controller
+    try {
+      await createArchive({ format: task.archiveFormat, sourceRoot, output: staging, signal: controller.signal })
+    } finally {
+      task.abortController = undefined
+    }
+    if (task.cancelRequested) throw new Error('file task cancelled')
+    if (task.conflict === 'overwrite' && await exists(output)) await rm(output, { recursive: true })
+    await rename(staging, output)
+    task.staging = task.staging.filter(path => path !== staging)
+    task.published.push(output)
+    task.processedBytes = task.totalBytes
+    await rm(sourceRoot, { recursive: true, force: true })
+    task.staging = task.staging.filter(path => path !== sourceRoot)
+    task.currentPath = null
+    await this.#phase(task, 'destination-committed')
+  }
+
+  async #extract(task) {
+    const archive = task.sources[0].path
+    const staging = join(task.destination, `.dsh-extract-${task.taskId}.tmp`)
+    task.staging.push(staging)
+    task.currentPath = archive
+    await this.#persist(task)
+    const controller = new AbortController()
+    task.abortController = controller
+    let metrics
+    try {
+      metrics = await extractArchive({ format: task.archiveFormat, archive, output: staging, signal: controller.signal })
+    } finally {
+      task.abortController = undefined
+    }
+    task.totalEntries = metrics.entries
+    task.totalBytes = metrics.bytes
+    for (const name of await readdir(staging)) {
+      if (task.cancelRequested) throw new Error('file task cancelled')
+      const source = join(staging, name)
+      const destination = await uniqueDestination(join(task.destination, name), task.conflict)
+      if (task.conflict === 'overwrite' && await exists(destination)) await rm(destination, { recursive: true })
+      await rename(source, destination)
+      task.published.push(destination)
+      const item = await treeMetrics(destination)
+      task.processedEntries += item.entries
+      task.processedBytes += item.bytes
+      await this.#phase(task, 'publishing')
+    }
+    await rm(staging, { recursive: true, force: true })
+    task.staging = task.staging.filter(path => path !== staging)
     task.currentPath = null
   }
 

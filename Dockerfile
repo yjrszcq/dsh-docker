@@ -44,13 +44,16 @@ RUN apt-get update \
         git \
         jq \
         openssh-client \
+        p7zip-full \
         procps \
         python3 \
         python3-venv \
         ripgrep \
         sudo \
         tini \
+        unzip \
         util-linux \
+        zip \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
     && npm install --global "pnpm@${PNPM_VERSION}" \

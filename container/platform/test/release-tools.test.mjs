@@ -159,6 +159,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/modules/file-manager/transfers.mjs',
     'control-plane/modules/file-manager/editor.mjs',
     'control-plane/modules/file-manager/tasks.mjs',
+    'control-plane/modules/file-manager/archives.mjs',
   ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
   assert.equal(bootstrapEntries.some(name => name.endsWith('.node')), false)
 

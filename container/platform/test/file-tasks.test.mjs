@@ -288,3 +288,53 @@ test('managed mutations expose a lease and reject active platform work', async (
     operation: 'delete', sources: [{ path: '/custom/workspace', revision: 'sha256:unused' }],
   }), error => error.statusCode === 403)
 })
+
+test('creates and extracts zip, 7z, and tar.gz archives through file tasks', async () => {
+  for (const [format, extension] of [['zip', 'zip'], ['7z', '7z'], ['tar.gz', 'tar.gz']]) {
+    const { files, manager, inventory } = await setup(`dsh-file-archive-${format.replace('.', '-')}-`)
+    const sourcePath = join(files, 'source')
+    await mkdir(sourcePath)
+    await writeFile(join(sourcePath, 'nested.txt'), `content-${format}`)
+    const source = await inventory.stat(sourcePath)
+    const archivePath = join(files, `bundle.${extension}`)
+    const archived = await finish(manager, manager.start({
+      operation: 'archive', archiveFormat: format,
+      sources: [{ path: source.path, revision: source.revision }], destination: archivePath,
+    }))
+    assert.equal(archived.status, 'success')
+    assert.equal((await stat(archivePath)).isFile(), true)
+    const extractRoot = join(files, 'extracted')
+    await mkdir(extractRoot)
+    const archive = await inventory.stat(archivePath)
+    const extracted = await finish(manager, manager.start({
+      operation: 'extract', archiveFormat: format,
+      sources: [{ path: archive.path, revision: archive.revision }], destination: extractRoot,
+    }))
+    assert.equal(extracted.status, 'success')
+    assert.equal(await readFile(join(extractRoot, 'source', 'nested.txt'), 'utf8'), `content-${format}`)
+  }
+})
+
+test('rejects invalid archive formats and escaping extracted links', async () => {
+  const { files, manager, inventory } = await setup('dsh-file-archive-unsafe-')
+  const sourcePath = join(files, 'source')
+  await mkdir(sourcePath)
+  await symlink('../../outside', join(sourcePath, 'escape'))
+  const source = await inventory.stat(sourcePath)
+  assert.throws(() => manager.start({
+    operation: 'archive', archiveFormat: 'rar', sources: [{ path: source.path, revision: source.revision }],
+    destination: join(files, 'bad.rar'),
+  }), /format/)
+  const archivePath = join(files, 'unsafe.tar.gz')
+  assert.equal((await finish(manager, manager.start({
+    operation: 'archive', archiveFormat: 'tar.gz', sources: [{ path: source.path, revision: source.revision }], destination: archivePath,
+  }))).status, 'success')
+  const archive = await inventory.stat(archivePath)
+  const destination = join(files, 'destination')
+  await mkdir(destination)
+  const extracted = await finish(manager, manager.start({
+    operation: 'extract', archiveFormat: 'tar.gz', sources: [{ path: archive.path, revision: archive.revision }], destination,
+  }))
+  assert.equal(extracted.status, 'failed')
+  assert.equal(extracted.errorCode, 'ARCHIVE_UNSAFE')
+})
