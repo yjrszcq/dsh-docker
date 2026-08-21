@@ -884,6 +884,7 @@ test('standalone console keeps localized feature parity on the shared Management
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
   const script = await readFile(new URL('app.js', publicRoot), 'utf8')
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
+  const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/system-plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
   for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
@@ -976,6 +977,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /cursorStyle: 'block'/)
   assert.match(script, /cursorInactiveStyle: 'outline'/)
   assert.match(script, /terminalEmulator\?\.focus\(\)/)
+  assert.match(serverSource, /style-src 'self' 'unsafe-inline'/)
+  assert.match(serverSource, /script-src 'self'; style-src/)
   assert.match(html, /id="terminal-loader"[^>]*hidden/)
   assert.doesNotMatch(html, /href="\.\/vendor\/xterm\.css"/)
   assert.match(script, /stylesheet\.href = '\.\/vendor\/xterm\.css'/)
