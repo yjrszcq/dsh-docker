@@ -197,6 +197,7 @@ let acting = false
 let discardingPluginDraft = false
 let userPluginSubmitting = false
 let userPluginFeedback = null
+const visibleOperationTasks = new Set()
 let eventSource
 let logSource
 let logRenderFrame
@@ -351,6 +352,14 @@ function setRuntimeResetExpanded(expanded) {
   elements['runtime-reset-confirmation'].hidden = !expanded
   elements['runtime-reset'].setAttribute('aria-expanded', String(expanded))
   elements['runtime-reset'].textContent = t(expanded ? 'cancelRuntimeReset' : 'runtimeReset')
+}
+
+function operationResultVisible(operation, activeStatus) {
+  if (operation?.status === activeStatus) {
+    if (operation.taskId) visibleOperationTasks.add(operation.taskId)
+    return true
+  }
+  return operation?.taskId !== null && operation?.taskId !== undefined && visibleOperationTasks.has(operation.taskId)
 }
 
 function holdReason(hold) {
@@ -588,9 +597,10 @@ function renderUserPlugins(busy) {
     validated: 'userPluginPhaseValidated', paused: 'userPluginPhasePaused', snapshotted: 'userPluginPhaseSnapshotted',
     mutating: 'userPluginPhaseMutating', committed: 'userPluginPhaseCommitted', restarting: 'userPluginPhaseRestarting', restoring: 'userPluginPhaseRestoring',
   }[operation.phase]
+  const operationVisible = operationResultVisible(operation, 'running')
   const feedback = operation.status === 'running' ? t(phaseKey ?? 'userPluginApplying')
-    : operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
-      : operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
+    : operationVisible && operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
+      : operationVisible && operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
   elements['user-plugin-operation'].hidden = !feedback
 }
@@ -601,7 +611,10 @@ function render(next) {
   const update = next.update ?? {}
   const restart = next.dshRestart ?? {}
   const runtimeReset = next.runtimeReset ?? {}
+  const restartVisible = operationResultVisible(restart, 'restarting')
+  const runtimeResetVisible = operationResultVisible(runtimeReset, 'resetting')
   const pluginOperation = next.systemPluginOperation ?? {}
+  const pluginOperationVisible = operationResultVisible(pluginOperation, 'running')
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
   const checkingUpdates = checking || update.status === 'checking'
@@ -670,14 +683,14 @@ function render(next) {
   elements['notifications-enabled'].disabled = acting || !automatic.enabled
 
   elements['restart-dsh'].disabled = busy
-  elements['restart-state'].hidden = restart.status === 'idle'
+  elements['restart-state'].hidden = !restartVisible
   elements['restart-state'].textContent = restart.status === 'restarting'
     ? t('restarting') : restart.status === 'success' ? t('restartComplete') : restart.status === 'failed' ? t('restartFailed') : ''
   elements['runtime-reset'].disabled = busy
   elements['confirm-runtime-reset'].disabled = busy
   elements['runtime-reset'].textContent = runtimeReset.status === 'resetting'
     ? t('runtimeResetting') : t(runtimeResetExpanded ? 'cancelRuntimeReset' : 'runtimeReset')
-  elements['runtime-reset-state'].hidden = runtimeReset.status === 'idle'
+  elements['runtime-reset-state'].hidden = !runtimeResetVisible
   elements['runtime-reset-state'].textContent = runtimeReset.status === 'resetting'
     ? t('runtimeResetting')
     : runtimeReset.status === 'success'
@@ -685,7 +698,7 @@ function render(next) {
       : runtimeReset.status === 'failed'
         ? `${t('runtimeResetFailed')}: ${localizedError(runtimeReset.error ?? '')}`
         : ''
-  elements['plugin-operation'].hidden = !['running', 'failed'].includes(pluginOperation.status)
+  elements['plugin-operation'].hidden = !pluginOperationVisible
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
   elements['plugin-restart-required'].hidden = !plugins.some(plugin => plugin.pendingRestart)
@@ -765,7 +778,8 @@ async function act(path, options) {
   acting = true
   clearError()
   try {
-    await api(path, options)
+    const result = await api(path, options)
+    if (result?.taskId) visibleOperationTasks.add(result.taskId)
     await loadStatus()
     return true
   } catch (error) {
@@ -806,6 +820,7 @@ async function applyUserPluginDraft() {
         actions: [...userPluginDraft].map(([name, action]) => ({ name, action })),
       },
     })
+    visibleOperationTasks.add(task.taskId)
     userPluginDraft.clear()
     await loadStatus()
     await waitForUserPluginTask(task.taskId)
@@ -1513,6 +1528,15 @@ async function navigateFiles(path, { history = true, append = false } = {}) {
   }
 }
 
+function renderFileSort() {
+  for (const button of document.querySelectorAll('[data-file-sort]')) {
+    const order = button.dataset.fileSort === fileSort ? fileOrder : ''
+    if (order === '') delete button.dataset.sortOrder
+    else button.dataset.sortOrder = order
+    button.closest('th').setAttribute('aria-sort', order === 'asc' ? 'ascending' : order === 'desc' ? 'descending' : 'none')
+  }
+}
+
 function updateEditorLines() {
   const count = elements['file-editor-content'].value.split('\n').length
   elements['file-editor-lines'].textContent = Array.from({ length: count }, (_, index) => String(index + 1)).join('\n')
@@ -1783,6 +1807,7 @@ elements['file-refresh'].addEventListener('click', () => { void navigateFiles(fi
 for (const button of document.querySelectorAll('[data-file-sort]')) button.addEventListener('click', () => {
   if (fileSort === button.dataset.fileSort) fileOrder = fileOrder === 'asc' ? 'desc' : 'asc'
   else { fileSort = button.dataset.fileSort; fileOrder = 'asc' }
+  renderFileSort()
   void navigateFiles(filePath, { history: false })
 })
 elements['file-search'].addEventListener('input', renderFiles)
