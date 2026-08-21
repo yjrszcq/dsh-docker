@@ -55,6 +55,7 @@ test('standalone candidate failures notify without exposing secrets to candidate
   assert.match(workflow, /DSH Candidate Validation/)
   assert.match(workflow, /github\.event\.workflow_run\.event == 'pull_request'/)
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'failure'/)
+  assert.match(workflow, /github\.event\.workflow_run\.head_branch != 'automation\/dsh-upstream-candidate'/)
   assert.match(workflow, /github\.event\.workflow_run\.html_url/)
   assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
   assert.doesNotMatch(workflow, /actions\/checkout|\brun:/)
