@@ -206,6 +206,17 @@ test('Platform Management compacts multiline JSON only in the log presentation',
   ])
 })
 
+test('Platform Management does not present ordinary DSH stderr as an error', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))
+  const logLevel = new Function(`${helpers}; return logLevel`)()
+  assert.equal(logLevel({
+    source: 'dsh-runtime', stream: 'stderr', level: 'error', message: '[net-proxy] 已启用代理 http://172.17.0.1:7890',
+  }), 'info')
+  assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'Error: startup failed' }), 'error')
+  assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'warning: retrying' }), 'warning')
+})
+
 test('Platform Management limits the processed log entries instead of raw fragments', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))

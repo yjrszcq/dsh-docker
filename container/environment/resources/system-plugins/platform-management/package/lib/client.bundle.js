@@ -107,8 +107,13 @@ function VersionCell({ label, version, detail }) {
 }
 
 function logLevel(entry) {
+  if (entry?.stream === 'stderr') {
+    const message = String(entry?.message ?? '').trim()
+    if (/^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(message)) return 'error'
+    if (/\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(message)) return 'warning'
+    return 'info'
+  }
   if (['debug', 'info', 'warning', 'error'].includes(entry?.level)) return entry.level
-  if (entry?.stream === 'stderr') return 'error'
   return /^\s*(warn(?:ing)?)[\s:]/i.test(entry?.message ?? '') ? 'warning' : 'info'
 }
 

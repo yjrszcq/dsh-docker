@@ -156,7 +156,7 @@ test('passes a platform-management envelope through without persisting it twice'
     platformLog: 'dsh-platform-log-v1', taskId: 'task-one',
   })
   child.stdout.end(`${audit}\nplain output\n`)
-  child.stderr.end('plain error\n')
+  child.stderr.end('[net-proxy] 已启用代理 http://172.17.0.1:7890\nwarning: slow proxy\nplain error\n')
   await new Promise(resolve => setImmediate(resolve))
   await logs.queue
 
@@ -164,8 +164,13 @@ test('passes a platform-management envelope through without persisting it twice'
   assert.equal(JSON.parse(stdout[1]).source, 'platform-management')
   assert.equal(JSON.parse(stderr[0]).stream, 'stderr')
   assert.deepEqual(
-    (await logs.query({ sources: ['platform-management'] })).map(entry => [entry.stream, entry.message]),
-    [['stdout', 'plain output'], ['stderr', 'plain error']],
+    (await logs.query({ sources: ['platform-management'] })).map(entry => [entry.stream, entry.level, entry.message]),
+    [
+      ['stdout', 'info', 'plain output'],
+      ['stderr', 'info', '[net-proxy] 已启用代理 http://172.17.0.1:7890'],
+      ['stderr', 'warning', 'warning: slow proxy'],
+      ['stderr', 'error', 'plain error'],
+    ],
   )
   assert.deepEqual(await logs.query({ sources: ['audit'] }), [])
   const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')

@@ -56,6 +56,16 @@ function parseForwardedLine(line) {
   return entry
 }
 
+export function capturedLogLevel(stream, message) {
+  if (stream !== 'stderr') return 'info'
+  const text = String(message).trim()
+  if (/^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(text)) {
+    return 'error'
+  }
+  if (/\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(text)) return 'warning'
+  return 'info'
+}
+
 export class JsonlLogManager extends EventEmitter {
   constructor({
     root,
@@ -301,12 +311,16 @@ export class JsonlLogManager extends EventEmitter {
         for (const line of lines) {
           const forwarded = acceptForwarded && this.output !== undefined ? parseForwardedLine(line) : undefined
           if (forwarded === undefined) {
-            void this.append(source, streamName, line).catch(error => this.emit('error', error))
+            void this.append(source, streamName, line, { level: capturedLogLevel(streamName, line) })
+              .catch(error => this.emit('error', error))
           } else this.writeOutput(forwarded.stream, line)
         }
       })
       stream.once('end', () => {
-        if (pending !== '') void this.append(source, streamName, pending).catch(error => this.emit('error', error))
+        if (pending !== '') {
+          void this.append(source, streamName, pending, { level: capturedLogLevel(streamName, pending) })
+            .catch(error => this.emit('error', error))
+        }
       })
     }
   }
