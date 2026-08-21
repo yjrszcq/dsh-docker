@@ -151,6 +151,41 @@ test('exec health probes use only their exit status and do not emit component lo
   await runner.stop()
 })
 
+test('component environment replaces inherited root package-manager paths', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-component-environment-'))
+  const output = join(temp, 'environment.json')
+  const inspect = join(temp, 'inspect.mjs')
+  await writeFile(inspect, `import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], JSON.stringify({ HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, PNPM_HOME: process.env.PNPM_HOME }))`)
+  const candidate = component('dsh-runtime', inspect)
+  candidate.command = command(inspect, [output])
+  candidate.environment = {
+    HOME: '/home/node',
+    XDG_CONFIG_HOME: '/home/node/.config',
+    PNPM_HOME: '/home/node/.local/share/pnpm',
+  }
+  const original = {
+    HOME: process.env.HOME,
+    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    PNPM_HOME: process.env.PNPM_HOME,
+  }
+  process.env.HOME = '/root'
+  process.env.XDG_CONFIG_HOME = '/root/.config'
+  process.env.PNPM_HOME = '/root/.local/share/pnpm'
+  try {
+    const runner = new EnvironmentRunner({
+      environmentRoot: await environment([candidate]),
+      capture: () => {},
+    })
+    await runner.start()
+    assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), candidate.environment)
+  } finally {
+    for (const [name, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
 test('stops already-started services when a later component fails', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-failure-'))
   const service = join(temp, 'service.mjs')

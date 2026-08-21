@@ -7,7 +7,16 @@
     "args": ["web", "--patch", "/run/dsh-platform/views/system-plugins/cordis.patch.yml", "--host", "127.0.0.1", "--port", "3079"],
     "timeoutSeconds": 30
   },
-  "environment": {},
+  "environment": {
+    "HOME": "/home/node",
+    "LOGNAME": "node",
+    "NPM_CONFIG_CACHE": "/home/node/.cache/npm",
+    "PNPM_HOME": "/home/node/.local/share/pnpm",
+    "USER": "node",
+    "XDG_CACHE_HOME": "/home/node/.cache",
+    "XDG_CONFIG_HOME": "/home/node/.config",
+    "XDG_DATA_HOME": "/home/node/.local/share"
+  },
   "lifecycle": {
     "prepare": null,
     "preStart": null,
