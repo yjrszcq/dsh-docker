@@ -43,7 +43,7 @@ const COPY = Object.freeze({
     returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：',
     confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
     automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭',
-    checkInterval: '检查频率', updateNotifications: 'DSH 页面更新提醒', updateNotificationsDetail: '自动检查发现新版本时，在 DSH 页面中提醒。',
+    checkInterval: '检查频率', updateNotifications: 'DSH 更新提醒', updateNotificationsDetail: '自动检查发现新版本时，在 DSH 页面中提醒。',
     interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
     maintenance: '重启 DSH', maintenanceDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH',
     restarting: '正在重新启动 DSH', restartComplete: 'DSH 已重新启动', restartFailed: 'DSH 重启失败',

@@ -924,7 +924,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(script, /NOTICE_PREFIX|notificationCandidates|renderReminder|candidateIdentity/)
   assert.doesNotMatch(html, /id="update-reminder"|id="reminder-later"|id="reminder-dismiss"/)
   assert.doesNotMatch(style, /\.update-reminder/)
-  assert.match(script, /updateNotifications: 'DSH 页面更新提醒'/)
+  assert.match(script, /updateNotifications: 'DSH 更新提醒'/)
   assert.match(script, /updateNotifications: 'DSH page update notifications'/)
   assert.match(script, /updateNotificationsDetail: '自动检查发现新版本时，在 DSH 页面中提醒。'/)
   assert.match(script, /LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'/)

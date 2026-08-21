@@ -153,7 +153,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /shell\.overlay/)
   assert.match(source, /latestAutomatic/)
   assert.match(source, /notificationsEnabled/)
-  assert.match(source, /updateNotifications: 'DSH 页面更新提醒'/)
+  assert.match(source, /updateNotifications: 'DSH 更新提醒'/)
   assert.match(source, /updateNotifications: 'DSH page update notifications'/)
   assert.match(source, /不再提醒此版本/)
   assert.match(source, /Do not remind for this version/)
