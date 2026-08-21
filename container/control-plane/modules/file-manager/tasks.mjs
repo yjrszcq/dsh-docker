@@ -146,6 +146,7 @@ export class FileTaskManager {
     if (input?.operation === 'search') return this.search.start(input)
     if (input?.operation === 'size') return this.sizes.start(input)
     if (input === null || typeof input !== 'object' || !OPERATIONS.has(input.operation)) throw new FileManagerError('file task operation is invalid')
+    if (this.activeMutation?.status !== 'running') this.activeMutation = undefined
     if (this.activeMutation !== undefined) throw new FileManagerError('a file operation is already running', 409, 'FILE_TASK_CONFLICT')
     const sources = Array.isArray(input.sources) ? input.sources.map(source => ({ path: normalizeAbsolutePath(source.path), revision: source.revision })) : []
     const destination = input.destination === undefined ? null : normalizeAbsolutePath(input.destination)
