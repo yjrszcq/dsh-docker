@@ -6,6 +6,7 @@ const workflowUrl = new URL('../../../.github/workflows/dsh-upstream-update.yml'
 const validationUrl = new URL('../../../.github/workflows/dsh-candidate-validation.yml', import.meta.url)
 const productionUrl = new URL('../../../.github/workflows/production-publish.yml', import.meta.url)
 const dockerUrl = new URL('../../../.github/workflows/docker.yaml', import.meta.url)
+const gotifyWorkflow = 'yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988'
 
 test('upstream workflow discovers candidates without production credentials', async () => {
   const workflow = await readFile(workflowUrl, 'utf8')
@@ -26,7 +27,7 @@ test('upstream workflow discovers candidates without production credentials', as
 
 test('upstream workflow calls only the pinned reusable Gotify interface', async () => {
   const workflow = await readFile(workflowUrl, 'utf8')
-  assert.match(workflow, /yjrszcq\/github-workflows\/\.github\/workflows\/gotify-notify\.yml@v1/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 3)
   assert.match(workflow, /gotify_url: \$\{\{ secrets\.GOTIFY_URL \}\}/)
   assert.match(workflow, /gotify_token: \$\{\{ secrets\.GOTIFY_TOKEN \}\}/)
   assert.doesNotMatch(workflow, /secrets: inherit/)
@@ -73,6 +74,7 @@ test('production publication is protected, monotonic, and exclusively owns Relea
   assert.match(workflow, /--latest/)
   assert.match(workflow, /--json isDraft/)
   assert.match(workflow, /diff -u "\$RUNNER_TEMP\/local-assets"/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
   assert.doesNotMatch(workflow, /RECOVERY_PRIVATE|secrets: inherit/)
 })
 

@@ -190,7 +190,7 @@ jobs:
   notify-published:
     name: Notify production publication
     needs: publish
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
       title: DSH ${{ needs.publish.outputs.dsh_version }} 正式支持版本已发布
       message: >-

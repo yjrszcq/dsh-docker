@@ -200,7 +200,7 @@ jobs:
     name: Notify upstream discovery
     needs: discover
     if: needs.discover.outputs.changed == 'true'
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
       title: 发现 DSH 上游新版本 ${{ needs.discover.outputs.upstream }}
       message: >-
@@ -216,7 +216,7 @@ jobs:
     name: Notify candidate success
     needs: [discover, validate-candidate]
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result == 'success'
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
       title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证通过
       message: >-
@@ -232,7 +232,7 @@ jobs:
     name: Notify candidate failure
     needs: [discover, validate-candidate]
     if: always() && needs.discover.outputs.changed == 'true' && needs.validate-candidate.result != 'success'
-    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@v1
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
     with:
       title: DSH ${{ needs.discover.outputs.upstream }} 候选版本验证失败
       message: >-
