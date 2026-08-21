@@ -543,6 +543,7 @@ function renderUserPlugins(busy) {
     if (plugin.reservedNameConflict) badges.append(userPluginBadge(t('userPluginReserved'), 'danger'))
     if (plugin.pendingRestart) badges.append(userPluginBadge(t('pluginPendingRestart'), 'pending'))
     if (action) badges.append(userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending'))
+    heading.append(badges)
     const metadata = document.createElement('dl')
     for (const [label, value] of [
       [t('userPluginVersion'), plugin.version], [t('userPluginSpec'), plugin.spec], [t('userPluginSource'), userPluginSource(plugin.source)],
@@ -555,7 +556,7 @@ function renderUserPlugins(busy) {
       field.append(term, description)
       metadata.append(field)
     }
-    identity.append(heading, badges, metadata)
+    identity.append(heading, metadata)
     if (plugin.metadataError) {
       const detail = document.createElement('p')
       detail.className = 'user-plugin-error'
@@ -574,9 +575,7 @@ function renderUserPlugins(busy) {
     checkbox.addEventListener('change', event => setUserPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
     const track = document.createElement('span')
     track.setAttribute('aria-hidden', 'true')
-    const toggleLabel = document.createElement('strong')
-    toggleLabel.textContent = checkbox.checked ? t('enabled') : t('disabled')
-    toggle.append(checkbox, track, toggleLabel)
+    toggle.append(checkbox, track)
     const uninstall = document.createElement('button')
     uninstall.type = 'button'
     uninstall.className = action === 'uninstall' ? 'secondary' : 'danger-text'
@@ -613,9 +612,6 @@ function renderUserPlugins(busy) {
       : operationVisible && operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
   elements['user-plugin-operation'].hidden = !feedback
-  elements['user-plugin-restart-required'].hidden = userPluginInventory.restartRequired !== true
-  elements['user-plugin-restart-dsh'].disabled = locked
-  elements['user-plugin-restart-dsh'].textContent = status?.dshRestart?.status === 'restarting' ? t('restarting') : t('restartDsh')
 }
 
 function render(next) {
@@ -1803,7 +1799,6 @@ elements['automatic-interval'].addEventListener('change', event => { void saveAu
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
-elements['user-plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
 elements['cancel-runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(false))
 elements['confirm-runtime-reset'].addEventListener('click', async () => {

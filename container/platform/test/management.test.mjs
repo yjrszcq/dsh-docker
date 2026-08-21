@@ -956,7 +956,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /pluginRestartRequired: 'Restart DSH required'/)
   assert.match(script, /userPluginRestartRequired: '需要重新启动 DSH'/)
   assert.match(script, /userPluginRestartRequired: 'Restart DSH required'/)
-  assert.match(html, /id="user-plugin-restart-required"[^>]*hidden/)
+  assert.doesNotMatch(html, /id="user-plugin-restart-required"/)
   assert.match(script, /plugin\.pendingRestart[^\n]*pluginPendingRestart/)
   assert.match(script, /plugin\.description\?\.\[locale\]/)
   assert.match(script, /pluginPendingRestart: '待重启'/)
