@@ -3,7 +3,7 @@ import { cp, lstat, mkdir, open, readdir, readFile, readlink, rename, rm } from 
 import { basename, dirname, join } from 'node:path'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import {
-  FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager,
+  FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager, FileSizeManager,
   fileError, isManagedPath, normalizeAbsolutePath,
 } from './index.mjs'
 
@@ -94,12 +94,13 @@ export class FileTaskManager {
     this.tasks = new Map()
     this.activeMutation = undefined
     this.search = new FileSearchManager({ inventory, onState: state => onState(state) })
+    this.sizes = new FileSizeManager({ inventory, onState: state => onState(state) })
   }
 
   get hasManagedMutation() { return this.activeMutation?.managed === true }
 
   wouldManage(input) {
-    if (input?.operation === 'search') return false
+    if (['search', 'size'].includes(input?.operation)) return false
     const sourceManaged = Array.isArray(input?.sources) && input.sources.some(source => typeof source?.path === 'string' && this.isManaged(source.path))
     return sourceManaged || (typeof input?.destination === 'string' && this.isManaged(input.destination))
   }
@@ -122,6 +123,7 @@ export class FileTaskManager {
 
   start(input) {
     if (input?.operation === 'search') return this.search.start(input)
+    if (input?.operation === 'size') return this.sizes.start(input)
     if (input === null || typeof input !== 'object' || !OPERATIONS.has(input.operation)) throw new FileManagerError('file task operation is invalid')
     if (this.activeMutation !== undefined) throw new FileManagerError('a file operation is already running', 409, 'FILE_TASK_CONFLICT')
     const sources = Array.isArray(input.sources) ? input.sources.map(source => ({ path: normalizeAbsolutePath(source.path), revision: source.revision })) : []
@@ -147,17 +149,25 @@ export class FileTaskManager {
   }
 
   list() {
-    return [...this.search.list(), ...[...this.tasks.values()].map(publicTask)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100)
+    return [...this.search.list(), ...this.sizes.list(), ...[...this.tasks.values()].map(publicTask)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100)
   }
 
   get(taskId, options = {}) {
     if (this.tasks.has(taskId)) return publicTask(this.tasks.get(taskId))
-    return this.search.get(taskId, options)
+    try { return this.search.get(taskId, options) } catch (error) {
+      if (error?.statusCode !== 404) throw error
+      return this.sizes.get(taskId)
+    }
   }
 
   cancel(taskId) {
     const task = this.tasks.get(taskId)
-    if (task === undefined) return this.search.cancel(taskId)
+    if (task === undefined) {
+      try { return this.search.cancel(taskId) } catch (error) {
+        if (error?.statusCode !== 404) throw error
+        return this.sizes.cancel(taskId)
+      }
+    }
     if (task.status !== 'running') throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
     if (['destination-committed', 'source-hidden', 'cleaning'].includes(task.phase)) throw new FileManagerError('file task passed its cancellation boundary', 409, 'FILE_TASK_COMMITTED')
     task.cancelRequested = true

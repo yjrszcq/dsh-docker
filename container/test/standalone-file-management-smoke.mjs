@@ -78,6 +78,16 @@ await request('files/content', { method: 'PUT', body: { path: dshFile, revision:
 assert.equal((await request(`files/content?path=${encodeURIComponent(dshFile)}`)).content, '{"recovered":true}\n')
 
 const searchRoot = await request(`files/list?path=${encodeURIComponent(workspaceRoot)}`)
+assert.ok(searchRoot.entries.every(entry => typeof entry.user === 'string' && typeof entry.group === 'string'))
+const sizeTask = await request('files/tasks', { method: 'POST', body: { operation: 'size', path: workspaceRoot, revision: searchRoot.revision } })
+let sizeResult
+for (let attempt = 0; attempt < 100; attempt += 1) {
+  sizeResult = await request(`files/tasks/${sizeTask.taskId}`)
+  if (sizeResult.status !== 'running') break
+  await new Promise(resolve => setTimeout(resolve, 10))
+}
+assert.equal(sizeResult.status, 'success')
+assert.ok(sizeResult.bytes >= 10)
 const search = await request('files/tasks', { method: 'POST', body: { operation: 'search', path: workspaceRoot, revision: searchRoot.revision, query: 'uploaded' } })
 let searchResult
 for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -94,4 +104,4 @@ await task({ operation: 'delete', sources: [{ path: workspace.path, revision: wo
 await assert.rejects(item(workspaceRoot), /returned 404/)
 await assert.rejects(item(dshRoot), /returned 404/)
 
-console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, dshUnavailable: true }))
+console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, directoryBytes: sizeResult.bytes, dshUnavailable: true }))

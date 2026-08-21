@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   createManagedPathMatcher, fileManagerLocations, FileInventory, FileManagerError,
-  FileRevisionConflictError, FileSearchManager, isManagedPath, normalizeAbsolutePath,
+  FileRevisionConflictError, FileSearchManager, FileSizeManager, isManagedPath, normalizeAbsolutePath,
 } from '../../control-plane/modules/file-manager/index.mjs'
 
 test('normalizes absolute paths and rejects unsafe path representations', () => {
@@ -67,6 +67,25 @@ test('reads only bounded UTF-8 regular files and detects binary content', async 
   await writeFile(join(root, 'binary'), Buffer.from([1, 0, 2]))
   await assert.rejects(inventory.content(join(root, 'binary')), error => error.statusCode === 415)
   await assert.rejects(inventory.content(root), error => error.statusCode === 415)
+})
+
+test('reports container user and group and calculates directory size without following links', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-size-'))
+  await mkdir(join(root, 'nested'))
+  await writeFile(join(root, 'one.txt'), '1234')
+  await writeFile(join(root, 'nested', 'two.txt'), '567890')
+  await symlink('one.txt', join(root, 'link'))
+  const identity = { resolve: async () => ({ user: 'node', group: 'node' }) }
+  const inventory = new FileInventory({ identity })
+  const listing = await inventory.list(root)
+  assert.equal(listing.entries.every(entry => entry.user === 'node' && entry.group === 'node'), true)
+  const size = new FileSizeManager({ inventory })
+  const task = size.start({ path: root, revision: listing.revision })
+  await size.tasks.get(task.taskId).completion
+  const result = size.get(task.taskId)
+  assert.equal(result.status, 'success')
+  assert.equal(result.bytes, 10)
+  assert.equal(result.entries, 4)
 })
 
 test('bounded search does not follow symlinked directories and can be cancelled', async () => {

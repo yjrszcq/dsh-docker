@@ -82,7 +82,7 @@ const COPY = Object.freeze({
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
     files: '文件管理', filesDetail: '使用与 DSH 相同的容器权限查看和管理文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', parentDirectory: '上级目录', path: '路径',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
-    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileModified: '修改时间', fileMode: '权限', emptyDirectory: '此目录为空。', loadMore: '加载更多',
+    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多',
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', conflictMode: '目标已存在', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
@@ -150,7 +150,7 @@ const COPY = Object.freeze({
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
     files: 'File management', filesDetail: 'View and manage files with the same container permissions as DSH.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', parentDirectory: 'Parent directory', path: 'Path',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
-    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileModified: 'Modified', fileMode: 'Mode', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
+    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
     newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', conflictMode: 'Destination exists', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
@@ -223,6 +223,7 @@ let fileOrder = 'asc'
 let fileHistory = []
 let fileSelected = new Set()
 let fileClipboard = null
+const fileDirectorySizes = new Map()
 let fileActiveTask = null
 let fileEditor = null
 let fileEditorOriginal = ''
@@ -1286,6 +1287,43 @@ function fileTypeMark(type) {
   return { directory: '▣', file: '·', symlink: '↗', fifo: '│', socket: '◉', 'block-device': '◆', 'character-device': '◇' }[type] ?? '?'
 }
 
+function directorySizeButton(entry) {
+  const cached = fileDirectorySizes.get(entry.path)
+  const current = cached?.revision === entry.revision ? cached : undefined
+  const calculate = document.createElement('button')
+  calculate.type = 'button'
+  calculate.className = 'file-size-action'
+  calculate.disabled = current?.status === 'running'
+  calculate.textContent = current?.status === 'success' ? fileSize(current.bytes)
+    : current?.status === 'running' ? t('calculatingSize')
+      : current?.status === 'failed' ? t('sizeCalculationFailed') : t('calculateSize')
+  calculate.addEventListener('click', event => { event.stopPropagation(); void calculateDirectorySize(entry) })
+  return calculate
+}
+
+async function calculateDirectorySize(entry) {
+  fileDirectorySizes.set(entry.path, { revision: entry.revision, status: 'running' })
+  renderFiles()
+  try {
+    const task = await api('files/tasks', { method: 'POST', body: { operation: 'size', path: entry.path, revision: entry.revision } })
+    for (;;) {
+      const state = await api(`files/tasks/${task.taskId}`)
+      if (state.status !== 'running') {
+        fileDirectorySizes.set(entry.path, state.status === 'success' && state.revision === entry.revision
+          ? { revision: entry.revision, status: 'success', bytes: state.bytes }
+          : { revision: entry.revision, status: 'failed' })
+        renderFiles()
+        return
+      }
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  } catch (error) {
+    fileDirectorySizes.set(entry.path, { revision: entry.revision, status: 'failed' })
+    renderFiles()
+    showError(error)
+  }
+}
+
 function renderFiles() {
   const values = visibleFileEntries()
   elements['file-list'].replaceChildren()
@@ -1313,14 +1351,21 @@ function renderFiles() {
     mark.textContent = fileTypeMark(entry.type)
     const label = document.createElement('strong')
     label.textContent = entry.name
-    name.append(mark, label)
+    const mobileMeta = document.createElement('span')
+    mobileMeta.className = 'file-mobile-meta'
+    const mobileOwner = document.createElement('span')
+    mobileOwner.textContent = `${entry.user}:${entry.group}`
+    mobileMeta.append(mobileOwner, document.createTextNode(' · '), entry.type === 'directory' ? directorySizeButton(entry) : document.createTextNode(fileSize(entry.size)))
+    name.append(mark, label, mobileMeta)
     const size = document.createElement('td')
-    size.textContent = entry.type === 'directory' ? '-' : fileSize(entry.size)
+    if (entry.type === 'directory') size.append(directorySizeButton(entry)); else size.textContent = fileSize(entry.size)
+    const owner = document.createElement('td')
+    owner.textContent = `${entry.user}:${entry.group}`
     const modified = document.createElement('td')
     modified.textContent = localTime(entry.modifiedAt)
     const mode = document.createElement('td')
     mode.textContent = (entry.mode ?? 0).toString(8).padStart(3, '0')
-    row.append(checkCell, name, size, modified, mode)
+    row.append(checkCell, name, size, owner, modified, mode)
     row.addEventListener('click', event => {
       if (event.target === check) return
       if (fileSelected.has(entry.path)) fileSelected.delete(entry.path); else fileSelected.add(entry.path)

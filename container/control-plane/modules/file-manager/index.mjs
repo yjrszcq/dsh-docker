@@ -73,6 +73,34 @@ export function fileManagerLocations({
   return Object.freeze({ defaultPath, shortcuts: Object.freeze(shortcuts) })
 }
 
+function parseIdentityFile(value, idIndex) {
+  const result = new Map()
+  for (const line of value.split('\n')) {
+    if (line === '' || line.startsWith('#')) continue
+    const fields = line.split(':')
+    const id = Number(fields[idIndex])
+    if (fields[0] !== '' && Number.isSafeInteger(id) && id >= 0 && !result.has(id)) result.set(id, fields[0])
+  }
+  return result
+}
+
+export class UnixIdentityResolver {
+  constructor({ passwdPath = '/etc/passwd', groupPath = '/etc/group' } = {}) {
+    this.passwdPath = passwdPath
+    this.groupPath = groupPath
+    this.loading = undefined
+  }
+
+  async resolve(uid, gid) {
+    this.loading ??= Promise.all([
+      readFile(this.passwdPath, 'utf8').then(value => parseIdentityFile(value, 2), () => new Map()),
+      readFile(this.groupPath, 'utf8').then(value => parseIdentityFile(value, 2), () => new Map()),
+    ])
+    const [users, groups] = await this.loading
+    return { user: users.get(uid) ?? String(uid), group: groups.get(gid) ?? String(gid) }
+  }
+}
+
 function kind(stats) {
   if (stats.isFile()) return 'file'
   if (stats.isDirectory()) return 'directory'
@@ -121,13 +149,15 @@ async function symlinkDetails(path, stats) {
   }
 }
 
-async function describe(path, stats = undefined, managed = isManagedPath) {
+async function describe(path, stats = undefined, managed = isManagedPath, identity = new UnixIdentityResolver()) {
   const value = stats ?? await lstat(path, { bigint: true })
   const link = await symlinkDetails(path, value)
+  const owner = await identity.resolve(Number(value.uid), Number(value.gid))
   return {
     name: basename(path) || '/',
     path,
     ...metadata(value),
+    ...owner,
     ...await permissions(path),
     managed: managed(path),
     revision: revisionFor(path, value, link.linkTarget ?? ''),
@@ -178,14 +208,15 @@ function parseLimit(value, fallback = DEFAULT_LIST_LIMIT) {
 }
 
 export class FileInventory {
-  constructor({ isManaged = isManagedPath } = {}) {
+  constructor({ isManaged = isManagedPath, identity = new UnixIdentityResolver() } = {}) {
     this.isManaged = isManaged
+    this.identity = identity
   }
 
   async stat(value) {
     const path = normalizeAbsolutePath(value)
     try {
-      const item = await describe(path, undefined, this.isManaged)
+      const item = await describe(path, undefined, this.isManaged, this.identity)
       return { ...item, realPath: item.realPath ?? await realpath(path).catch(() => path), parent: dirname(path) }
     } catch (error) {
       throw fileError(error)
@@ -202,7 +233,7 @@ export class FileInventory {
       const names = await readdir(path)
       const entries = await Promise.all(names.map(async name => {
         const child = resolve(path, name)
-        return describe(child, undefined, this.isManaged)
+        return describe(child, undefined, this.isManaged, this.identity)
       }))
       entries.sort((left, right) => compareEntries(left, right, sort, order))
       const revision = listRevision(path, root, entries)
@@ -333,7 +364,7 @@ export class FileSearchManager {
         task.scanned += 1
         const child = resolve(current.path, entry.name)
         const relative = child.slice(task.path === '/' ? 1 : task.path.length + 1)
-        if (relative.toLocaleLowerCase().includes(needle)) task.matches.push(await describe(child, undefined, this.inventory.isManaged))
+        if (relative.toLocaleLowerCase().includes(needle)) task.matches.push(await describe(child, undefined, this.inventory.isManaged, this.inventory.identity))
         if (entry.isDirectory() && !entry.isSymbolicLink() && current.depth < SEARCH_MAX_DEPTH) pending.push({ path: child, depth: current.depth + 1 })
         if (task.scanned >= SEARCH_MAX_SCANNED || task.matches.length >= SEARCH_MAX_RESULTS) break
       }
@@ -346,4 +377,83 @@ export class FileSearchManager {
   }
 }
 
-export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseLimit })
+export class FileSizeManager {
+  constructor({ inventory = new FileInventory(), onState = () => {} } = {}) {
+    this.inventory = inventory
+    this.onState = onState
+    this.tasks = new Map()
+  }
+
+  start({ path: value, revision } = {}) {
+    const path = normalizeAbsolutePath(value)
+    const task = {
+      taskId: randomUUID(), operation: 'size', status: 'running', path, revision,
+      bytes: 0, entries: 0, error: null, cancelRequested: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }
+    this.tasks.set(task.taskId, task)
+    this.#publish(task)
+    task.completion = this.#run(task).catch(error => {
+      task.status = task.cancelRequested ? 'cancelled' : 'failed'
+      task.error = error instanceof Error ? error.message : String(error)
+      this.#publish(task)
+    })
+    return this.public(task)
+  }
+
+  get(taskId) {
+    const task = this.tasks.get(taskId)
+    if (task === undefined) throw new FileManagerError('file task was not found', 404, 'FILE_TASK_NOT_FOUND')
+    return this.public(task)
+  }
+
+  list() { return [...this.tasks.values()].map(task => this.public(task)).reverse() }
+
+  cancel(taskId) {
+    const task = this.tasks.get(taskId)
+    if (task === undefined) throw new FileManagerError('file task was not found', 404, 'FILE_TASK_NOT_FOUND')
+    if (task.status !== 'running') throw new FileManagerError('file task is already complete', 409, 'FILE_TASK_COMPLETE')
+    task.cancelRequested = true
+    this.#publish(task)
+    return this.public(task)
+  }
+
+  public(task) {
+    const { completion, cancelRequested, ...value } = task
+    return { ...value, cancelRequested }
+  }
+
+  #publish(task) {
+    task.updatedAt = new Date().toISOString()
+    this.onState(this.public(task))
+  }
+
+  async #run(task) {
+    const root = await this.inventory.stat(task.path)
+    if (root.type !== 'directory') throw new FileManagerError('size target is not a directory', 415, 'FILE_TYPE_UNSUPPORTED')
+    const listing = await this.inventory.list(task.path, { limit: 1 })
+    if (typeof task.revision !== 'string' || task.revision !== listing.revision) throw new FileRevisionConflictError('size target changed')
+    const pending = [task.path]
+    while (pending.length > 0) {
+      if (task.cancelRequested) {
+        task.status = 'cancelled'
+        this.#publish(task)
+        return
+      }
+      const directory = pending.pop()
+      for (const name of await readdir(directory)) {
+        const path = resolve(directory, name)
+        const details = await lstat(path, { bigint: true })
+        task.entries += 1
+        if (details.isDirectory() && !details.isSymbolicLink()) pending.push(path)
+        else if (details.isFile()) task.bytes += Number(details.size)
+      }
+      this.#publish(task)
+      await new Promise(resolveTask => setImmediate(resolveTask))
+    }
+    task.status = 'success'
+    this.#publish(task)
+  }
+}
+
+export const fileManagerInternals = Object.freeze({ describe, revisionFor, parseIdentityFile, parseLimit })
