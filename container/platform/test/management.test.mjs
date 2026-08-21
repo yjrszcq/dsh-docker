@@ -1068,7 +1068,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /fileHistory\.push\(filePath\)[\s\S]*fileFuture = \[\]/)
   assert.match(script, /elements\['file-forward'\]\.addEventListener\('click', async/)
   assert.match(style, /\.file-pathbar \.file-nav-button \{[^}]*display: grid[^}]*place-items: center[^}]*width: 34px[^}]*height: 34px/)
-  assert.match(style, /\.file-nav-icon \{[^}]*border-right: 2px solid currentColor[^}]*border-bottom: 2px solid currentColor/)
+  assert.match(style, /\.file-nav-icon \{[^}]*width: 8px[^}]*height: 14px[^}]*clip-path: polygon/)
   assert.match(style, /\.file-editor-frame \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\)/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.file-table thead th:nth-child/)
   assert.doesNotMatch(style, /\.file-load-more \{[^}]*!important/)
