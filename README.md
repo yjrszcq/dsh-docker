@@ -10,7 +10,7 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 
 - **Directory permissions:** Bind-mounted `data/dsh`, `data/platform`, and `workspace` must be writable by container UID/GID `1000:1000`. Keep both data directories when replacing or upgrading the container.
 - **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
-- **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers and set a strong `DSH_PROXY_PASSWORD`. Place the service behind HTTPS or another trusted network boundary, and do not expose privileged Docker or host resources to the container.
+- **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers. A strong `DSH_PROXY_PASSWORD` is recommended but optional. Place the service behind HTTPS or another trusted network boundary, and do not expose privileged Docker or host resources to the container.
 - **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. If they do not need root, remove that `group_add` entry from the minimal Compose example (or omit `--group-add dsh-sudo-true` from `docker run`); with the repository Compose file, set `DSH_SUDO_ENABLED=false`. This does not disable the standalone Management Console's terminal and file manager, which always operate as container root and must remain protected by authentication and a trusted network boundary.
 - **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start and provides updates, recovery, logs, plugin management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
 
@@ -85,14 +85,14 @@ sudo chown -R 1000:1000 data workspace
 
 ## Remote Access
 
-For LAN or reverse-proxy access, set the browser-facing host and a strong password:
+For LAN or reverse-proxy access, set the browser-facing host. A Gateway password is recommended for remote deployments:
 
 ```dotenv
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
 
-Use this minimal remote-access `docker-compose.yaml`, replacing the trusted hosts and password first:
+Use this minimal remote-access `docker-compose.yaml`, replacing the trusted hosts and recommended password first:
 
 ```yaml
 services:
@@ -130,6 +130,8 @@ docker run -d \
 ```
 
 A reverse proxy must preserve the original `Host` header. Terminate TLS outside this container. To publish only on the Docker host, use `127.0.0.1:3080:3080` instead of `3080:3080`.
+
+`DSH_PROXY_PASSWORD` may be omitted. Without it, DSH Management Console uses `DSH_PLATFORM_PASSWORD` or temporary-key mode as described under [Online Updates](#online-updates).
 
 Common settings:
 

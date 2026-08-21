@@ -10,7 +10,7 @@
 
 - **目录权限：** bind mount 的 `data/dsh`、`data/platform` 和 `workspace` 必须允许容器 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
-- **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，并设置强 `DSH_PROXY_PASSWORD`。同时应通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
+- **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，但它不是必需项。同时应通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
 - **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
 - **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，并提供更新、恢复、日志、插件管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
 
@@ -85,14 +85,14 @@ sudo chown -R 1000:1000 data workspace
 
 ## 远程访问
 
-通过局域网或反向代理访问时，配置浏览器使用的主机和强密码：
+通过局域网或反向代理访问时，必须配置浏览器使用的主机；远程部署建议同时设置 Gateway 密码：
 
 ```dotenv
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
 DSH_PROXY_PASSWORD=请设置一个强密码
 ```
 
-将可信主机和密码替换为实际值后，可以使用以下支持远程访问的精简 `docker-compose.yaml`：
+将可信主机和建议使用的密码替换为实际值后，可以使用以下支持远程访问的精简 `docker-compose.yaml`：
 
 ```yaml
 services:
@@ -130,6 +130,8 @@ docker run -d \
 ```
 
 反向代理必须保留原始 `Host` 请求头，TLS 在容器外终止。如需只监听 Docker 宿主机，请使用 `127.0.0.1:3080:3080`，不要使用 `3080:3080`。
+
+可以不设置 `DSH_PROXY_PASSWORD`。此时 DSH 管理中心改用 `DSH_PLATFORM_PASSWORD` 或[在线更新](#在线更新)中说明的临时密钥模式。
 
 常用设置：
 
