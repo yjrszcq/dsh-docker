@@ -8,3 +8,4 @@ node_modules/
 /data/
 /workspace/
 .checkpoint-karpathy/private/
+docker-compose.test.yaml
