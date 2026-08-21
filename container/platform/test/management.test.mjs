@@ -996,6 +996,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /calculateDirectorySize/)
   assert.match(script, /operation: 'attributes'/)
   assert.match(script, /attributes: \{[\s\S]*user, group, mode,[\s\S]*recursive:/)
+  assert.match(script, /FILE_ATTRIBUTES_UNSUPPORTED[^\n]*attributesUnsupported/)
   assert.match(script, /syncPermissionChecks/)
   assert.match(script, /syncModeFromPermissions/)
   assert.match(html, /data-i18n="fileOwner"/)

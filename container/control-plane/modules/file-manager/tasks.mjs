@@ -86,6 +86,17 @@ function normalizeAttributes(value) {
   return { user: value.user, group: value.group, mode: value.mode, recursive: value.recursive }
 }
 
+function assertAttributesApplied(path, details, { uid, gid, mode }, symbolicLink) {
+  const ownershipMatches = details.uid === uid && details.gid === gid
+  const modeMatches = symbolicLink || (details.mode & 0o7777) === mode
+  if (ownershipMatches && modeMatches) return
+  throw new FileManagerError(
+    `filesystem did not apply Unix ownership or mode for ${path}; use a filesystem mounted with Unix metadata support`,
+    403,
+    'FILE_ATTRIBUTES_UNSUPPORTED',
+  )
+}
+
 export class FileTaskManager {
   constructor({
     root, inventory = new FileInventory(), isManaged = isManagedPath,
@@ -152,7 +163,7 @@ export class FileTaskManager {
       attributes: input.operation === 'attributes' ? normalizeAttributes(input.attributes) : null,
       processedBytes: 0, totalBytes: 0, processedEntries: 0, totalEntries: 0, currentPath: null,
       published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
-      error: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
+      error: null, errorCode: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
     }
     this.tasks.set(task.taskId, task)
     this.activeMutation = task
@@ -233,6 +244,7 @@ export class FileTaskManager {
     } catch (error) {
       task.status = task.cancelRequested ? 'cancelled' : 'failed'
       task.error = error instanceof Error ? error.message : String(error)
+      task.errorCode = typeof error?.code === 'string' ? error.code : null
       await this.#cleanupStaging(task)
       await this.#phase(task, task.status)
       await this.report(`file-task.${task.operation}.${task.status}`, { ...publicTask(task), error })
@@ -336,6 +348,7 @@ export class FileTaskManager {
       }
       await lchown(path, uid, gid)
       if (!details.isSymbolicLink()) await chmod(path, mode)
+      assertAttributesApplied(path, await lstat(path), { uid, gid, mode }, details.isSymbolicLink())
       task.currentPath = path
       task.processedEntries += 1
       if (details.isFile()) task.processedBytes += details.size
@@ -363,6 +376,7 @@ export class FileTaskManager {
       } catch (error) {
         task.status = 'failed'
         task.error = error instanceof Error ? error.message : String(error)
+        task.errorCode = typeof error?.code === 'string' ? error.code : null
         await this.#phase(task, 'failed')
         await this.report('file-task.attributes.recovery-failed', { ...publicTask(task), error })
       }
@@ -414,4 +428,4 @@ export class FileTaskManager {
   }
 }
 
-export const fileTaskInternals = Object.freeze({ protectedDeleteRoots: DEFAULT_PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics, normalizeAttributes })
+export const fileTaskInternals = Object.freeze({ protectedDeleteRoots: DEFAULT_PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics, normalizeAttributes, assertAttributesApplied })

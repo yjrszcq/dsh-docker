@@ -87,7 +87,7 @@ const COPY = Object.freeze({
     editPermissions: '编辑权限', permissions: '权限', permissionRead: '读取', permissionWrite: '写入', permissionExecute: '可执行', permissionOwner: '所有者', permissionGroup: '用户组', permissionOthers: '其他用户',
     fileUser: '用户', fileGroup: '用户组', recursiveAttributes: '同时修改子项属性', applyPermissions: '应用权限', attributesInvalid: '请填写有效的用户、用户组和 3 或 4 位八进制权限。', attributesOperation: '修改文件属性',
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', conflictMode: '目标已存在', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
-    operationComplete: '文件操作已完成', operationFailed: '文件操作失败', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
+    operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
     chooseConflict: '冲突策略：reject（拒绝）、overwrite（覆盖）或 rename（自动重命名）',
@@ -157,7 +157,7 @@ const COPY = Object.freeze({
     editPermissions: 'Edit permissions', permissions: 'Permissions', permissionRead: 'Read', permissionWrite: 'Write', permissionExecute: 'Execute', permissionOwner: 'Owner', permissionGroup: 'Group', permissionOthers: 'Others',
     fileUser: 'User', fileGroup: 'Group', recursiveAttributes: 'Also change child attributes', applyPermissions: 'Apply permissions', attributesInvalid: 'Enter a valid user, group, and a 3- or 4-digit octal mode.', attributesOperation: 'Changing file attributes',
     newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', conflictMode: 'Destination exists', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
-    operationComplete: 'File operation completed', operationFailed: 'File operation failed', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
+    operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
     chooseConflict: 'Conflict policy: reject, overwrite, or rename',
@@ -1602,7 +1602,7 @@ async function waitFileTask(taskId) {
       elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation === 'attributes' ? t('attributesOperation') : task.operation })
       if (!['running'].includes(task.status)) {
         if (task.status === 'success') fileOperationMessage(t('operationComplete'))
-        else fileOperationMessage(task.error ?? t('operationFailed'), true)
+        else fileOperationMessage(task.errorCode === 'FILE_ATTRIBUTES_UNSUPPORTED' ? t('attributesUnsupported') : task.error ?? t('operationFailed'), true)
         break
       }
       await new Promise(resolve => setTimeout(resolve, 300))

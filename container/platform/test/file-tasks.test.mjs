@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { FileInventory } from '../../control-plane/modules/file-manager/index.mjs'
-import { FileTaskManager } from '../../control-plane/modules/file-manager/tasks.mjs'
+import { FileTaskManager, fileTaskInternals } from '../../control-plane/modules/file-manager/tasks.mjs'
 
 async function setup(prefix = 'dsh-file-tasks-') {
   const root = await mkdtemp(join(tmpdir(), prefix))
@@ -83,12 +83,46 @@ test('changes file ownership and permissions recursively without following symbo
   })
   const result = await manager.completion(started.taskId)
   assert.equal(result.status, 'success')
+  assert.equal(result.errorCode, null)
   assert.equal(result.processedEntries, 4)
   assert.equal((await stat(tree)).mode & 0o7777, 0o750)
   assert.equal((await stat(nested)).mode & 0o7777, 0o750)
   assert.equal((await stat(join(nested, 'inside.txt'))).mode & 0o7777, 0o750)
   assert.equal((await stat(target)).mode & 0o7777, 0o640)
   assert.equal(reports.at(-1).message, 'file-task.attributes.completed')
+})
+
+test('rejects filesystems that silently ignore Unix ownership or mode changes', () => {
+  const attributes = { uid: 0, gid: 0, mode: 0o600 }
+  assert.doesNotThrow(() => fileTaskInternals.assertAttributesApplied('/supported', { uid: 0, gid: 0, mode: 0o100600 }, attributes, false))
+  assert.throws(
+    () => fileTaskInternals.assertAttributesApplied('/unsupported', { uid: 1000, gid: 1000, mode: 0o100755 }, attributes, false),
+    error => error.code === 'FILE_ATTRIBUTES_UNSUPPORTED' && error.statusCode === 403,
+  )
+})
+
+test('reports attribute failures instead of a false completion', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-attributes-failed-log-'))
+  const path = join(root, 'item')
+  await writeFile(path, 'value')
+  const identity = {
+    resolve: async () => ({ user: 'current', group: 'current' }),
+    userId: async () => { throw Object.assign(new Error('ownership is unsupported'), { code: 'FILE_ATTRIBUTES_UNSUPPORTED' }) },
+    groupId: async () => process.getgid(),
+  }
+  const inventory = new FileInventory({ identity })
+  const reports = []
+  const manager = new FileTaskManager({ root: join(root, 'tasks'), inventory, identity, report: message => reports.push(message) })
+  await manager.initialize()
+  const source = await inventory.stat(path)
+  const started = manager.start({
+    operation: 'attributes', sources: [{ path, revision: source.revision }],
+    attributes: { user: 'current', group: 'current', mode: '0600', recursive: false },
+  })
+  const result = await manager.completion(started.taskId)
+  assert.equal(result.status, 'failed')
+  assert.equal(result.errorCode, 'FILE_ATTRIBUTES_UNSUPPORTED')
+  assert.deepEqual(reports, ['file-task.attributes.failed'])
 })
 
 test('validates attribute requests and resumes an interrupted idempotent change', async () => {
