@@ -70,6 +70,7 @@ const COPY = Object.freeze({
     noPendingUserPluginChanges: '没有待应用的修改', pendingUserPluginChanges: '有 {count} 项修改待应用', cancelChanges: '取消修改',
     applyUserPluginChanges: '应用并重新启动 DSH', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
     userPluginApplyFailed: '用户插件恢复失败', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
+    userPluginRestartRequired: '需要重新启动 DSH', userPluginRestartRequiredDetail: '用户插件已在终端或其他位置发生变化，重新启动 DSH 后生效。',
     userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，可在运行维护中查看日志。',
     userPluginPhaseValidated: '正在验证修改', userPluginPhasePaused: '正在暂停 DSH', userPluginPhaseSnapshotted: '已备份 Web Profile',
     userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
@@ -140,6 +141,7 @@ const COPY = Object.freeze({
     noPendingUserPluginChanges: 'No pending changes', pendingUserPluginChanges: '{count} changes pending', cancelChanges: 'Cancel changes',
     applyUserPluginChanges: 'Apply and restart DSH', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
     userPluginApplyFailed: 'User plugin recovery failed', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
+    userPluginRestartRequired: 'Restart DSH required', userPluginRestartRequiredDetail: 'User plugins changed in the terminal or elsewhere and take effect after DSH restarts.',
     userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly. Review the Maintenance logs for details.',
     userPluginPhaseValidated: 'Validating changes', userPluginPhasePaused: 'Pausing DSH', userPluginPhaseSnapshotted: 'Web Profile backed up',
     userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
@@ -539,6 +541,7 @@ function renderUserPlugins(busy) {
     badges.append(userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : ''))
     if (plugin.damaged) badges.append(userPluginBadge(t('userPluginDamaged'), 'warning'))
     if (plugin.reservedNameConflict) badges.append(userPluginBadge(t('userPluginReserved'), 'danger'))
+    if (plugin.pendingRestart) badges.append(userPluginBadge(t('pluginPendingRestart'), 'pending'))
     if (action) badges.append(userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending'))
     const metadata = document.createElement('dl')
     for (const [label, value] of [
@@ -610,6 +613,9 @@ function renderUserPlugins(busy) {
       : operationVisible && operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
   elements['user-plugin-operation'].hidden = !feedback
+  elements['user-plugin-restart-required'].hidden = userPluginInventory.restartRequired !== true
+  elements['user-plugin-restart-dsh'].disabled = locked
+  elements['user-plugin-restart-dsh'].textContent = status?.dshRestart?.status === 'restarting' ? t('restarting') : t('restartDsh')
 }
 
 function render(next) {
@@ -1188,6 +1194,8 @@ async function initializeTerminal() {
   terminalFit = new FitAddon()
   terminalEmulator = new Terminal({
     cursorBlink: true,
+    cursorStyle: 'block',
+    cursorInactiveStyle: 'outline',
     fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
     fontSize: 13,
     lineHeight: 1.25,
@@ -1720,7 +1728,9 @@ function selectTab(tab) {
   if (tab === 'terminal') {
     void restoreTerminalSession()
     fitTerminal()
+    window.requestAnimationFrame(() => terminalEmulator?.focus())
   }
+  if (tab === 'user-plugins') void loadInventories()
   if (tab === 'files' && !filesLoaded) void initializeFiles()
 }
 
@@ -1793,6 +1803,7 @@ elements['automatic-interval'].addEventListener('change', event => { void saveAu
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['user-plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
 elements['cancel-runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(false))
 elements['confirm-runtime-reset'].addEventListener('click', async () => {
@@ -1807,6 +1818,7 @@ elements['cancel-user-plugin-changes'].addEventListener('click', () => {
 elements['apply-user-plugin-changes'].addEventListener('click', () => { void applyUserPluginDraft() })
 elements['new-terminal'].addEventListener('click', () => { void createTerminalSession() })
 elements['close-terminal'].addEventListener('click', () => { void closeTerminalSession() })
+elements['terminal-screen'].addEventListener('pointerdown', () => terminalEmulator?.focus())
 elements['file-back'].addEventListener('click', () => {
   const path = fileHistory.pop()
   if (path !== undefined) void navigateFiles(path, { history: false })
@@ -1896,6 +1908,9 @@ elements['file-attributes-cancel'].addEventListener('click', closeFileAttributes
 elements['file-attributes-save'].addEventListener('click', () => { void applyFileAttributes() })
 elements['file-attributes-mode'].addEventListener('input', event => {
   if (/^[0-7]{3,4}$/u.test(event.target.value)) syncPermissionChecks(Number.parseInt(event.target.value, 8))
+})
+elements['file-attributes-user'].addEventListener('input', event => {
+  elements['file-attributes-group'].value = event.target.value
 })
 for (const input of permissionInputs) input.addEventListener('change', syncModeFromPermissions)
 elements['file-task-cancel'].addEventListener('click', () => { if (fileActiveTask !== null) void api(`files/tasks/${fileActiveTask}`, { method: 'DELETE' }).catch(showError) })

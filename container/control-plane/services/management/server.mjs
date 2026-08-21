@@ -98,6 +98,7 @@ export function createManagementServer({
   recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
   discardBundledPluginChanges = async () => { throw new Error('System Plugin draft management is not configured') },
   listUserPlugins = async () => { throw new Error('User Plugin inventory is not configured') },
+  markUserPluginsLoaded = async () => {},
   validateUserPluginActions = async () => { throw new Error('User Plugin recovery is not configured') },
   applyUserPluginActions = async () => { throw new Error('User Plugin recovery is not configured') },
   recoverUserPluginTransaction,
@@ -141,6 +142,9 @@ export function createManagementServer({
   let server
   const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
   const recordAudit = (message, fields = {}) => Promise.resolve().then(() => audit(message, fields)).catch(() => {})
+  const refreshLoadedUserPlugins = () => Promise.resolve()
+    .then(() => markUserPluginsLoaded())
+    .catch(error => recordAudit('user-plugin.loaded-state.capture.failed', { error }))
 
   const publishRestart = value => {
     restartState = Object.freeze({ ...restartState, ...value, updatedAt: new Date().toISOString() })
@@ -196,6 +200,7 @@ export function createManagementServer({
       }))
       .then(
         async () => {
+          await refreshLoadedUserPlugins()
           await recordAudit('user-plugin.apply.completed', { taskId })
           publishUserPlugin({ status: 'success', taskId, phase: 'completed', error: null })
           publishPlugin({ restartRequired: false })
@@ -254,6 +259,7 @@ export function createManagementServer({
       .then(() => restartDsh())
       .then(
         async () => {
+          await refreshLoadedUserPlugins()
           await recordAudit('dsh.restart.completed', { taskId })
           publishRestart({ status: 'success', taskId, error: null })
           publishPlugin({ restartRequired: false })
@@ -279,6 +285,7 @@ export function createManagementServer({
       .then(() => resetRuntime())
       .then(
         async () => {
+          await refreshLoadedUserPlugins()
           await recordAudit('runtime.reset.completed', { taskId })
           publishRuntimeReset({ status: 'success', taskId, error: null })
           publishPlugin({ restartRequired: false })
@@ -433,7 +440,10 @@ export function createManagementServer({
         const task = coordinator.startReconcile()
         void task.completion
           .then(
-            () => audit('update.completed', { taskId: task.taskId }),
+            async () => {
+              await refreshLoadedUserPlugins()
+              await audit('update.completed', { taskId: task.taskId })
+            },
             error => audit('update.failed', { error, taskId: task.taskId }),
           )
           .catch(() => {})
@@ -491,7 +501,10 @@ export function createManagementServer({
           confirmDataLoss: body.confirmDataLoss,
         })
         void task.completion
-          .then(() => audit(`${route}.completed`, { taskId: task.taskId }))
+          .then(async () => {
+            await refreshLoadedUserPlugins()
+            await audit(`${route}.completed`, { taskId: task.taskId })
+          })
           .catch(error => audit(`${route}.failed`, { error, taskId: task.taskId }))
           .catch(() => {})
         send(response, 202, { taskId: task.taskId })

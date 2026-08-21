@@ -129,6 +129,29 @@ async function inspectDependency(profileRoot, name, spec, enabledBundles, disabl
   })
 }
 
+function loadedIdentity(plugin) {
+  return JSON.stringify([
+    plugin.name, plugin.spec, plugin.version, plugin.enabled, plugin.damaged,
+    plugin.metadataError, plugin.reservedNameConflict,
+  ])
+}
+
+export function markUserPluginRestartState(current, loaded) {
+  if (loaded === undefined) return current
+  const loadedPlugins = new Map(loaded.plugins.map(plugin => [plugin.name, loadedIdentity(plugin)]))
+  const plugins = current.plugins.map(plugin => Object.freeze({
+    ...plugin,
+    pendingRestart: loadedPlugins.get(plugin.name) !== loadedIdentity(plugin),
+  }))
+  const currentNames = new Set(current.plugins.map(plugin => plugin.name))
+  const removedLoadedPlugin = loaded.plugins.some(plugin => !currentNames.has(plugin.name))
+  return Object.freeze({
+    ...current,
+    plugins: Object.freeze(plugins),
+    restartRequired: removedLoadedPlugin || plugins.some(plugin => plugin.pendingRestart),
+  })
+}
+
 export class UserPluginInventory {
   constructor({ dshHome = '/data/dsh', profile = 'web', selectionPath, systemPluginNames = async () => [] } = {}) {
     if (profile !== 'web') throw new Error('Only the web DSH Profile is supported')
@@ -177,4 +200,4 @@ export class UserPluginInventory {
   }
 }
 
-export const userPluginInternals = Object.freeze({ PACKAGE_NAME_PATTERN, sourceForSpec })
+export const userPluginInternals = Object.freeze({ PACKAGE_NAME_PATTERN, sourceForSpec, loadedIdentity })

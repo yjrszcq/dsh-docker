@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
+import { markUserPluginRestartState, UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
 
 async function fixture({ dependencies, bundles, packages = {}, selection } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-user-plugins-'))
@@ -65,6 +65,29 @@ test('inventories only profile Bundle dependencies without importing their entry
   assert.equal(inventory.plugins[0].description, 'Adds useful workflow tools.')
   assert.equal(inventory.plugins[1].description, null)
   assert.equal(inventory.plugins[0].damaged, false)
+})
+
+test('marks only user plugins which differ from the state loaded by DSH', () => {
+  const plugin = Object.freeze({
+    name: 'alpha', spec: '1.0.0', version: '1.0.0', enabled: true,
+    damaged: false, metadataError: null, reservedNameConflict: false,
+  })
+  const loaded = Object.freeze({ schema: 1, profile: 'web', revision: 'sha256:loaded', plugins: Object.freeze([plugin]) })
+  const unchanged = markUserPluginRestartState({ ...loaded, revision: 'sha256:lockfile-only' }, loaded)
+  assert.equal(unchanged.restartRequired, false)
+  assert.equal(unchanged.plugins[0].pendingRestart, false)
+
+  const added = Object.freeze({ ...plugin, name: 'beta' })
+  const changed = markUserPluginRestartState({
+    ...loaded,
+    revision: 'sha256:changed',
+    plugins: Object.freeze([{ ...plugin, version: '1.1.0' }, added]),
+  }, loaded)
+  assert.equal(changed.restartRequired, true)
+  assert.deepEqual(changed.plugins.map(value => [value.name, value.pendingRestart]), [['alpha', true], ['beta', true]])
+
+  const removed = markUserPluginRestartState({ ...loaded, revision: 'sha256:removed', plugins: Object.freeze([]) }, loaded)
+  assert.equal(removed.restartRequired, true)
 })
 
 test('keeps damaged and dangling dependency metadata visible for recovery', async () => {

@@ -229,6 +229,7 @@ test('management restarts only DSH as an audited task and excludes update activa
   let finishRestart
   const restartCompletion = new Promise(resolve => { finishRestart = resolve })
   let restarts = 0
+  let loadedStateCaptures = 0
   const server = createManagementServer({
     coordinator,
     logs,
@@ -236,6 +237,7 @@ test('management restarts only DSH as an audited task and excludes update activa
       restarts += 1
       await restartCompletion
     },
+    markUserPluginsLoaded: async () => { loadedStateCaptures += 1 },
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -262,6 +264,7 @@ test('management restarts only DSH as an audited task and excludes update activa
     const status = await client.request('GET', '/_dsh_platform/api/v1/status')
     assert.equal(status.dshRestart.status, 'success')
     assert.equal(status.dshRestart.taskId, task.taskId)
+    assert.equal(loadedStateCaptures, 1)
     assert.deepEqual(
       (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
       ['dsh.restart.started', 'dsh.restart.completed'],
@@ -951,6 +954,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(pluginSource, /platformAuthRequired: 'DSH Management Console is locked/)
   assert.match(script, /pluginRestartRequired: '需要重新启动 DSH'/)
   assert.match(script, /pluginRestartRequired: 'Restart DSH required'/)
+  assert.match(script, /userPluginRestartRequired: '需要重新启动 DSH'/)
+  assert.match(script, /userPluginRestartRequired: 'Restart DSH required'/)
+  assert.match(html, /id="user-plugin-restart-required"[^>]*hidden/)
+  assert.match(script, /plugin\.pendingRestart[^\n]*pluginPendingRestart/)
   assert.match(script, /plugin\.description\?\.\[locale\]/)
   assert.match(script, /pluginPendingRestart: '待重启'/)
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
@@ -966,6 +973,9 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /import\('\.\/vendor\/addon-fit\.mjs'\)/)
   assert.match(script, /terminalLoading: '正在加载终端组件'/)
   assert.match(script, /terminalLoading: 'Loading terminal components'/)
+  assert.match(script, /cursorStyle: 'block'/)
+  assert.match(script, /cursorInactiveStyle: 'outline'/)
+  assert.match(script, /terminalEmulator\?\.focus\(\)/)
   assert.match(html, /id="terminal-loader"[^>]*hidden/)
   assert.doesNotMatch(html, /href="\.\/vendor\/xterm\.css"/)
   assert.match(script, /stylesheet\.href = '\.\/vendor\/xterm\.css'/)
@@ -999,6 +1009,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /FILE_ATTRIBUTES_UNSUPPORTED[^\n]*attributesUnsupported/)
   assert.match(script, /syncPermissionChecks/)
   assert.match(script, /syncModeFromPermissions/)
+  assert.match(script, /elements\['file-attributes-group'\]\.value = event\.target\.value/)
   assert.match(html, /data-i18n="fileOwner"/)
   assert.match(html, /class="file-sort-arrows"/)
   assert.match(script, /function renderFileSort\(\)/)

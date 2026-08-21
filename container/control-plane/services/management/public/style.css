@@ -454,6 +454,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
   background: var(--surface);
 }
 #terminal-screen { width: 100%; height: 100%; }
+#terminal-screen, #terminal-screen .xterm { cursor: text; }
 .terminal-frame:not(.active) #terminal-screen { visibility: hidden; }
 #terminal-screen .xterm { height: 100%; padding: 10px; background: var(--surface); }
 #terminal-screen .xterm-viewport { background-color: var(--surface) !important; scrollbar-color: var(--faint) transparent; }

@@ -22,7 +22,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { readDeploymentStatus } from '../../../platform/lib/deployment-status.mjs'
 import { parseImageInventory } from '../../../platform/lib/deployment-contracts.mjs'
 import { SettingsDocumentStore } from './settings-document.mjs'
-import { UserPluginInventory } from '../../modules/user-plugin-manager/index.mjs'
+import { markUserPluginRestartState, UserPluginInventory } from '../../modules/user-plugin-manager/index.mjs'
 import { UserPluginJournal } from '../../modules/user-plugin-manager/journal.mjs'
 import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
@@ -102,6 +102,15 @@ if (initialUserPluginTransaction !== undefined) {
     recoveryResult: initialUserPluginTransaction.recoveryResult,
   })
 }
+let loadedUserPluginInventory
+const markUserPluginsLoaded = async () => {
+  loadedUserPluginInventory = await userPluginInventory.read()
+  return loadedUserPluginInventory
+}
+const listUserPlugins = async () => markUserPluginRestartState(
+  await userPluginInventory.read(),
+  loadedUserPluginInventory,
+)
 const waitForBootstrapStartup = async () => {
   for (;;) {
     try {
@@ -134,7 +143,8 @@ server = createManagementServer({
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
   discardBundledPluginChanges: () => bootstrap.request('POST', '/v1/system-plugins/discard'),
-  listUserPlugins: () => userPluginInventory.read(),
+  listUserPlugins,
+  markUserPluginsLoaded,
   validateUserPluginActions: value => userPluginTransactions.validate(value),
   applyUserPluginActions: value => userPluginTransactions.apply(value),
   initialUserPluginTransaction,
@@ -163,6 +173,9 @@ server = createManagementServer({
   },
 })
 await listenManagement(server, paths.managementSocket)
+void waitForBootstrapStartup()
+  .then(markUserPluginsLoaded)
+  .catch(error => logs.diagnostic('user-plugin-manager', 'user-plugin.loaded-state.capture.failed', { error }))
 scheduler.configure((await automaticChecks.read()).automaticCheck)
 let recovered
 try {
