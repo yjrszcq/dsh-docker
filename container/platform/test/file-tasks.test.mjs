@@ -338,3 +338,31 @@ test('rejects invalid archive formats and escaping extracted links', async () =>
   assert.equal(extracted.status, 'failed')
   assert.equal(extracted.errorCode, 'ARCHIVE_UNSAFE')
 })
+
+test('recovers committed archives and resumes staged extraction publication', async () => {
+  const { files, tasks } = await setup('dsh-file-archive-recovery-')
+  const archivePath = join(files, 'published.zip')
+  await writeFile(archivePath, 'published')
+  const archiveTask = {
+    schema: 1, taskId: '66666666-6666-4666-8666-666666666666', operation: 'archive', status: 'running', phase: 'destination-committed',
+    sources: [], destination: archivePath, managed: false, hidden: [], staging: [], published: [archivePath],
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }
+  const destination = join(files, 'destination')
+  const staging = join(destination, '.dsh-extract-recovery.tmp')
+  await mkdir(staging, { recursive: true })
+  await writeFile(join(staging, 'remaining.txt'), 'remaining')
+  const extractTask = {
+    schema: 1, taskId: '77777777-7777-4777-8777-777777777777', operation: 'extract', status: 'running', phase: 'publishing',
+    sources: [], destination, conflict: 'reject', managed: false, hidden: [], staging: [staging], published: [],
+    processedBytes: 0, totalBytes: 9, processedEntries: 0, totalEntries: 1,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelRequested: false,
+  }
+  await writeFile(join(tasks, `${archiveTask.taskId}.json`), JSON.stringify(archiveTask))
+  await writeFile(join(tasks, `${extractTask.taskId}.json`), JSON.stringify(extractTask))
+  const recovered = new FileTaskManager({ root: tasks })
+  await recovered.initialize()
+  assert.equal(recovered.get(archiveTask.taskId).status, 'success')
+  assert.equal(recovered.get(extractTask.taskId).status, 'success')
+  assert.equal(await readFile(join(destination, 'remaining.txt'), 'utf8'), 'remaining')
+})

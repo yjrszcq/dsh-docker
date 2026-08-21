@@ -415,6 +415,10 @@ export class FileTaskManager {
     }
     task.totalEntries = metrics.entries
     task.totalBytes = metrics.bytes
+    await this.#publishExtraction(task, staging)
+  }
+
+  async #publishExtraction(task, staging) {
     for (const name of await readdir(staging)) {
       if (task.cancelRequested) throw new Error('file task cancelled')
       const source = join(staging, name)
@@ -454,6 +458,23 @@ export class FileTaskManager {
         task.errorCode = typeof error?.code === 'string' ? error.code : null
         await this.#phase(task, 'failed')
         await this.report('file-task.attributes.recovery-failed', { ...publicTask(task), error })
+      }
+    } else if (task.operation === 'archive' && task.phase === 'destination-committed') {
+      task.status = 'success'
+      await this.#phase(task, 'completed')
+    } else if (task.operation === 'extract' && task.phase === 'publishing' && task.staging?.length === 1 && await exists(task.staging[0])) {
+      try {
+        task.cancelRequested = false
+        await this.#publishExtraction(task, task.staging[0])
+        task.status = 'success'
+        await this.#phase(task, 'completed')
+        await this.report('file-task.extract.recovered', publicTask(task))
+      } catch (error) {
+        task.status = 'failed'
+        task.error = error instanceof Error ? error.message : String(error)
+        task.errorCode = typeof error?.code === 'string' ? error.code : null
+        await this.#phase(task, 'failed')
+        await this.report('file-task.extract.recovery-failed', { ...publicTask(task), error })
       }
     } else if (task.operation === 'delete' || task.phase === 'source-hidden' || task.phase === 'cleaning') {
       for (const path of task.hidden ?? []) await rm(path, { recursive: true, force: true })
