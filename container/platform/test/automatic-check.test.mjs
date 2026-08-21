@@ -13,7 +13,7 @@ function target(targetSequence, dsh) {
     targetSequence,
     desired: {
       dsh: { version: dsh },
-      environment: { version: '2026.08.20.1' },
+      environment: { version: '1.0.0' },
     },
   }
 }
@@ -33,7 +33,7 @@ test('automatic checks use persistent defaults and fixed user-facing intervals',
 test('automatic checks retain only the newest Stable and Upstream candidates', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-automatic-candidates-'))
   const store = new AutomaticCheckStateStore(join(root, 'automatic-check.json'), () => new Date('2026-08-20T08:00:00Z'))
-  const current = { targetSequence: 1, dsh: '0.1.0-rc.7', environment: '2026.08.20.1' }
+  const current = { targetSequence: 1, dsh: '0.1.0-rc.7', environment: '1.0.0' }
 
   await store.record({ channel: 'experimental', current, target: target(2, '0.1.0-rc.8'), upstream: { version: '0.1.0-rc.10' }, stableAvailable: true })
   await store.record({ channel: 'experimental', current, target: target(3, '0.1.0-rc.9'), upstream: { version: '0.1.0-rc.11' }, stableAvailable: true })
@@ -42,14 +42,14 @@ test('automatic checks retain only the newest Stable and Upstream candidates', a
   assert.equal(state.latestAutomatic.stable.targetSequence, 3)
   assert.equal(state.latestAutomatic.upstream.version, '0.1.0-rc.11')
 
-  await store.clearSatisfied({ targetSequence: 3, dsh: '0.1.0-rc.11', environment: '2026.08.20.1' })
+  await store.clearSatisfied({ targetSequence: 3, dsh: '0.1.0-rc.11', environment: '1.0.0' })
   assert.deepEqual((await store.read()).latestAutomatic, { stable: null, upstream: null })
 })
 
 test('Stable channel, Holds, and disabled settings suppress notification candidates', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-automatic-suppression-'))
   const store = new AutomaticCheckStateStore(join(root, 'automatic-check.json'))
-  const current = { targetSequence: 1, dsh: '0.1.0-rc.7', environment: '2026.08.20.1' }
+  const current = { targetSequence: 1, dsh: '0.1.0-rc.7', environment: '1.0.0' }
   const stable = target(2, '0.1.0-rc.8')
 
   await store.record({ channel: 'experimental', current, target: stable, upstream: { version: '0.1.0-rc.10' }, stableAvailable: true })
@@ -71,7 +71,7 @@ test('a sequence-only metadata advance does not advertise a Stable update', asyn
   const store = new AutomaticCheckStateStore(join(root, 'automatic-check.json'))
   await store.record({
     channel: 'experimental',
-    current: { targetSequence: 2, dsh: '0.1.0-rc.10', environment: '2026.08.20.1' },
+    current: { targetSequence: 2, dsh: '0.1.0-rc.10', environment: '1.0.0' },
     target: target(3, '0.1.0-rc.10'),
     upstream: null,
     stableAvailable: false,

@@ -42,7 +42,7 @@ async function imageBootstrap(root, version, sequence, behavior = 'seed', revisi
     deployment: {
       id: `deployment-${String(sequence)}`,
       dshVersion: `0.1.0-rc.${String(sequence)}`,
-      environmentVersion: '2026.08.20.1',
+      environmentVersion: '1.0.0',
       environment: { id: 'environment', sha256: '1'.repeat(64) },
       pristine: { id: 'pristine', sha256: '2'.repeat(64) },
       runtime: { id: 'runtime', sha256: '3'.repeat(64) },

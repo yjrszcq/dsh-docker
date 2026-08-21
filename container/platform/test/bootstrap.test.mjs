@@ -454,7 +454,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     components: [{ id: 'gateway' }],
   })
   const environmentRunner = runner('environment', {
-    environmentVersion: '2026.08.20.1',
+    environmentVersion: '1.0.0',
     components: [{ id: 'dsh-runtime' }],
   })
   const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
@@ -500,7 +500,7 @@ test('isolates an unexpected Environment exit and keeps the Control Plane availa
     start: async () => { calls.push('environment:start') },
     stop: async () => { calls.push('environment:stop') },
     restart: async id => { calls.push(`environment:restart:${id}`); return { components: [{ id }] } },
-    status: () => ({ environmentVersion: '2026.08.20.1', components: [] }),
+    status: () => ({ environmentVersion: '1.0.0', components: [] }),
   }
   const runtime = new BootstrapRuntime({
     controlPlane,
@@ -537,7 +537,7 @@ test('enters recovery mode when an explicit DSH resume or restart fails', async 
     stop: async () => {},
     resume: async () => { throw new Error('DSH resume failed') },
     restart: async () => { throw new Error('DSH restart failed') },
-    status: () => ({ environmentVersion: '2026.08.20.1', components: [] }),
+    status: () => ({ environmentVersion: '1.0.0', components: [] }),
   }
   const runtime = new BootstrapRuntime({
     controlPlane: {

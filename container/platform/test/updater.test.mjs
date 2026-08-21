@@ -42,7 +42,7 @@ async function releaseFixture() {
   const environmentManifest = canonicalJson({
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.20.1',
+    version: '1.0.0',
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-19T00:00:00.000Z',
@@ -82,7 +82,7 @@ async function releaseFixture() {
     artifacts,
     desired: {
       bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
-      environment: { version: '2026.08.20.1', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
+      environment: { version: '1.0.0', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: {
         version: '0.1.0-rc.7',
         integrity: `sha512-${createHash('sha512').update(dsh).digest('base64')}`,

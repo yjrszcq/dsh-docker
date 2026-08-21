@@ -50,7 +50,7 @@ async function fixture({
     deployment: {
       id: `image-deployment-${marker}`,
       dshVersion: '0.1.0-rc.1',
-      environmentVersion: '2026.08.20.1',
+      environmentVersion: '1.0.0',
       environment: assets.environment,
       pristine: assets.pristine,
       runtime: assets.runtime,
@@ -89,7 +89,7 @@ async function repairableFixture() {
   await writeFile(join(environmentRoot, 'environment.manifest.json'), JSON.stringify({
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.20.1',
+    version: '1.0.0',
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-20T00:00:00.000Z',
@@ -128,7 +128,7 @@ async function repairableFixture() {
     deployment: {
       id: 'image-deployment-runtime-reset',
       dshVersion: '0.1.0-rc.1',
-      environmentVersion: '2026.08.20.1',
+      environmentVersion: '1.0.0',
       ...assets,
     },
   }
@@ -169,7 +169,7 @@ async function managedRecord(
     authority,
     targetSequence: sequence,
     dshVersion,
-    environmentVersion: '2026.08.20.1',
+    environmentVersion: '1.0.0',
     environment: references.environment,
     pristine: references.pristine,
     runtime: references.runtime,

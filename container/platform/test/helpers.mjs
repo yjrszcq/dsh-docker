@@ -91,7 +91,7 @@ export function target(generation, sequence, policy = officialDshPolicy()) {
     artifacts,
     desired: {
       bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
-      environment: { version: '2026.08.20.1', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
+      environment: { version: '1.0.0', manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: {
         version: '0.1.0-rc.7',
         integrity: `sha512-${Buffer.alloc(64).toString('base64')}`,

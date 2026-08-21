@@ -23,7 +23,7 @@ import { document, officialDshPolicy, registryKeyPair, target } from './helpers.
 const common = manifestType => ({
   schema: 1,
   manifestType,
-  version: manifestType === 'bootstrap' ? '1.0.0' : '2026.08.20.1',
+  version: manifestType === 'bootstrap' ? '1.0.0' : '1.0.0',
   keyringGeneration: 1,
   targetSequence: 1,
   issuedAt: '2026-08-19T00:00:00.000Z',
@@ -56,7 +56,7 @@ function imageInventory(overrides = {}) {
     deployment: {
       id: 'deployment-fixture',
       dshVersion: '0.1.0-rc.10',
-      environmentVersion: '2026.08.20.1',
+      environmentVersion: '1.0.0',
       environment: { id: 'environment-fixture', sha256: '2'.repeat(64) },
       pristine: { id: 'pristine-fixture', sha256: '3'.repeat(64) },
       runtime: { id: 'runtime-fixture', sha256: '4'.repeat(64) },

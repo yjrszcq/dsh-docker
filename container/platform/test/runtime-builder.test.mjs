@@ -51,7 +51,7 @@ async function environment(root, patches) {
   await writeFile(join(environmentRoot, 'environment.manifest.json'), JSON.stringify({
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.20.1',
+    version: '1.0.0',
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-20T00:00:00.000Z',

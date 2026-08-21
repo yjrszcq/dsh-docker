@@ -49,7 +49,7 @@ test('reconciles only declared System Plugins into a separate immutable overlay'
   const artifacts = new Map([['update-ui', first], ['diagnostics', second]])
   await reconcileSystemPlugins({
     root: join(root, 'managed'),
-    environmentVersion: '2026.08.20.1',
+    environmentVersion: '1.0.0',
     plugins: [
       { id: 'update-ui', sha256: '1'.repeat(64) },
       { id: 'diagnostics', sha256: '2'.repeat(64) },
@@ -114,7 +114,7 @@ test('rebuilds a bundled System Plugin view only from the current Environment ar
   await writeFile(join(environment, 'environment.manifest.json'), JSON.stringify({
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.20.1',
+    version: '1.0.0',
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-20T00:00:00.000Z',
@@ -190,7 +190,7 @@ test('persists install and enable selection while protecting Platform Management
   await writeFile(join(environment, 'environment.manifest.json'), JSON.stringify({
     schema: 1,
     manifestType: 'environment',
-    version: '2026.08.20.1',
+    version: '1.0.0',
     keyringGeneration: 1,
     targetSequence: 1,
     issuedAt: '2026-08-20T00:00:00.000Z',
