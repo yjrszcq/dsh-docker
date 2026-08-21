@@ -79,6 +79,8 @@ const supervisor = new BootstrapSupervisor({
   paths,
   uid: process.getuid?.() === 0 ? 1000 : undefined,
   gid: process.getgid?.() === 0 ? 1000 : undefined,
+  user: process.getuid?.() === 0 ? 'node' : undefined,
+  home: process.getuid?.() === 0 ? '/home/node' : undefined,
   entrypoint: 'platform/bootstrap/index.mjs',
   seedRoot,
   report: (message, fields) => logs.diagnostic('stage0', message, fields),

@@ -6,7 +6,11 @@ import { request } from 'node:http'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { BootstrapManager } from '../stage0/lib/slots.mjs'
-import { BootstrapSupervisor, bootstrapLaunchCommand } from '../stage0/lib/supervisor.mjs'
+import {
+  BootstrapSupervisor,
+  bootstrapLaunchCommand,
+  bootstrapLaunchEnvironment,
+} from '../stage0/lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
 import { createRecoveryServer, listenRecovery } from '../stage0/lib/recovery-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
@@ -105,6 +109,30 @@ test('preserves container supplementary groups while lowering Bootstrap privileg
     script: '/opt/bootstrap/index.mjs',
     uid: 1000,
   }), /UID and GID/)
+})
+
+test('replaces the root login environment when lowering Bootstrap privileges', () => {
+  assert.deepEqual(bootstrapLaunchEnvironment({
+    environment: { HOME: '/root', USER: 'root', LOGNAME: 'root', PATH: '/usr/local/bin:/usr/bin' },
+    dataRoot: '/data/platform',
+    runRoot: '/run/dsh-platform',
+    seedRoot: '/opt/dsh-platform/seed',
+    bootstrapVersion: '1.0.0',
+    user: 'node',
+    home: '/home/node',
+  }), {
+    HOME: '/home/node',
+    USER: 'node',
+    LOGNAME: 'node',
+    PATH: '/usr/local/bin:/usr/bin',
+    XDG_CACHE_HOME: '/home/node/.cache',
+    XDG_CONFIG_HOME: '/home/node/.config',
+    XDG_DATA_HOME: '/home/node/.local/share',
+    DSH_PLATFORM_DATA: '/data/platform',
+    DSH_PLATFORM_RUN: '/run/dsh-platform',
+    DSH_PLATFORM_SEED: '/opt/dsh-platform/seed',
+    DSH_BOOTSTRAP_VERSION: '1.0.0',
+  })
 })
 
 test('tracks immutable Bootstrap Records in one generation-based slots file', async () => {

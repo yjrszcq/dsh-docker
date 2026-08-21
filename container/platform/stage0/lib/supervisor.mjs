@@ -29,6 +29,31 @@ export function bootstrapLaunchCommand({ node, script, uid, gid }) {
   }
 }
 
+export function bootstrapLaunchEnvironment({
+  environment = process.env,
+  dataRoot,
+  runRoot,
+  seedRoot,
+  bootstrapVersion,
+  user,
+  home,
+}) {
+  return {
+    ...environment,
+    ...(home === undefined ? {} : {
+      HOME: home,
+      XDG_CACHE_HOME: join(home, '.cache'),
+      XDG_CONFIG_HOME: join(home, '.config'),
+      XDG_DATA_HOME: join(home, '.local', 'share'),
+    }),
+    ...(user === undefined ? {} : { USER: user, LOGNAME: user }),
+    DSH_PLATFORM_DATA: dataRoot,
+    DSH_PLATFORM_RUN: runRoot,
+    ...(seedRoot === undefined ? {} : { DSH_PLATFORM_SEED: seedRoot }),
+    DSH_BOOTSTRAP_VERSION: bootstrapVersion,
+  }
+}
+
 export async function terminateChild(child, graceMs = 5_000) {
   if (child.exitCode !== null || child.signalCode !== null) return
   const exited = once(child, 'exit')
@@ -57,6 +82,8 @@ export class BootstrapSupervisor {
     report = async () => {},
     uid,
     gid,
+    user,
+    home,
   }) {
     this.slots = slots
     this.dataRoot = dataRoot
@@ -70,6 +97,8 @@ export class BootstrapSupervisor {
     this.report = report
     this.uid = uid
     this.gid = gid
+    this.user = user
+    this.home = home
     this.child = undefined
     this.requests = new Map()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
@@ -100,13 +129,14 @@ export class BootstrapSupervisor {
       gid: this.gid,
     })
     const child = this.spawnImpl(command.executable, command.args, {
-      env: {
-        ...process.env,
-        DSH_PLATFORM_DATA: this.dataRoot,
-        DSH_PLATFORM_RUN: this.runRoot,
-        ...(this.seedRoot === undefined ? {} : { DSH_PLATFORM_SEED: this.seedRoot }),
-        DSH_BOOTSTRAP_VERSION: resolved.record.version,
-      },
+      env: bootstrapLaunchEnvironment({
+        dataRoot: this.dataRoot,
+        runRoot: this.runRoot,
+        seedRoot: this.seedRoot,
+        bootstrapVersion: resolved.record.version,
+        user: this.user,
+        home: this.home,
+      }),
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     })
     this.child = child
