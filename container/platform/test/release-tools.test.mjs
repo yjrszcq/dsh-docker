@@ -12,6 +12,9 @@ import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
 import { verifyManagementDependencies } from '../tools/verify-management-dependencies.mjs'
 
+const supportedTargetUrl = new URL('../../../release/supported-target.json', import.meta.url)
+const supportedDshVersion = JSON.parse(await readFile(supportedTargetUrl, 'utf8')).latestSupportedDsh
+
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
   const privatePath = join(root, `${name}-private.pem`)
@@ -105,7 +108,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
 
   const packageRoot = join(root, 'npm', 'package')
   await mkdir(join(packageRoot, 'lib'), { recursive: true })
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.7' }))
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: supportedDshVersion }))
   await writeFile(join(packageRoot, 'lib/bin.js'), '#!/usr/bin/env node\n')
   const picker = join(packageRoot, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(packageRoot, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
@@ -113,14 +116,14 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   await mkdir(connection, { recursive: true })
   await writeFile(join(picker, 'index.js'), 'const target = resolve(path ?? home);\n')
   await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
-  const tarball = join(root, 'deepseek-ai-dsh-0.1.0-rc.7.tgz')
+  const tarball = join(root, `deepseek-ai-dsh-${supportedDshVersion}.tgz`)
   result = spawnSync('tar', ['-czf', tarball, '-C', join(root, 'npm'), 'package'], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
 
   const output = join(root, 'release')
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
-    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    supportedTargetUrl.pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, '-', '1', 'https://release.example/releases/download/platform-1/', output,
@@ -133,7 +136,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'environment.manifest.json', 'environment.manifest.sig.json',
     'stable.json', 'stable.sig.json', 'keyring.json', 'keyring.sig.json',
   ]) assert.ok(files.includes(name), `${name} is missing`)
-  assert.equal(files.includes('deepseek-ai-dsh-0.1.0-rc.7.tgz'), false)
+  assert.equal(files.includes(`deepseek-ai-dsh-${supportedDshVersion}.tgz`), false)
   assert.equal(files.some(name => name.startsWith('.')), false)
 
   const bootstrapArchive = spawnSync('tar', ['-tzf', join(output, 'bootstrap.tgz')], { encoding: 'utf8' })
@@ -167,7 +170,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   const stable = parseStable(stableBytes)
   const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
-  assert.equal(stable.desired.dsh.version, '0.1.0-rc.7')
+  assert.equal(stable.desired.dsh.version, supportedDshVersion)
   assert.equal(stable.desired.environment.version, '1.0.0')
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
@@ -177,7 +180,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     releaseRoot: output,
     recoveryPublicKeyPath: join(trust, 'recovery-root.spki.base64'),
     dshTarballPath: tarball,
-    supportedTargetPath: new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    supportedTargetPath: supportedTargetUrl.pathname,
     environmentDefinitionPath: new URL('../../environment/definition.json', import.meta.url).pathname,
   })
   assert.equal(verifiedImage.stable.targetSequence, 1)
@@ -189,7 +192,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   await cp(output, join(imageInput, 'release'), { recursive: true })
   await cp(join(trust, 'recovery-root.spki.base64'), join(imageInput, 'recovery-root.spki.base64'))
   await cp(tarball, join(imageInput, 'dsh.tgz'))
-  await cp(new URL('../../../release/supported-target.json', import.meta.url), join(imageInput, 'supported-target.json'))
+  await cp(supportedTargetUrl, join(imageInput, 'supported-target.json'))
   await cp(new URL('../../environment/definition.json', import.meta.url), join(imageInput, 'environment-definition.json'))
   result = spawnSync(process.execPath, [
     new URL('../tools/build-seed.mjs', import.meta.url).pathname,
@@ -199,14 +202,14 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   const inventory = parseImageInventory(await readFile(join(seedOutput, 'inventory.json')))
   assert.equal(inventory.authority, 'stable')
   assert.equal(inventory.targetSequence, 1)
-  assert.equal(inventory.deployment.dshVersion, '0.1.0-rc.7')
+  assert.equal(inventory.deployment.dshVersion, supportedDshVersion)
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
   const rollbackOutput = join(root, 'rollback-release')
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
-    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    supportedTargetUrl.pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, output, '1',
@@ -235,7 +238,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(result.status, 0, result.stderr)
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
-    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    supportedTargetUrl.pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, futureRelease, '2',
@@ -253,7 +256,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(result.status, 0, result.stderr)
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
-    new URL('../../../release/supported-target.json', import.meta.url).pathname,
+    supportedTargetUrl.pathname,
     new URL('../../environment/definition.json', import.meta.url).pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
     conflictingTrust, current.privatePath, tarball, output, '2',
