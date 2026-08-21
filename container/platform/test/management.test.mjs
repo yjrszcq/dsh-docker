@@ -978,6 +978,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /cursorInactiveStyle: 'outline'/)
   assert.match(script, /const badge = action[\s\S]*plugin\.pendingRestart[\s\S]*plugin\.reservedNameConflict[\s\S]*plugin\.damaged[\s\S]*plugin\.enabled/)
   assert.doesNotMatch(style, /user-plugin-badges/)
+  assert.match(script, /count === 0 && userPluginInventory\.restartRequired !== true/)
+  assert.match(script, /userPluginDraft\.size === 0[\s\S]*userPluginInventory\.restartRequired === true[\s\S]*act\('restart-dsh', \{ method: 'POST' \}\)/)
   assert.match(script, /terminalEmulator\?\.focus\(\)/)
   assert.match(serverSource, /style-src 'self' 'unsafe-inline'/)
   assert.match(serverSource, /script-src 'self'; style-src/)

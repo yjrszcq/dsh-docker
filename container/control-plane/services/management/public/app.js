@@ -596,7 +596,7 @@ function renderUserPlugins(busy) {
   const count = userPluginDraft.size
   elements['user-plugin-draft-summary'].textContent = count === 0 ? t('noPendingUserPluginChanges') : t('pendingUserPluginChanges', { count })
   elements['cancel-user-plugin-changes'].disabled = locked || count === 0
-  elements['apply-user-plugin-changes'].disabled = locked || count === 0
+  elements['apply-user-plugin-changes'].disabled = locked || (count === 0 && userPluginInventory.restartRequired !== true)
   elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
   elements['user-plugin-recovery-detail'].textContent = locale === 'zh'
     ? t('userPluginRecoveryDetail')
@@ -823,7 +823,11 @@ async function waitForUserPluginTask(taskId) {
 }
 
 async function applyUserPluginDraft() {
-  if (userPluginDraft.size === 0 || userPluginSubmitting) return
+  if (userPluginSubmitting) return
+  if (userPluginDraft.size === 0) {
+    if (userPluginInventory.restartRequired === true) await act('restart-dsh', { method: 'POST' })
+    return
+  }
   userPluginSubmitting = true
   userPluginFeedback = null
   clearError()
