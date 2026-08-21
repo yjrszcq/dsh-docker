@@ -80,7 +80,7 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器和独立文件管理的默认工作目录 |
 | `DSH_SUDO_ENABLED` | `true` | 仅供 Compose 使用的免密码 sudo 开关 |
 
-全部变量和校验规则见[完整配置参考](docs/README_CN.md#配置参考)。
+全部变量和校验规则见[完整配置参考](docs/cn/guide.md#配置参考)。
 
 ## 更新
 
@@ -114,7 +114,7 @@ Compose 默认开启不受限制的免密码 sudo。Agent 不需要 root 权限�
 
 ## 详细文档
 
-[完整指南](docs/README_CN.md)包括：
+[完整指南](docs/cn/guide.md)包括：
 
 - 全部配置变量和 Gateway 行为；
 - 平台架构、在线更新、信任、恢复和回滚；

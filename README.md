@@ -80,7 +80,7 @@ Common settings:
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Default workspace for directory pickers and standalone file management |
 | `DSH_SUDO_ENABLED` | `true` | Compose-only passwordless sudo switch |
 
-See the [complete configuration reference](docs/README.md#configuration) for all variables and validation rules.
+See the [complete configuration reference](docs/en/guide.md#configuration) for all variables and validation rules.
 
 ## Updates
 
@@ -114,7 +114,7 @@ Compose enables unrestricted passwordless sudo by default. Set `DSH_SUDO_ENABLED
 
 ## Documentation
 
-The [complete guide](docs/README.md) covers:
+The [complete guide](docs/en/guide.md) covers:
 
 - all configuration variables and gateway behavior;
 - platform architecture, online updates, trust, recovery, and rollback;
