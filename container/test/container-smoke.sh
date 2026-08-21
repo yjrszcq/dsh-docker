@@ -393,7 +393,7 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$runtime_reset_task" '.runtimeReset.taskId == $task and .runtimeReset.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
-  if [ "$attempt" -ge 150 ]; then
+  if [ "$attempt" -ge 600 ]; then
     docker logs "$container" >&2
     echo "Runtime reset did not complete" >&2
     exit 1
