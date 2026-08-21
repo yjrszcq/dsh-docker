@@ -9,10 +9,10 @@
 ## 使用前须知
 
 - **目录权限：** bind mount 的 `data/dsh`、`data/platform` 和 `workspace` 必须允许容器 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
-- **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
-- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，并提供更新、恢复、日志、插件管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
 - **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
 - **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，并设置强 `DSH_PROXY_PASSWORD`。同时应通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
+- **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
+- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，并提供更新、恢复、日志、插件管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
 
 | 变体 | 滚动标签 | 固定版本标签 | 内容 |
 | --- | --- | --- | --- |
