@@ -229,20 +229,21 @@ jobs:
           DSH_VERSION: ${{ steps.target.outputs.dsh_version }}
           TARGET_SEQUENCE: ${{ steps.sequence.outputs.sequence }}
         run: |
+          prune_environment_assets() {
+            gh release view "$ENVIRONMENT_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+              if test "$name" != environment-release.json; then
+                gh release delete-asset "$ENVIRONMENT_TAG" "$name" --yes
+              fi
+            done
+          }
           if test "$PUBLISH_ENVIRONMENT" != true; then
+            prune_environment_assets
+            test "$(gh release view "$ENVIRONMENT_TAG" --json assets --jq '.assets[].name')" = environment-release.json
             exit 0
           fi
           assets="$RUNNER_TEMP/environment-release-assets"
           mkdir -p "$assets"
           cp "$RUNNER_TEMP/environment-release.json" "$assets/"
-          for name in bootstrap.manifest.json bootstrap.manifest.sig.json environment.manifest.json environment.manifest.sig.json; do
-            cp "$RUNNER_TEMP/platform-release/$name" "$assets/"
-          done
-          jq -r '.artifacts[].url' "$RUNNER_TEMP/platform-release/bootstrap.manifest.json" \
-            "$RUNNER_TEMP/platform-release/environment.manifest.json" | while IFS= read -r url; do
-              name="${url##*/}"
-              cp "$RUNNER_TEMP/platform-release/$name" "$assets/$name"
-            done
           notes="$RUNNER_TEMP/environment-release-notes.md"
           {
             printf 'Container Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
@@ -256,6 +257,7 @@ jobs:
           gh release edit "$ENVIRONMENT_TAG" --draft --target "$GITHUB_SHA" \
             --title "$ENVIRONMENT_TAG" --notes-file "$notes"
           gh release upload "$ENVIRONMENT_TAG" "$assets"/* --clobber
+          prune_environment_assets
           find "$assets" -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-environment-assets"
           gh release view "$ENVIRONMENT_TAG" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-environment-assets"
           diff -u "$RUNNER_TEMP/local-environment-assets" "$RUNNER_TEMP/remote-environment-assets"
