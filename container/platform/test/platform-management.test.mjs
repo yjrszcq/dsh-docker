@@ -5,7 +5,7 @@ import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs
 
 const root = new URL('../../environment/resources/system-plugins/platform-management/package/', import.meta.url)
 
-test('Platform Management declares an rc.7 web client and a platform-namespaced overlay row', async () => {
+test('Platform Management declares a DSH web client and a platform-namespaced overlay row', async () => {
   const packageJson = JSON.parse(await readFile(new URL('package.json', root)))
   const patch = JSON.parse(await readFile(new URL('cordis.patch.json', root)))
   assert.equal(packageJson.dsh.client.platform, 'web')

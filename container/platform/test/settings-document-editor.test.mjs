@@ -5,7 +5,7 @@ import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs
 
 const root = new URL('../../environment/resources/system-plugins/settings-document-editor/package/', import.meta.url)
 
-test('Settings Document Editor is an optional rc.7 web System Plugin', async () => {
+test('Settings Document Editor is an optional DSH web System Plugin', async () => {
   const metadata = JSON.parse(await readFile(new URL('package.json', root)))
   const patch = JSON.parse(await readFile(new URL('cordis.patch.json', root)))
   assert.equal(metadata.name, '@dsh-docker/settings-document-editor')
