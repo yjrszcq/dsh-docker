@@ -1,0 +1,29 @@
+name: Notify DSH Candidate Validation
+
+on:
+  workflow_run:
+    workflows:
+      - DSH Candidate Validation
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  notify-failed:
+    name: Notify standalone candidate failure
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure'
+    uses: yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988
+    with:
+      title: DSH 候选版本验证失败
+      message: >-
+        Pull Request 的 DSH 候选版本兼容性验证失败。候选提交：
+        ${{ github.event.workflow_run.head_sha }}。工作流：
+        ${{ github.event.workflow_run.html_url }}
+      priority: 8
+    secrets:
+      gotify_url: ${{ secrets.GOTIFY_URL }}
+      gotify_token: ${{ secrets.GOTIFY_TOKEN }}

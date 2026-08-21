@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const workflowUrl = new URL('../../../.github/workflows/dsh-upstream-update.yml', import.meta.url)
 const validationUrl = new URL('../../../.github/workflows/dsh-candidate-validation.yml', import.meta.url)
+const validationNotifyUrl = new URL('../../../.github/workflows/dsh-candidate-notify.yml', import.meta.url)
 const productionUrl = new URL('../../../.github/workflows/production-publish.yml', import.meta.url)
 const dockerUrl = new URL('../../../.github/workflows/docker.yaml', import.meta.url)
 const gotifyWorkflow = 'yjrszcq/github-workflows/.github/workflows/gotify-notify.yml@c4c7fe9e17854cd4962913ac2792513eab0be988'
@@ -46,6 +47,17 @@ test('candidate validation is secret-free and exercises the complete current Env
   assert.match(workflow, /container-smoke\.sh/)
   assert.match(workflow, /devtools-smoke\.sh/)
   assert.doesNotMatch(workflow, /secrets\.|DSH_RELEASE_PRIVATE_KEY|DSH_RECOVERY|DOCKER_TOKEN/)
+})
+
+test('standalone candidate failures notify without exposing secrets to candidate code', async () => {
+  const workflow = await readFile(validationNotifyUrl, 'utf8')
+  assert.match(workflow, /workflow_run:/)
+  assert.match(workflow, /DSH Candidate Validation/)
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'pull_request'/)
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'failure'/)
+  assert.match(workflow, /github\.event\.workflow_run\.html_url/)
+  assert.equal(workflow.split(gotifyWorkflow).length - 1, 1)
+  assert.doesNotMatch(workflow, /actions\/checkout|\brun:/)
 })
 
 test('discovery run reports candidate status and distinct validation notifications', async () => {
