@@ -199,7 +199,6 @@
           <label><input id="file-hidden" type="checkbox" checked> <span data-i18n="showHidden">Show hidden</span></label>
         </div>
         <div id="file-managed-warning" class="message notice" data-i18n="managedPathWarning" hidden>This path is platform-managed. Changes may be replaced and can damage the current deployment.</div>
-        <div id="file-task-state" class="file-task-state" role="status" hidden><div class="file-task-heading"><strong data-i18n="fileOperations">File operations</strong><span id="file-task-label"></span></div><div id="file-task-list" class="file-task-list"></div><button id="file-task-cancel" type="button" class="compact" data-i18n="cancel" hidden>Cancel</button></div>
         <div class="file-browser">
           <nav id="file-shortcuts" class="file-shortcuts" aria-label="Locations" data-i18n-aria-label="locations"></nav>
           <div class="file-main">
@@ -209,6 +208,7 @@
           </div>
         </div>
         <div class="file-selection"><span id="file-selection-count" data-i18n="noFilesSelected">No files selected</span><div><button id="file-copy" type="button" class="compact" data-i18n="copy" disabled>Copy</button><button id="file-cut" type="button" class="compact" data-i18n="cut" disabled>Cut</button><button id="file-paste" type="button" class="compact" data-i18n="paste" disabled>Paste</button><button id="file-archive" type="button" class="compact" data-i18n="compress" disabled>Compress</button><button id="file-extract" type="button" class="compact" data-i18n="extract" disabled>Extract</button><button id="file-rename" type="button" class="compact" data-i18n="rename" disabled>Rename</button><button id="file-download" type="button" class="compact" data-i18n="download" disabled>Download</button><button id="file-attributes" type="button" class="compact" data-i18n="editPermissions" aria-controls="file-attributes-panel" aria-expanded="false" disabled>Edit permissions</button><button id="file-delete" type="button" class="danger-text compact" data-i18n="deletePermanently" disabled>Delete permanently</button></div></div>
+        <div id="file-task-state" class="file-task-state" role="status" hidden><div class="file-task-heading"><strong data-i18n="fileOperations">File operations</strong><span id="file-task-label"></span></div><div id="file-task-list" class="file-task-list"></div><button id="file-task-cancel" type="button" class="compact" data-i18n="cancel" hidden>Cancel</button></div>
         <form id="file-archive-panel" class="file-archive-panel" hidden>
           <div><h3 id="file-archive-title" data-i18n="compressItems">Compress selected items</h3><p id="file-archive-detail"></p></div>
           <label><span data-i18n="archiveFormat">Archive format</span><select id="file-archive-format"><option value="zip">ZIP</option><option value="7z">7z</option><option value="tar.gz">tar.gz</option></select></label>

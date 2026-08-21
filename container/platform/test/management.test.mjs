@@ -880,6 +880,20 @@ test('Platform Management script references only DOM IDs declared by its documen
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/)
 })
 
+test('standalone file task queue stays below file actions and scrolls within a fixed height', async () => {
+  const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
+  const html = await readFile(new URL('index.html', publicRoot), 'utf8')
+  const style = await readFile(new URL('style.css', publicRoot), 'utf8')
+  const browserOffset = html.indexOf('class="file-browser"')
+  const selectionOffset = html.indexOf('class="file-selection"')
+  const taskOffset = html.indexOf('id="file-task-state"')
+  const archiveOffset = html.indexOf('id="file-archive-panel"')
+  assert.equal(browserOffset < selectionOffset && selectionOffset < taskOffset && taskOffset < archiveOffset, true)
+  assert.match(style, /\.file-task-list\s*\{[^}]*max-height:\s*180px;[^}]*overflow-y:\s*auto;/)
+  assert.match(style, /\.file-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/)
+  assert.match(style, /\.file-pagination\s*\{[^}]*margin-top:\s*auto;/)
+})
+
 test('standalone console keeps localized feature parity on the shared Management API', async () => {
   const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
