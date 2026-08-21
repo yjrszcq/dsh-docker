@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtemp, readFile, readdir, stat, utimes } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, readdir, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -19,6 +19,39 @@ test('writes source-separated JSONL and queries bounded chronological entries', 
   assert.deepEqual((await readdir(root)).sort(), ['gateway.jsonl', 'updater.jsonl'])
   assert.equal((await logs.query({ limit: 5_000 })).length, 2)
   await assert.rejects(logs.query({ limit: 5_001 }), /log query limit is invalid/)
+})
+
+test('follows entries appended by another process without replaying existing logs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-follow-'))
+  const logs = new JsonlLogManager({ root })
+  await logs.append('gateway', 'stdout', 'existing')
+  const received = []
+  const follower = await logs.follow({}, entry => received.push(entry), { intervalMs: 50 })
+  try {
+    const external = {
+      timestamp: '2026-08-21T00:00:00.000Z', source: 'gateway', stream: 'stdout', level: 'info', message: '外部日志',
+    }
+    const encoded = Buffer.from(`${JSON.stringify(external)}\n`)
+    const split = encoded.indexOf(Buffer.from('外')) + 1
+    await appendFile(logs.currentPath('gateway'), encoded.subarray(0, split))
+    await new Promise(resolve => setTimeout(resolve, 80))
+    await appendFile(logs.currentPath('gateway'), encoded.subarray(split))
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        clearInterval(poll)
+        reject(new Error('timed out waiting for followed log'))
+      }, 1_000)
+      const poll = setInterval(() => {
+        if (received.length === 0) return
+        clearTimeout(timeout)
+        clearInterval(poll)
+        resolve()
+      }, 10)
+    })
+    assert.deepEqual(received.map(entry => entry.message), ['外部日志'])
+  } finally {
+    follower.close()
+  }
 })
 
 test('assigns default levels and accepts only explicit supported levels', async () => {

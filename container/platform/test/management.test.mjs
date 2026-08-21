@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { request as httpRequest } from 'node:http'
-import { lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -140,7 +140,10 @@ test('management live logs preserve the requested source filter', async () => {
       })
     })
     await logs.append('updater', 'stdout', 'must-not-stream')
-    await logs.append('gateway', 'stdout', 'must-stream')
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await appendFile(logs.currentPath('gateway'), `${JSON.stringify({
+      timestamp: new Date().toISOString(), source: 'gateway', stream: 'stdout', level: 'info', message: 'must-stream',
+    })}\n`)
     await Promise.race([
       live,
       new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for live log')), 1_000)),
@@ -1016,7 +1019,11 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(html, /href="\.\/vendor\/xterm\.css"/)
   assert.match(script, /stylesheet\.href = '\.\/vendor\/xterm\.css'/)
   assert.match(script, /if \(tab === 'maintenance'\) \{\s*connectLogs\(\)/)
-  assert.match(script, /function connectLogs\(\) \{\s*if \(logSource !== undefined\) return/)
+  assert.match(script, /function connectLogs\(\{ force = false \} = \{\}\)/)
+  assert.match(script, /addEventListener\('heartbeat'/)
+  assert.match(script, /Date\.now\(\) - logLastActivity > 35_000/)
+  assert.match(html, /id="refresh-logs"[^>]*data-i18n="refreshLogs"/)
+  assert.match(script, /function refreshLogs\(\)[\s\S]*api\(`logs\?limit=/)
   assert.match(script, /logIdentities\.has\(identity\)/)
   assert.match(script, /function scheduleLogRender\(\)/)
   assert.match(script, /maintenance: '重启 DSH'/)

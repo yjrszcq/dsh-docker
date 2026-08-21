@@ -54,7 +54,7 @@ const COPY = Object.freeze({
     logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块',
     logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误',
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', pauseAutoScroll: '暂停自动滚动', resumeAutoScroll: '继续自动滚动',
-    clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
+    refreshLogs: '刷新日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
     notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
@@ -126,7 +126,7 @@ const COPY = Object.freeze({
     logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module',
     logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error',
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', pauseAutoScroll: 'Pause auto-scroll', resumeAutoScroll: 'Resume auto-scroll',
-    clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
+    refreshLogs: 'Refresh logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
     notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending restart',
@@ -213,6 +213,8 @@ let userPluginFeedback = null
 const visibleOperationTasks = new Set()
 let eventSource
 let logSource
+let logLastActivity = 0
+let logWatchdogTimer
 let logRenderFrame
 let autoScroll = true
 let terminalRuntime
@@ -2042,19 +2044,51 @@ function connectEvents() {
   eventSource.onerror = () => setConnection('connecting')
 }
 
-function connectLogs() {
+function connectLogs({ force = false } = {}) {
+  if (force) {
+    logSource?.close()
+    logSource = undefined
+  }
   if (logSource !== undefined) return
+  logLastActivity = Date.now()
+  elements['log-connection'].dataset.state = 'connecting'
+  elements['log-connection'].querySelector('strong').textContent = t('logsConnecting')
   logSource = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
   logSource.addEventListener('log', event => {
+    logLastActivity = Date.now()
     try { appendLog(JSON.parse(event.data)) } catch {}
   })
+  logSource.addEventListener('heartbeat', () => {
+    logLastActivity = Date.now()
+  })
   logSource.onopen = () => {
+    logLastActivity = Date.now()
     elements['log-connection'].dataset.state = 'live'
     elements['log-connection'].querySelector('strong').textContent = t('logsLive')
   }
   logSource.onerror = () => {
     elements['log-connection'].dataset.state = 'disconnected'
     elements['log-connection'].querySelector('strong').textContent = t('logsDisconnected')
+  }
+  if (logWatchdogTimer === undefined) {
+    logWatchdogTimer = window.setInterval(() => {
+      if (logSource !== undefined && Date.now() - logLastActivity > 35_000) connectLogs({ force: true })
+    }, 5_000)
+  }
+}
+
+async function refreshLogs() {
+  elements['refresh-logs'].disabled = true
+  try {
+    const result = await api(`logs?limit=${String(LOG_STREAM_LIMIT)}`)
+    for (const entry of result.entries ?? []) appendLog(entry)
+    logEntries.sort((left, right) => left.value.timestamp.localeCompare(right.value.timestamp))
+    renderLogs()
+    connectLogs({ force: true })
+  } catch (error) {
+    showError(error)
+  } finally {
+    elements['refresh-logs'].disabled = false
   }
 }
 
@@ -2288,6 +2322,7 @@ elements['auto-scroll'].addEventListener('click', () => {
   elements['auto-scroll'].textContent = t(autoScroll ? 'pauseAutoScroll' : 'resumeAutoScroll')
   if (autoScroll) elements['log-list'].scrollTop = elements['log-list'].scrollHeight
 })
+elements['refresh-logs'].addEventListener('click', () => { void refreshLogs() })
 elements['clear-logs'].addEventListener('click', () => {
   const latest = logEntries.reduce((value, entry) => {
     const timestamp = Date.parse(entry.value.timestamp)
@@ -2306,6 +2341,7 @@ window.addEventListener('beforeunload', () => {
   terminalSocket?.close()
   eventSource?.close()
   logSource?.close()
+  window.clearInterval(logWatchdogTimer)
 })
 window.addEventListener('beforeunload', event => {
   if (!fileEditorDirty) return

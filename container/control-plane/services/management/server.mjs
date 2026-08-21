@@ -541,17 +541,55 @@ export function createManagementServer({
       } else if (request.method === 'GET' && route === 'logs/stream') {
         const options = logOptions(url)
         const selectedSources = options.sources === undefined ? undefined : new Set(options.sources)
+        const sent = new Set()
+        const sentOrder = []
+        const sendLog = value => {
+          const identity = JSON.stringify(value)
+          if (sent.has(identity)) return
+          sent.add(identity)
+          sentOrder.push(identity)
+          if (sentOrder.length > 10_000) sent.delete(sentOrder.shift())
+          event(response, 'log', value)
+        }
+        const listener = value => {
+          if (selectedSources === undefined || selectedSources.has(value.source)) sendLog(value)
+        }
+        let follower
+        let heartbeat
+        let closed = false
+        const cleanup = () => {
+          closed = true
+          clearInterval(heartbeat)
+          follower?.close()
+          logs.off('entry', listener)
+        }
+        response.once('close', cleanup)
         response.writeHead(200, {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
           connection: 'keep-alive',
         })
-        for (const entry of await logs.query(options)) event(response, 'log', entry)
-        const listener = value => {
-          if (selectedSources === undefined || selectedSources.has(value.source)) event(response, 'log', value)
-        }
+        response.flushHeaders()
+        event(response, 'heartbeat', { timestamp: new Date().toISOString() })
+        for (const entry of await logs.query(options)) sendLog(entry)
+        if (closed) return
         logs.on('entry', listener)
-        response.once('close', () => logs.off('entry', listener))
+        let followFailureReported = false
+        follower = await logs.follow(options, sendLog, {
+          onError: error => {
+            if (followFailureReported) return
+            followFailureReported = true
+            void logs.diagnostic('log-manager', 'log.follow.failed', { error })
+          },
+        })
+        if (closed) {
+          follower.close()
+          return
+        }
+        for (const entry of await logs.query(options)) sendLog(entry)
+        heartbeat = setInterval(() => event(response, 'heartbeat', { timestamp: new Date().toISOString() }), 15_000)
+        heartbeat.unref()
+        if (closed) clearInterval(heartbeat)
       } else send(response, 404, { error: 'not found' })
     } catch (error) {
       const conflict = error instanceof UpdateConflictError || error instanceof SettingsDocumentConflictError

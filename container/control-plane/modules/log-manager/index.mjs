@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
 import { appendFile, chmod, chown, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -211,6 +212,79 @@ export class JsonlLogManager extends EventEmitter {
     }
     entries.sort((left, right) => left.timestamp.localeCompare(right.timestamp))
     return Object.freeze(entries.slice(-limit).map(Object.freeze))
+  }
+
+  async follow({ sources, since } = {}, listener, { intervalMs = 250, onError = () => {} } = {}) {
+    if (typeof listener !== 'function') throw new Error('log follow listener is required')
+    if (!Number.isSafeInteger(intervalMs) || intervalMs < 50) throw new Error('log follow interval is invalid')
+    const selected = sources === undefined ? undefined : new Set(sources.map(validateSource))
+    const threshold = since === undefined ? undefined : new Date(since).toISOString()
+    await mkdir(this.root, { recursive: true })
+    let states = new Map()
+    for (const file of await this.files()) {
+      states.set(file.name, { identity: `${String(file.details.dev)}:${String(file.details.ino)}`, offset: file.details.size, pending: Buffer.alloc(0) })
+    }
+    let closed = false
+    let scanning = false
+    let scanAgain = false
+    const scan = async () => {
+      if (closed) return
+      if (scanning) {
+        scanAgain = true
+        return
+      }
+      scanning = true
+      try {
+        const files = await this.files()
+        const byIdentity = new Map([...states.values()].map(state => [state.identity, state]))
+        const nextStates = new Map()
+        const entries = []
+        for (const file of files) {
+          const identity = `${String(file.details.dev)}:${String(file.details.ino)}`
+          let state = states.get(file.name)
+          if (state?.identity !== identity) state = byIdentity.get(identity)
+          if (state === undefined || file.details.size < state.offset) state = { identity, offset: 0, pending: Buffer.alloc(0) }
+          if (file.details.size > state.offset) {
+            const chunks = []
+            const end = file.details.size - 1
+            for await (const chunk of createReadStream(file.path, { start: state.offset, end })) chunks.push(chunk)
+            const content = Buffer.concat([state.pending, ...chunks])
+            let lineStart = 0
+            for (let index = 0; index < content.length; index += 1) {
+              if (content[index] !== 0x0a) continue
+              const line = content.subarray(lineStart, index).toString('utf8')
+              lineStart = index + 1
+              if (line === '') continue
+              const entry = parseLine(line)
+              if (entry !== undefined
+                && (selected === undefined || selected.has(entry.source))
+                && (threshold === undefined || entry.timestamp >= threshold)) entries.push(entry)
+            }
+            state = { ...state, identity, offset: file.details.size, pending: content.subarray(lineStart) }
+          }
+          nextStates.set(file.name, state)
+        }
+        states = nextStates
+        entries.sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+        for (const entry of entries) listener(Object.freeze(entry))
+      } catch (error) {
+        onError(error)
+      } finally {
+        scanning = false
+        if (scanAgain) {
+          scanAgain = false
+          void scan()
+        }
+      }
+    }
+    const timer = setInterval(() => { void scan() }, intervalMs)
+    timer.unref()
+    return Object.freeze({
+      close: () => {
+        closed = true
+        clearInterval(timer)
+      },
+    })
   }
 
   capture(child, source, declaration = { stdout: true, stderr: true }, { acceptForwarded = false } = {}) {
