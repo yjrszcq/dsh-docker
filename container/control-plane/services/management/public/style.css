@@ -172,7 +172,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .file-section { gap: 14px; }
 #panel-files.file-dragging .file-browser { outline: 2px solid var(--accent); outline-offset: 2px; }
 .file-heading-actions, .file-selection > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.file-pathbar { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 7px; }
+.file-pathbar { display: grid; grid-template-columns: repeat(3, 34px) minmax(0, 1fr) auto; gap: 7px; }
+.file-pathbar .file-nav-button { width: 34px; min-width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 6px; font-family: Arial, sans-serif; font-size: 20px; font-weight: 600; line-height: 1; }
 .file-pathbar input, .file-searchbar input {
   min-width: 0;
   height: 34px;
@@ -583,7 +584,7 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .terminal-frame { height: clamp(260px, 48dvh, 360px); }
   .file-heading-actions { width: 100%; }
   .file-heading-actions button { flex: 1; }
-  .file-pathbar { grid-template-columns: auto auto minmax(0, 1fr); }
+  .file-pathbar { grid-template-columns: repeat(3, 34px) minmax(0, 1fr); }
   .file-pathbar #file-refresh { grid-column: 1 / -1; }
   .file-searchbar { grid-template-columns: 1fr; }
   .file-searchbar button { width: 100%; }

@@ -174,8 +174,9 @@
           <div class="file-heading-actions"><button id="file-new" type="button" class="secondary" data-i18n="newItem">New</button><button id="file-upload" type="button" class="primary" data-i18n="upload">Upload</button><input id="file-upload-input" type="file" multiple hidden></div>
         </div>
         <div class="file-pathbar">
-          <button id="file-back" type="button" class="compact" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back">←</button>
-          <button id="file-up" type="button" class="compact" title="Parent directory" data-i18n-title="parentDirectory" aria-label="Parent directory" data-i18n-aria-label="parentDirectory">↑</button>
+          <button id="file-back" type="button" class="compact file-nav-button" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back" disabled>←</button>
+          <button id="file-forward" type="button" class="compact file-nav-button" title="Forward" data-i18n-title="forward" aria-label="Forward" data-i18n-aria-label="forward" disabled>→</button>
+          <button id="file-up" type="button" class="compact file-nav-button" title="Parent directory" data-i18n-title="parentDirectory" aria-label="Parent directory" data-i18n-aria-label="parentDirectory" disabled>↑</button>
           <input id="file-path" type="text" value="" spellcheck="false" aria-label="Path" data-i18n-aria-label="path">
           <button id="file-refresh" type="button" class="compact" data-i18n="refresh">Refresh</button>
         </div>

@@ -83,7 +83,7 @@ const COPY = Object.freeze({
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
-    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', parentDirectory: '上级目录', path: '路径',
+    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
     locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多',
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
@@ -155,7 +155,7 @@ const COPY = Object.freeze({
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
-    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', parentDirectory: 'Parent directory', path: 'Path',
+    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
     locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
@@ -241,6 +241,7 @@ let fileListing = { revision: null, entries: [], nextCursor: null, total: 0 }
 let fileSort = 'name'
 let fileOrder = 'asc'
 let fileHistory = []
+let fileFuture = []
 let fileSelected = new Set()
 let fileClipboard = null
 const fileDirectorySizes = new Map()
@@ -1535,23 +1536,38 @@ function renderFiles() {
   renderFileSelection()
 }
 
+function renderFileNavigation() {
+  elements['file-back'].disabled = fileLoading || fileHistory.length === 0
+  elements['file-forward'].disabled = fileLoading || fileFuture.length === 0
+  elements['file-up'].disabled = fileLoading || filePath === '/'
+}
+
 async function navigateFiles(path, { history = true, append = false } = {}) {
-  if (fileLoading) return
+  if (fileLoading) return false
   fileLoading = true
+  renderFileNavigation()
   clearError()
   try {
     const query = new URLSearchParams({ path, limit: '200', sort: fileSort, order: fileOrder })
     if (append && fileListing.nextCursor !== null) query.set('cursor', fileListing.nextCursor)
     const next = await api(`files/list?${query}`)
-    if (history && !append && filePath !== next.path) fileHistory.push(filePath)
+    if (history && !append && filePath !== next.path) {
+      fileHistory.push(filePath)
+      fileFuture = []
+    }
     filePath = next.path
     elements['file-path'].value = filePath
     fileSelected.clear()
     fileListing = append ? { ...next, entries: [...fileListing.entries, ...next.entries] } : next
     filesLoaded = true
     renderFiles()
-  } catch (error) { showError(error) } finally {
+    return true
+  } catch (error) {
+    showError(error)
+    return false
+  } finally {
     fileLoading = false
+    renderFileNavigation()
     renderFiles()
   }
 }
@@ -1831,9 +1847,23 @@ elements['apply-user-plugin-changes'].addEventListener('click', () => { void app
 elements['new-terminal'].addEventListener('click', () => { void createTerminalSession() })
 elements['close-terminal'].addEventListener('click', () => { void closeTerminalSession() })
 elements['terminal-screen'].addEventListener('pointerdown', () => terminalEmulator?.focus())
-elements['file-back'].addEventListener('click', () => {
-  const path = fileHistory.pop()
-  if (path !== undefined) void navigateFiles(path, { history: false })
+elements['file-back'].addEventListener('click', async () => {
+  const path = fileHistory.at(-1)
+  const current = filePath
+  if (path !== undefined && await navigateFiles(path, { history: false })) {
+    fileHistory.pop()
+    fileFuture.push(current)
+    renderFileNavigation()
+  }
+})
+elements['file-forward'].addEventListener('click', async () => {
+  const path = fileFuture.at(-1)
+  const current = filePath
+  if (path !== undefined && await navigateFiles(path, { history: false })) {
+    fileFuture.pop()
+    fileHistory.push(current)
+    renderFileNavigation()
+  }
 })
 elements['file-up'].addEventListener('click', () => {
   const parent = filePath === '/' ? '/' : filePath.slice(0, filePath.lastIndexOf('/')) || '/'
