@@ -1494,6 +1494,9 @@ test('management exposes authenticated file inventory, search, upload, and range
       request.end()
     })
     assert.deepEqual(downloaded, { status: 206, body: 'load' })
+    const downloadTask = fileTasks.list().find(task => task.operation === 'download')
+    assert.notEqual(downloadTask, undefined)
+    await fileTasks.completion(downloadTask.taskId)
     const transferTasks = (await client.request('GET', `${API_PREFIX}files/tasks`)).tasks
     assert.equal(transferTasks.some(task => task.operation === 'upload' && task.status === 'success' && task.processedBytes === 8), true)
     assert.equal(transferTasks.some(task => task.operation === 'upload' && task.status === 'failed' && task.errorCode === 'FILE_EXISTS'), true)
