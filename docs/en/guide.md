@@ -29,7 +29,7 @@ This guide expands the root [README](../../README.md) into a complete deployment
 | Standard | `latest` | `<version>` | DSH and normal runtime utilities |
 | Devtools | `latest-devtools` | `<version>-devtools` | Standard image plus development tools |
 
-Use the Standard image for ordinary deployments. The Devtools image adds compilers, diagnostics, editors, and other development utilities but uses the same persistent data layout.
+Use the Standard image for ordinary deployments. It includes the minimal compiler toolchain needed by native DSH plugin dependencies. The Devtools image adds broader diagnostics, editors, and other development utilities while using the same persistent data layout.
 
 Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `1.0.0`, `1.0`, and `1`, plus the DSH lookup tag `dsh-0.1.1-rc.1`; it never publishes Devtools tags.
 
@@ -499,6 +499,6 @@ node container/test/compose-config.mjs
 
 With Docker available, `container/test/container-smoke.sh [image]` checks managed processes, trust, password flow, persistent Console access, and the loopback-only DSH listener. `container/test/devtools-smoke.sh <image>` checks the devtools variant.
 
-The standard image includes Node.js 24, `pnpm`, Python 3 with `venv`, Git, OpenSSH, curl, jq, ripgrep, and optional sudo. Devtools additionally includes build tools, Bash completion, network diagnostics, archive and file utilities, Vim, `pkg-config`, and pinned uv.
+The standard image includes Node.js 24, `pnpm`, Python 3 with `venv`, Git, OpenSSH, curl, jq, ripgrep, optional sudo, and the minimal `make`/C++ toolchain needed to build native DSH plugin dependencies. Devtools additionally includes broader development headers and tools, Bash completion, network diagnostics, archive and file utilities, Vim, `pkg-config`, and pinned uv.
 
 Devtools uses uv instead of a shared pre-created Python environment. Use `uv run --with requests script.py`, or `uv sync` and `uv run` in projects. Bare `pip` and `pip3` commands are intentionally absent; `python3 -m venv` remains available. Additional Python versions require an explicit `uv python install <version>`.

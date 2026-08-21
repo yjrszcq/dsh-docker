@@ -51,8 +51,10 @@ RUN apt-get update \
         bash \
         ca-certificates \
         curl \
+        g++ \
         git \
         jq \
+        make \
         openssh-client \
         p7zip-full \
         procps \

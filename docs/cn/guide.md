@@ -29,7 +29,7 @@
 | 标准版 | `latest` | `<version>` | DSH 和正常运行所需工具 |
 | 开发工具版 | `latest-devtools` | `<version>-devtools` | 标准版加开发工具 |
 
-普通部署应使用标准版。开发工具版额外提供编译器、诊断工具和编辑器等开发工具，但使用相同的持久化数据布局。
+普通部署应使用标准版；标准版已包含 DSH 原生插件依赖所需的最小编译工具链。开发工具版额外提供更完整的诊断、编辑和开发工具，但使用相同的持久化数据布局。
 
 Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`1.0.0`、`1.0`、`1`，并提供 DSH 定位标签 `dsh-0.1.1-rc.1`；GHCR 不发布任何 Devtools 标签。
 
@@ -499,6 +499,6 @@ node container/test/compose-config.mjs
 
 Docker 可用时，`container/test/container-smoke.sh [image]` 检查受管理进程、信任、密码流程、常驻 Console 访问和 DSH 仅监听 loopback。`container/test/devtools-smoke.sh <image>` 检查开发工具版。
 
-标准镜像包含 Node.js 24、`pnpm`、带 `venv` 的 Python 3、Git、OpenSSH、curl、jq、ripgrep 和可选 sudo。开发工具版还包含构建工具、Bash 补全、网络诊断、压缩与文件工具、Vim、`pkg-config` 和固定版本 uv。
+标准镜像包含 Node.js 24、`pnpm`、带 `venv` 的 Python 3、Git、OpenSSH、curl、jq、ripgrep、可选 sudo，以及构建 DSH 原生插件依赖所需的最小 `make`/C++ 工具链。开发工具版还包含更完整的开发头文件和工具、Bash 补全、网络诊断、压缩与文件工具、Vim、`pkg-config` 和固定版本 uv。
 
 开发工具版使用 uv，不预创建共享 Python 环境。可以使用 `uv run --with requests script.py`，项目可使用 `uv sync` 和 `uv run`。镜像有意不提供裸 `pip` 和 `pip3` 命令，同时保留 `python3 -m venv`。其他 Python 版本需要显式执行 `uv python install <version>`。

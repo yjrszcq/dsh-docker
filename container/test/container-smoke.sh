@@ -74,6 +74,8 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 
 docker exec "$container" sh -c '
   set -eu
+  command -v g++ >/dev/null
+  command -v make >/dev/null
   command -v python3 >/dev/null
   venv="$(mktemp -d)/venv"
   python3 -m venv "$venv"
