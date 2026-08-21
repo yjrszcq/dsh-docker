@@ -54,7 +54,7 @@ button { letter-spacing: 0; }
 .brand strong { font-size: 14px; line-height: 20px; font-weight: 600; }
 .brand div > span { color: var(--muted); font-size: 11px; line-height: 16px; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; flex: none; }
-.language-switch { min-width: 36px; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: transparent; font-size: 11px; line-height: 26px; cursor: pointer; }
+.language-switch { height: 28px; padding: 0 26px 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background-color: transparent; font: inherit; font-size: 11px; cursor: pointer; }
 .language-switch:hover { background: var(--hover); }
 
 .connection, .log-connection {
@@ -181,7 +181,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .file-create-location { grid-column: 1 / -1; margin: 0; color: var(--faint); font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .file-create-error { grid-column: 1 / -1; margin: -4px 0 0; color: var(--danger); font-size: 12px; line-height: 18px; }
 .file-pathbar { display: grid; grid-template-columns: repeat(3, 34px) minmax(0, 1fr) auto; gap: 7px; }
-.file-pathbar .file-nav-button { width: 34px; min-width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 6px; font-family: Arial, sans-serif; font-size: 20px; font-weight: 600; line-height: 1; }
+.file-pathbar .file-nav-button { display: grid; place-items: center; width: 34px; min-width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 6px; }
+.file-nav-icon { width: 9px; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; }
+.file-nav-icon.back { transform: rotate(135deg); }
+.file-nav-icon.forward { transform: rotate(-45deg); }
+.file-nav-icon.up { transform: rotate(-135deg); }
 .file-pathbar input, .file-searchbar input {
   min-width: 0;
   height: 34px;

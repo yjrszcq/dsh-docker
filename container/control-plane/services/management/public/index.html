@@ -15,7 +15,10 @@
         <div><strong data-i18n="title">DSH Management Console</strong><span data-i18n="consoleLabel">Standalone console</span></div>
       </div>
       <div class="topbar-actions">
-        <button id="language-switch" class="language-switch" type="button" aria-label="Switch to Chinese" title="Switch to Chinese" data-i18n-aria-label="switchLanguage" data-i18n-title="switchLanguage">中文</button>
+        <select id="language-switch" class="language-switch" aria-label="Language" title="Language" data-i18n-aria-label="switchLanguage" data-i18n-title="switchLanguage">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
         <div class="connection" id="connection" data-state="connecting" role="status">
           <span aria-hidden="true"></span><strong data-i18n="connecting">Reconnecting</strong>
         </div>
@@ -184,9 +187,9 @@
           <p id="file-create-error" class="file-create-error" role="alert" hidden></p>
         </form>
         <div class="file-pathbar">
-          <button id="file-back" type="button" class="compact file-nav-button" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back" disabled>←</button>
-          <button id="file-forward" type="button" class="compact file-nav-button" title="Forward" data-i18n-title="forward" aria-label="Forward" data-i18n-aria-label="forward" disabled>→</button>
-          <button id="file-up" type="button" class="compact file-nav-button" title="Parent directory" data-i18n-title="parentDirectory" aria-label="Parent directory" data-i18n-aria-label="parentDirectory" disabled>↑</button>
+          <button id="file-back" type="button" class="compact file-nav-button" title="Back" data-i18n-title="back" aria-label="Back" data-i18n-aria-label="back" disabled><span class="file-nav-icon back" aria-hidden="true"></span></button>
+          <button id="file-forward" type="button" class="compact file-nav-button" title="Forward" data-i18n-title="forward" aria-label="Forward" data-i18n-aria-label="forward" disabled><span class="file-nav-icon forward" aria-hidden="true"></span></button>
+          <button id="file-up" type="button" class="compact file-nav-button" title="Parent directory" data-i18n-title="parentDirectory" aria-label="Parent directory" data-i18n-aria-label="parentDirectory" disabled><span class="file-nav-icon up" aria-hidden="true"></span></button>
           <input id="file-path" type="text" value="" spellcheck="false" aria-label="Path" data-i18n-aria-label="path">
           <button id="file-refresh" type="button" class="compact" data-i18n="refresh">Refresh</button>
         </div>

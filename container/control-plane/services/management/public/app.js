@@ -282,7 +282,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n-aria-label]')) node.setAttribute('aria-label', t(node.dataset.i18nAriaLabel))
   for (const node of document.querySelectorAll('[data-i18n-title]')) node.setAttribute('title', t(node.dataset.i18nTitle))
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
-  elements['language-switch'].textContent = locale === 'zh' ? 'EN' : '中文'
+  elements['language-switch'].value = locale
 }
 
 function display(value) {
@@ -1875,10 +1875,13 @@ elements['confirm-stable'].addEventListener('click', async () => {
 elements['automatic-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ enabled: event.target.checked }) })
 elements['automatic-interval'].addEventListener('change', event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) })
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
-elements['language-switch'].addEventListener('click', () => {
-  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return
+elements['language-switch'].addEventListener('change', event => {
+  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) {
+    event.target.value = locale
+    return
+  }
   fileEditorDirty = false
-  writeStorage(LANGUAGE_KEY, locale === 'zh' ? 'en' : 'zh')
+  writeStorage(LANGUAGE_KEY, event.target.value)
   window.location.reload()
 })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
