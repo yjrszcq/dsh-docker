@@ -35,7 +35,7 @@
 
 - **目录权限：** bind mount 的 DSH 数据、平台数据和工作区目录必须允许 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** `127.0.0.1:3080:3080` 只允许从 Docker 宿主机访问；`3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放 DSH。
-- **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，但它不是必需项；HTTPS 仍应在容器外终止。
+- **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，同时应在容器外终止 HTTPS。
 - **Agent Root 权限：** `dsh-sudo-true` 附加用户组会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。不需要时应移除该用户组；使用仓库 Compose 时则设置 `DSH_SUDO_ENABLED=false`。
 - **管理中心 Root 权限：** 关闭 Agent sudo 不会限制独立 DSH 管理中心。其容器终端和文件管理会按设计使用 Root 权限，必须放在认证和可信网络边界之后。
 - **恢复入口：** `/_dsh_platform/console/` 在 DSH 停止或无法启动时仍可使用。配置 Gateway 密码时复用该密码，否则使用 `DSH_PLATFORM_PASSWORD`；两者均为空时进入临时密钥模式。

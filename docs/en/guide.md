@@ -35,7 +35,7 @@ Use the Standard image for ordinary deployments. The Devtools image adds compile
 
 - **Directory permissions:** Bind-mounted DSH data, platform data, and workspace directories must be writable by UID/GID `1000:1000`. Keep both data directories when replacing or upgrading a container.
 - **Port exposure:** Bind `127.0.0.1:3080:3080` for host-only access. `3080:3080` or `0.0.0.0:3080:3080` publishes DSH on every host interface.
-- **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains. A strong `DSH_PROXY_PASSWORD` is recommended but optional. Terminate HTTPS outside the container.
+- **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains. A strong `DSH_PROXY_PASSWORD` is recommended, and HTTPS should terminate outside the container.
 - **Agent root authority:** The `dsh-sudo-true` supplementary group grants DSH and its Agent unrestricted passwordless root access. Omit it when root is unnecessary, or set `DSH_SUDO_ENABLED=false` when using the repository Compose file.
 - **Management root authority:** Disabling Agent sudo does not restrict the standalone DSH Management Console. Its container terminal and file manager intentionally run as root and require authentication and a trusted network boundary.
 - **Recovery access:** `/_dsh_platform/console/` remains available while DSH is stopped or cannot start. It uses the Gateway password when configured, otherwise `DSH_PLATFORM_PASSWORD`, and falls back to temporary-key mode when both are empty.
@@ -267,7 +267,7 @@ Official DSH classifies the browser from its public hostname and can disable Hos
 
 ### Remote Deployment Examples
 
-Remote publication requires both an external bind address and an explicit trusted-host allowlist. The example also includes the recommended, optional Gateway password. Replace its values before use:
+Remote publication requires both an external bind address and an explicit trusted-host allowlist. The example also includes the recommended Gateway password. Replace its values before use:
 
 ```yaml
 services:
