@@ -277,6 +277,8 @@ test('management restarts only DSH as an audited task and excludes update activa
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   let finishRestart
   const restartCompletion = new Promise(resolve => { finishRestart = resolve })
+  let finishLoadedStateCapture
+  const loadedStateCaptureCompletion = new Promise(resolve => { finishLoadedStateCapture = resolve })
   let restarts = 0
   let loadedStateCaptures = 0
   const server = createManagementServer({
@@ -286,7 +288,10 @@ test('management restarts only DSH as an audited task and excludes update activa
       restarts += 1
       await restartCompletion
     },
-    markUserPluginsLoaded: async () => { loadedStateCaptures += 1 },
+    markUserPluginsLoaded: async () => {
+      loadedStateCaptures += 1
+      await loadedStateCaptureCompletion
+    },
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -314,6 +319,7 @@ test('management restarts only DSH as an audited task and excludes update activa
     assert.equal(status.dshRestart.status, 'success')
     assert.equal(status.dshRestart.taskId, task.taskId)
     assert.equal(loadedStateCaptures, 1)
+    finishLoadedStateCapture()
     assert.deepEqual(
       (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
       ['dsh.restart.started', 'dsh.restart.completed'],

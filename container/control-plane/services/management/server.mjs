@@ -260,10 +260,13 @@ export function createManagementServer({
       .then(() => restartDsh())
       .then(
         async () => {
-          await refreshLoadedUserPlugins()
           await recordAudit('dsh.restart.completed', { taskId })
           publishRestart({ status: 'success', taskId, error: null })
           publishPlugin({ restartRequired: false })
+          // DSH readiness is the restart completion boundary. Refreshing the
+          // user-plugin inventory can be slow on mounted or CI filesystems and
+          // must not keep an already-ready Runtime in the restarting state.
+          void refreshLoadedUserPlugins()
         },
         async error => {
           const message = error instanceof Error ? error.message : 'DSH restart failed'
