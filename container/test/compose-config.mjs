@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 function render(overrides = {}) {
   const env = {
@@ -9,7 +10,7 @@ function render(overrides = {}) {
     DSH_DEFAULT_WORKSPACE: '/workspace',
     DSH_IMAGE_TAG: 'latest',
     DSH_LISTEN_ADDRESS: '0.0.0.0',
-    DSH_PORT: '3000',
+    DSH_PORT: '3080',
     DSH_PROXY_USERNAME: '',
     DSH_PROXY_PASSWORD: '',
     DSH_PLATFORM_PASSWORD: '',
@@ -34,10 +35,10 @@ function render(overrides = {}) {
 }
 
 const defaults = render()
-assert.equal(defaults.image, 'dsh-docker:test')
-assert.equal(defaults.container_name, 'dsh-test')
+assert.equal(defaults.image, 'szcq/deepseek-harness:latest')
+assert.equal(defaults.container_name, 'deepseek-harness')
 assert.equal(defaults.ports[0].host_ip, '0.0.0.0')
-assert.equal(defaults.ports[0].published, '3000')
+assert.equal(defaults.ports[0].published, '3080')
 assert.equal(defaults.environment.DSH_PROXY_USERNAME, '')
 assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
 assert.equal(defaults.environment.DSH_PLATFORM_PASSWORD, '')
@@ -50,8 +51,12 @@ assert.equal(defaults.environment.DSH_LOG_MAX_BYTES, '104857600')
 assert.equal(defaults.environment.DSH_PLATFORM_DATA, '/data/platform')
 assert.equal(defaults.environment.DSH_HOME, '/data/dsh')
 assert.deepEqual(defaults.volumes.map(volume => volume.target).sort(), ['/data/dsh', '/data/platform', '/workspace'])
+assert.equal(defaults.volumes.find(volume => volume.target === '/data/dsh').type, 'volume')
+assert.equal(defaults.volumes.find(volume => volume.target === '/data/platform').type, 'volume')
+assert.equal(defaults.volumes.find(volume => volume.target === '/workspace').source, resolve('./workspace'))
 
 const configured = render({
+  DSH_IMAGE_TAG: '1.0.0',
   DSH_LISTEN_ADDRESS: '0.0.0.0',
   DSH_PORT: '4080',
   DSH_PROXY_USERNAME: 'compose-user',
@@ -62,6 +67,7 @@ const configured = render({
   DSH_TELEMETRY_DISABLED: 'false',
   DSH_TRUSTED_HOSTS: '192.168.1.10,dsh.example:8443',
 })
+assert.equal(configured.image, 'szcq/deepseek-harness:1.0.0')
 assert.equal(configured.ports[0].host_ip, '0.0.0.0')
 assert.equal(configured.ports[0].published, '4080')
 assert.equal(configured.environment.DSH_PROXY_USERNAME, 'compose-user')

@@ -16,28 +16,45 @@
 创建本地数据目录：
 
 ```bash
-mkdir -p data/dsh workspace
+mkdir -p data/dsh data/platform workspace
 ```
 
-运行标准镜像：
+使用以下精简 `compose.yaml`：
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3080:3080"
+    group_add:
+      - dsh-sudo-true
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+启动容器：
+
+```bash
+docker compose up -d
+```
+
+也可以使用等价的 `docker run` 命令：
 
 ```bash
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
-  -p 3080:3080 \
-  -v dsh-platform-data:/data/platform \
+  -p 127.0.0.1:3080:3080 \
+  -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
-```
-
-也可以使用仓库内的 Compose 配置：
-
-```bash
-cp .env.example .env
-docker compose up -d
 ```
 
 打开 <http://127.0.0.1:3080>。

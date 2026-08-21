@@ -10,6 +10,7 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `DSH_IMAGE_TAG` | `latest` | `szcq/deepseek-harness` 镜像标签 |
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机端口发布地址 |
 | `DSH_PORT` | `3080` | 宿主机发布端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载到 `/workspace` 的宿主机目录 |
@@ -153,11 +154,11 @@ current Deployment 资产无法解析、Patch 校验失败或 DSH 启动失败�
 
 这套预发布布局不会迁移旧版 `/data/platform` 目录。Stage-0 检测到旧卷后会给出明确错误并拒绝启动。此时只清空 platform volume，绝不能因此删除 `/data/dsh`。
 
-日常备份至少保留 `/data/dsh` 和 `/data/platform/state`。如需保留精确的本地回滚点，还要备份 `/data/platform/store`，尤其是 snapshots。最简单可靠的做法是完整备份这两个 Volume。`/data/platform/cache` 和 `/run/dsh-platform` 无需备份。
+日常备份至少保留 `/data/dsh` 和 `/data/platform/state`；Compose 分别使用 `dsh-data` 和 `dsh-platform` named volume 保存它们。如需保留精确的本地回滚点，还要备份 `/data/platform/store`，尤其是 snapshots。最简单可靠的做法是完整备份这两个 Volume。`/data/platform/cache` 和 `/run/dsh-platform` 无需备份。
 
 ## Gateway
 
-Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。旧的 `/_dsh_platform/ui/` 路径会永久重定向到管理中心。
+Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。
 
 官方 DSH 根据公开 hostname 判断浏览器是否为 loopback，并可能在非 loopback 页面禁用 Host 侧设置。一个精确匹配补丁会将 Gateway 已放行的浏览器标记为 loopback，与转发给上游的 authority 保持一致。上游服务端特权 API 实现不作修改。
 

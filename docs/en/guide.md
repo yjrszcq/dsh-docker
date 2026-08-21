@@ -10,6 +10,7 @@ This guide documents configuration, platform behavior, online updates, trust, re
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `DSH_IMAGE_TAG` | `latest` | `szcq/deepseek-harness` image tag |
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
 | `DSH_PORT` | `3080` | Published host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
@@ -153,11 +154,11 @@ Consequently, pulling a newer image still matters: when its signed target sequen
 
 This pre-release layout is intentionally not migrated from older `/data/platform` layouts. Stage-0 refuses an old volume with an actionable error. Clear only the platform volume before starting the new image; never delete `/data/dsh` as part of that reset.
 
-For routine backups, preserve `/data/dsh` and `/data/platform/state`. To retain exact local rollback points, also preserve `/data/platform/store`, especially snapshots. Backing up both complete volumes is the simplest safe policy. `/data/platform/cache` and `/run/dsh-platform` do not need backup.
+For routine backups, preserve `/data/dsh` and `/data/platform/state`. Compose stores them in the `dsh-data` and `dsh-platform` named volumes. To retain exact local rollback points, also preserve `/data/platform/store`, especially snapshots. Backing up both complete volumes is the simplest safe policy. `/data/platform/cache` and `/run/dsh-platform` do not need backup.
 
 ## Gateway
 
-The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values. The legacy `/_dsh_platform/ui/` path permanently redirects to the console.
+The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values.
 
 Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
 

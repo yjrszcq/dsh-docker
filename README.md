@@ -16,28 +16,45 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 Create local data directories:
 
 ```bash
-mkdir -p data/dsh workspace
+mkdir -p data/dsh data/platform workspace
 ```
 
-Run the standard image:
+Use this minimal `compose.yaml`:
+
+```yaml
+services:
+  deepseek-harness:
+    image: szcq/deepseek-harness:latest
+    container_name: deepseek-harness
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3080:3080"
+    group_add:
+      - dsh-sudo-true
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/platform:/data/platform
+      - ./workspace:/workspace
+```
+
+Start it with:
+
+```bash
+docker compose up -d
+```
+
+Or use the equivalent `docker run` command:
 
 ```bash
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
   --group-add dsh-sudo-true \
-  -p 3080:3080 \
-  -v dsh-platform-data:/data/platform \
+  -p 127.0.0.1:3080:3080 \
+  -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
-```
-
-Or use the included Compose configuration:
-
-```bash
-cp .env.example .env
-docker compose up -d
 ```
 
 Open <http://127.0.0.1:3080>.
