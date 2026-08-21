@@ -10,11 +10,12 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DSH_IMAGE_TAG` | `latest` | 镜像标签 |
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机端口发布地址 |
 | `DSH_PORT` | `3080` | 宿主机发布端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载到 `/workspace` 的宿主机目录 |
 | `DSH_SUDO_ENABLED` | `true` | 是否提供不受限制的免密码 sudo；`true` 或 `false` |
+
+以上值来自仓库中的 `.env.example`。Compose 使用 named volumes 保存 DSH 与平台数据，并将 `DSH_WORKSPACE` 挂载到 `/workspace`。
 
 ### 容器变量
 
@@ -129,8 +130,12 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 ├── stage0-trust.sock
 ├── bootstrap.sock
 ├── management.sock
+├── maintenance.sock
+├── gateway-access.sock
 ├── recovery.sock
 ├── deployments/
+├── system-plugin-views/
+├── deployment
 └── views/{bootstrap,environment,runtime,system-plugins}
 ```
 
@@ -167,7 +172,7 @@ Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 
 ```bash
-docker exec dsh-test dsh-platform access create
+docker exec deepseek-harness dsh-platform access create
 ```
 
 命令返回一个随机临时密钥和失效时间。密钥从生成起有效 10 分钟，期间可以用于登录；每次重新生成都会产生不同密钥并立即废止旧密钥。成功登录得到只作用于 `/_dsh_platform/` 的 HttpOnly、SameSite 会话 Cookie；会话空闲 30 分钟或持续 8 小时后失效，Gateway 或容器重启也会清除。临时密钥和会话都不会写入 `/data/platform` 或日志。
@@ -182,13 +187,13 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-自动检查默认每六小时带抖动执行一次，可在任一 DSH 管理中心前端中关闭或调整频率。检查不会自动下载或激活更新；可选的网页提醒只由自动检查产生，打开页面和手动检查只刷新结果，不弹提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立控制台；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志和系统插件操作。
+自动检查默认每六小时带抖动执行一次，可在任一管理前端中关闭或调整频率。检查不会自动下载或激活更新。可选提醒只在 DSH 页面中显示，且只由自动检查触发；独立管理中心不显示更新弹窗。打开其中的“更新管理”标签会执行一次只读检查，打开页面和手动检查都只刷新已保存结果，不触发提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立管理中心；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志和系统插件操作。
 
 “运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的 DSH 管理中心会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
 
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
-独立控制台还列出当前 Environment 随附的 System Plugins。用户可以从当前 Deployment 的本地可信 Environment Artifact 重新安装其中一个插件，包括被禁用或卸载的 `platform-management` DSH 集成；平台会重建并校验完整 System Plugin Set，要求内容 Hash 与 Deployment Record 一致，然后只重启 DSH。这个操作不访问 GitHub 或 npm，也不从已构建 Runtime 复制文件。插件缺失不会自动触发重新安装。
+独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
 ### 独立恢复工具
 
@@ -202,7 +207,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 独立 DSH 管理中心的“文件管理”同样不依赖 DSH，因此 DSH 停止、启动失败或处于恢复模式时仍可使用；DSH 内的“平台管理”插件不会显示此标签。初始目录取自 `DSH_DEFAULT_WORKSPACE`；快捷入口依次使用 `DSH_DEFAULT_WORKSPACE`、`DSH_HOME`、`DSH_PLATFORM_DATA` 和 `/`，重复路径会自动去除。文件操作通过 Maintenance Broker 以 root 身份执行，可计算目录大小，并可修改文件或目录的用户、用户组和八进制权限；目录属性可选择递归应用且不会跟随符号链接。它可修复普通 Management/DSH 用户无法写入的文件，但仍受只读挂载和平台托管路径互斥保护。Windows、SMB 等不支持 Unix metadata 的宿主机 bind mount 可能静默忽略 `chown`/`chmod`；平台会校验修改结果并报告失败，此时需改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。
 
-文件管理支持上传文件或完整文件夹、下载文件或将目录临时打包为 ZIP，以及创建和解压 ZIP、7z、tar.gz。上传、下载、粘贴、压缩、解压和删除共用一个可见的 FIFO 任务队列；同一时刻只执行一个冲突操作，排队项和运行项都可在安全提交边界前取消。压缩工具无法提供可靠字节数的阶段显示不定进度，能够测量的传输阶段显示实际字节数，不会虚构百分比。目录下载的临时 ZIP 在完成、失败或取消后删除。目录清单默认每页 100 项，可切换为 50 或 200 项，并限制在独立滚动区域内；默认名称排序只读取当前页的详细 metadata。
+文件管理支持上传文件或完整文件夹，也可将文件拖入目录清单并上传到当前目录；下载文件时直接流式传输，下载目录时则临时打包为 ZIP。它还支持创建和解压 ZIP、7z、tar.gz。上传、下载、粘贴、压缩、解压和删除共用一个可见的 FIFO 任务队列；同一时刻只执行一个冲突操作，排队项和运行项都可在安全提交边界前取消。压缩工具无法提供可靠字节数的阶段显示不定进度，能够测量的传输阶段显示实际字节数，不会虚构百分比。刷新或关闭页面会中止浏览器持有的上传、下载流和尚未开始的上传，并清理 staging；持久化后台任务会在重新连接后再次显示。目录下载的临时 ZIP 在完成、失败或取消后删除。目录清单默认每页 100 项，可切换为 50 或 200 项，并限制在独立滚动区域内；默认名称排序只读取当前页的详细 metadata。
 
 文件清单支持隐藏文件、排序、分页、当前目录筛选、用户:用户组显示和有上限的递归搜索；文件夹大小只有点击“计算”后才会作为可取消的只读任务计算，且不跟随符号链接。符号链接按链接本身列出、复制和删除，不递归跟随。普通 UTF-8 文本可在带行号的编辑器中修改，最大 2 MiB；保存会携带 revision，若终端、Agent 或其他页面已经修改文件则返回冲突，不会静默覆盖。上传与下载均为流式传输，下载支持 HTTP Range；多文件上传由当前浏览器标签逐文件排队，关闭页面后尚未开始的文件不会继续。
 
@@ -212,7 +217,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
 
-平台和 DSH 的新日志也会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流。两个管理界面默认显示每条日志的简短摘要，点击后会展开包含错误堆栈、Cause、任务 ID 和其他诊断字段的完整结构化记录。容器启动时不会重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 仍是支持查询和轮转的权威日志存储。
+平台和 DSH 的新日志会以带 Source 的 JSON 实时写入容器 stdout 或 stderr，因此 `docker logs deepseek-harness` 可以查看完整运行流。两个管理界面支持按文本、Source 和级别筛选，可选择最近 100、250、500 或 1000 条处理后记录，并提供手动刷新、自动滚动开关和 JSONL 导出。每条日志默认显示简短摘要，展开后显示错误堆栈、Cause、任务 ID 和其他完整诊断字段。“清空显示”只影响当前浏览器视图，不删除日志文件。容器启动时不会向 stdout 重放历史日志。`/data/platform/logs` 中按 Source 分离的 JSONL 是权威日志存储，默认按总量 100 MiB、保留 14 天自动轮转。
 
 ```bash
 docker exec deepseek-harness dsh-platform status
@@ -283,7 +288,7 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 工作流接续 `targetSequence`，创建 draft，上传不可变 Bootstrap/Environment Artifact 和签名元数据，最后发布为 Latest。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。Recovery 私钥没有任何工作流输入。
 
-`Publish Docker Image` 由独立的 `production-image` Environment 保护。它使用三个公开 trust bundle secret 和 `DOCKER_TOKEN`，不拥有 Release 私钥或 GitHub Release 写权限。仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。
+`Publish Docker Image` 由独立的 `production-image` Environment 保护。它只使用 `DSH_RECOVERY_ROOT_PUBLIC_KEY` 和 `DOCKER_TOKEN`；签名 keyring 从 Supported Release 下载，不再作为额外的镜像工作流 Secret。该工作流不拥有 Release 私钥或 GitHub Release 写权限。仓库或组织 Secret `GOTIFY_URL`、`GOTIFY_TOKEN` 会显式传给可复用 Gotify 工作流。
 
 ## 构建与测试
 
@@ -296,7 +301,8 @@ docker build -t deepseek-harness:local .
 为本地开发构建指定官方包，或构建开发工具版：
 
 ```bash
-docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
+DSH_VERSION="$(jq -r .latestSupportedDsh release/supported-target.json)"
+docker build --build-arg "DSH_VERSION=$DSH_VERSION" -t "deepseek-harness:$DSH_VERSION" .
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
@@ -305,6 +311,7 @@ docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtool
 使用 Node.js 24 和 Docker Compose 运行本地检查：
 
 ```bash
+npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
 npm test --prefix container/control-plane/services/gateway
 npm test --prefix container/platform
 node container/test/compose-config.mjs

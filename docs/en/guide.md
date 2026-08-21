@@ -10,11 +10,12 @@ This guide documents configuration, platform behavior, online updates, trust, re
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DSH_IMAGE_TAG` | `latest` | Image tag |
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
 | `DSH_PORT` | `3080` | Published host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
 | `DSH_SUDO_ENABLED` | `true` | Add unrestricted passwordless sudo; `true` or `false` |
+
+These values describe the checked-in `.env.example`. Compose stores DSH and platform data in named volumes and bind-mounts `DSH_WORKSPACE` at `/workspace`.
 
 ### Container Variables
 
@@ -129,8 +130,12 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 ├── stage0-trust.sock
 ├── bootstrap.sock
 ├── management.sock
+├── maintenance.sock
+├── gateway-access.sock
 ├── recovery.sock
 ├── deployments/
+├── system-plugin-views/
+├── deployment
 └── views/{bootstrap,environment,runtime,system-plugins}
 ```
 
@@ -167,7 +172,7 @@ When `DSH_PROXY_PASSWORD` is empty, every external `/_dsh_platform/console/*` ro
 When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
 
 ```bash
-docker exec dsh-test dsh-platform access create
+docker exec deepseek-harness dsh-platform access create
 ```
 
 The command returns a random temporary key and expiry. It remains usable for 10 minutes; generating another produces a different key and immediately invalidates the prior key. A successful sign-in creates an HttpOnly, SameSite cookie scoped to `/_dsh_platform/`. Sessions expire after 30 minutes idle or eight hours total, and Gateway or container restart clears them. Neither temporary keys nor sessions are written to `/data/platform` or logs.
@@ -182,13 +187,13 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either DSH Management Console frontend. Checks never download or activate an update. Optional web notifications are produced only by automatic checks; page-open and manual checks update the displayed result without showing a notification. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, and System Plugin workflows.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening its Updates tab performs a read-only check, while page-open and manual checks refresh the saved result without notifying. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, and System Plugin workflows.
 
 The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded DSH Management Console view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
 
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
-The standalone console also lists System Plugins bundled by the current Environment. A user can reinstall one from the current Deployment's local trusted Environment Artifact, including the `platform-management` DSH integration if it was disabled or uninstalled. The platform rebuilds and verifies the complete System Plugin Set against the Deployment Record content hash, then restarts only DSH. This operation never contacts GitHub or npm and never copies files from a built Runtime. A missing plugin does not trigger automatic reinstallation.
+The standalone console lists every System Plugin bundled by the current Environment and can install, uninstall, enable, or disable them, including recovery of the `platform-management` DSH integration. The integration inside DSH shows missing plugins with an Install action and limits installed plugins to enable/disable; it cannot uninstall them. Changes are marked **Pending restart** and take effect only after restarting DSH. Refreshing before restart discards the pending draft. Installation rebuilds and verifies the complete System Plugin Set from the current Deployment's local trusted Environment Artifact against the Deployment Record content hash. It never contacts GitHub or npm, never copies files from a built Runtime, and never reinstalls a missing plugin automatically.
 
 ### Standalone Recovery Tools
 
@@ -204,7 +209,7 @@ The standalone DSH Management Console **Files** tab also remains available while
 
 Directory inventory supports hidden files, sorting, local filtering, owner/group display, and bounded recursive search. It uses a fixed scrolling viewport and server-backed pages of 50, 100 (default), or 200 items; default name sorting resolves detailed metadata only for the requested page. Directory size is calculated only when requested, as a cancellable read-only task that does not follow symbolic links. The expanded permissions editor changes a file or directory user, group, and octal mode; directory changes can be applied recursively without following symbolic links. Symbolic links are listed, copied, and deleted as links and are not followed recursively. Regular UTF-8 text up to 2 MiB can be edited in the line-number editor. Saves include a revision and return a conflict instead of overwriting changes made by a terminal, Agent, or another page.
 
-Files or complete browser-selected folders can be uploaded while retaining their relative layout. Files stream directly to downloads; directories are temporarily packaged as ZIP and the temporary archive is removed after completion, failure, or cancellation. Selected files and directories can also create and extract ZIP, 7z, and tar.gz archives. Upload, download, paste, archive, extraction, and permanent deletion share one visible FIFO queue. Only one conflicting job runs at a time; queued and running jobs can be cancelled before their safe commit boundary. Measurable transfer phases show actual bytes, while archive phases without reliable tool telemetry remain explicitly indeterminate instead of inventing a percentage. Files that have not started uploading do not continue after the page closes.
+Files or complete browser-selected folders can be uploaded while retaining their relative layout, and files can be dropped onto the directory listing to upload them into the current directory. Files stream directly to downloads; directories are temporarily packaged as ZIP and the temporary archive is removed after completion, failure, or cancellation. Selected files and directories can also create and extract ZIP, 7z, and tar.gz archives. Upload, download, paste, archive, extraction, and permanent deletion share one visible FIFO queue. Only one conflicting job runs at a time; queued and running jobs can be cancelled before their safe commit boundary. Measurable transfer phases show actual bytes, while archive phases without reliable tool telemetry remain explicitly indeterminate instead of inventing a percentage. Refreshing or closing the page aborts browser-owned upload/download streams and drops uploads that have not started; staging data is cleaned. Persistent background tasks are rediscovered after reconnecting.
 
 Copy, move, archive, extraction, and permanent deletion run as persistent background tasks. Move and delete write durable commit boundaries so Management can safely finish them after a restart; an uncommitted operation that cannot be proven idempotent is marked interrupted and retains its source. There is no trash. `/`, `/data`, `/data/dsh`, `/data/platform`, `/workspace`, and the active Deployment view root cannot themselves be selected for recursive deletion. Platform-managed paths remain accessible but are clearly marked because updates, restarts, runtime rebuilds, or GC can replace changes and manual edits can damage the active Deployment. Audit logs record paths, operation type, byte counts, duration, and outcome, never file contents.
 
@@ -212,7 +217,7 @@ Both tools use the existing Gateway Host, Origin, Fetch Metadata, Basic Auth, or
 
 The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
 
-New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Both Management interfaces show a compact summary for each entry; selecting it expands the complete structured record, including error stacks, causes, task IDs, and diagnostic fields. Historical entries are not replayed at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative, queryable, and rotated log store.
+New Platform and DSH log entries are also emitted as source-tagged JSON to container stdout or stderr, so `docker logs deepseek-harness` shows the complete live operational stream. Both Management interfaces support text, Source, and level filters; processed-entry limits of 100, 250, 500, or 1000; manual refresh; optional automatic scrolling; and JSONL export. Each row starts with a compact summary and expands to the complete structured record, including error stacks, causes, task IDs, and diagnostic fields. **Clear view** affects only the current browser view and does not delete stored logs. Historical entries are not replayed to stdout at startup. Source-separated JSONL under `/data/platform/logs` remains the authoritative store and rotates according to `DSH_LOG_MAX_BYTES` and `DSH_LOG_RETENTION_DAYS` (100 MiB and 14 days by default).
 
 ```bash
 docker exec deepseek-harness dsh-platform status
@@ -283,7 +288,7 @@ Compose enables unrestricted passwordless root access for the agent by default. 
 
 The workflow resumes `targetSequence`, creates a draft, uploads immutable Bootstrap and Environment Artifacts plus signed metadata, then publishes it as Latest. It validates the selected npm tarball and binds its npm integrity into Stable metadata, but does not republish a duplicate DSH tarball; Stage-0 imports the official npm copy. The Recovery private key has no workflow input.
 
-`Publish Docker Image` is protected by a separate `production-image` Environment. It uses the three public trust-bundle secrets and `DOCKER_TOKEN`; it has no Release private key or GitHub Release write permission. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow.
+`Publish Docker Image` is protected by a separate `production-image` Environment. It uses `DSH_RECOVERY_ROOT_PUBLIC_KEY` and `DOCKER_TOKEN`; the signed keyring is downloaded from the Supported Release instead of being stored as additional image-workflow secrets. It has no Release private key or GitHub Release write permission. Repository or organization secrets `GOTIFY_URL` and `GOTIFY_TOKEN` are passed explicitly to the reusable Gotify workflow.
 
 ## Build and Test
 
@@ -296,7 +301,8 @@ docker build -t deepseek-harness:local .
 Build a specific official package for local development, or build the devtools variant:
 
 ```bash
-docker build --build-arg DSH_VERSION=0.1.0-rc.6 -t deepseek-harness:0.1.0-rc.6 .
+DSH_VERSION="$(jq -r .latestSupportedDsh release/supported-target.json)"
+docker build --build-arg "DSH_VERSION=$DSH_VERSION" -t "deepseek-harness:$DSH_VERSION" .
 docker build --build-arg INSTALL_DEVTOOLS=true -t deepseek-harness:local-devtools .
 ```
 
@@ -305,6 +311,7 @@ An arbitrary local `DSH_VERSION` produces a development-authority inventory with
 Run local checks with Node.js 24 and Docker Compose:
 
 ```bash
+npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
 npm test --prefix container/control-plane/services/gateway
 npm test --prefix container/platform
 node container/test/compose-config.mjs

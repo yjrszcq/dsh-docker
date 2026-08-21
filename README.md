@@ -16,7 +16,7 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 Create local data directories:
 
 ```bash
-mkdir -p data workspace
+mkdir -p data/dsh workspace
 ```
 
 Run the standard image:
@@ -28,7 +28,7 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -v dsh-platform-data:/data/platform \
-  -v "$(pwd)/data:/data/dsh" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
@@ -91,7 +91,7 @@ The standalone page remains available when DSH is down and includes User Plugin 
 When the gateway password is empty, DSH Management Console uses its separate `DSH_PLATFORM_PASSWORD`. If that password is also empty, the console stays locked until you create a temporary access key. The key expires after 10 minutes, and creating another immediately invalidates the previous key:
 
 ```bash
-docker exec dsh-test dsh-platform access create
+docker exec deepseek-harness dsh-platform access create
 ```
 
 Useful commands:
@@ -108,7 +108,7 @@ Stable follows the supported DSH release. Experimental can install a newer verif
 
 ## Security
 
-Anyone admitted by the gateway has full DSH authority and may be able to read credentials, execute commands, and access every path available to the container's `node` user. Use HTTPS and a trusted network boundary for remote access.
+Anyone admitted by the gateway has full DSH authority. The standalone Management Console also provides a root container terminal and root file operations, so an admitted user can read credentials, execute commands, and modify container data. Use HTTPS and a trusted network boundary for remote access.
 
 Compose enables unrestricted passwordless sudo by default. Set `DSH_SUDO_ENABLED=false` unless the agent needs root access. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts without understanding the impact.
 

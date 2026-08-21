@@ -16,7 +16,7 @@
 创建本地数据目录：
 
 ```bash
-mkdir -p data workspace
+mkdir -p data/dsh workspace
 ```
 
 运行标准镜像：
@@ -28,7 +28,7 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -v dsh-platform-data:/data/platform \
-  -v "$(pwd)/data:/data/dsh" \
+  -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
@@ -91,7 +91,7 @@ DSH_PROXY_PASSWORD=请设置一个强密码
 Gateway 密码为空时，DSH 管理中心使用独立的 `DSH_PLATFORM_PASSWORD`。如果该密码也为空，管理中心默认锁定，可从容器终端生成有效期 10 分钟的临时访问密钥；重新生成会立即废止旧密钥：
 
 ```bash
-docker exec dsh-test dsh-platform access create
+docker exec deepseek-harness dsh-platform access create
 ```
 
 常用命令：
@@ -108,7 +108,7 @@ Stable 跟随受支持的 DSH 版本。Experimental 可以安装经过验证的�
 
 ## 安全提醒
 
-能通过 Gateway 访问，就等同于拥有完整 DSH 权限，可能读取凭据、执行命令，并访问容器 `node` 用户可用的所有路径。远程访问必须使用 HTTPS 和可信网络边界。
+能通过 Gateway 访问，就等同于拥有完整 DSH 权限。独立管理中心还提供 root 容器终端和 root 文件操作，因此被放行的用户可以读取凭据、执行命令并修改容器数据。远程访问必须使用 HTTPS 和可信网络边界。
 
 Compose 默认开启不受限制的免密码 sudo。Agent 不需要 root 权限时请设置 `DSH_SUDO_ENABLED=false`。不了解影响时，不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机挂载。
 
