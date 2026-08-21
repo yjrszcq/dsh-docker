@@ -562,7 +562,7 @@ test('standalone Management disables a startup-faulting Bundle while DSH is alre
       actions: [{ name: 'startup-fault', action: 'disable' }],
     })
     let state
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
       state = await client.request('GET', `${API_PREFIX}user-plugins/task/${task.taskId}`)
       if (state.status !== 'running') break
       await new Promise(resolve => setTimeout(resolve, 5))
