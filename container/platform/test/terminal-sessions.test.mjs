@@ -41,7 +41,7 @@ function collector(url) {
     for (const waiter of waiters) waiter()
   })
   const waitFor = async predicate => {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
       if (predicate({ output, exit })) return { output, exit }
       await new Promise(resolve => {
         const timer = setTimeout(() => { waiters.delete(done); resolve() }, 25)

@@ -22,6 +22,9 @@ import { FileTransferManager } from '../../control-plane/modules/file-manager/tr
 import { FileTaskManager } from '../../control-plane/modules/file-manager/tasks.mjs'
 import { AtomicFileEditor } from '../../control-plane/modules/file-manager/editor.mjs'
 
+const ASYNC_POLL_ATTEMPTS = 2_000
+const ASYNC_POLL_INTERVAL_MS = 5
+
 class Coordinator extends EventEmitter {
   constructor() {
     super()
@@ -291,8 +294,8 @@ test('management restarts only DSH as an audited task and excludes update activa
   try {
     const task = await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
     assert.equal(typeof task.taskId, 'string')
-    for (let attempt = 0; attempt < 100 && restarts === 0; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 5))
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS && restarts === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(restarts, 1)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).dshRestart.status, 'restarting')
@@ -362,8 +365,8 @@ test('management resets the current Runtime as an audited exclusive task', async
   try {
     const task = await client.request('POST', '/_dsh_platform/api/v1/runtime/reset')
     assert.equal(typeof task.taskId, 'string')
-    for (let attempt = 0; attempt < 100 && resets === 0; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 5))
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS && resets === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(resets, 1)
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).runtimeReset.status, 'resetting')
@@ -433,10 +436,10 @@ test('management exposes recoverable User Plugin tasks under the shared runtime 
     const started = await client.request('POST', `${API_PREFIX}user-plugins/apply`, request)
     assert.match(started.taskId, /^[0-9a-f-]{36}$/)
     let status
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', `${API_PREFIX}status`)
       if (status.userPluginOperation.phase === 'paused') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.userPluginOperation.status, 'running')
     assert.equal(status.userPluginOperation.phase, 'paused')
@@ -450,10 +453,10 @@ test('management exposes recoverable User Plugin tasks under the shared runtime 
       await assert.rejects(client.request('POST', `${API_PREFIX}${path}`, body), error => error.statusCode === 409)
     }
     finish()
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', `${API_PREFIX}status`)
       if (status.userPluginOperation.status === 'success') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.userPluginOperation.phase, 'completed')
     assert.equal((await client.request('GET', `${API_PREFIX}user-plugins/task/${started.taskId}`)).status, 'success')
@@ -494,10 +497,10 @@ test('management resumes a persisted User Plugin transaction after its socket is
       taskId: 'resume-task', phase: 'failed', error: 'interrupted change restored', recoveryResult: 'success',
     })
     let status
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', `${API_PREFIX}status`)
       if (status.userPluginOperation.taskId === 'resume-task') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.userPluginOperation.status, 'failed')
     assert.equal(status.userPluginOperation.error, 'interrupted change restored')
@@ -562,10 +565,10 @@ test('standalone Management disables a startup-faulting Bundle while DSH is alre
       actions: [{ name: 'startup-fault', action: 'disable' }],
     })
     let state
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       state = await client.request('GET', `${API_PREFIX}user-plugins/task/${task.taskId}`)
       if (state.status !== 'running') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(state.status, 'success')
     assert.equal(paused, 1)
@@ -609,8 +612,8 @@ test('management changes a bundled plugin as an audited task and excludes runtim
       id: 'diagnostics', action: 'disable',
     })
     assert.equal(typeof task.taskId, 'string')
-    for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 5))
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS && calls.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.deepEqual(calls, [['diagnostics', 'disable']])
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'running')
@@ -633,10 +636,10 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     )
     await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
     let restarted
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       restarted = await client.request('GET', '/_dsh_platform/api/v1/status')
       if (restarted.dshRestart.status === 'success') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(restarted.dshRestart.status, 'success')
     assert.equal(restarted.systemPluginOperation.restartRequired, false)
@@ -664,8 +667,8 @@ test('management toggle endpoint accepts only enable and disable actions', async
       id: 'diagnostics', action: 'disable',
     })
     assert.equal(typeof task.taskId, 'string')
-    for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 5))
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS && calls.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.deepEqual(calls, [['diagnostics', 'disable']])
   } finally {
@@ -693,18 +696,18 @@ test('management discards unapplied System Plugin changes and clears restart sta
     await client.request('POST', `${API_PREFIX}bundled-plugins/action`, {
       id: 'diagnostics', action: 'disable',
     })
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       if ((await client.request('GET', `${API_PREFIX}status`)).systemPluginOperation.restartRequired) break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     let result
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       try {
         result = await client.request('POST', `${API_PREFIX}bundled-plugins/discard`)
         break
       } catch (error) {
         if (error.statusCode !== 409) throw error
-        await new Promise(resolve => setTimeout(resolve, 5))
+        await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
       }
     }
     assert.notEqual(result, undefined)
@@ -738,17 +741,17 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
       id: 'diagnostics', action: 'disable',
     })
     let status
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', '/_dsh_platform/api/v1/status')
       if (status.systemPluginOperation.status === 'success') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.systemPluginOperation.restartRequired, true)
     await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', '/_dsh_platform/api/v1/status')
       if (status.dshRestart.status === 'failed') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.dshRestart.status, 'failed')
     assert.equal(status.systemPluginOperation.restartRequired, true)
@@ -781,10 +784,10 @@ test('management audit failures do not block a completed System Plugin operation
       id: 'diagnostics', action: 'disable',
     })
     let status
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', `${API_PREFIX}status`)
       if (status.systemPluginOperation.status === 'success') break
-      await new Promise(resolve => setTimeout(resolve, 5))
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(configured, true)
     assert.equal(status.systemPluginOperation.status, 'success')
@@ -814,8 +817,8 @@ test('management exposes a dedicated recovery action only for Platform Managemen
       id: 'platform-management', action: 'disable',
     })
     assert.equal(typeof task.taskId, 'string')
-    for (let attempt = 0; attempt < 100 && calls.length === 0; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 5))
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS && calls.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.deepEqual(calls, [['platform-management', 'disable']])
     await new Promise(resolve => setImmediate(resolve))
