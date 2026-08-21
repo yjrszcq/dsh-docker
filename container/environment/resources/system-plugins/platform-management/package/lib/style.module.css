@@ -592,7 +592,6 @@ a.secondaryButton { text-decoration: none; }
   border-right: 1.5px solid var(--dsw-alias-label-tertiary);
   border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
   transform: rotate(45deg);
-  transition: transform 120ms ease;
 }
 .logEntry[aria-expanded='true'] .logChevron { margin-top: 3px; transform: rotate(225deg); }
 .logLevel { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }

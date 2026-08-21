@@ -468,7 +468,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .log-entry:hover { background: var(--hover); }
 .log-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .log-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.log-chevron { flex: none; width: 6px; height: 6px; margin: -3px 2px 0 1px; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: rotate(45deg); transition: transform 120ms ease; }
+.log-chevron { flex: none; width: 6px; height: 6px; margin: -3px 2px 0 1px; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: rotate(45deg); }
 .log-entry[aria-expanded='true'] .log-chevron { margin-top: 3px; transform: rotate(225deg); }
 .log-level { flex: none; font-size: 11px; line-height: 18px; font-weight: 600; }
 .log-level.debug { color: var(--faint); }

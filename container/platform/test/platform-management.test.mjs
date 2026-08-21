@@ -263,6 +263,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /\.logDetails \{/)
   assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron/)
   assert.match(style, /\.logChevron \{[\s\S]*?transform: rotate\(45deg\)/)
+  assert.doesNotMatch(style, /\.logChevron \{[^}]*transition:/)
   assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron \{[^}]*transform: rotate\(225deg\)/)
   const logMeta = source.slice(source.indexOf("h('div', { className: css.logMeta }"), source.indexOf("h('pre', null, display(entry.message))"))
   assert.ok(logMeta.indexOf("h('time'") < logMeta.indexOf('className: css.logChevron'))
