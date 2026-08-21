@@ -886,6 +886,7 @@ test('Platform Management script references only DOM IDs declared by its documen
 test('standalone file task queue stays below file actions and scrolls within a fixed height', async () => {
   const publicRoot = new URL('../../control-plane/services/management/public/', import.meta.url)
   const html = await readFile(new URL('index.html', publicRoot), 'utf8')
+  const script = await readFile(new URL('app.js', publicRoot), 'utf8')
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
   const browserOffset = html.indexOf('class="file-browser"')
   const selectionOffset = html.indexOf('class="file-selection"')
@@ -895,6 +896,8 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(style, /\.file-task-list\s*\{[^}]*max-height:\s*180px;[^}]*overflow-y:\s*auto;/)
   assert.match(style, /\.file-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/)
   assert.match(style, /\.file-pagination\s*\{[^}]*margin-top:\s*auto;/)
+  assert.match(script, /task\.status === 'failed' && Date\.parse\(task\.updatedAt\) >= recentCutoff/)
+  assert.doesNotMatch(script, /\['success', 'failed', 'cancelled'\]/)
 })
 
 test('standalone console keeps localized feature parity on the shared Management API', async () => {
@@ -1074,7 +1077,11 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(html, /data-permission-bit="256"/)
   assert.match(html, /id="file-attributes-recursive"/)
   assert.match(style, /\.file-permission-grid \{[\s\S]*grid-template-columns:/)
-  assert.match(script, /fileEditorDirty && !window\.confirm\(t\('unsavedFile'\)\)/)
+  assert.doesNotMatch(script, /window\.(?:alert|confirm|prompt)/)
+  assert.match(html, /id="text-input-dialog"/)
+  assert.match(html, /id="confirmation-dialog"/)
+  assert.match(script, /function requestTextInput\(/)
+  assert.match(script, /function requestConfirmation\(/)
   assert.match(html, /id="file-editor-lines"/)
   assert.match(html, /id="file-new"[^>]*aria-controls="file-create-panel"[^>]*aria-expanded="false"/)
   assert.match(html, /id="file-create-panel"[^>]*hidden/)

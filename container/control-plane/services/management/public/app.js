@@ -91,7 +91,7 @@ const COPY = Object.freeze({
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}', fileOperations: '文件任务', queuedOperation: '排队第 {position} 位', processingOperation: '正在处理', cancelOperation: '取消操作',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     operationSucceeded: '已完成', operationCancelled: '已取消', operationFailedState: '失败',
-    editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
+    editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', renameItem: '重命名项目', renameItemDetail: '为所选项目输入新名称。', saveAsTitle: '另存为', saveAsDetail: '输入要保存到的容器绝对路径。', discardChangesTitle: '放弃未保存修改', unsavedFile: '有未保存的文件修改，确定丢弃吗？', discardChanges: '放弃修改', deleteFilesTitle: '永久删除', confirmDelete: '确认删除',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
     fileConflictTitle: '目标已存在', fileConflictDetail: '请选择处理方式：', conflictOverwrite: '覆盖', conflictOverwriteDetail: '替换已有项目。', conflictRename: '自动重命名', conflictRenameDetail: '使用新名称保留两个项目。', conflictSkip: '跳过', conflictSkipDetail: '保留已有项目，不执行本项操作。', conflictApplyAll: '应用到之后的所有冲突', confirmChoice: '确认', operationCompleteWithSkipped: '文件操作已完成，已跳过 {count} 个冲突项。',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -163,7 +163,7 @@ const COPY = Object.freeze({
     newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}', fileOperations: 'File operations', queuedOperation: 'Queue position {position}', processingOperation: 'Processing', cancelOperation: 'Cancel operation',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     operationSucceeded: 'Completed', operationCancelled: 'Cancelled', operationFailedState: 'Failed',
-    editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
+    editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', renameItem: 'Rename item', renameItemDetail: 'Enter a new name for the selected item.', saveAsTitle: 'Save as', saveAsDetail: 'Enter the absolute container path to save.', discardChangesTitle: 'Discard unsaved changes', unsavedFile: 'Discard unsaved file changes?', discardChanges: 'Discard changes', deleteFilesTitle: 'Delete permanently', confirmDelete: 'Delete',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
     fileConflictTitle: 'Destination already exists', fileConflictDetail: 'Choose how to handle:', conflictOverwrite: 'Overwrite', conflictOverwriteDetail: 'Replace the existing item.', conflictRename: 'Auto rename', conflictRenameDetail: 'Keep both items with a new name.', conflictSkip: 'Skip', conflictSkipDetail: 'Leave the existing item unchanged.', conflictApplyAll: 'Apply to all remaining conflicts', confirmChoice: 'Confirm', operationCompleteWithSkipped: 'File operation completed; skipped {count} conflicting items.',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
@@ -259,6 +259,9 @@ let fileEditorOriginal = ''
 let fileEditorDirty = false
 let fileAttributesEntry = null
 let fileConflictResolve = null
+let textInputResolve
+let textInputValidate
+let confirmationResolve
 const logEntries = []
 const logIdentities = new Set()
 const expandedLogIdentities = new Set()
@@ -1306,6 +1309,53 @@ function fileOperationMessage(value, failed = false) {
   elements['file-operation'].classList.toggle('failed', failed)
 }
 
+function finishTextInput(value) {
+  if (textInputResolve === undefined) return
+  const resolve = textInputResolve
+  textInputResolve = undefined
+  textInputValidate = undefined
+  elements['text-input-dialog'].close()
+  resolve(value)
+}
+
+function requestTextInput({ title, detail, value = '', validate = next => next.trim() === '' ? t('invalidFileName') : null }) {
+  if (textInputResolve !== undefined) return Promise.resolve(null)
+  elements['text-input-dialog-title'].textContent = title
+  elements['text-input-dialog-detail'].textContent = detail
+  elements['text-input-dialog-value'].value = value
+  elements['text-input-dialog-value'].setAttribute('aria-label', title)
+  elements['text-input-dialog-error'].hidden = true
+  elements['text-input-dialog-error'].textContent = ''
+  textInputValidate = validate
+  elements['text-input-dialog'].showModal()
+  elements['text-input-dialog-value'].focus()
+  elements['text-input-dialog-value'].select()
+  return new Promise(resolve => { textInputResolve = resolve })
+}
+
+function finishConfirmation(value) {
+  if (confirmationResolve === undefined) return
+  const resolve = confirmationResolve
+  confirmationResolve = undefined
+  elements['confirmation-dialog'].close()
+  resolve(value)
+}
+
+function requestConfirmation({ title, detail, confirmLabel, danger = false }) {
+  if (confirmationResolve !== undefined) return Promise.resolve(false)
+  elements['confirmation-dialog-title'].textContent = title
+  elements['confirmation-dialog-detail'].textContent = detail
+  elements['confirmation-dialog-confirm'].textContent = confirmLabel
+  elements['confirmation-dialog-confirm'].className = danger ? 'danger' : 'primary'
+  elements['confirmation-dialog'].showModal()
+  return new Promise(resolve => { confirmationResolve = resolve })
+}
+
+function confirmDiscardChanges() {
+  if (!fileEditorDirty) return Promise.resolve(true)
+  return requestConfirmation({ title: t('discardChangesTitle'), detail: t('unsavedFile'), confirmLabel: t('discardChanges'), danger: true })
+}
+
 async function initializeFiles() {
   if (filesLoaded) return
   scheduleFileTaskRefresh()
@@ -1363,7 +1413,7 @@ function taskLabel(task) {
 function renderFileTasks() {
   const recentCutoff = Date.now() - 10_000
   const visible = fileTasksActive.filter(task => ['queued', 'running'].includes(task.status)
-    || (['success', 'failed', 'cancelled'].includes(task.status) && Date.parse(task.updatedAt) >= recentCutoff))
+    || (task.status === 'failed' && Date.parse(task.updatedAt) >= recentCutoff))
   elements['file-task-state'].hidden = visible.length === 0
   elements['file-task-list'].replaceChildren(...visible.map(task => {
     const row = document.createElement('div')
@@ -1765,7 +1815,10 @@ async function saveFileEditor(saveAs = false) {
   let revision = fileEditor.revision
   let create = false
   if (saveAs) {
-    const value = window.prompt(t('enterName'), fileEditor.path)
+    const value = await requestTextInput({
+      title: t('saveAsTitle'), detail: t('saveAsDetail'), value: fileEditor.path,
+      validate: next => next.startsWith('/') && !/[\u0000-\u001f\u007f]/u.test(next) ? null : t('invalidFileName'),
+    })
     if (value === null) return
     path = value
     revision = null
@@ -1785,8 +1838,8 @@ async function saveFileEditor(saveAs = false) {
   }
 }
 
-function closeFileEditor() {
-  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return false
+async function closeFileEditor() {
+  if (!await confirmDiscardChanges()) return false
   elements['file-editor-dialog'].close()
   fileEditor = null
   fileEditorDirty = false
@@ -1995,10 +2048,10 @@ async function recursiveFileSearch() {
   } catch (error) { showError(error) } finally { fileActiveTask = null; elements['file-task-state'].hidden = true }
 }
 
-function selectTab(tab) {
+async function selectTab(tab) {
   const current = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tab
   if (current === 'files' && tab !== 'files') {
-    if (fileEditorDirty && !window.confirm(t('unsavedFile'))) return
+    if (!await confirmDiscardChanges()) return false
     fileClipboard = null
     fileSelected.clear()
   }
@@ -2025,6 +2078,7 @@ function selectTab(tab) {
   if (tab === 'user-plugins') void loadInventories()
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
+  return true
 }
 
 function connectEvents() {
@@ -2093,14 +2147,13 @@ async function refreshLogs() {
 }
 
 for (const button of tabButtons) {
-  button.addEventListener('click', () => selectTab(button.dataset.tab))
+  button.addEventListener('click', () => { void selectTab(button.dataset.tab) })
   button.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return
     event.preventDefault()
     const offset = event.key === 'ArrowRight' ? 1 : -1
     const target = tabButtons[(tabButtons.indexOf(button) + offset + tabButtons.length) % tabButtons.length]
-    selectTab(target.dataset.tab)
-    target.focus()
+    void selectTab(target.dataset.tab).then(changed => { if (changed) target.focus() })
   })
 }
 for (const button of channelButtons) {
@@ -2126,15 +2179,15 @@ elements['confirm-stable'].addEventListener('click', async () => {
 elements['automatic-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ enabled: event.target.checked }) })
 elements['automatic-interval'].addEventListener('change', event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) })
 elements['notifications-enabled'].addEventListener('change', event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) })
-elements['language-switch'].addEventListener('change', event => {
-  if (fileEditorDirty && !window.confirm(t('unsavedFile'))) {
+elements['language-switch'].addEventListener('change', event => { void (async () => {
+  if (!await confirmDiscardChanges()) {
     event.target.value = locale
     return
   }
   fileEditorDirty = false
   writeStorage(LANGUAGE_KEY, event.target.value)
   window.location.reload()
-})
+})() })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
@@ -2252,18 +2305,21 @@ elements['file-conflict-form'].addEventListener('submit', event => {
   if (!['overwrite', 'rename', 'skip'].includes(choice)) return
   finishFileConflict({ choice, applyAll: elements['file-conflict-all'].checked })
 })
-elements['file-rename'].addEventListener('click', () => {
+elements['file-rename'].addEventListener('click', () => { void (async () => {
   const entry = selectedFileEntries()[0]
   if (entry === undefined) return
-  const name = window.prompt(t('enterName'), entry.name)
+  const name = await requestTextInput({
+    title: t('renameItem'), detail: t('renameItemDetail'), value: entry.name,
+    validate: value => fileNameIsValid(value) ? null : t('invalidFileName'),
+  })
   if (name === null || name === entry.name || name.trim() === '') return
   void startFileTask({ operation: 'rename', sources: [{ path: entry.path, revision: entry.revision }], destination: `${filePath}/${name}`, destinationRevision: fileListing.revision })
-})
-elements['file-delete'].addEventListener('click', () => {
+})() })
+elements['file-delete'].addEventListener('click', () => { void (async () => {
   const sources = sourceDescriptors()
-  if (sources.length === 0 || !window.confirm(t('confirmDeleteFiles', { count: sources.length }))) return
+  if (sources.length === 0 || !await requestConfirmation({ title: t('deleteFilesTitle'), detail: t('confirmDeleteFiles', { count: sources.length }), confirmLabel: t('confirmDelete'), danger: true })) return
   void startFileTask({ operation: 'delete', sources })
-})
+})() })
 elements['file-download'].addEventListener('click', () => {
   const entry = selectedFileEntries()[0]
   if (entry === undefined) return
@@ -2299,8 +2355,21 @@ elements['file-editor-content'].addEventListener('scroll', updateEditorLines)
 elements['file-editor-save'].addEventListener('click', () => { void saveFileEditor(false) })
 elements['file-editor-save-as'].addEventListener('click', () => { void saveFileEditor(true) })
 elements['file-editor-reload'].addEventListener('click', () => { if (fileEditor !== null) void openFileEditor(fileEditor) })
-elements['file-editor-close'].addEventListener('click', event => { event.preventDefault(); closeFileEditor() })
-elements['file-editor-dialog'].addEventListener('cancel', event => { event.preventDefault(); closeFileEditor() })
+elements['file-editor-close'].addEventListener('click', event => { event.preventDefault(); void closeFileEditor() })
+elements['file-editor-dialog'].addEventListener('cancel', event => { event.preventDefault(); void closeFileEditor() })
+elements['text-input-dialog-cancel'].addEventListener('click', () => finishTextInput(null))
+elements['text-input-dialog'].addEventListener('cancel', event => { event.preventDefault(); finishTextInput(null) })
+elements['text-input-dialog-form'].addEventListener('submit', event => {
+  event.preventDefault()
+  const value = elements['text-input-dialog-value'].value
+  const error = textInputValidate?.(value) ?? null
+  elements['text-input-dialog-error'].textContent = error ?? ''
+  elements['text-input-dialog-error'].hidden = error === null
+  if (error === null) finishTextInput(value)
+})
+elements['confirmation-dialog-cancel'].addEventListener('click', () => finishConfirmation(false))
+elements['confirmation-dialog'].addEventListener('cancel', event => { event.preventDefault(); finishConfirmation(false) })
+elements['confirmation-dialog-form'].addEventListener('submit', event => { event.preventDefault(); finishConfirmation(true) })
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })
@@ -2343,14 +2412,8 @@ window.addEventListener('beforeunload', () => {
   logSource?.close()
   window.clearInterval(logWatchdogTimer)
 })
-window.addEventListener('beforeunload', event => {
-  if (!fileEditorDirty) return
-  event.preventDefault()
-  event.returnValue = ''
-})
-
 applyTranslations()
-selectTab('updates')
+void selectTab('updates')
 renderLogs()
 connectEvents()
 void (async () => {
