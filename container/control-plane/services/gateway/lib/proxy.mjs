@@ -426,6 +426,11 @@ export function createGatewayServer({
     try {
       const trust = inspectExternalRequest(request.headers, options.trustedHosts)
       if (!trust.accepted) {
+        reportFailure(`gateway-http-trust-${trust.reason}`, 'gateway.request.rejected', {
+          ...requestContext(request),
+          reason: trust.reason,
+          level: 'warning',
+        })
         rejectHttp(response, 403, 'forbidden')
         return
       }
@@ -495,6 +500,11 @@ export function createGatewayServer({
     try {
       const trust = inspectExternalRequest(request.headers, options.trustedHosts)
       if (!trust.accepted) {
+        reportFailure(`gateway-upgrade-trust-${trust.reason}`, 'gateway.upgrade-request.rejected', {
+          ...requestContext(request),
+          reason: trust.reason,
+          level: 'warning',
+        })
         rejectUpgrade(socket, 403, 'Forbidden')
         return
       }

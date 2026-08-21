@@ -117,6 +117,7 @@ export function createManagementServer({
   fileEditor,
   fileLocations = Object.freeze({ defaultPath: '/workspace', shortcuts: Object.freeze(['/workspace', '/data/dsh', '/data/platform', '/']) }),
   privilegedMutationActive = () => false,
+  stateHeartbeatMs = 15_000,
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
@@ -523,16 +524,22 @@ export function createManagementServer({
           .catch(() => {})
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && route === 'events') {
+        let heartbeat
         response.writeHead(200, {
           'content-type': 'text/event-stream',
-          'cache-control': 'no-cache',
+          'cache-control': 'no-cache, no-transform',
           connection: 'keep-alive',
+          'x-accel-buffering': 'no',
         })
+        response.flushHeaders()
         event(response, 'state', await coordinator.state.read())
         const listener = value => event(response, 'state', value)
         coordinator.on('state', listener)
         server.on('management-state', listener)
+        heartbeat = setInterval(() => event(response, 'heartbeat', { timestamp: new Date().toISOString() }), stateHeartbeatMs)
+        heartbeat.unref()
         response.once('close', () => {
+          clearInterval(heartbeat)
           coordinator.off('state', listener)
           server.off('management-state', listener)
         })
@@ -566,8 +573,9 @@ export function createManagementServer({
         response.once('close', cleanup)
         response.writeHead(200, {
           'content-type': 'text/event-stream',
-          'cache-control': 'no-cache',
+          'cache-control': 'no-cache, no-transform',
           connection: 'keep-alive',
+          'x-accel-buffering': 'no',
         })
         response.flushHeaders()
         event(response, 'heartbeat', { timestamp: new Date().toISOString() })

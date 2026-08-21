@@ -150,6 +150,48 @@ test('management live logs preserve the requested source filter', async () => {
     ])
     assert.match(body, /must-stream/)
     assert.doesNotMatch(body, /must-not-stream/)
+    assert.equal(response.headers['x-accel-buffering'], 'no')
+    assert.equal(response.headers['cache-control'], 'no-cache, no-transform')
+  } finally {
+    request?.destroy()
+    response?.destroy()
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management state events keep idle proxy connections alive', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-state-stream-'))
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    stateHeartbeatMs: 10,
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  let request
+  let response
+  try {
+    ({ request, response } = await new Promise((resolve, reject) => {
+      const nextRequest = httpRequest({ socketPath, path: `${API_PREFIX}events` }, nextResponse => {
+        resolve({ request: nextRequest, response: nextResponse })
+      })
+      nextRequest.once('error', reject)
+      nextRequest.end()
+    }))
+    let body = ''
+    await Promise.race([
+      new Promise(resolve => {
+        response.on('data', chunk => {
+          body += chunk.toString('utf8')
+          if (body.includes('event: heartbeat')) resolve()
+        })
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timed out waiting for state heartbeat')), 1_000)),
+    ])
+    assert.match(body, /event: state/)
+    assert.match(body, /event: heartbeat/)
+    assert.equal(response.headers['x-accel-buffering'], 'no')
+    assert.equal(response.headers['cache-control'], 'no-cache, no-transform')
   } finally {
     request?.destroy()
     response?.destroy()

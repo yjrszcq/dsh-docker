@@ -126,6 +126,30 @@ test('untrusted requests are rejected without reaching upstream', async () => {
   })
 })
 
+test('trust rejections report a bounded reason without request secrets', async () => {
+  const reports = []
+  const upstream = createServer((_incoming, response) => response.end('unexpected'))
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  const gatewayPort = await listen(gateway)
+  try {
+    const response = await request(gatewayPort, '/private?token=must-not-appear', { host: 'evil.example' })
+    assert.equal(response.status, 403)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(reports[0].message, 'gateway.request.rejected')
+    assert.equal(reports[0].fields.reason, 'untrusted-host')
+    assert.equal(reports[0].fields.pathname, '/private')
+    assert.doesNotMatch(JSON.stringify(reports), /must-not-appear|token/)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
 test('health endpoint reports gateway readiness without touching upstream', async () => {
   await withServers(async ({ gatewayPort, requests }) => {
     const response = await request(gatewayPort, HEALTH_PATH, { host: '127.0.0.1' })

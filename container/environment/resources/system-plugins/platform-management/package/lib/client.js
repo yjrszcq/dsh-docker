@@ -441,14 +441,24 @@ function UpdateReminder({ t }) {
       const value = await request('status')
       clearSatisfiedDismissals(value)
       setStatus(value)
+      return value
     } catch {}
+    return undefined
   }, [])
 
   useEffect(() => {
-    void refresh()
-    const events = new EventSource(`${API}/events`)
-    events.addEventListener('state', () => { void refresh() })
-    const timer = window.setInterval(() => { void refresh() }, 30_000)
+    let events
+    let stopped = false
+    const connect = () => {
+      if (stopped || events !== undefined) return
+      events = new EventSource(`${API}/events`)
+      events.addEventListener('state', () => { void refresh() })
+    }
+    const refreshAndConnect = async () => {
+      if (await refresh() !== undefined) connect()
+    }
+    void refreshAndConnect()
+    const timer = window.setInterval(() => { void refreshAndConnect() }, 30_000)
     const changed = () => setTick(value => value + 1)
     const visibilityChanged = () => {
       if (document.visibilityState !== 'visible' && parsedStorage(NOTICE_OWNER_KEY)?.id === ownerId.current) {
@@ -460,7 +470,8 @@ function UpdateReminder({ t }) {
     window.addEventListener('storage', changed)
     document.addEventListener('visibilitychange', visibilityChanged)
     return () => {
-      events.close()
+      stopped = true
+      events?.close()
       window.clearInterval(timer)
       window.clearInterval(leaseTimer)
       window.removeEventListener('storage', changed)
@@ -609,9 +620,11 @@ function PlatformManagement({ t }) {
           setAuthRequired(false)
           setConnection('online')
         } catch (nextError) {
+          setStatus(null)
+          setPlugins([])
           setError(nextError instanceof Error ? nextError.message : String(nextError))
           setAuthRequired(nextError?.statusCode === 401)
-          setConnection('offline')
+          setConnection(nextError?.statusCode === 401 ? 'locked' : 'offline')
           value = undefined
         }
       } while (loadedRevision !== statusLoadRevision.current)
@@ -681,10 +694,35 @@ function PlatformManagement({ t }) {
   }, [act])
 
   useEffect(() => {
-    const stateEvents = new EventSource(`${API}/events`)
-    stateEvents.addEventListener('state', () => { void refresh() })
-    stateEvents.onopen = () => setConnection('online')
-    stateEvents.onerror = () => setConnection('connecting')
+    let stateEvents
+    let stopped = false
+    let checkedOnOpen = false
+    const connectEvents = () => {
+      if (stopped || stateEvents !== undefined) return
+      const events = new EventSource(`${API}/events`)
+      stateEvents = events
+      events.addEventListener('state', () => { void refresh() })
+      events.onopen = () => setConnection('online')
+      events.onerror = () => {
+        setConnection('connecting')
+        void refresh().then(value => {
+          if (value !== undefined || stateEvents !== events) return
+          events.close()
+          stateEvents = undefined
+        })
+      }
+    }
+    const refreshAndConnect = async () => {
+      const value = await refresh()
+      if (value !== undefined) {
+        connectEvents()
+        if (!checkedOnOpen && TERMINAL.has(value.update?.status ?? 'idle')) {
+          checkedOnOpen = true
+          void checkUpdates('page-open')
+        }
+      }
+      return value
+    }
 
     void (async () => {
       if (window.sessionStorage.getItem(PLUGIN_DRAFT_KEY) === '1') {
@@ -698,14 +736,17 @@ function PlatformManagement({ t }) {
           }
         }
       }
-      const value = await refresh()
-      if (TERMINAL.has(value?.update?.status ?? 'idle')) void checkUpdates('page-open')
+      await refreshAndConnect()
     })()
 
-    const timer = window.setInterval(() => { void refresh() }, 15_000)
+    const timer = window.setInterval(() => { void refreshAndConnect() }, 15_000)
+    const focus = () => { void refreshAndConnect() }
+    window.addEventListener('focus', focus)
     return () => {
+      stopped = true
       window.clearInterval(timer)
-      stateEvents.close()
+      window.removeEventListener('focus', focus)
+      stateEvents?.close()
     }
   }, [checkUpdates, refresh])
 
@@ -968,7 +1009,7 @@ export function apply(ctx) {
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
-      online: '已连接', connecting: '正在重连', offline: '连接中断',
+      online: '已连接', connecting: '正在重连', offline: '连接中断', locked: '需要验证',
     },
     en: {
       localeCode: 'en',
@@ -990,7 +1031,7 @@ export function apply(ctx) {
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
-      online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
+      online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected', locked: 'Sign-in required',
     },
   }), 'dsh-platform-management: locale')
   ctx.slots.inject('settings.section', () => ctx.slots.register({
