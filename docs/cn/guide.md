@@ -229,7 +229,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 /data/platform/
 ├── state/{trust,bootstrap,deployments,updater,management}
 ├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
-├── cache/downloads
+├── cache/{downloads,npm}
 └── logs
 
 /run/dsh-platform/
@@ -245,7 +245,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 └── views/{bootstrap,environment,runtime,system-plugins}
 ```
 
-`state` 保存权威的选择、信任和事务状态。`store` 保存不可变的 Managed 资产与回滚材料；只有 slots、事务、Hold、receipt 和快照都不再引用时才会回收。`cache` 可以随时清理。`/run/dsh-platform` 在每次容器启动时重建，不应备份或挂载为持久数据。`/data/dsh` 始终是独立的用户数据卷。
+`state` 保存权威的选择、信任和事务状态。`store` 保存不可变的 Managed 资产与回滚材料；只有 slots、事务、Hold、receipt 和快照都不再引用时才会回收。`cache` 可以随时清理：`downloads` 保存不可信下载，`npm` 复用经过完整性校验的依赖下载以构建后续 Pristine DSH。`/run/dsh-platform` 在每次容器启动时重建，不应备份或挂载为持久数据。`/data/dsh` 始终是独立的用户数据卷。
 
 Runtime、Environment 和 System Plugins 共同组成一个内容寻址的 Deployment Record。Bootstrap 将完整 Record 解析为一个 candidate view，启动并执行健康检查，然后原子提交 current/previous slots。重启后不会选中只切换了一部分的组合。
 

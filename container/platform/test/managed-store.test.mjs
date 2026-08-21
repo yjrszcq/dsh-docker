@@ -68,7 +68,9 @@ test('builds a complete content-addressed Managed Deployment from verified input
   }
 
   const builder = new ManagedDeploymentBuilder({ paths })
-  const first = await builder.buildStable(prepared)
+  const progress = []
+  const first = await builder.buildStable(prepared, { onProgress: async value => progress.push(value) })
+  assert.deepEqual(progress, [80, 82, 87, 89])
   assert.equal(first.assets.pristine.id, `pristine-npm-${objectSha256}`)
   assert.equal(first.record.authority, 'stable')
   assert.equal(first.record.targetSequence, 2)

@@ -37,6 +37,7 @@ export class PlatformPaths {
     this.snapshotsRoot = join(this.storeRoot, 'snapshots')
     this.userPluginSnapshotsRoot = join(this.snapshotsRoot, 'user-plugins')
     this.downloadsRoot = join(this.cacheRoot, 'downloads')
+    this.npmCacheRoot = join(this.cacheRoot, 'npm')
     this.viewsRoot = join(this.runRoot, 'views')
     this.deploymentViewsRoot = join(this.runRoot, 'deployments')
     this.systemPluginViewsRoot = join(this.runRoot, 'system-plugin-views')
@@ -70,7 +71,7 @@ export async function preparePersistentLayout(paths) {
     paths.managementStateRoot, paths.fileTasksRoot,
     paths.objectsRoot, paths.bootstrapStoreRoot, paths.environmentsRoot, paths.pristineRoot,
     paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
-    paths.downloadsRoot, paths.logsRoot,
+    paths.downloadsRoot, paths.npmCacheRoot, paths.logsRoot,
   ]
   await Promise.all(directories.map(path => mkdir(path, { recursive: true })))
   return Object.freeze([...directories])

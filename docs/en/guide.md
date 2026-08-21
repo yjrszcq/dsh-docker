@@ -229,7 +229,7 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 /data/platform/
 ├── state/{trust,bootstrap,deployments,updater,management}
 ├── store/{objects,bootstrap,environments,pristine,runtimes,system-plugins,snapshots}
-├── cache/downloads
+├── cache/{downloads,npm}
 └── logs
 
 /run/dsh-platform/
@@ -245,7 +245,7 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 └── views/{bootstrap,environment,runtime,system-plugins}
 ```
 
-`state` is authoritative selection, trust, and transaction state. `store` contains immutable Managed assets and rollback material and is reclaimed only when no slot, transaction, Hold, receipt, or snapshot refers to it. `cache` is disposable. `/run/dsh-platform` is rebuilt on every container start and must never be backed up or mounted as persistent data. `/data/dsh` remains a separate user-data volume.
+`state` is authoritative selection, trust, and transaction state. `store` contains immutable Managed assets and rollback material and is reclaimed only when no slot, transaction, Hold, receipt, or snapshot refers to it. `cache` is disposable: `downloads` holds untrusted transfer data and `npm` reuses integrity-checked dependency downloads while constructing future Pristine DSH versions. `/run/dsh-platform` is rebuilt on every container start and must never be backed up or mounted as persistent data. `/data/dsh` remains a separate user-data volume.
 
 Runtime, Environment, and System Plugins form one content-addressed Deployment Record. Bootstrap resolves that complete record into one candidate view, starts it, checks health, and commits the current/previous slots atomically. A partial combination is never selected after restart.
 

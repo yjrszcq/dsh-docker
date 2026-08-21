@@ -45,8 +45,8 @@ export class PlatformActivator {
     this.experimentalCandidates = new Map()
   }
 
-  prepareManaged(prepared) {
-    return this.builder.buildStable(prepared)
+  prepareManaged(prepared, options) {
+    return this.builder.buildStable(prepared, options)
   }
 
   async pristine(version, receipt) {
@@ -94,7 +94,7 @@ export class PlatformActivator {
     }
   }
 
-  async activate(prepared) {
+  async activate(prepared, { onProgress = async () => {}, onSwitching = async () => {} } = {}) {
     const bootstrapStatus = await this.bootstrap.status()
     const desiredBootstrap = prepared.stable.desired.bootstrap.version
     if (bootstrapStatus.bootstrapVersion !== undefined && bootstrapStatus.bootstrapVersion !== desiredBootstrap) {
@@ -104,7 +104,8 @@ export class PlatformActivator {
       await this.stage0.stageBootstrap(receipt.token, desiredBootstrap)
       await new Promise(() => {})
     }
-    const managed = await this.prepareManaged(prepared)
+    const managed = await this.prepareManaged(prepared, { onProgress })
+    await onSwitching()
     await this.bootstrap.request('POST', '/v1/deployments/activate', { record: managed.record })
     return managed.record
   }

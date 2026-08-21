@@ -173,6 +173,34 @@ test('constructs Pristine DSH only from a receipt-backed archive', async () => {
   assert.equal(JSON.parse(await readFile(join(pristine, 'package.json'), 'utf8')).version, '0.1.0-rc.8')
 })
 
+test('reports Stable switching only after the Managed Deployment is prepared', async () => {
+  const calls = []
+  const record = { id: 'managed-record' }
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    builder: { buildStable: async (prepared, { onProgress }) => {
+      calls.push('build')
+      await onProgress(87)
+      return { record }
+    } },
+    bootstrap: {
+      status: async () => ({ bootstrapVersion: '1.0.0' }),
+      request: async (method, path, body) => {
+        calls.push('activate')
+        assert.equal(method, 'POST')
+        assert.equal(path, '/v1/deployments/activate')
+        assert.equal(body.record, record)
+      },
+    },
+    stage0: {},
+  })
+  await activator.activate({ stable: { desired: { bootstrap: { version: '1.0.0' } } } }, {
+    onProgress: async progress => { calls.push(`progress:${progress}`) },
+    onSwitching: async () => { calls.push('switching') },
+  })
+  assert.deepEqual(calls, ['build', 'progress:87', 'switching', 'activate'])
+})
+
 test('coalesces overlapping metadata checks into one request', async () => {
   let checks = 0
   let complete
@@ -284,11 +312,17 @@ test('does not retry missing signed metadata files', async () => {
 test('serializes one update task and persists success progress', async () => {
   const { root, metadata, preparer } = await system()
   let activated
+  const activationStates = []
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
   const coordinator = new UpdateCoordinator({
     metadata,
     preparer,
-    activator: { activate: async prepared => { activated = prepared.stable.targetSequence } },
+    activator: { activate: async (prepared, { onSwitching }) => {
+      activationStates.push((await state.read()).status)
+      await onSwitching()
+      activationStates.push((await state.read()).status)
+      activated = prepared.stable.targetSequence
+    } },
     state,
   })
   const task = coordinator.start()
@@ -297,6 +331,7 @@ test('serializes one update task and persists success progress', async () => {
   const result = await task.completion
   assert.equal(result.status, 'success')
   assert.equal(activated, 1)
+  assert.deepEqual(activationStates, ['building-candidate', 'switching'])
   assert.equal((await state.read()).progress, 100)
 })
 

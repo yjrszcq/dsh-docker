@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rename, rm, symlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { canonicalJson } from '../../lib/canonical-json.mjs'
@@ -14,7 +14,7 @@ import { replaceDeploymentView, replaceSystemPluginView } from '../../lib/paths.
 import { hashTree } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
-import { buildRuntime, loadEnvironmentPatchSet } from '../../../control-plane/modules/patch-manager/index.mjs'
+import { buildRuntime, cloneTree, loadEnvironmentPatchSet } from '../../../control-plane/modules/patch-manager/index.mjs'
 
 const KINDS = Object.freeze(['environment', 'pristine', 'runtime', 'system-plugins'])
 
@@ -457,7 +457,7 @@ export class DeploymentManager {
       if (!await exists(destination)) {
         const temporary = `${destination}.${randomUUID()}.tmp`
         try {
-          await cp(source, temporary, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true })
+          await cloneTree(source, temporary)
           if (await hashTree(temporary) !== reference.sha256) throw new TrustError(`materialized ${kind} differs from Image Reference`)
           await rename(temporary, destination)
         } finally {

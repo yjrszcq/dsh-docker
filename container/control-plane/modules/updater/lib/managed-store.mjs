@@ -74,7 +74,7 @@ export class ManagedDeploymentBuilder {
       await symlink(receipt.path, archivePath, 'file')
       await run('npm', [
         'install', '--global', '--prefix', installRoot, '--omit=dev', '--ignore-scripts',
-        '--no-audit', '--no-fund', '--cache', join(installRoot, 'npm-cache'), archivePath,
+        '--no-audit', '--no-fund', '--prefer-offline', '--cache', this.paths.npmCacheRoot, archivePath,
       ])
       const installed = join(installRoot, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
       await rename(installed, staging)
@@ -171,11 +171,15 @@ export class ManagedDeploymentBuilder {
     }
   }
 
-  async buildStable(prepared) {
+  async buildStable(prepared, { onProgress = async () => {} } = {}) {
     const pristine = await this.pristine(prepared.dsh.version, prepared.dsh.receipt)
+    await onProgress(80)
     const environment = await this.environment(prepared)
+    await onProgress(82)
     const runtime = await this.runtime(prepared, pristine, environment)
+    await onProgress(87)
     const systemPlugins = await this.systemPlugins(prepared, environment)
+    await onProgress(89)
     const content = {
       schema: 1,
       authority: 'stable',

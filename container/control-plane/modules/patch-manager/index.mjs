@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TrustError } from '../../../platform/lib/validation.mjs'
@@ -82,12 +83,8 @@ export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patc
   const staging = join(versions, `.${runtimeId}.${randomUUID()}.tmp`)
   try {
     const packageRoot = join(staging, 'package')
-    await cp(resolve(pristineRoot), packageRoot, {
-      recursive: true,
-      errorOnExist: true,
-      force: false,
-      verbatimSymlinks: true,
-    })
+    await mkdir(staging)
+    await cloneTree(pristineRoot, packageRoot)
     await applyPatchSet(packageRoot, patchPaths)
     const binTarget = join(packageRoot, 'lib', 'bin.js')
     const details = await lstat(binTarget)
@@ -115,6 +112,20 @@ async function replaceLink(root, name, runtimeId) {
   const temporary = join(root, `.${name}.${randomUUID()}.tmp`)
   await symlink(join('versions', runtimeId), temporary)
   await rename(temporary, join(root, name))
+}
+
+export function cloneTree(source, destination) {
+  return new Promise((resolveClone, reject) => {
+    const child = spawn('cp', ['-a', '--reflink=auto', '--', resolve(source), resolve(destination)], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    const stderr = []
+    child.stderr.on('data', chunk => stderr.push(chunk))
+    child.once('error', reject)
+    child.once('exit', code => code === 0
+      ? resolveClone(destination)
+      : reject(new Error(`Platform tree copy failed: ${Buffer.concat(stderr).toString('utf8').trim()}`)))
+  })
 }
 
 export class RuntimeSlots {

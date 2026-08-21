@@ -306,8 +306,11 @@ export class UpdateCoordinator extends EventEmitter {
       await this.transition('downloading', { taskId, progress: 10, targetSequence: target.value.targetSequence })
       const prepared = await this.preparer.prepare(target.value)
       await this.transition('validating', { taskId, progress: 70 })
-      await this.transition('switching', { taskId, progress: 85 })
-      await this.activator.activate(prepared)
+      await this.transition('building-candidate', { taskId, progress: 75 })
+      await this.activator.activate(prepared, {
+        onProgress: progress => this.transition('building-candidate', { taskId, progress }),
+        onSwitching: () => this.transition('switching', { taskId, progress: 90 }),
+      })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
