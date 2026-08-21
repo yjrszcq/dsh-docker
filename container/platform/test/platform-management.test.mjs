@@ -263,6 +263,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /\.logDetails \{/)
   assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron/)
   assert.match(style, /\.logChevron::before \{[\s\S]*?transform: rotate\(45deg\)[\s\S]*?transform-origin: 50% 50%/)
+  assert.match(style, /\.logChevron \{[^}]*top: 2px/)
   assert.doesNotMatch(style, /\.logChevron(?:::before)? \{[^}]*transition:/)
   assert.match(style, /\.logEntry\[aria-expanded='true'\] \.logChevron::before \{[^}]*transform: rotate\(225deg\)/)
   assert.match(source, /className: css\.logMeta[\s\S]*className: css\.logMessageRow[\s\S]*className: css\.logChevron/)

@@ -1026,6 +1026,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(style, /\.log-entry \.log-details/)
   assert.match(style, /\.log-entry\[aria-expanded='true'\] \.log-chevron/)
   assert.match(style, /\.log-chevron::before \{[^}]*transform: rotate\(45deg\)[^}]*transform-origin: 50% 50%/)
+  assert.match(style, /\.log-chevron \{[^}]*top: 2px/)
   assert.doesNotMatch(style, /\.log-chevron(?:::before)? \{[^}]*transition:/)
   assert.match(style, /\.log-entry\[aria-expanded='true'\] \.log-chevron::before \{[^}]*transform: rotate\(225deg\)/)
   assert.match(style, /\.user-plugin-description\.expanded/)

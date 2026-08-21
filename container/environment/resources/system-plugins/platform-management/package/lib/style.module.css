@@ -588,6 +588,7 @@ a.secondaryButton { text-decoration: none; }
 .logMessageRow > pre { flex: 1; min-width: 0; }
 .logChevron {
   position: relative;
+  top: 2px;
   flex: none;
   width: 10px;
   height: 10px;
