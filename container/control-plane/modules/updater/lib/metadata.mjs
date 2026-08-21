@@ -18,7 +18,14 @@ async function responseBytes(response, label, maxBytes = 10 * 1024 * 1024) {
 }
 
 export class MetadataClient {
-  constructor({ baseUrl, trust, fetchImpl = fetch, attempts = 3, retryMs = 1_000 }) {
+  constructor({
+    baseUrl,
+    trust,
+    fetchImpl = fetch,
+    attempts = 2,
+    retryMs = 250,
+    requestTimeoutMs = 5_000,
+  }) {
     this.baseUrl = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`)
     if (this.baseUrl.protocol !== 'https:' && this.baseUrl.hostname !== '127.0.0.1' && this.baseUrl.hostname !== 'localhost') {
       throw new Error('update metadata URL must use HTTPS')
@@ -27,10 +34,13 @@ export class MetadataClient {
     this.fetchImpl = fetchImpl
     this.attempts = attempts
     this.retryMs = retryMs
+    this.requestTimeoutMs = requestTimeoutMs
   }
 
   async file(name) {
-    const response = await this.fetchImpl(new URL(name, this.baseUrl))
+    const response = await this.fetchImpl(new URL(name, this.baseUrl), {
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    })
     if (response.status === 404) throw new MetadataUnavailableError()
     return responseBytes(response, name)
   }
@@ -63,10 +73,12 @@ export class NpmRegistryClient {
     fetchImpl = fetch,
     registry = 'https://registry.npmjs.org/',
     packageName = '@deepseek-ai/dsh',
+    requestTimeoutMs = 5_000,
   }) {
     this.fetchImpl = fetchImpl
     this.registry = registry
     this.packageName = packageName
+    this.requestTimeoutMs = requestTimeoutMs
   }
 
   async discover(policy = {}) {
@@ -76,6 +88,7 @@ export class NpmRegistryClient {
     const response = await this.fetchImpl(new URL(packagePath, registry), {
       headers: { accept: 'application/vnd.npm.install-v1+json' },
       redirect: 'error',
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     })
     const bytes = await responseBytes(response, 'npm packument', 20 * 1024 * 1024)
     let packument

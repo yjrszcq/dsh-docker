@@ -309,6 +309,27 @@ test('does not retry missing signed metadata files', async () => {
   assert.equal(requests, 2)
 })
 
+test('bounds stalled signed metadata and npm Registry requests', async () => {
+  const stalledFetch = async (_url, options) => new Promise((resolve, reject) => {
+    if (options.signal.aborted) {
+      reject(options.signal.reason)
+      return
+    }
+    options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true })
+  })
+  const metadata = new MetadataClient({
+    baseUrl: 'https://metadata.example/',
+    trust: {},
+    fetchImpl: stalledFetch,
+    attempts: 1,
+    requestTimeoutMs: 10,
+  })
+  const npm = new NpmRegistryClient({ fetchImpl: stalledFetch, requestTimeoutMs: 10 })
+
+  await assert.rejects(metadata.check(), error => error?.name === 'TimeoutError')
+  await assert.rejects(npm.discover(), error => error?.name === 'TimeoutError')
+})
+
 test('serializes one update task and persists success progress', async () => {
   const { root, metadata, preparer } = await system()
   let activated
@@ -577,6 +598,25 @@ test('reconciles a committed journal with a state write interrupted after activa
   await state.write('downloading', { taskId: 'stable-task', progress: 10 })
   const unrelated = await reconcileRecoveredState({ journal, state })
   assert.equal(unrelated.persisted.status, 'downloading')
+})
+
+test('clears a metadata check interrupted by Management restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-check-state-recovery-'))
+  const journal = new UpdateJournal(join(root, 'state', 'transaction.json'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  await state.write('checking', {
+    taskId: null,
+    checkSource: 'page-open',
+    progress: 0,
+    available: { dsh: '0.1.1-rc.1' },
+  })
+
+  const recovered = await reconcileRecoveredState({ journal, state })
+
+  assert.equal(recovered.persisted.status, 'idle')
+  assert.equal(recovered.persisted.taskId, null)
+  assert.equal(recovered.persisted.checkSource, null)
+  assert.deepEqual(recovered.persisted.available, { dsh: '0.1.1-rc.1' })
 })
 
 test('replaces the prior official DSH authority while retaining Stable deployment receipts', async () => {

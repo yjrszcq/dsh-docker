@@ -23,6 +23,20 @@ export async function recoverInterruptedUpdate({ journal, snapshots, activator, 
 export async function reconcileRecoveredState({ journal, state }) {
   const [transaction, persisted] = await Promise.all([journal.read(), state.read()])
   const sameTask = transaction !== undefined && persisted.taskId === transaction.transactionId
+  // A metadata check has no journal and cannot be resumed after Management
+  // restarts. Leaving this state behind would keep every UI showing a spinner
+  // and could make startup mistake the check for an interrupted update.
+  if (persisted.status === 'checking' && !sameTask) {
+    return {
+      transaction,
+      persisted: await state.write('idle', {
+        taskId: null,
+        progress: 0,
+        error: null,
+        checkSource: null,
+      }),
+    }
+  }
   if (sameTask && !['idle', 'success', 'failed'].includes(persisted.status)) {
     if (transaction.phase === 'committed') {
       return { transaction, persisted: await state.write('success', { progress: 100, error: null }) }
