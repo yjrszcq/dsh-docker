@@ -516,7 +516,16 @@ function renderUserPlugins(busy) {
     heading.className = 'user-plugin-heading'
     const name = document.createElement('strong')
     name.textContent = plugin.name
-    heading.append(name)
+    const badge = action
+      ? userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending')
+      : plugin.pendingRestart
+        ? userPluginBadge(t('pluginPendingRestart'), 'pending')
+        : plugin.reservedNameConflict
+          ? userPluginBadge(t('userPluginReserved'), 'danger')
+          : plugin.damaged
+            ? userPluginBadge(t('userPluginDamaged'), 'warning')
+            : userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : '')
+    heading.append(badge, name)
     if (plugin.description) {
       const description = document.createElement('button')
       const descriptionExpanded = expandedUserPluginDescriptions.has(plugin.name)
@@ -536,14 +545,6 @@ function renderUserPlugins(busy) {
         if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
       })
     }
-    const badges = document.createElement('div')
-    badges.className = 'user-plugin-badges'
-    badges.append(userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : ''))
-    if (plugin.damaged) badges.append(userPluginBadge(t('userPluginDamaged'), 'warning'))
-    if (plugin.reservedNameConflict) badges.append(userPluginBadge(t('userPluginReserved'), 'danger'))
-    if (plugin.pendingRestart) badges.append(userPluginBadge(t('pluginPendingRestart'), 'pending'))
-    if (action) badges.append(userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending'))
-    heading.append(badges)
     const metadata = document.createElement('dl')
     for (const [label, value] of [
       [t('userPluginVersion'), plugin.version], [t('userPluginSpec'), plugin.spec], [t('userPluginSource'), userPluginSource(plugin.source)],
