@@ -19,6 +19,7 @@ import { UserPluginSelectionStore } from '../../control-plane/modules/user-plugi
 import { UserPluginTransactionManager } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
 import { FileInventory, FileSearchManager } from '../../control-plane/modules/file-manager/index.mjs'
 import { FileTransferManager } from '../../control-plane/modules/file-manager/transfers.mjs'
+import { FileTaskManager } from '../../control-plane/modules/file-manager/tasks.mjs'
 import { AtomicFileEditor } from '../../control-plane/modules/file-manager/editor.mjs'
 
 class Coordinator extends EventEmitter {
@@ -1376,7 +1377,8 @@ test('management exposes authenticated file inventory, search, upload, and range
   await writeFile(join(files, 'alpha.txt'), '0123456789')
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   let server
-  const fileTasks = new FileSearchManager({ onState: state => server?.emit('management-state', { fileTask: state }) })
+  const fileTasks = new FileTaskManager({ root: join(root, 'tasks'), onState: state => server?.emit('management-state', { fileTask: state }) })
+  await fileTasks.initialize()
   server = createManagementServer({
     coordinator: new Coordinator(), logs,
     fileInventory: new FileInventory(), fileTransfers: new FileTransferManager(), fileTasks, fileEditor: new AtomicFileEditor(),
@@ -1401,7 +1403,7 @@ test('management exposes authenticated file inventory, search, upload, and range
     assert.equal(await readFile(join(files, 'alpha.txt'), 'utf8'), 'edited')
     const refreshed = await client.request('GET', `${API_PREFIX}files/list?path=${encodedRoot}`)
     const search = await client.request('POST', `${API_PREFIX}files/tasks`, { operation: 'search', path: files, revision: refreshed.revision, query: 'alpha' })
-    await fileTasks.tasks.get(search.taskId).completion
+    await fileTasks.completion(search.taskId)
     assert.equal((await client.request('GET', `${API_PREFIX}files/tasks/${search.taskId}`)).results[0].name, 'alpha.txt')
 
     const uploadPath = join(files, 'uploaded.txt')
@@ -1449,6 +1451,10 @@ test('management exposes authenticated file inventory, search, upload, and range
       request.end()
     })
     assert.deepEqual(downloaded, { status: 206, body: 'load' })
+    const transferTasks = (await client.request('GET', `${API_PREFIX}files/tasks`)).tasks
+    assert.equal(transferTasks.some(task => task.operation === 'upload' && task.status === 'success' && task.processedBytes === 8), true)
+    assert.equal(transferTasks.some(task => task.operation === 'upload' && task.status === 'failed' && task.errorCode === 'FILE_EXISTS'), true)
+    assert.equal(transferTasks.some(task => task.operation === 'download' && task.status === 'success' && task.processedBytes === 4), true)
     await new Promise(resolve => setTimeout(resolve, 20))
     const audit = await logs.query({ sources: ['audit'] })
     assert.equal(audit.some(entry => entry.message === 'files.upload.completed' && entry.size === 8), true)

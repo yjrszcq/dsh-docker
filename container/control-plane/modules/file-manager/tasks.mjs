@@ -23,7 +23,7 @@ async function syncDirectory(path) {
 }
 
 function publicTask(task) {
-  const { completion, persisted, cancelRequested, abortController, ...value } = task
+  const { completion, persisted, executor, resolveResult, rejectResult, cancelRequested, abortController, ...value } = task
   return { ...value, cancelRequested: cancelRequested === true }
 }
 
@@ -176,6 +176,30 @@ export class FileTaskManager {
     return publicTask(task)
   }
 
+  startTransfer({ operation, path, totalBytes = null, managed = false }, executor) {
+    if (!['upload', 'download'].includes(operation) || typeof executor !== 'function') {
+      throw new FileManagerError('file transfer task is invalid')
+    }
+    const normalizedPath = normalizeAbsolutePath(path)
+    if (managed && this.platformBusy()) throw new FileManagerError('a platform operation is already running', 409, 'FILE_TASK_CONFLICT')
+    let resolveResult
+    let rejectResult
+    const result = new Promise((resolve, reject) => { resolveResult = resolve; rejectResult = reject })
+    const task = {
+      schema: 1, taskId: randomUUID(), operation,
+      status: this.queue.length === 0 ? 'running' : 'queued', phase: this.queue.length === 0 ? 'transferring' : 'queued',
+      path: normalizedPath, sources: [], destination: operation === 'upload' ? normalizedPath : null,
+      destinationRevision: null, conflict: null, managed, attributes: null, archiveFormat: null,
+      processedBytes: 0, totalBytes, processedEntries: 0, totalEntries: 1, currentPath: normalizedPath,
+      published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
+      error: null, errorCode: null, queuePosition: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
+      executor, resolveResult, rejectResult,
+    }
+    this.tasks.set(task.taskId, task)
+    this.#schedule(task)
+    return { task: publicTask(task), result }
+  }
+
   list() {
     return [...this.search.list(), ...this.sizes.list(), ...[...this.tasks.values()].map(publicTask)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100)
   }
@@ -210,6 +234,7 @@ export class FileTaskManager {
       task.updatedAt = now()
       this.queue = this.queue.filter(value => value !== task)
       void Promise.resolve(task.persisted).then(() => this.#terminal(task, 'cancelled', 'cancelled'))
+      task.rejectResult?.(Object.assign(new Error('file transfer cancelled'), { code: 'FILE_TASK_CANCELLED' }))
       this.#publishQueue()
       return publicTask(task)
     }
@@ -231,14 +256,48 @@ export class FileTaskManager {
       task.phase = 'validating'
       task.queuePosition = 0
       this.activeMutation = task
-      await this.#phase(task, 'validating')
-      await this.#run(task).catch(() => {})
+      await this.#phase(task, task.executor === undefined ? 'validating' : 'transferring')
+      if (task.executor === undefined) await this.#run(task).catch(() => {})
+      else await this.#runTransfer(task)
     }).finally(() => {
       if (this.activeMutation === task) this.activeMutation = undefined
       this.queue = this.queue.filter(value => value !== task)
       this.#publishQueue()
     })
     this.queueTail = task.completion
+  }
+
+  async #runTransfer(task) {
+    const controller = new AbortController()
+    task.abortController = controller
+    const controls = {
+      signal: controller.signal,
+      progress: ({ processedBytes, totalBytes, currentPath } = {}) => {
+        if (Number.isSafeInteger(processedBytes) && processedBytes >= 0) task.processedBytes = processedBytes
+        if (Number.isSafeInteger(totalBytes) && totalBytes >= 0) task.totalBytes = totalBytes
+        if (typeof currentPath === 'string') task.currentPath = currentPath
+        task.updatedAt = now()
+        this.#publish(task)
+      },
+    }
+    try {
+      const result = await task.executor(controls)
+      task.processedEntries = 1
+      if (task.totalBytes !== null) task.processedBytes = task.totalBytes
+      await this.#terminal(task, 'success', 'completed')
+      await this.report(`file-task.${task.operation}.completed`, publicTask(task))
+      task.resolveResult(result)
+    } catch (error) {
+      const status = task.cancelRequested ? 'cancelled' : 'failed'
+      task.error = error instanceof Error ? error.message : String(error)
+      task.errorCode = typeof error?.code === 'string' ? error.code : null
+      await this.#terminal(task, status, status)
+      await this.report(`file-task.${task.operation}.${status}`, { ...publicTask(task), error })
+      task.rejectResult(error)
+    } finally {
+      task.abortController = undefined
+      await this.#prune()
+    }
   }
 
   #publishQueue() {

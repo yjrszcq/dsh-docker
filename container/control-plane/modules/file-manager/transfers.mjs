@@ -98,16 +98,21 @@ export class FileTransferManager {
     }
   }
 
-  async sendDownload(response, download) {
+  async sendDownload(response, download, { onProgress = () => {}, signal } = {}) {
     response.writeHead(download.status, download.headers)
+    let sent = 0
+    download.stream.on('data', chunk => {
+      sent += chunk.byteLength
+      onProgress(sent, Number(download.headers['content-length']))
+    })
     try {
-      await pipeline(download.stream, response)
+      await pipeline(download.stream, response, { signal })
     } finally {
       await download.handle.close().catch(() => {})
     }
   }
 
-  async upload(input, value, { conflict = 'reject', contentLength } = {}) {
+  async upload(input, value, { conflict = 'reject', contentLength, onProgress = () => {}, signal } = {}) {
     const requestedPath = normalizeAbsolutePath(value)
     if (!['reject', 'overwrite', 'rename'].includes(conflict)) throw new FileManagerError('upload conflict mode is invalid')
     const parent = dirname(requestedPath)
@@ -121,9 +126,11 @@ export class FileTransferManager {
       if (original !== undefined && conflict === 'reject') throw new FileManagerError('upload target already exists', 409, 'FILE_EXISTS')
       handle = await open(staging, 'wx', 0o600)
       for await (const chunk of input) {
+        signal?.throwIfAborted()
         const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
         received += bytes.byteLength
         await handle.write(bytes)
+        onProgress(received, contentLength)
       }
       if (contentLength !== undefined && received !== contentLength) throw new FileManagerError('upload size does not match Content-Length')
       await handle.sync()

@@ -385,13 +385,23 @@ export function createManagementServer({
         send(response, body.create === true ? 201 : 200, saved)
       } else if (request.method === 'GET' && route === 'files/download') {
         if (fileTransfers === undefined) throw new Error('file transfers are not configured')
-        const download = await fileTransfers.openDownload(url.searchParams.get('path'), {
-          revision: url.searchParams.get('revision') ?? undefined,
-          range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+        const path = url.searchParams.get('path')
+        const transfer = fileTasks?.startTransfer({ operation: 'download', path }, async controls => {
+          const download = await fileTransfers.openDownload(path, {
+            revision: url.searchParams.get('revision') ?? undefined,
+            range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+          })
+          controls.progress({ processedBytes: 0, totalBytes: Number(download.headers['content-length']) })
+          await fileTransfers.sendDownload(response, download, {
+            signal: controls.signal,
+            onProgress: (processedBytes, totalBytes) => controls.progress({ processedBytes, totalBytes }),
+          })
+          return download
         })
-        await recordAudit('files.download.started', { path: download.path, revision: download.revision })
-        await fileTransfers.sendDownload(response, download)
-        await recordAudit('files.download.completed', { path: download.path, revision: download.revision })
+        if (transfer === undefined) throw new Error('file tasks are not configured')
+        await recordAudit('files.download.started', { path, taskId: transfer.task.taskId })
+        const download = await transfer.result
+        await recordAudit('files.download.completed', { path: download.path, revision: download.revision, taskId: transfer.task.taskId })
       } else if (request.method === 'POST' && route === 'files/upload') {
         if (fileTransfers === undefined) throw new Error('file transfers are not configured')
         const lengthHeader = request.headers['content-length']
@@ -399,9 +409,12 @@ export function createManagementServer({
         if (contentLength !== undefined && (!Number.isSafeInteger(contentLength) || contentLength < 0)) throw new Error('Content-Length is invalid')
         const path = url.searchParams.get('path')
         await recordAudit('files.upload.started', { path })
-        const result = await fileTransfers.upload(request, path, {
-          conflict: url.searchParams.get('conflict') ?? 'reject', contentLength,
-        })
+        if (fileTasks === undefined) throw new Error('file tasks are not configured')
+        const transfer = fileTasks.startTransfer({ operation: 'upload', path, totalBytes: contentLength ?? null }, controls => fileTransfers.upload(request, path, {
+          conflict: url.searchParams.get('conflict') ?? 'reject', contentLength, signal: controls.signal,
+          onProgress: (processedBytes, totalBytes) => controls.progress({ processedBytes, totalBytes }),
+        }))
+        const result = await transfer.result
         await recordAudit('files.upload.completed', { path: result.path, size: result.size })
         send(response, 201, result)
       } else if (request.method === 'POST' && route === 'files/tasks') {

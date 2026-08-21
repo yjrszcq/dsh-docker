@@ -166,18 +166,39 @@ export async function createMaintenanceServer({
         await audit('files.content.saved', { path: result.path, size: result.size, managed: result.managed, privileged: true })
         send(response, body.create === true ? 201 : 200, result)
       } else if (request.method === 'GET' && route === 'files/download') {
-        const download = await transfers.openDownload(url.searchParams.get('path'), {
-          revision: url.searchParams.get('revision') ?? undefined,
-          range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+        const path = url.searchParams.get('path')
+        const transfer = tasks.startTransfer({ operation: 'download', path }, async controls => {
+          const download = await transfers.openDownload(path, {
+            revision: url.searchParams.get('revision') ?? undefined,
+            range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+          })
+          controls.progress({ processedBytes: 0, totalBytes: Number(download.headers['content-length']) })
+          await transfers.sendDownload(response, download, {
+            signal: controls.signal,
+            onProgress: (processedBytes, totalBytes) => controls.progress({ processedBytes, totalBytes }),
+          })
+          return download
         })
-        await transfers.sendDownload(response, download)
+        await audit('files.download.started', { path, taskId: transfer.task.taskId, privileged: true })
+        await transfer.result
       } else if (request.method === 'POST' && route === 'files/upload') {
         const length = request.headers['content-length']
         const contentLength = length === undefined ? undefined : Number(length)
         const path = url.searchParams.get('path')
-        const result = await managedWrite(path, () => transfers.upload(request, path, {
-          conflict: url.searchParams.get('conflict') ?? 'reject', contentLength,
+        const managed = isManaged(path)
+        if (managed && await platformBusy()) {
+          const error = new Error('a platform operation is already running')
+          error.statusCode = 409
+          throw error
+        }
+        if (managed) await acquireLease(paths.maintenanceLeasePath)
+        const transfer = tasks.startTransfer({ operation: 'upload', path, totalBytes: contentLength ?? null, managed }, controls => transfers.upload(request, path, {
+          conflict: url.searchParams.get('conflict') ?? 'reject', contentLength, signal: controls.signal,
+          onProgress: (processedBytes, totalBytes) => controls.progress({ processedBytes, totalBytes }),
         }))
+        if (managed) void tasks.completion(transfer.task.taskId).finally(() => rm(paths.maintenanceLeasePath, { force: true }))
+        await audit('files.upload.started', { path, taskId: transfer.task.taskId, managed, privileged: true })
+        const result = await transfer.result
         await audit('files.upload.completed', { path: result.path, size: result.size, privileged: true })
         send(response, 201, result)
       } else if (request.method === 'POST' && route === 'files/tasks') {

@@ -250,6 +250,31 @@ test('persists queued work before the active task releases its lease', async () 
   assert.equal((await finish(manager, second)).status, 'success')
 })
 
+test('reports real transfer progress and cancels a queued transfer', async () => {
+  const { files, manager } = await setup('dsh-file-transfer-progress-')
+  const transfer = manager.startTransfer({ operation: 'upload', path: join(files, 'upload.bin'), totalBytes: 10 }, async ({ progress }) => {
+    progress({ processedBytes: 4, totalBytes: 10 })
+    progress({ processedBytes: 10, totalBytes: 10 })
+    return { size: 10 }
+  })
+  assert.deepEqual(await transfer.result, { size: 10 })
+  await manager.completion(transfer.task.taskId)
+  assert.deepEqual(
+    [manager.get(transfer.task.taskId).status, manager.get(transfer.task.taskId).processedBytes],
+    ['success', 10],
+  )
+
+  let release
+  const blocked = new Promise(resolve => { release = resolve })
+  const active = manager.startTransfer({ operation: 'download', path: join(files, 'active') }, () => blocked)
+  const queued = manager.startTransfer({ operation: 'download', path: join(files, 'queued') }, async () => undefined)
+  const rejection = assert.rejects(queued.result, error => error.code === 'FILE_TASK_CANCELLED')
+  assert.equal(manager.cancel(queued.task.taskId).status, 'cancelled')
+  await rejection
+  release()
+  await active.result
+})
+
 test('recovers committed deletes and marks uncommitted tasks interrupted', async () => {
   const { files, tasks } = await setup()
   const hidden = join(files, '.dsh-delete-task.tmp')
