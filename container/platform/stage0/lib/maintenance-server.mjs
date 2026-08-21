@@ -171,6 +171,7 @@ export async function createMaintenanceServer({
           const download = await transfers.openDownload(path, {
             revision: url.searchParams.get('revision') ?? undefined,
             range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+            signal: controls.signal,
           })
           controls.progress({ processedBytes: 0, totalBytes: Number(download.headers['content-length']) })
           await transfers.sendDownload(response, download, {

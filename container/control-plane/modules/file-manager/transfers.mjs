@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs'
-import { link, lstat, open, readlink, rename, rm, stat } from 'node:fs/promises'
+import { link, lstat, mkdir, mkdtemp, open, readlink, rename, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
@@ -8,6 +9,7 @@ import {
   FileManagerError, FileRevisionConflictError, fileError, fileManagerInternals,
   isManagedPath, normalizeAbsolutePath,
 } from './index.mjs'
+import { createArchive } from './archives.mjs'
 
 function parseRange(value, size) {
   if (value === undefined) return { start: 0, end: Math.max(0, size - 1), partial: false }
@@ -58,14 +60,35 @@ function renamedPath(path, index) {
 }
 
 export class FileTransferManager {
-  constructor({ isManaged = isManagedPath } = {}) {
+  constructor({ isManaged = isManagedPath, stagingRoot = tmpdir() } = {}) {
     this.isManaged = isManaged
+    this.stagingRoot = stagingRoot
   }
 
-  async openDownload(value, { revision, range } = {}) {
+  async openDownload(value, { revision, range, signal } = {}) {
     const path = normalizeAbsolutePath(value)
     let handle
+    let cleanup
     try {
+      const pathStats = await lstat(path, { bigint: true })
+      if (pathStats.isDirectory()) {
+        if (range !== undefined) throw new FileManagerError('directory downloads do not support ranges', 416, 'RANGE_INVALID')
+        const actualRevision = fileManagerInternals.revisionFor(path, pathStats)
+        if (revision !== undefined && revision !== '' && revision !== actualRevision) throw new FileRevisionConflictError('download revision changed')
+        await mkdir(this.stagingRoot, { recursive: true })
+        const staging = await mkdtemp(join(this.stagingRoot, '.dsh-directory-download-'))
+        cleanup = () => rm(staging, { recursive: true, force: true })
+        const name = basename(path) || 'root'
+        const archive = join(staging, `${name}.zip`)
+        await createArchive({ format: 'zip', sourceRoot: path === '/' ? path : dirname(path), output: archive, entries: [path === '/' ? '.' : name], signal })
+        const download = await this.openDownload(archive, { signal })
+        download.path = path
+        download.revision = actualRevision
+        download.headers['content-disposition'] = disposition(`${name}.zip`)
+        download.cleanup = cleanup
+        cleanup = undefined
+        return download
+      }
       handle = await open(path, 'r')
       const before = await handle.stat({ bigint: true })
       if (!before.isFile()) throw new FileManagerError('path is not a regular file', 415, 'FILE_TYPE_UNSUPPORTED')
@@ -94,6 +117,7 @@ export class FileTransferManager {
       }
     } catch (error) {
       await handle?.close().catch(() => {})
+      await cleanup?.().catch(() => {})
       throw fileError(error)
     }
   }
@@ -109,6 +133,7 @@ export class FileTransferManager {
       await pipeline(download.stream, response, { signal })
     } finally {
       await download.handle.close().catch(() => {})
+      await download.cleanup?.().catch(() => {})
     }
   }
 

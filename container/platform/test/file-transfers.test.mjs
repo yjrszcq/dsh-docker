@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { FileTransferManager, fileTransferInternals } from '../../control-plane/modules/file-manager/transfers.mjs'
 
@@ -35,6 +36,23 @@ test('streams complete, ranged, suffix, and empty downloads', async () => {
   assert.equal((await collect(empty.stream)).byteLength, 0)
   await empty.handle.close()
   await assert.rejects(transfers.openDownload(path, { range: 'bytes=20-30' }), error => error.statusCode === 416)
+})
+
+test('streams directories as temporary zip downloads', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-directory-download-'))
+  const directory = join(root, 'folder')
+  await mkdir(directory)
+  await writeFile(join(directory, 'entry.txt'), 'directory-content')
+  const transfers = new FileTransferManager({ stagingRoot: join(root, 'cache') })
+  const download = await transfers.openDownload(directory)
+  const archive = join(root, 'folder.zip')
+  await writeFile(archive, await collect(download.stream))
+  await download.handle.close()
+  await download.cleanup()
+  assert.match(download.headers['content-disposition'], /folder\.zip/)
+  const extracted = spawnSync('unzip', ['-p', archive, 'folder/entry.txt'], { encoding: 'utf8' })
+  assert.equal(extracted.status, 0, extracted.stderr)
+  assert.equal(extracted.stdout, 'directory-content')
 })
 
 test('uploads through sibling staging with reject, overwrite, and rename policies', async () => {

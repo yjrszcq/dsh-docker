@@ -75,11 +75,14 @@ export async function validateExtractedTree(root) {
   return { entries: Math.max(0, entries - 1), bytes }
 }
 
-export async function createArchive({ format, sourceRoot, output, signal }) {
+export async function createArchive({ format, sourceRoot, output, entries = ['.'], signal }) {
   normalizeArchiveFormat(format)
-  if (format === 'zip') await run('zip', ['-q', '-r', output, '.'], { cwd: sourceRoot, signal })
-  else if (format === '7z') await run('7z', ['a', '-bd', '-y', '-t7z', output, '.'], { cwd: sourceRoot, signal })
-  else await run('tar', ['-czf', output, '-C', sourceRoot, '.'], { signal })
+  if (!Array.isArray(entries) || entries.length === 0 || entries.some(entry => typeof entry !== 'string' || entry === '' || entry.includes('\0') || entry.includes('/'))) {
+    throw new FileManagerError('archive entry names are invalid')
+  }
+  if (format === 'zip') await run('zip', ['-q', '-r', output, '--', ...entries], { cwd: sourceRoot, signal })
+  else if (format === '7z') await run('7z', ['a', '-bd', '-y', '-t7z', output, '--', ...entries], { cwd: sourceRoot, signal })
+  else await run('tar', ['-czf', output, '-C', sourceRoot, '--', ...entries], { signal })
 }
 
 export async function extractArchive({ format, archive, output, signal }) {

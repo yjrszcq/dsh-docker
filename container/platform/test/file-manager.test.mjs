@@ -55,6 +55,19 @@ test('lists directories with stable metadata, directory-first sorting, and revis
   await assert.rejects(inventory.list(root, { cursor: first.nextCursor }), FileRevisionConflictError)
 })
 
+test('name pagination resolves detailed metadata only for the requested page', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-page-'))
+  for (let index = 0; index < 20; index += 1) await writeFile(join(root, `${String(index).padStart(2, '0')}.txt`), 'x')
+  let resolutions = 0
+  const inventory = new FileInventory({
+    identity: { resolve: async () => { resolutions += 1; return { user: 'node', group: 'node' } } },
+  })
+  const page = await inventory.list(root, { limit: 5 })
+  assert.equal(page.entries.length, 5)
+  assert.equal(page.total, 20)
+  assert.equal(resolutions, 5)
+})
+
 test('reads only bounded UTF-8 regular files and detects binary content', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-file-content-'))
   const text = join(root, '中文.txt')

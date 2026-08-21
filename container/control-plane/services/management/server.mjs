@@ -390,6 +390,7 @@ export function createManagementServer({
           const download = await fileTransfers.openDownload(path, {
             revision: url.searchParams.get('revision') ?? undefined,
             range: typeof request.headers.range === 'string' ? request.headers.range : undefined,
+            signal: controls.signal,
           })
           controls.progress({ processedBytes: 0, totalBytes: Number(download.headers['content-length']) })
           await fileTransfers.sendDownload(response, download, {

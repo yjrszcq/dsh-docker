@@ -218,8 +218,27 @@ function decodeCursor(value, revision) {
 
 function listRevision(path, stats, entries) {
   const digest = createHash('sha256')
-  for (const entry of entries) digest.update(`${entry.name}\0${entry.revision}\0`)
+  for (const entry of entries) digest.update(`${entry.name}\0${entry.revision ?? entry.type}\0`)
   return revisionFor(path, stats, digest.digest('hex'))
+}
+
+function directoryEntryType(entry) {
+  if (entry.isDirectory()) return 'directory'
+  if (entry.isFile()) return 'file'
+  if (entry.isSymbolicLink()) return 'symlink'
+  if (entry.isFIFO()) return 'fifo'
+  if (entry.isSocket()) return 'socket'
+  if (entry.isBlockDevice()) return 'block-device'
+  if (entry.isCharacterDevice()) return 'character-device'
+  return 'unknown'
+}
+
+function compareNames(left, right, order) {
+  if (left.type === 'directory' && right.type !== 'directory') return -1
+  if (left.type !== 'directory' && right.type === 'directory') return 1
+  const result = left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
+    || left.name.localeCompare(right.name)
+  return order === 'desc' ? -result : result
 }
 
 function parseLimit(value, fallback = DEFAULT_LIST_LIMIT) {
@@ -252,24 +271,34 @@ export class FileInventory {
     try {
       const root = await lstat(path, { bigint: true })
       if (!root.isDirectory()) throw new FileManagerError('path is not a directory', 415, 'FILE_TYPE_UNSUPPORTED')
-      const names = await readdir(path)
-      const entries = await Promise.all(names.map(async name => {
-        const child = resolve(path, name)
-        return describe(child, undefined, this.isManaged, this.identity)
-      }))
-      entries.sort((left, right) => compareEntries(left, right, sort, order))
-      const revision = listRevision(path, root, entries)
-      const offset = decodeCursor(cursor, revision)
       const pageSize = parseLimit(limit)
-      const page = entries.slice(offset, offset + pageSize)
+      const names = await readdir(path, { withFileTypes: true })
+      let entries
+      let revision
+      let offset
+      if (sort === 'name') {
+        const summary = names.map(entry => ({ name: entry.name, type: directoryEntryType(entry) }))
+        summary.sort((left, right) => compareNames(left, right, order))
+        revision = listRevision(path, root, summary)
+        offset = decodeCursor(cursor, revision)
+        entries = await Promise.all(summary.slice(offset, offset + pageSize).map(entry => (
+          describe(resolve(path, entry.name), undefined, this.isManaged, this.identity)
+        )))
+      } else {
+        entries = await Promise.all(names.map(entry => describe(resolve(path, entry.name), undefined, this.isManaged, this.identity)))
+        entries.sort((left, right) => compareEntries(left, right, sort, order))
+        revision = listRevision(path, root, entries)
+        offset = decodeCursor(cursor, revision)
+      }
+      const page = sort === 'name' ? entries : entries.slice(offset, offset + pageSize)
       const nextOffset = offset + page.length
       return {
         path,
         realPath: await realpath(path),
         revision,
         entries: page,
-        nextCursor: nextOffset < entries.length ? encodeCursor(revision, nextOffset) : null,
-        total: entries.length,
+        nextCursor: nextOffset < names.length ? encodeCursor(revision, nextOffset) : null,
+        total: names.length,
         managed: this.isManaged(path),
       }
     } catch (error) {

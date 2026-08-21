@@ -80,14 +80,15 @@ const COPY = Object.freeze({
     terminalConnecting: '正在连接终端', terminalConnected: '终端已连接', terminalReconnecting: '连接中断，正在重连',
     terminalExited: 'Shell 已退出（状态 {status}）', terminalFailed: '终端连接失败', terminalClosed: '终端会话已关闭',
     terminalPlaceholder: '新建会话后将在此打开交互式 Bash Shell。', terminalScreen: '容器终端',
-    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
+    files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', uploadFiles: '上传文件', uploadDirectory: '上传文件夹', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
     itemType: '新建类型', itemName: '名称', createItem: '创建', createLocation: '创建位置：{path}', invalidFileName: '名称不能为空，不能是 . 或 ..，不能包含 / 或控制字符，且不能超过 255 字节。',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
-    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多',
-    noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
+    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多', itemsPerPage: '每页', previousPage: '上一页', nextPage: '下一页', pageStatus: '第 {page} 页 · {start}-{end} / {total}',
+    noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', compress: '压缩', extract: '解压', rename: '重命名', deletePermanently: '永久删除',
+    compressItems: '压缩所选项目', extractArchive: '解压归档', archiveFormat: '归档格式', archiveName: '归档名称', invalidArchiveName: '请输入有效的归档名称。', unsupportedArchive: '请选择 ZIP、7z 或 tar.gz 文件。',
     editPermissions: '编辑权限', permissions: '权限', permissionRead: '读取', permissionWrite: '写入', permissionExecute: '可执行', permissionOwner: '所有者', permissionGroup: '用户组', permissionOthers: '其他用户',
     fileUser: '用户', fileGroup: '用户组', recursiveAttributes: '同时修改子项属性', applyPermissions: '应用权限', attributesInvalid: '请填写有效的用户、用户组和 3 或 4 位八进制权限。', attributesOperation: '修改文件属性',
-    newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
+    newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}', fileOperations: '文件任务', queuedOperation: '排队第 {position} 位', processingOperation: '正在处理', cancelOperation: '取消操作',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
@@ -150,14 +151,15 @@ const COPY = Object.freeze({
     terminalConnecting: 'Connecting terminal', terminalConnected: 'Terminal connected', terminalReconnecting: 'Connection lost, reconnecting',
     terminalExited: 'Shell exited ({status})', terminalFailed: 'Terminal connection failed', terminalClosed: 'Terminal session closed',
     terminalPlaceholder: 'Start a session to open an interactive Bash shell.', terminalScreen: 'Container terminal',
-    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
+    files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', uploadFiles: 'Upload files', uploadDirectory: 'Upload folder', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
     itemType: 'Item type', itemName: 'Name', createItem: 'Create', createLocation: 'Create in: {path}', invalidFileName: 'The name cannot be empty, . or .., contain / or control characters, or exceed 255 bytes.',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
-    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
-    noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
+    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more', itemsPerPage: 'Per page', previousPage: 'Previous', nextPage: 'Next', pageStatus: 'Page {page} · {start}-{end} / {total}',
+    noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', compress: 'Compress', extract: 'Extract', rename: 'Rename', deletePermanently: 'Delete permanently',
+    compressItems: 'Compress selected items', extractArchive: 'Extract archive', archiveFormat: 'Archive format', archiveName: 'Archive name', invalidArchiveName: 'Enter a valid archive name.', unsupportedArchive: 'Select a ZIP, 7z, or tar.gz file.',
     editPermissions: 'Edit permissions', permissions: 'Permissions', permissionRead: 'Read', permissionWrite: 'Write', permissionExecute: 'Execute', permissionOwner: 'Owner', permissionGroup: 'Group', permissionOthers: 'Others',
     fileUser: 'User', fileGroup: 'Group', recursiveAttributes: 'Also change child attributes', applyPermissions: 'Apply permissions', attributesInvalid: 'Enter a valid user, group, and a 3- or 4-digit octal mode.', attributesOperation: 'Changing file attributes',
-    newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
+    newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}', fileOperations: 'File operations', queuedOperation: 'Queue position {position}', processingOperation: 'Processing', cancelOperation: 'Cancel operation',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
@@ -234,6 +236,9 @@ let filePath = '/workspace'
 let fileListing = { revision: null, entries: [], nextCursor: null, total: 0 }
 let fileSort = 'name'
 let fileOrder = 'asc'
+let filePageSize = 100
+let filePageIndex = 0
+let filePageCursors = [null]
 let fileHistory = []
 let fileFuture = []
 let fileCreateExpanded = false
@@ -242,6 +247,9 @@ let fileSelected = new Set()
 let fileClipboard = null
 const fileDirectorySizes = new Map()
 let fileActiveTask = null
+let fileTasksActive = []
+let fileTaskRefreshTimer
+let fileArchiveMode = null
 let fileEditor = null
 let fileEditorOriginal = ''
 let fileEditorDirty = false
@@ -1296,6 +1304,7 @@ function fileOperationMessage(value, failed = false) {
 
 async function initializeFiles() {
   if (filesLoaded) return
+  scheduleFileTaskRefresh()
   if (fileConfigLoad === undefined) {
     fileConfigLoad = api('files/config').then(config => {
       if (typeof config?.defaultPath !== 'string' || !Array.isArray(config.shortcuts)) throw new Error('file management configuration is invalid')
@@ -1327,13 +1336,141 @@ function renderFileSelection() {
   const selected = selectedFileEntries()
   if (fileAttributesEntry !== null && (selected.length !== 1 || selected[0].path !== fileAttributesEntry.path)) closeFileAttributes()
   elements['file-selection-count'].textContent = count === 0 ? t('noFilesSelected') : t('filesSelected', { count })
-  for (const id of ['file-copy', 'file-cut', 'file-rename', 'file-delete']) elements[id].disabled = count === 0 || fileActiveTask !== null
-  elements['file-rename'].disabled = count !== 1 || fileActiveTask !== null
-  elements['file-download'].disabled = count !== 1 || selected[0]?.type !== 'file'
-  elements['file-attributes'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || fileActiveTask !== null
-  elements['file-paste'].disabled = fileClipboard === null || fileActiveTask !== null
+  const busy = fileTasksActive.some(task => ['queued', 'running'].includes(task.status))
+  for (const id of ['file-copy', 'file-cut', 'file-rename', 'file-delete']) elements[id].disabled = count === 0 || busy
+  elements['file-archive'].disabled = count === 0 || busy
+  elements['file-extract'].disabled = count !== 1 || selected[0]?.type !== 'file' || busy
+  elements['file-rename'].disabled = count !== 1 || busy
+  elements['file-download'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || busy
+  elements['file-attributes'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || busy
+  elements['file-paste'].disabled = fileClipboard === null || busy
   elements['file-select-all'].checked = count > 0 && count === visibleFileEntries().length
   elements['file-select-all'].indeterminate = count > 0 && count !== visibleFileEntries().length
+}
+
+function taskLabel(task) {
+  const operation = {
+    archive: t('compress'), extract: t('extract'), upload: t('upload'), download: t('download'),
+    copy: t('copy'), move: t('cut'), delete: t('deletePermanently'), attributes: t('attributesOperation'),
+  }[task.operation] ?? task.operation
+  return `${operation}: ${task.currentPath ?? task.path ?? task.destination ?? ''}`
+}
+
+function renderFileTasks() {
+  const active = fileTasksActive.filter(task => ['queued', 'running'].includes(task.status))
+  elements['file-task-state'].hidden = active.length === 0
+  elements['file-task-list'].replaceChildren(...active.map(task => {
+    const row = document.createElement('div')
+    row.className = 'file-task-row'
+    const label = document.createElement('p')
+    label.textContent = taskLabel(task)
+    const cancel = document.createElement('button')
+    cancel.type = 'button'
+    cancel.className = 'compact'
+    cancel.textContent = t('cancelOperation')
+    cancel.addEventListener('click', () => { void api(`files/tasks/${task.taskId}`, { method: 'DELETE' }).then(refreshFileTasks).catch(showError) })
+    const progress = document.createElement('progress')
+    if (Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0) {
+      progress.max = task.totalBytes
+      progress.value = Math.min(task.totalBytes, task.processedBytes ?? 0)
+    }
+    const detail = document.createElement('small')
+    detail.textContent = task.status === 'queued'
+      ? t('queuedOperation', { position: task.queuePosition })
+      : Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0
+        ? `${fileSize(task.processedBytes ?? 0)} / ${fileSize(task.totalBytes)}` : t('processingOperation')
+    row.append(label, cancel, progress, detail)
+    return row
+  }))
+  renderFileSelection()
+}
+
+async function refreshFileTasks() {
+  try {
+    const result = await api('files/tasks')
+    fileTasksActive = result.tasks ?? []
+    renderFileTasks()
+  } catch (error) { showError(error) }
+}
+
+function scheduleFileTaskRefresh() {
+  window.clearInterval(fileTaskRefreshTimer)
+  void refreshFileTasks()
+  fileTaskRefreshTimer = window.setInterval(() => {
+    if (!elements['panel-files'].hidden) void refreshFileTasks()
+  }, 500)
+}
+
+function inferArchiveFormat(name) {
+  const lower = name.toLocaleLowerCase()
+  if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) return 'tar.gz'
+  if (lower.endsWith('.zip')) return 'zip'
+  if (lower.endsWith('.7z')) return '7z'
+  return null
+}
+
+function closeArchivePanel() {
+  fileArchiveMode = null
+  elements['file-archive-panel'].hidden = true
+}
+
+function openArchivePanel(mode) {
+  const selected = selectedFileEntries()
+  if (mode === 'extract') {
+    const format = selected.length === 1 ? inferArchiveFormat(selected[0].name) : null
+    if (format === null) return fileOperationMessage(t('unsupportedArchive'), true)
+    elements['file-archive-format'].value = format
+    elements['file-archive-title'].textContent = t('extractArchive')
+    elements['file-archive-name-row'].hidden = true
+    elements['file-archive-submit'].textContent = t('extract')
+    elements['file-archive-detail'].textContent = selected[0].path
+  } else {
+    const base = selected.length === 1 ? selected[0].name.replace(/\.(tar\.gz|tgz|zip|7z)$/iu, '') : 'archive'
+    elements['file-archive-name'].value = base
+    elements['file-archive-title'].textContent = t('compressItems')
+    elements['file-archive-name-row'].hidden = false
+    elements['file-archive-submit'].textContent = t('compress')
+    elements['file-archive-detail'].textContent = t('filesSelected', { count: selected.length })
+  }
+  fileArchiveMode = mode
+  elements['file-archive-panel'].hidden = false
+}
+
+async function submitArchive() {
+  const runWithConflicts = async body => {
+    let conflict = 'reject'
+    for (;;) {
+      const result = await runFileTask({ ...body, conflict })
+      if (result === null || result.status === 'success') return result
+      if (result.errorCode !== 'FILE_EXISTS') {
+        fileOperationMessage(result.error ?? t('operationFailed'), true)
+        return result
+      }
+      const decision = await chooseFileConflict(body.destination, false)
+      if (decision.choice === 'cancel' || decision.choice === 'skip') return result
+      conflict = decision.choice
+    }
+  }
+  const selected = selectedFileEntries()
+  if (fileArchiveMode === 'extract') {
+    const entry = selected[0]
+    if (entry === undefined) return closeArchivePanel()
+    const task = await runWithConflicts({
+      operation: 'extract', archiveFormat: elements['file-archive-format'].value,
+      sources: [{ path: entry.path, revision: entry.revision }], destination: filePath,
+    })
+    if (task?.status === 'success') { closeArchivePanel(); await navigateFiles(filePath, { history: false }); fileOperationMessage(t('operationComplete')) }
+    return
+  }
+  const name = elements['file-archive-name'].value.trim()
+  if (!fileNameIsValid(name)) return fileOperationMessage(t('invalidArchiveName'), true)
+  const format = elements['file-archive-format'].value
+  const extension = format === 'tar.gz' ? '.tar.gz' : `.${format}`
+  const task = await runWithConflicts({
+    operation: 'archive', archiveFormat: format, sources: sourceDescriptors(),
+    destination: fileDestination(name.endsWith(extension) ? name : `${name}${extension}`),
+  })
+  if (task?.status === 'success') { closeArchivePanel(); await navigateFiles(filePath, { history: false }); fileOperationMessage(t('operationComplete')) }
 }
 
 const permissionInputs = [...document.querySelectorAll('[data-permission-bit]')]
@@ -1440,7 +1577,11 @@ function renderFiles() {
   const values = visibleFileEntries()
   elements['file-list'].replaceChildren()
   elements['file-empty'].hidden = values.length !== 0 || fileLoading
-  elements['file-load-more'].hidden = fileListing.nextCursor === null || fileLoading
+  const start = fileListing.total === 0 ? 0 : filePageIndex * filePageSize + 1
+  const end = Math.min(fileListing.total, start + fileListing.entries.length - 1)
+  elements['file-page-status'].textContent = t('pageStatus', { page: filePageIndex + 1, start, end, total: fileListing.total })
+  elements['file-page-previous'].disabled = fileLoading || filePageIndex === 0
+  elements['file-page-next'].disabled = fileLoading || fileListing.nextCursor === null
   elements['file-managed-warning'].hidden = !fileListing.managed
   for (const entry of values) {
     const row = document.createElement('tr')
@@ -1542,23 +1683,26 @@ async function createFileEntry() {
   if (task !== undefined) setFileCreateExpanded(false)
 }
 
-async function navigateFiles(path, { history = true, append = false } = {}) {
+async function navigateFiles(path, { history = true, cursor = null, pageIndex = 0 } = {}) {
   if (fileLoading) return false
   fileLoading = true
   renderFileNavigation()
   clearError()
   try {
-    const query = new URLSearchParams({ path, limit: '200', sort: fileSort, order: fileOrder })
-    if (append && fileListing.nextCursor !== null) query.set('cursor', fileListing.nextCursor)
+    const query = new URLSearchParams({ path, limit: String(filePageSize), sort: fileSort, order: fileOrder })
+    if (cursor !== null) query.set('cursor', cursor)
     const next = await api(`files/list?${query}`)
-    if (history && !append && filePath !== next.path) {
+    if (history && filePath !== next.path) {
       fileHistory.push(filePath)
       fileFuture = []
     }
     filePath = next.path
     elements['file-path'].value = filePath
     fileSelected.clear()
-    fileListing = append ? { ...next, entries: [...fileListing.entries, ...next.entries] } : next
+    filePageIndex = pageIndex
+    if (pageIndex === 0) filePageCursors = [null]
+    if (next.nextCursor !== null) filePageCursors[pageIndex + 1] = next.nextCursor
+    fileListing = next
     filesLoaded = true
     renderFiles()
     return true
@@ -1645,7 +1789,7 @@ async function waitFileTask(taskId, { report = true, refresh = true } = {}) {
     for (;;) {
       const task = await api(`files/tasks/${taskId}`)
       elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation === 'attributes' ? t('attributesOperation') : task.operation })
-      if (!['running'].includes(task.status)) {
+      if (!['queued', 'running'].includes(task.status)) {
         result = task
         if (report && task.status === 'success') fileOperationMessage(t('operationComplete'))
         else if (report) fileOperationMessage(task.errorCode === 'FILE_ATTRIBUTES_UNSUPPORTED' ? t('attributesUnsupported') : task.error ?? t('operationFailed'), true)
@@ -1655,7 +1799,7 @@ async function waitFileTask(taskId, { report = true, refresh = true } = {}) {
     }
   } catch (error) { showError(error) } finally {
     fileActiveTask = null
-    elements['file-task-state'].hidden = true
+    await refreshFileTasks()
     if (refresh) await navigateFiles(filePath, { history: false })
   }
   return result
@@ -1665,6 +1809,7 @@ async function startFileTask(body) {
   clearError()
   try {
     const task = await api('files/tasks', { method: 'POST', body })
+    await refreshFileTasks()
     void waitFileTask(task.taskId)
     return task
   } catch (error) { showError(error); return undefined }
@@ -1713,6 +1858,30 @@ async function uploadFiles(files) {
   let stopped = false
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index]
+    const segments = (file.webkitRelativePath || file.name).split('/')
+    if (segments.some(segment => !fileNameIsValid(segment))) {
+      showError(new Error(t('invalidFileName')))
+      stopped = true
+      break
+    }
+    let parent = filePath
+    for (const segment of segments.slice(0, -1)) {
+      parent = parent === '/' ? `/${segment}` : `${parent}/${segment}`
+      try {
+        const existing = await api(`files/stat?path=${encodeURIComponent(parent)}`)
+        if (existing.type !== 'directory') throw new Error(`${parent}: ${t('operationFailed')}`)
+      } catch (error) {
+        if (error.statusCode !== 404) { showError(error); stopped = true; break }
+        const created = await runFileTask({ operation: 'mkdir', destination: parent })
+        if (created?.status !== 'success') {
+          fileOperationMessage(created?.error ?? t('operationFailed'), true)
+          stopped = true
+          break
+        }
+      }
+    }
+    if (stopped) break
+    const destination = parent === '/' ? `/${segments.at(-1)}` : `${parent}/${segments.at(-1)}`
     let conflict = ['overwrite', 'rename'].includes(conflictForAll) ? conflictForAll : 'reject'
     for (;;) {
       elements['file-task-state'].hidden = false
@@ -1720,7 +1889,7 @@ async function uploadFiles(files) {
       try {
         await new Promise((resolve, reject) => {
           const request = new XMLHttpRequest()
-          request.open('POST', `${API}/files/upload?path=${encodeURIComponent(fileDestination(file.name))}&conflict=${conflict}`)
+          request.open('POST', `${API}/files/upload?path=${encodeURIComponent(destination)}&conflict=${conflict}`)
           request.onload = () => {
             if (request.status >= 200 && request.status < 300) return resolve()
             const value = JSON.parse(request.responseText || '{}')
@@ -1736,7 +1905,7 @@ async function uploadFiles(files) {
       } catch (error) {
         if (error.code === 'FILE_EXISTS') {
           if (conflictForAll === 'skip') { skipped += 1; break }
-          const decision = await chooseFileConflict(fileDestination(file.name), files.length > 1)
+          const decision = await chooseFileConflict(destination, files.length > 1)
           if (decision.choice === 'cancel') { stopped = true; break }
           if (decision.applyAll) conflictForAll = decision.choice
           if (decision.choice === 'skip') { skipped += 1; break }
@@ -1842,6 +2011,7 @@ function selectTab(tab) {
   }
   if (tab === 'user-plugins') void loadInventories()
   if (tab === 'files' && !filesLoaded) void initializeFiles()
+  else if (tab === 'files') scheduleFileTaskRefresh()
 }
 
 function connectEvents() {
@@ -1974,7 +2144,17 @@ elements['file-select-all'].addEventListener('change', event => {
   fileSelected = event.target.checked ? new Set(visibleFileEntries().map(entry => entry.path)) : new Set()
   renderFiles()
 })
-elements['file-load-more'].addEventListener('click', () => { void navigateFiles(filePath, { history: false, append: true }) })
+elements['file-page-previous'].addEventListener('click', () => {
+  const page = Math.max(0, filePageIndex - 1)
+  void navigateFiles(filePath, { history: false, cursor: filePageCursors[page] ?? null, pageIndex: page })
+})
+elements['file-page-next'].addEventListener('click', () => {
+  if (fileListing.nextCursor !== null) void navigateFiles(filePath, { history: false, cursor: fileListing.nextCursor, pageIndex: filePageIndex + 1 })
+})
+elements['file-page-size'].addEventListener('change', event => {
+  filePageSize = Number(event.target.value)
+  void navigateFiles(filePath, { history: false })
+})
 elements['file-new'].addEventListener('click', () => setFileCreateExpanded(!fileCreateExpanded))
 for (const button of document.querySelectorAll('[data-file-create-kind]')) {
   button.addEventListener('click', () => { fileCreateKind = button.dataset.fileCreateKind; renderFileCreate() })
@@ -1985,6 +2165,12 @@ elements['file-create-cancel'].addEventListener('click', () => setFileCreateExpa
 elements['file-create-panel'].addEventListener('submit', event => { event.preventDefault(); void createFileEntry() })
 elements['file-upload'].addEventListener('click', () => elements['file-upload-input'].click())
 elements['file-upload-input'].addEventListener('change', event => {
+  const files = [...event.target.files]
+  event.target.value = ''
+  if (files.length > 0) void uploadFiles(files)
+})
+elements['file-upload-directory'].addEventListener('click', () => elements['file-upload-directory-input'].click())
+elements['file-upload-directory-input'].addEventListener('change', event => {
   const files = [...event.target.files]
   event.target.value = ''
   if (files.length > 0) void uploadFiles(files)
@@ -2006,6 +2192,10 @@ elements['file-cut'].addEventListener('click', () => {
   renderFileSelection()
 })
 elements['file-paste'].addEventListener('click', () => { void pasteFiles() })
+elements['file-archive'].addEventListener('click', () => openArchivePanel('archive'))
+elements['file-extract'].addEventListener('click', () => openArchivePanel('extract'))
+elements['file-archive-cancel'].addEventListener('click', closeArchivePanel)
+elements['file-archive-panel'].addEventListener('submit', event => { event.preventDefault(); void submitArchive() })
 for (const input of document.querySelectorAll('input[name="file-conflict-choice"]')) {
   input.addEventListener('change', () => { elements['file-conflict-confirm'].disabled = false })
 }
@@ -2031,7 +2221,12 @@ elements['file-delete'].addEventListener('click', () => {
 })
 elements['file-download'].addEventListener('click', () => {
   const entry = selectedFileEntries()[0]
-  if (entry !== undefined) window.location.assign(`${API}/files/download?path=${encodeURIComponent(entry.path)}&revision=${encodeURIComponent(entry.revision)}`)
+  if (entry === undefined) return
+  const link = document.createElement('a')
+  link.href = `${API}/files/download?path=${encodeURIComponent(entry.path)}&revision=${encodeURIComponent(entry.revision)}`
+  link.download = entry.type === 'directory' ? `${entry.name}.zip` : entry.name
+  link.click()
+  window.setTimeout(() => { void refreshFileTasks() }, 100)
 })
 elements['file-attributes'].addEventListener('click', () => {
   if (fileAttributesEntry !== null) closeFileAttributes()

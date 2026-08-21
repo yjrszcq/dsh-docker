@@ -522,10 +522,12 @@ export class FileTaskManager {
   }
 
   async #publishExtraction(task, staging) {
+    const plan = []
     for (const name of await readdir(staging)) {
+      plan.push({ source: join(staging, name), destination: await uniqueDestination(join(task.destination, name), task.conflict) })
+    }
+    for (const { source, destination } of plan) {
       if (task.cancelRequested) throw new Error('file task cancelled')
-      const source = join(staging, name)
-      const destination = await uniqueDestination(join(task.destination, name), task.conflict)
       if (task.conflict === 'overwrite' && await exists(destination)) await rm(destination, { recursive: true })
       await rename(source, destination)
       task.published.push(destination)
