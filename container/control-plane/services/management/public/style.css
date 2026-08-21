@@ -207,6 +207,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .file-task-row p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-task-row progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .file-task-row small { color: var(--faint); }
+.file-task-row.failed small { color: var(--danger); }
 .file-archive-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) minmax(180px, 1fr) auto; gap: 10px; align-items: end; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .file-archive-panel[hidden] { display: none; }
 .file-archive-panel h3, .file-archive-panel p { margin: 0; }

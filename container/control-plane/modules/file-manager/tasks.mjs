@@ -433,9 +433,11 @@ export class FileTaskManager {
       await rename(source.path, hidden)
       task.hidden.push(hidden)
       await this.#phase(task, 'source-hidden')
+      const removed = await treeMetrics(hidden)
       await rm(hidden, { recursive: true })
       task.hidden = task.hidden.filter(path => path !== hidden)
-      task.processedEntries += 1
+      task.processedEntries += removed.entries
+      task.processedBytes = Math.min(task.totalBytes, task.processedBytes + removed.bytes)
       await this.#phase(task, 'cleaning')
     }
   }

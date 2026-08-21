@@ -90,6 +90,7 @@ const COPY = Object.freeze({
     fileUser: '用户', fileGroup: '用户组', recursiveAttributes: '同时修改子项属性', applyPermissions: '应用权限', attributesInvalid: '请填写有效的用户、用户组和 3 或 4 位八进制权限。', attributesOperation: '修改文件属性',
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}', fileOperations: '文件任务', queuedOperation: '排队第 {position} 位', processingOperation: '正在处理', cancelOperation: '取消操作',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
+    operationSucceeded: '已完成', operationCancelled: '已取消', operationFailedState: '失败',
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
     fileConflictTitle: '目标已存在', fileConflictDetail: '请选择处理方式：', conflictOverwrite: '覆盖', conflictOverwriteDetail: '替换已有项目。', conflictRename: '自动重命名', conflictRenameDetail: '使用新名称保留两个项目。', conflictSkip: '跳过', conflictSkipDetail: '保留已有项目，不执行本项操作。', conflictApplyAll: '应用到之后的所有冲突', confirmChoice: '确认', operationCompleteWithSkipped: '文件操作已完成，已跳过 {count} 个冲突项。',
@@ -161,6 +162,7 @@ const COPY = Object.freeze({
     fileUser: 'User', fileGroup: 'Group', recursiveAttributes: 'Also change child attributes', applyPermissions: 'Apply permissions', attributesInvalid: 'Enter a valid user, group, and a 3- or 4-digit octal mode.', attributesOperation: 'Changing file attributes',
     newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}', fileOperations: 'File operations', queuedOperation: 'Queue position {position}', processingOperation: 'Processing', cancelOperation: 'Cancel operation',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
+    operationSucceeded: 'Completed', operationCancelled: 'Cancelled', operationFailedState: 'Failed',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
     fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
     fileConflictTitle: 'Destination already exists', fileConflictDetail: 'Choose how to handle:', conflictOverwrite: 'Overwrite', conflictOverwriteDetail: 'Replace the existing item.', conflictRename: 'Auto rename', conflictRenameDetail: 'Keep both items with a new name.', conflictSkip: 'Skip', conflictSkipDetail: 'Leave the existing item unchanged.', conflictApplyAll: 'Apply to all remaining conflicts', confirmChoice: 'Confirm', operationCompleteWithSkipped: 'File operation completed; skipped {count} conflicting items.',
@@ -1357,29 +1359,38 @@ function taskLabel(task) {
 }
 
 function renderFileTasks() {
-  const active = fileTasksActive.filter(task => ['queued', 'running'].includes(task.status))
-  elements['file-task-state'].hidden = active.length === 0
-  elements['file-task-list'].replaceChildren(...active.map(task => {
+  const recentCutoff = Date.now() - 10_000
+  const visible = fileTasksActive.filter(task => ['queued', 'running'].includes(task.status)
+    || (['success', 'failed', 'cancelled'].includes(task.status) && Date.parse(task.updatedAt) >= recentCutoff))
+  elements['file-task-state'].hidden = visible.length === 0
+  elements['file-task-list'].replaceChildren(...visible.map(task => {
     const row = document.createElement('div')
     row.className = 'file-task-row'
     const label = document.createElement('p')
     label.textContent = taskLabel(task)
     const cancel = document.createElement('button')
-    cancel.type = 'button'
-    cancel.className = 'compact'
-    cancel.textContent = t('cancelOperation')
-    cancel.addEventListener('click', () => { void api(`files/tasks/${task.taskId}`, { method: 'DELETE' }).then(refreshFileTasks).catch(showError) })
+    if (['queued', 'running'].includes(task.status)) {
+      cancel.type = 'button'
+      cancel.className = 'compact'
+      cancel.textContent = t('cancelOperation')
+      cancel.addEventListener('click', () => { void api(`files/tasks/${task.taskId}`, { method: 'DELETE' }).then(refreshFileTasks).catch(showError) })
+    }
     const progress = document.createElement('progress')
     if (Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0) {
       progress.max = task.totalBytes
       progress.value = Math.min(task.totalBytes, task.processedBytes ?? 0)
     }
     const detail = document.createElement('small')
-    detail.textContent = task.status === 'queued'
-      ? t('queuedOperation', { position: task.queuePosition })
-      : Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0
-        ? `${fileSize(task.processedBytes ?? 0)} / ${fileSize(task.totalBytes)}` : t('processingOperation')
-    row.append(label, cancel, progress, detail)
+    detail.textContent = task.status === 'queued' ? t('queuedOperation', { position: task.queuePosition })
+      : task.status === 'success' ? t('operationSucceeded')
+        : task.status === 'failed' ? `${t('operationFailedState')}: ${task.error ?? t('operationFailed')}`
+          : task.status === 'cancelled' ? t('operationCancelled')
+            : Number.isSafeInteger(task.totalBytes) && task.totalBytes > 0
+              ? `${fileSize(task.processedBytes ?? 0)} / ${fileSize(task.totalBytes)}` : t('processingOperation')
+    row.classList.toggle('failed', task.status === 'failed')
+    row.append(label)
+    if (cancel.type === 'button') row.append(cancel)
+    row.append(progress, detail)
     return row
   }))
   renderFileSelection()

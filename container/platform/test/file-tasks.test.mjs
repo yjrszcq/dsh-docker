@@ -50,6 +50,8 @@ test('runs mkdir, touch, rename, copy, move, and permanent delete tasks', async 
   const deleteSource = await inventory.stat(join(files, 'copies', 'dir'))
   const removed = await finish(manager, manager.start({ operation: 'delete', sources: [{ path: deleteSource.path, revision: deleteSource.revision }] }))
   assert.equal(removed.status, 'success')
+  assert.equal(removed.processedBytes, removed.totalBytes)
+  assert.equal(removed.processedEntries, removed.totalEntries)
   assert.equal(await stat(deleteSource.path).then(() => true, error => error.code !== 'ENOENT'), false)
   assert.equal((await readdir(join(files, 'copies'))).some(name => name.startsWith('.dsh-')), false)
 })
