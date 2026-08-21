@@ -620,6 +620,8 @@ export class FileTaskManager {
     task.updatedAt = now()
     await this.#persist(task)
     if (this.activeMutation === task) this.activeMutation = undefined
+    this.queue = this.queue.filter(value => value !== task)
+    this.#publishQueue()
     this.#publish(task)
   }
 

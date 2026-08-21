@@ -22,7 +22,7 @@ async function task(body) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const state = await request(`files/tasks/${started.taskId}`)
     if (state.status === 'success') return state
-    if (!['queued', 'running'].includes(state.status)) throw new Error(`file task ${state.taskId} ${state.status}: ${state.error}`)
+    if (state.status !== 'running') throw new Error(`file task ${state.taskId} ${state.status}: ${state.error}`)
     await new Promise(resolve => setTimeout(resolve, 20))
   }
   throw new Error(`file task ${started.taskId} timed out`)

@@ -81,6 +81,7 @@ test('releases the mutation lease before publishing a terminal task state', asyn
   })
   await failurePublished
   assert.equal(manager.activeMutation, undefined)
+  assert.equal(manager.queue.some(task => task.taskId === rejected.taskId), false)
   manager.activeMutation = manager.tasks.get(rejected.taskId)
   const renamed = manager.start({
     operation: 'copy', sources: [{ path: source.path, revision: source.revision }], destination, conflict: 'rename',
