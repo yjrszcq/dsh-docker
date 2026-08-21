@@ -52,14 +52,56 @@ The image implements this with an exact-match compiled-output patch. The patch m
 ## Platform Architecture
 
 ```text
-tini
-  └─ Stage-0
-       └─ Bootstrap
-            ├─ Control Plane
-            │    ├─ management + DSH Management Console  Unix socket
-            │    └─ gateway                      0.0.0.0:3080
-            └─ Environment
-                 └─ dsh-runtime                  127.0.0.1:3079
+Docker Image
+│
+├── System Runtime
+├── Image Inventory and Seed
+│   ├── Bootstrap Record
+│   └── Deployment Record
+├── tini
+└── Stage-0
+      │
+      ├── Trust and receipt verification
+      ├── Image / Store Reference resolution
+      │
+      ▼
+Bootstrap Runtime (current / previous)
+│
+├── Control Plane (persistent)
+│   ├── Services
+│   │   ├── gateway                              0.0.0.0:3080
+│   │   └── management + DSH Management Console  Unix socket
+│   ├── Managers
+│   │   ├── updater
+│   │   ├── patch-manager
+│   │   ├── system-plugin-manager
+│   │   ├── user-plugin-manager
+│   │   ├── log-manager
+│   │   └── file-manager
+│   └── Recovery hooks
+│
+└── Container Environment (reloadable)
+    ├── Components
+    │   └── dsh-runtime                          127.0.0.1:3079
+    └── Resources
+        ├── Patches
+        └── System Plugins
+
+Verified Pristine DSH
+          +
+Complete Environment
+├── Component Manifest
+├── Complete Patch Set
+└── Complete System Plugin Set
+          │
+          ▼
+Complete Deployment
+├── Runtime DSH
+├── Environment view
+└── System Plugin overlay
+          │
+          ▼
+Atomic current / previous slots
 ```
 
 Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing, suspending, or restarting DSH therefore does not stop Gateway, Management, or DSH Management Console.

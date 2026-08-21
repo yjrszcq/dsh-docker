@@ -52,14 +52,56 @@
 ## 平台架构
 
 ```text
-tini
-  └─ Stage-0
-       └─ Bootstrap
-            ├─ Control Plane
-            │    ├─ management + DSH Management Console  Unix socket
-            │    └─ gateway                      0.0.0.0:3080
-            └─ Environment
-                 └─ dsh-runtime                  127.0.0.1:3079
+Docker Image
+│
+├── System Runtime
+├── Image Inventory 与 Seed
+│   ├── Bootstrap Record
+│   └── Deployment Record
+├── tini
+└── Stage-0
+      │
+      ├── Trust 与 receipt 校验
+      ├── Image / Store Reference 解析
+      │
+      ▼
+Bootstrap Runtime（current / previous）
+│
+├── Control Plane（常驻）
+│   ├── Services
+│   │   ├── gateway                      0.0.0.0:3080
+│   │   └── management + DSH 管理中心     Unix socket
+│   ├── Managers
+│   │   ├── updater
+│   │   ├── patch-manager
+│   │   ├── system-plugin-manager
+│   │   ├── user-plugin-manager
+│   │   ├── log-manager
+│   │   └── file-manager
+│   └── Recovery hooks
+│
+└── Container Environment（可重载）
+    ├── Components
+    │   └── dsh-runtime                  127.0.0.1:3079
+    └── Resources
+        ├── Patches
+        └── System Plugins
+
+已验证的 Pristine DSH
+          +
+完整 Environment
+├── Component Manifest
+├── 完整 Patch Set
+└── 完整 System Plugin Set
+          │
+          ▼
+完整 Deployment
+├── Runtime DSH
+├── Environment view
+└── System Plugin overlay
+          │
+          ▼
+原子 current / previous slots
 ```
 
 Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
