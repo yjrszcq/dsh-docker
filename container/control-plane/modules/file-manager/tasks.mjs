@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, open, readdir, readFile, readlink, rename, rm } from 'node:fs/promises'
+import { chmod, cp, lchown, lstat, mkdir, open, readdir, readFile, readlink, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import {
-  FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager, FileSizeManager,
+  FileInventory, FileManagerError, FileRevisionConflictError, FileSearchManager, FileSizeManager, UnixIdentityResolver,
   fileError, isManagedPath, normalizeAbsolutePath,
 } from './index.mjs'
 
-const OPERATIONS = new Set(['mkdir', 'touch', 'rename', 'copy', 'move', 'delete'])
+const OPERATIONS = new Set(['mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'attributes'])
 const DEFAULT_PROTECTED_DELETE_ROOTS = ['/', '/data', '/data/dsh', '/data/platform', '/workspace', '/run/dsh-platform/deployment']
 
 function now() { return new Date().toISOString() }
@@ -77,11 +77,20 @@ async function treeMetrics(path) {
   return { entries, bytes }
 }
 
+function normalizeAttributes(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !['user', 'group', 'mode', 'recursive'].includes(key))
+    || typeof value.user !== 'string' || typeof value.group !== 'string'
+    || typeof value.mode !== 'string' || !/^[0-7]{3,4}$/u.test(value.mode)
+    || typeof value.recursive !== 'boolean') throw new FileManagerError('file attributes are invalid')
+  return { user: value.user, group: value.group, mode: value.mode, recursive: value.recursive }
+}
+
 export class FileTaskManager {
   constructor({
     root, inventory = new FileInventory(), isManaged = isManagedPath,
     protectedRoots = DEFAULT_PROTECTED_DELETE_ROOTS,
-    onState = () => {}, platformBusy = () => false, report = async () => {},
+    onState = () => {}, platformBusy = () => false, report = async () => {}, identity,
   } = {}) {
     if (typeof root !== 'string') throw new Error('file task root is required')
     this.root = root
@@ -91,6 +100,7 @@ export class FileTaskManager {
     this.onState = onState
     this.platformBusy = platformBusy
     this.report = report
+    this.identity = identity ?? inventory.identity ?? new UnixIdentityResolver()
     this.tasks = new Map()
     this.activeMutation = undefined
     this.search = new FileSearchManager({ inventory, onState: state => onState(state) })
@@ -131,6 +141,7 @@ export class FileTaskManager {
     const conflict = input.conflict ?? 'reject'
     if (!['reject', 'overwrite', 'rename'].includes(conflict)) throw new FileManagerError('file task conflict mode is invalid')
     if (['copy', 'move', 'delete', 'rename'].includes(input.operation) && sources.length === 0) throw new FileManagerError('file task sources are required')
+    if (input.operation === 'attributes' && sources.length !== 1) throw new FileManagerError('attribute changes require one source')
     if (['mkdir', 'touch', 'copy', 'move', 'rename'].includes(input.operation) && destination === null) throw new FileManagerError('file task destination is required')
     if (input.operation === 'delete' && sources.some(source => this.protectedRoots.has(source.path))) throw new FileManagerError('protected root cannot be deleted', 403, 'PROTECTED_ROOT')
     const managed = sources.some(source => this.isManaged(source.path)) || (destination !== null && this.isManaged(destination))
@@ -138,6 +149,7 @@ export class FileTaskManager {
     const task = {
       schema: 1, taskId: randomUUID(), operation: input.operation, status: 'running', phase: 'validating',
       sources, destination, destinationRevision: input.destinationRevision ?? null, conflict, managed,
+      attributes: input.operation === 'attributes' ? normalizeAttributes(input.attributes) : null,
       processedBytes: 0, totalBytes: 0, processedEntries: 0, totalEntries: 0, currentPath: null,
       published: [], staging: [], hidden: [], currentSource: null, currentDestination: null,
       error: null, createdAt: now(), updatedAt: now(), cancelRequested: false,
@@ -160,6 +172,12 @@ export class FileTaskManager {
     }
   }
 
+  completion(taskId) {
+    const task = this.tasks.get(taskId) ?? this.search.tasks.get(taskId) ?? this.sizes.tasks.get(taskId)
+    if (task === undefined) throw new FileManagerError('file task was not found', 404, 'FILE_TASK_NOT_FOUND')
+    return Promise.resolve(task.completion).then(() => this.get(taskId))
+  }
+
   cancel(taskId) {
     const task = this.tasks.get(taskId)
     if (task === undefined) {
@@ -179,7 +197,12 @@ export class FileTaskManager {
     for (const source of task.sources) {
       const item = await this.inventory.stat(source.path)
       if (source.revision !== item.revision) throw new FileRevisionConflictError(`source changed: ${source.path}`)
-      const metrics = await treeMetrics(source.path)
+      if (task.operation === 'attributes' && !['file', 'directory'].includes(item.type)) {
+        throw new FileManagerError('attributes can be changed only for files and directories', 415, 'FILE_TYPE_UNSUPPORTED')
+      }
+      const metrics = task.operation === 'attributes' && task.attributes.recursive === false
+        ? { entries: 1, bytes: item.type === 'file' ? item.size : 0 }
+        : await treeMetrics(source.path)
       task.totalEntries += metrics.entries
       task.totalBytes += metrics.bytes
     }
@@ -203,6 +226,7 @@ export class FileTaskManager {
       else if (task.operation === 'copy') await this.#copy(task, false)
       else if (task.operation === 'move') await this.#copy(task, true)
       else if (task.operation === 'delete') await this.#delete(task)
+      else if (task.operation === 'attributes') await this.#attributes(task)
       task.status = 'success'
       await this.#phase(task, 'completed')
       await this.report(`file-task.${task.operation}.completed`, publicTask(task))
@@ -295,13 +319,54 @@ export class FileTaskManager {
     }
   }
 
+  async #attributes(task) {
+    const [uid, gid] = await Promise.all([
+      this.identity.userId(task.attributes.user),
+      this.identity.groupId(task.attributes.group),
+    ])
+    const mode = Number.parseInt(task.attributes.mode, 8)
+    const pending = [task.sources[0].path]
+    task.resolvedAttributes = { uid, gid, mode }
+    while (pending.length > 0) {
+      if (task.cancelRequested) throw new Error('file task cancelled')
+      const path = pending.pop()
+      const details = await lstat(path)
+      if (task.attributes.recursive && details.isDirectory() && !details.isSymbolicLink()) {
+        for (const name of await readdir(path)) pending.push(join(path, name))
+      }
+      await lchown(path, uid, gid)
+      if (!details.isSymbolicLink()) await chmod(path, mode)
+      task.currentPath = path
+      task.processedEntries += 1
+      if (details.isFile()) task.processedBytes += details.size
+      if (task.processedEntries % 100 === 0) await this.#phase(task, 'mutating')
+    }
+    task.currentPath = null
+  }
+
   async #cleanupStaging(task) {
     for (const path of task.staging) await rm(path, { recursive: true, force: true }).catch(() => {})
     task.staging = []
   }
 
   async #recover(task) {
-    if (task.operation === 'delete' || task.phase === 'source-hidden' || task.phase === 'cleaning') {
+    if (task.operation === 'attributes') {
+      try {
+        task.cancelRequested = false
+        task.processedEntries = 0
+        task.processedBytes = 0
+        await this.#phase(task, 'mutating')
+        await this.#attributes(task)
+        task.status = 'success'
+        await this.#phase(task, 'completed')
+        await this.report('file-task.attributes.recovered', publicTask(task))
+      } catch (error) {
+        task.status = 'failed'
+        task.error = error instanceof Error ? error.message : String(error)
+        await this.#phase(task, 'failed')
+        await this.report('file-task.attributes.recovery-failed', { ...publicTask(task), error })
+      }
+    } else if (task.operation === 'delete' || task.phase === 'source-hidden' || task.phase === 'cleaning') {
       for (const path of task.hidden ?? []) await rm(path, { recursive: true, force: true })
       task.hidden = []
       task.status = 'success'
@@ -349,4 +414,4 @@ export class FileTaskManager {
   }
 }
 
-export const fileTaskInternals = Object.freeze({ protectedDeleteRoots: DEFAULT_PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics })
+export const fileTaskInternals = Object.freeze({ protectedDeleteRoots: DEFAULT_PROTECTED_DELETE_ROOTS, uniqueDestination, treeMetrics, normalizeAttributes })

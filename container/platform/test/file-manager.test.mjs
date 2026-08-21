@@ -80,12 +80,16 @@ test('reports container user and group and calculates directory size without fol
   const listing = await inventory.list(root)
   assert.equal(listing.entries.every(entry => entry.user === 'node' && entry.group === 'node'), true)
   const size = new FileSizeManager({ inventory })
-  const task = size.start({ path: root, revision: listing.revision })
+  const directory = await inventory.stat(root)
+  const task = size.start({ path: root, revision: directory.revision })
   await size.tasks.get(task.taskId).completion
   const result = size.get(task.taskId)
   assert.equal(result.status, 'success')
   assert.equal(result.bytes, 10)
   assert.equal(result.entries, 4)
+  const stale = size.start({ path: root, revision: listing.revision })
+  await size.tasks.get(stale.taskId).completion
+  assert.equal(size.get(stale.taskId).status, 'failed')
 })
 
 test('bounded search does not follow symlinked directories and can be cancelled', async () => {

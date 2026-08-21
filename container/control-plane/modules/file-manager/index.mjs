@@ -91,13 +91,35 @@ export class UnixIdentityResolver {
     this.loading = undefined
   }
 
-  async resolve(uid, gid) {
+  async #identities() {
     this.loading ??= Promise.all([
       readFile(this.passwdPath, 'utf8').then(value => parseIdentityFile(value, 2), () => new Map()),
       readFile(this.groupPath, 'utf8').then(value => parseIdentityFile(value, 2), () => new Map()),
     ])
-    const [users, groups] = await this.loading
+    return this.loading
+  }
+
+  async resolve(uid, gid) {
+    const [users, groups] = await this.#identities()
     return { user: users.get(uid) ?? String(uid), group: groups.get(gid) ?? String(gid) }
+  }
+
+  async userId(value) { return this.#identityId(value, 0, 'user') }
+
+  async groupId(value) { return this.#identityId(value, 1, 'group') }
+
+  async #identityId(value, index, label) {
+    if (typeof value !== 'string' || value === '' || value.length > 256 || /[:\u0000-\u001f\u007f]/u.test(value)) {
+      throw new FileManagerError(`${label} is invalid`, 400, 'FILE_IDENTITY_INVALID')
+    }
+    if (/^[0-9]+$/u.test(value)) {
+      const id = Number(value)
+      if (Number.isSafeInteger(id) && id >= 0 && id < 0xffff_ffff) return id
+      throw new FileManagerError(`${label} id is invalid`, 400, 'FILE_IDENTITY_INVALID')
+    }
+    const identities = (await this.#identities())[index]
+    for (const [id, name] of identities) if (name === value) return id
+    throw new FileManagerError(`${label} was not found`, 400, 'FILE_IDENTITY_INVALID')
   }
 }
 
@@ -431,8 +453,7 @@ export class FileSizeManager {
   async #run(task) {
     const root = await this.inventory.stat(task.path)
     if (root.type !== 'directory') throw new FileManagerError('size target is not a directory', 415, 'FILE_TYPE_UNSUPPORTED')
-    const listing = await this.inventory.list(task.path, { limit: 1 })
-    if (typeof task.revision !== 'string' || task.revision !== listing.revision) throw new FileRevisionConflictError('size target changed')
+    if (typeof task.revision !== 'string' || task.revision !== root.revision) throw new FileRevisionConflictError('size target changed')
     const pending = [task.path]
     while (pending.length > 0) {
       if (task.cancelRequested) {

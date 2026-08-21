@@ -27,7 +27,8 @@ test('assigns default levels and accepts only explicit supported levels', async 
   await logs.append('component', 'stdout', 'ordinary')
   await logs.append('component', 'stderr', 'failed')
   await logs.append('component', 'platform', 'slow response', { level: 'warning' })
-  assert.deepEqual((await logs.query()).map(entry => entry.level), ['info', 'error', 'warning'])
+  await logs.diagnostic('component', 'completed', { error: null })
+  assert.deepEqual((await logs.query()).map(entry => entry.level), ['info', 'error', 'warning', 'info'])
   await assert.rejects(logs.append('component', 'stdout', 'invalid', { level: 'fatal' }), /log level is invalid/)
 })
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -52,6 +52,78 @@ test('runs mkdir, touch, rename, copy, move, and permanent delete tasks', async 
   assert.equal(removed.status, 'success')
   assert.equal(await stat(deleteSource.path).then(() => true, error => error.code !== 'ENOENT'), false)
   assert.equal((await readdir(join(files, 'copies'))).some(name => name.startsWith('.dsh-')), false)
+})
+
+test('changes file ownership and permissions recursively without following symbolic links', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-attributes-'))
+  const files = join(root, 'files')
+  const tasks = join(root, 'tasks')
+  const tree = join(files, 'tree')
+  const nested = join(tree, 'nested')
+  const target = join(root, 'outside.txt')
+  await mkdir(nested, { recursive: true })
+  await writeFile(join(nested, 'inside.txt'), 'inside')
+  await writeFile(target, 'outside')
+  await chmod(target, 0o640)
+  await symlink(target, join(tree, 'outside-link'))
+  const identity = {
+    resolve: async () => ({ user: 'current', group: 'current' }),
+    userId: async value => value === 'current' ? process.getuid() : Promise.reject(new Error('unknown user')),
+    groupId: async value => value === 'current' ? process.getgid() : Promise.reject(new Error('unknown group')),
+  }
+  const inventory = new FileInventory({ identity })
+  const reports = []
+  const manager = new FileTaskManager({ root: tasks, inventory, identity, report: (message, fields) => reports.push({ message, fields }) })
+  await manager.initialize()
+  const source = await inventory.stat(tree)
+  const started = manager.start({
+    operation: 'attributes',
+    sources: [{ path: tree, revision: source.revision }],
+    attributes: { user: 'current', group: 'current', mode: '0750', recursive: true },
+  })
+  const result = await manager.completion(started.taskId)
+  assert.equal(result.status, 'success')
+  assert.equal(result.processedEntries, 4)
+  assert.equal((await stat(tree)).mode & 0o7777, 0o750)
+  assert.equal((await stat(nested)).mode & 0o7777, 0o750)
+  assert.equal((await stat(join(nested, 'inside.txt'))).mode & 0o7777, 0o750)
+  assert.equal((await stat(target)).mode & 0o7777, 0o640)
+  assert.equal(reports.at(-1).message, 'file-task.attributes.completed')
+})
+
+test('validates attribute requests and resumes an interrupted idempotent change', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-file-attributes-recovery-'))
+  const files = join(root, 'files')
+  const tasks = join(root, 'tasks')
+  await mkdir(files)
+  await mkdir(tasks)
+  const path = join(files, 'item')
+  await writeFile(path, 'value')
+  const identity = {
+    resolve: async () => ({ user: 'current', group: 'current' }),
+    userId: async () => process.getuid(),
+    groupId: async () => process.getgid(),
+  }
+  const inventory = new FileInventory({ identity })
+  const source = await inventory.stat(path)
+  const manager = new FileTaskManager({ root: tasks, inventory, identity })
+  assert.throws(() => manager.start({
+    operation: 'attributes', sources: [{ path, revision: source.revision }],
+    attributes: { user: 'current', group: 'current', mode: '888', recursive: false },
+  }), /attributes/)
+  const task = {
+    schema: 1, taskId: '55555555-5555-4555-8555-555555555555', operation: 'attributes', status: 'running', phase: 'mutating',
+    sources: [{ path, revision: source.revision }], destination: null, destinationRevision: null, conflict: 'reject', managed: false,
+    attributes: { user: 'current', group: 'current', mode: '0600', recursive: false },
+    processedBytes: 0, totalBytes: 5, processedEntries: 0, totalEntries: 1,
+    published: [], staging: [], hidden: [], currentPath: path, currentSource: null, currentDestination: null,
+    error: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelRequested: false,
+  }
+  await writeFile(join(tasks, `${task.taskId}.json`), JSON.stringify(task))
+  const recovered = new FileTaskManager({ root: tasks, inventory, identity })
+  await recovered.initialize()
+  assert.equal(recovered.get(task.taskId).status, 'success')
+  assert.equal((await stat(path)).mode & 0o7777, 0o600)
 })
 
 test('rejects stale revisions, protected roots, recursive copies, and concurrent mutations', async () => {

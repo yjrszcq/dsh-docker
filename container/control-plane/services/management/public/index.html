@@ -187,7 +187,23 @@
             <button id="file-load-more" type="button" class="secondary file-load-more" data-i18n="loadMore" hidden>Load more</button>
           </div>
         </div>
-        <div class="file-selection"><span id="file-selection-count" data-i18n="noFilesSelected">No files selected</span><div><button id="file-copy" type="button" class="compact" data-i18n="copy" disabled>Copy</button><button id="file-cut" type="button" class="compact" data-i18n="cut" disabled>Cut</button><button id="file-paste" type="button" class="compact" data-i18n="paste" disabled>Paste</button><button id="file-rename" type="button" class="compact" data-i18n="rename" disabled>Rename</button><button id="file-download" type="button" class="compact" data-i18n="download" disabled>Download</button><button id="file-delete" type="button" class="danger-text compact" data-i18n="deletePermanently" disabled>Delete permanently</button></div></div>
+        <div class="file-selection"><span id="file-selection-count" data-i18n="noFilesSelected">No files selected</span><div><button id="file-copy" type="button" class="compact" data-i18n="copy" disabled>Copy</button><button id="file-cut" type="button" class="compact" data-i18n="cut" disabled>Cut</button><button id="file-paste" type="button" class="compact" data-i18n="paste" disabled>Paste</button><button id="file-rename" type="button" class="compact" data-i18n="rename" disabled>Rename</button><button id="file-download" type="button" class="compact" data-i18n="download" disabled>Download</button><button id="file-attributes" type="button" class="compact" data-i18n="editPermissions" aria-controls="file-attributes-panel" aria-expanded="false" disabled>Edit permissions</button><button id="file-delete" type="button" class="danger-text compact" data-i18n="deletePermanently" disabled>Delete permanently</button></div></div>
+        <section id="file-attributes-panel" class="file-attributes-panel" aria-labelledby="file-attributes-title" hidden>
+          <div class="file-attributes-heading"><div><h3 id="file-attributes-title" data-i18n="editPermissions">Edit permissions</h3><p id="file-attributes-path"></p></div><button id="file-attributes-close" type="button" class="compact" data-i18n="close">Close</button></div>
+          <div class="file-permission-grid" role="group" aria-label="Permissions" data-i18n-aria-label="permissions">
+            <span></span><strong id="permission-read" data-i18n="permissionRead">Read</strong><strong id="permission-write" data-i18n="permissionWrite">Write</strong><strong id="permission-execute" data-i18n="permissionExecute">Execute</strong>
+            <span id="permission-owner" data-i18n="permissionOwner">Owner</span><input type="checkbox" data-permission-bit="256" aria-labelledby="permission-owner permission-read"><input type="checkbox" data-permission-bit="128" aria-labelledby="permission-owner permission-write"><input type="checkbox" data-permission-bit="64" aria-labelledby="permission-owner permission-execute">
+            <span id="permission-group" data-i18n="permissionGroup">Group</span><input type="checkbox" data-permission-bit="32" aria-labelledby="permission-group permission-read"><input type="checkbox" data-permission-bit="16" aria-labelledby="permission-group permission-write"><input type="checkbox" data-permission-bit="8" aria-labelledby="permission-group permission-execute">
+            <span id="permission-others" data-i18n="permissionOthers">Others</span><input type="checkbox" data-permission-bit="4" aria-labelledby="permission-others permission-read"><input type="checkbox" data-permission-bit="2" aria-labelledby="permission-others permission-write"><input type="checkbox" data-permission-bit="1" aria-labelledby="permission-others permission-execute">
+          </div>
+          <div class="file-attribute-fields">
+            <label><span data-i18n="fileMode">Mode</span><input id="file-attributes-mode" type="text" inputmode="numeric" maxlength="4" spellcheck="false" placeholder="0755"></label>
+            <label><span data-i18n="fileUser">User</span><input id="file-attributes-user" type="text" maxlength="256" spellcheck="false"></label>
+            <label><span data-i18n="fileGroup">Group</span><input id="file-attributes-group" type="text" maxlength="256" spellcheck="false"></label>
+          </div>
+          <label id="file-attributes-recursive-row" class="file-attributes-recursive"><input id="file-attributes-recursive" type="checkbox"> <span data-i18n="recursiveAttributes">Also change child attributes</span></label>
+          <div class="file-attributes-actions"><button id="file-attributes-cancel" type="button" class="secondary" data-i18n="cancel">Cancel</button><button id="file-attributes-save" type="button" class="primary" data-i18n="applyPermissions">Apply permissions</button></div>
+        </section>
         <p id="file-operation" class="operation-result" role="status" hidden></p>
       </section>
     </div>

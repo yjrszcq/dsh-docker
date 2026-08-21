@@ -84,6 +84,8 @@ const COPY = Object.freeze({
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
     locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多',
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', rename: '重命名', deletePermanently: '永久删除',
+    editPermissions: '编辑权限', permissions: '权限', permissionRead: '读取', permissionWrite: '写入', permissionExecute: '可执行', permissionOwner: '所有者', permissionGroup: '用户组', permissionOthers: '其他用户',
+    fileUser: '用户', fileGroup: '用户组', recursiveAttributes: '同时修改子项属性', applyPermissions: '应用权限', attributesInvalid: '请填写有效的用户、用户组和 3 或 4 位八进制权限。', attributesOperation: '修改文件属性',
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', conflictMode: '目标已存在', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', unsavedFile: '有未保存的文件修改，确定丢弃吗？',
@@ -152,6 +154,8 @@ const COPY = Object.freeze({
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
     locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more',
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', rename: 'Rename', deletePermanently: 'Delete permanently',
+    editPermissions: 'Edit permissions', permissions: 'Permissions', permissionRead: 'Read', permissionWrite: 'Write', permissionExecute: 'Execute', permissionOwner: 'Owner', permissionGroup: 'Group', permissionOthers: 'Others',
+    fileUser: 'User', fileGroup: 'Group', recursiveAttributes: 'Also change child attributes', applyPermissions: 'Apply permissions', attributesInvalid: 'Enter a valid user, group, and a 3- or 4-digit octal mode.', attributesOperation: 'Changing file attributes',
     newFile: 'New file', newDirectory: 'New directory', enterName: 'Enter a name', conflictMode: 'Destination exists', searchRunning: 'Searching directory', taskRunning: 'Running {operation}', uploadProgress: 'Uploading {current} / {total}',
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', unsavedFile: 'Discard unsaved file changes?',
@@ -229,6 +233,7 @@ let fileActiveTask = null
 let fileEditor = null
 let fileEditorOriginal = ''
 let fileEditorDirty = false
+let fileAttributesEntry = null
 const logEntries = []
 const logIdentities = new Set()
 const expandedLogIdentities = new Set()
@@ -1322,13 +1327,69 @@ function selectedFileEntries() {
 
 function renderFileSelection() {
   const count = fileSelected.size
+  const selected = selectedFileEntries()
+  if (fileAttributesEntry !== null && (selected.length !== 1 || selected[0].path !== fileAttributesEntry.path)) closeFileAttributes()
   elements['file-selection-count'].textContent = count === 0 ? t('noFilesSelected') : t('filesSelected', { count })
   for (const id of ['file-copy', 'file-cut', 'file-rename', 'file-delete']) elements[id].disabled = count === 0 || fileActiveTask !== null
   elements['file-rename'].disabled = count !== 1 || fileActiveTask !== null
-  elements['file-download'].disabled = count !== 1 || selectedFileEntries()[0]?.type !== 'file'
+  elements['file-download'].disabled = count !== 1 || selected[0]?.type !== 'file'
+  elements['file-attributes'].disabled = count !== 1 || !['file', 'directory'].includes(selected[0]?.type) || fileActiveTask !== null
   elements['file-paste'].disabled = fileClipboard === null || fileActiveTask !== null
   elements['file-select-all'].checked = count > 0 && count === visibleFileEntries().length
   elements['file-select-all'].indeterminate = count > 0 && count !== visibleFileEntries().length
+}
+
+const permissionInputs = [...document.querySelectorAll('[data-permission-bit]')]
+
+function syncPermissionChecks(mode) {
+  for (const input of permissionInputs) input.checked = (mode & Number(input.dataset.permissionBit)) !== 0
+}
+
+function syncModeFromPermissions() {
+  const current = /^[0-7]{3,4}$/u.test(elements['file-attributes-mode'].value)
+    ? Number.parseInt(elements['file-attributes-mode'].value, 8) : 0
+  const permissions = permissionInputs.reduce((value, input) => value + (input.checked ? Number(input.dataset.permissionBit) : 0), 0)
+  elements['file-attributes-mode'].value = ((current & 0o7000) | permissions).toString(8).padStart(4, '0')
+}
+
+function closeFileAttributes() {
+  fileAttributesEntry = null
+  elements['file-attributes-panel'].hidden = true
+  elements['file-attributes'].setAttribute('aria-expanded', 'false')
+}
+
+function openFileAttributes(entry) {
+  fileAttributesEntry = entry
+  elements['file-attributes-path'].textContent = entry.path
+  elements['file-attributes-mode'].value = entry.mode.toString(8).padStart(4, '0')
+  elements['file-attributes-user'].value = entry.user
+  elements['file-attributes-group'].value = entry.group
+  elements['file-attributes-recursive'].checked = false
+  elements['file-attributes-recursive-row'].hidden = entry.type !== 'directory'
+  syncPermissionChecks(entry.mode)
+  elements['file-attributes-panel'].hidden = false
+  elements['file-attributes'].setAttribute('aria-expanded', 'true')
+  elements['file-attributes-mode'].focus()
+}
+
+async function applyFileAttributes() {
+  if (fileAttributesEntry === null) return
+  const user = elements['file-attributes-user'].value.trim()
+  const group = elements['file-attributes-group'].value.trim()
+  const mode = elements['file-attributes-mode'].value.trim()
+  if (user === '' || group === '' || !/^[0-7]{3,4}$/u.test(mode)) {
+    fileOperationMessage(t('attributesInvalid'), true)
+    return
+  }
+  const task = await startFileTask({
+    operation: 'attributes',
+    sources: [{ path: fileAttributesEntry.path, revision: fileAttributesEntry.revision }],
+    attributes: {
+      user, group, mode,
+      recursive: fileAttributesEntry.type === 'directory' && elements['file-attributes-recursive'].checked,
+    },
+  })
+  if (task !== undefined) closeFileAttributes()
 }
 
 function visibleFileEntries() {
@@ -1514,7 +1575,7 @@ async function waitFileTask(taskId) {
   try {
     for (;;) {
       const task = await api(`files/tasks/${taskId}`)
-      elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation })
+      elements['file-task-label'].textContent = t('taskRunning', { operation: task.operation === 'attributes' ? t('attributesOperation') : task.operation })
       if (!['running'].includes(task.status)) {
         if (task.status === 'success') fileOperationMessage(t('operationComplete'))
         else fileOperationMessage(task.error ?? t('operationFailed'), true)
@@ -1534,7 +1595,8 @@ async function startFileTask(body) {
   try {
     const task = await api('files/tasks', { method: 'POST', body })
     void waitFileTask(task.taskId)
-  } catch (error) { showError(error) }
+    return task
+  } catch (error) { showError(error); return undefined }
 }
 
 function sourceDescriptors() {
@@ -1784,6 +1846,20 @@ elements['file-download'].addEventListener('click', () => {
   const entry = selectedFileEntries()[0]
   if (entry !== undefined) window.location.assign(`${API}/files/download?path=${encodeURIComponent(entry.path)}&revision=${encodeURIComponent(entry.revision)}`)
 })
+elements['file-attributes'].addEventListener('click', () => {
+  if (fileAttributesEntry !== null) closeFileAttributes()
+  else {
+    const entry = selectedFileEntries()[0]
+    if (entry !== undefined) openFileAttributes(entry)
+  }
+})
+elements['file-attributes-close'].addEventListener('click', closeFileAttributes)
+elements['file-attributes-cancel'].addEventListener('click', closeFileAttributes)
+elements['file-attributes-save'].addEventListener('click', () => { void applyFileAttributes() })
+elements['file-attributes-mode'].addEventListener('input', event => {
+  if (/^[0-7]{3,4}$/u.test(event.target.value)) syncPermissionChecks(Number.parseInt(event.target.value, 8))
+})
+for (const input of permissionInputs) input.addEventListener('change', syncModeFromPermissions)
 elements['file-task-cancel'].addEventListener('click', () => { if (fileActiveTask !== null) void api(`files/tasks/${fileActiveTask}`, { method: 'DELETE' }).catch(showError) })
 elements['file-editor-content'].addEventListener('input', () => {
   fileEditorDirty = elements['file-editor-content'].value !== fileEditorOriginal

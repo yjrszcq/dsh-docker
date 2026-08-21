@@ -142,7 +142,7 @@ export class JsonlLogManager extends EventEmitter {
     return this.append('audit', 'audit', action, fields)
   }
 
-  async diagnostic(source, message, { error, level = error === undefined ? 'info' : 'error', stream = 'platform', ...fields } = {}) {
+  async diagnostic(source, message, { error, level = error === undefined || error === null ? 'info' : 'error', stream = 'platform', ...fields } = {}) {
     const details = { ...fields, ...errorDetails(error), level }
     try {
       return await this.append(source, stream, message, details)

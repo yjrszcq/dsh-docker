@@ -298,11 +298,15 @@ done
 [ "$(docker inspect --format '{{.RestartCount}}' "$container")" = 0 ]
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-file-management-smoke.mjs \
-  | jq -e '.range == "3456" and .searched >= 2 and .dshUnavailable == true' >/dev/null
+  | jq -e '.range == "3456" and .searched >= 2 and .attributes == 488 and .dshUnavailable == true' >/dev/null
 docker logs "$container" 2>&1 \
   | rg '"source":"file-manager".*"message":"file-task.copy.completed"' >/dev/null
 docker logs "$container" 2>&1 \
   | rg '"source":"audit".*"message":"files.content.saved"' >/dev/null
+docker logs "$container" 2>&1 \
+  | rg '"error":"size target changed".*"source":"audit".*"message":"files.size.failed"' >/dev/null
+docker logs "$container" 2>&1 \
+  | rg '"source":"audit".*"message":"files.attributes.completed"' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 attempt=0

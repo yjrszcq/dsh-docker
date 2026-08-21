@@ -103,6 +103,18 @@ export async function createMaintenanceServer({
         const internal = tasks.tasks.get(task.taskId)
         void internal.completion.finally(() => rm(paths.maintenanceLeasePath, { force: true }))
       }
+      void tasks.completion(task.taskId).then(async result => {
+        const outcome = result.status === 'success' ? 'completed' : result.status
+        await audit(`files.${result.operation}.${outcome}`, {
+          taskId: result.taskId,
+          path: result.path ?? result.sources?.[0]?.path ?? null,
+          processedEntries: result.processedEntries ?? result.entries ?? null,
+          processedBytes: result.processedBytes ?? result.bytes ?? null,
+          ...(result.error === null || result.error === undefined ? {} : { error: result.error }),
+          managed: result.managed ?? false,
+          privileged: true,
+        })
+      }).catch(error => report('maintenance.file-task.audit.failed', { error, taskId: task.taskId }))
       return task
     } catch (error) {
       if (managed) await rm(paths.maintenanceLeasePath, { force: true })

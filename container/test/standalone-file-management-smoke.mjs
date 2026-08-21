@@ -92,7 +92,18 @@ assert.equal((await request(`files/content?path=${encodeURIComponent(dshFile)}`)
 
 const searchRoot = await request(`files/list?path=${encodeURIComponent(workspaceRoot)}`)
 assert.ok(searchRoot.entries.every(entry => typeof entry.user === 'string' && typeof entry.group === 'string'))
-const sizeTask = await request('files/tasks', { method: 'POST', body: { operation: 'size', path: workspaceRoot, revision: searchRoot.revision } })
+const workspaceBeforeAttributes = await item(workspaceRoot)
+await task({
+  operation: 'attributes',
+  sources: [{ path: workspaceRoot, revision: workspaceBeforeAttributes.revision }],
+  attributes: { user: 'root', group: 'root', mode: '0750', recursive: true },
+})
+const workspaceAttributes = await item(workspaceRoot)
+assert.equal(workspaceAttributes.user, 'root')
+assert.equal(workspaceAttributes.group, 'root')
+assert.equal(workspaceAttributes.mode, 0o750)
+assert.equal((await item(uploadedPath)).mode, 0o750)
+const sizeTask = await request('files/tasks', { method: 'POST', body: { operation: 'size', path: workspaceRoot, revision: workspaceAttributes.revision } })
 let sizeResult
 for (let attempt = 0; attempt < 100; attempt += 1) {
   sizeResult = await request(`files/tasks/${sizeTask.taskId}`)
@@ -101,7 +112,17 @@ for (let attempt = 0; attempt < 100; attempt += 1) {
 }
 assert.equal(sizeResult.status, 'success')
 assert.ok(sizeResult.bytes >= 10)
-const search = await request('files/tasks', { method: 'POST', body: { operation: 'search', path: workspaceRoot, revision: searchRoot.revision, query: 'uploaded' } })
+const staleSize = await request('files/tasks', { method: 'POST', body: { operation: 'size', path: workspaceRoot, revision: searchRoot.revision } })
+let staleSizeResult
+for (let attempt = 0; attempt < 100; attempt += 1) {
+  staleSizeResult = await request(`files/tasks/${staleSize.taskId}`)
+  if (staleSizeResult.status !== 'running') break
+  await new Promise(resolve => setTimeout(resolve, 10))
+}
+assert.equal(staleSizeResult.status, 'failed')
+assert.match(staleSizeResult.error, /changed/)
+const searchRootAfterAttributes = await request(`files/list?path=${encodeURIComponent(workspaceRoot)}`)
+const search = await request('files/tasks', { method: 'POST', body: { operation: 'search', path: workspaceRoot, revision: searchRootAfterAttributes.revision, query: 'uploaded' } })
 let searchResult
 for (let attempt = 0; attempt < 100; attempt += 1) {
   searchResult = await request(`files/tasks/${search.taskId}?limit=1000`)
@@ -117,4 +138,4 @@ await task({ operation: 'delete', sources: [{ path: workspace.path, revision: wo
 await assert.rejects(item(workspaceRoot), /returned 404/)
 await assert.rejects(item(dshRoot), /returned 404/)
 
-console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, directoryBytes: sizeResult.bytes, dshUnavailable: true }))
+console.log(JSON.stringify({ range: '3456', searched: searchResult.results.length, directoryBytes: sizeResult.bytes, attributes: workspaceAttributes.mode, dshUnavailable: true }))
