@@ -447,7 +447,7 @@ Compose enables unrestricted passwordless root access for the agent by default. 
 
 ## Release Automation
 
-`DSH Upstream Update` runs daily and on demand. It compares npm `latest` with [`release/supported-target.json`](../../release/supported-target.json), keeps the current Environment, and creates or updates a candidate PR for promotion to Latest Supported. Candidate CI verifies npm integrity, applies the current Environment, runs both project suites, and executes standard and devtools container smoke tests. These jobs have no Release or Recovery credentials; merge remains the publication gate.
+`DSH Upstream Update` runs every six hours on the hour and on demand. It compares npm `latest` with [`release/supported-target.json`](../../release/supported-target.json), keeps the current Environment, and creates or updates a candidate PR for promotion to Latest Supported. Candidate CI verifies npm integrity, applies the current Environment, runs both project suites, and executes standard and devtools container smoke tests. These jobs have no Release or Recovery credentials; merge remains the publication gate.
 
 `Publish Latest Supported DSH` runs after a Supported Target change on `main` or by approved manual dispatch. Configure a protected `production-release` GitHub Environment restricted to `main` with:
 

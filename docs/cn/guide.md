@@ -447,7 +447,7 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 ## 发布自动化
 
-`DSH Upstream Update` 每日及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。
+`DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。
 
 `Publish Latest Supported DSH` 在 `main` 的 Supported Target 变更后运行，也可以通过已审批的手动任务触发。创建仅允许 `main` 的受保护 `production-release` GitHub Environment，并配置：
 
