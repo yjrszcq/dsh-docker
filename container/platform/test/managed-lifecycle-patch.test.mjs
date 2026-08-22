@@ -75,6 +75,16 @@ test('gates only managed Web launches and routes restart through Management', as
   const root = await fixture()
   applyPatch(root)
   const runRoot = await mkdtemp(join(tmpdir(), 'dsh-managed-lifecycle-run-'))
+  const dshHome = await mkdtemp(join(tmpdir(), 'dsh-managed-lifecycle-home-'))
+  const profileDir = join(dshHome, 'profiles', 'web')
+  await mkdir(profileDir, { recursive: true })
+  await mkdir(join(root, 'node_modules', 'built-in-bundle'), { recursive: true })
+  await writeFile(join(root, 'node_modules', 'built-in-bundle', 'package.json'), '{"name":"built-in-bundle"}\n')
+  const profileManifest = join(profileDir, 'package.json')
+  await writeFile(profileManifest, JSON.stringify({
+    dependencies: { 'missing-dependency': '1.0.0' },
+    dsh: { profile: { bundles: ['built-in-bundle', 'removed-plugin', '../../outside', 'missing-dependency'] } },
+  }, null, 2))
   const calls = []
   let claimStatus = 200
   let disposition = 'request-restart'
@@ -97,8 +107,9 @@ test('gates only managed Web launches and routes restart through Management', as
     else json(response, 202, { taskId: request.url?.endsWith('/start-dsh') ? 'start-task' : 'restart-task' })
   })
   t.after(() => { broker.close(); management.close() })
-  const previous = Object.fromEntries(['DSH_PLATFORM_MANAGED', 'DSH_PLATFORM_RUN', 'DSH_PLATFORM_LAUNCH_TOKEN']
+  const previous = Object.fromEntries(['DSH_HOME', 'DSH_PLATFORM_MANAGED', 'DSH_PLATFORM_RUN', 'DSH_PLATFORM_LAUNCH_TOKEN']
     .map(name => [name, process.env[name]]))
+  process.env.DSH_HOME = dshHome
   process.env.DSH_PLATFORM_MANAGED = '1'
   process.env.DSH_PLATFORM_RUN = runRoot
   process.env.DSH_PLATFORM_LAUNCH_TOKEN = 'launch-token'
@@ -108,6 +119,10 @@ test('gates only managed Web launches and routes restart through Management', as
     assert.equal(calls.length, 0)
     assert.equal(await adapter.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), null)
     assert.equal(process.env.DSH_PLATFORM_LAUNCH_TOKEN, undefined)
+    assert.deepEqual(
+      JSON.parse(await readFile(profileManifest, 'utf8')).dsh.profile.bundles,
+      ['built-in-bundle', 'missing-dependency'],
+    )
     let provided
     adapter.provideManagedLifecycle({ provide: (name, value) => { provided = { name, value } } })
     assert.equal(provided.name, 'dshPlatformLifecycle')

@@ -12,12 +12,67 @@ const SIGTERM_PATCHED = 'process.on("SIGTERM", managedSigtermHandler(interrupt))
 const HOST_PROVIDER = 'hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);'
 const HOST_PROVIDER_PATCHED = `${HOST_PROVIDER}\n\t\tprovideManagedLifecycle(hostCtx);`
 
-const ADAPTER_SOURCE = String.raw`import { request } from "node:http";
+const ADAPTER_SOURCE = String.raw`import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const API_PREFIX = "/_dsh_platform/api/v1/";
 const REQUEST_TIMEOUT_MS = 3e3;
 const RESTART_FALLBACK_MS = 10e3;
 let managedSessionId = null;
+
+function packageManifest(root, packageName) {
+	if (packageName.includes("\\")) return null;
+	const parts = packageName.split("/");
+	const validShape = packageName.startsWith("@") ? parts.length === 2 : parts.length === 1;
+	if (!validShape || parts.some((part) => part === "" || part === "." || part === "..")) {
+		return null;
+	}
+	return join(root, "node_modules", ...parts, "package.json");
+}
+
+function packageExists(root, packageName) {
+	const manifest = packageManifest(root, packageName);
+	return manifest !== null && existsSync(manifest);
+}
+
+function repairOrphanedProfileBundles() {
+	const profileDir = join(process.env.DSH_HOME || join(homedir(), ".dsh"), "profiles", "web");
+	const manifestPath = join(profileDir, "package.json");
+	if (!existsSync(manifestPath)) return;
+	const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+	const bundles = manifest?.dsh?.profile?.bundles;
+	if (!Array.isArray(bundles)) return;
+	const dependencies = new Set(Object.keys(manifest.dependencies ?? {}));
+	const dshRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+	const kept = [];
+	const removed = [];
+	for (const packageName of bundles) {
+		if (typeof packageName !== "string"
+			|| dependencies.has(packageName)
+			|| packageExists(profileDir, packageName)
+			|| packageExists(dshRoot, packageName)) {
+			kept.push(packageName);
+		} else {
+			removed.push(packageName);
+		}
+	}
+	if (removed.length === 0) return;
+	manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh.profile, bundles: kept } };
+	const temporary = manifestPath + ".dsh-platform-" + String(process.pid) + "-" + String(Date.now()) + ".tmp";
+	try {
+		writeFileSync(temporary, JSON.stringify(manifest, null, 2) + "\n", {
+			flag: "wx",
+			mode: statSync(manifestPath).mode & 0o777
+		});
+		renameSync(temporary, manifestPath);
+	} finally {
+		try { unlinkSync(temporary); } catch {}
+	}
+	console.log("dsh: removed orphaned profile bundle(s): " + removed.join(", "));
+}
 
 function socketPath(name) {
 	return process.env.DSH_PLATFORM_RUN + "/" + name;
@@ -71,19 +126,31 @@ export async function prepareManagedInvocation(invocation) {
 		console.error("dsh: managed lifecycle runtime directory is unavailable");
 		return 1;
 	}
+	let claimed;
 	try {
-		const claimed = await requestJson(socketPath("dsh-lifecycle.sock"), "POST", "/v1/runtime/claim", {
+		claimed = await requestJson(socketPath("dsh-lifecycle.sock"), "POST", "/v1/runtime/claim", {
 			launchToken: process.env.DSH_PLATFORM_LAUNCH_TOKEN ?? ""
 		});
-		if (typeof claimed.sessionId !== "string" || claimed.sessionId === "") throw new Error("invalid lifecycle claim response");
-		managedSessionId = claimed.sessionId;
-		delete process.env.DSH_PLATFORM_LAUNCH_TOKEN;
-		return null;
 	} catch (error) {
 		if (error?.statusCode !== 409) {
 			console.error("dsh: managed lifecycle broker is unavailable; refusing an unsupervised Web instance");
 			return 1;
 		}
+	}
+	if (claimed !== void 0) {
+		if (typeof claimed.sessionId !== "string" || claimed.sessionId === "") {
+			console.error("dsh: managed lifecycle broker returned an invalid launch session");
+			return 1;
+		}
+		managedSessionId = claimed.sessionId;
+		delete process.env.DSH_PLATFORM_LAUNCH_TOKEN;
+		try {
+			repairOrphanedProfileBundles();
+		} catch (error) {
+			console.error("dsh: failed to repair the Web Profile before startup: " + String(error?.message ?? error));
+			return 1;
+		}
+		return null;
 	}
 
 	let status;
@@ -230,5 +297,8 @@ export function verifyPatch(dshRoot) {
     if (!adapter.includes(`export function ${marker}`) && !adapter.includes(`export async function ${marker}`)) {
       throw new Error(`Managed lifecycle adapter is missing ${marker}`)
     }
+  }
+  if (!adapter.includes('function repairOrphanedProfileBundles()')) {
+    throw new Error('Managed lifecycle adapter is missing repairOrphanedProfileBundles')
   }
 }
