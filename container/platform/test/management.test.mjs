@@ -1201,9 +1201,16 @@ test('standalone console keeps localized feature parity on the shared Management
   for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
-  const extensionTabs = ['tab-plugins', 'tab-user-plugins', 'tab-skills', 'tab-user-skills']
+  const extensionTabs = [
+    'tab-maintenance', 'tab-files', 'tab-terminal', 'tab-plugins',
+    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-updates',
+  ]
     .map(id => html.indexOf(`id="${id}"`))
   assert.deepEqual(extensionTabs, [...extensionTabs].sort((left, right) => left - right))
+  assert.match(html, /id="tab-maintenance"[^>]*aria-selected="true"/)
+  assert.match(html, /id="panel-maintenance"[^>]*aria-labelledby="tab-maintenance">/)
+  assert.match(html, /id="panel-updates"[^>]*hidden>/)
+  assert.match(script, /void selectTab\('maintenance'\)/)
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',

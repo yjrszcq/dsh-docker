@@ -727,7 +727,7 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
 }
 
 function PlatformManagement({ t }) {
-  const [activeTab, setActiveTab] = useState('updates')
+  const [activeTab, setActiveTab] = useState('maintenance')
   const [status, setStatus] = useState(null)
   const [plugins, setPlugins] = useState([])
   const [skills, setSkills] = useState([])
@@ -958,7 +958,7 @@ function PlatformManagement({ t }) {
       h('p', { className: css.intro }, t('intro'))),
 
     h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
-      ['updates', 'maintenance', 'plugins', 'skills'].map(tab => h('button', {
+      ['maintenance', 'plugins', 'skills', 'updates'].map(tab => h('button', {
         key: tab,
         id: `platform-tab-${tab}-button`,
         type: 'button',

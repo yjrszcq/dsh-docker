@@ -2727,7 +2727,7 @@ window.addEventListener('beforeunload', () => {
   window.clearInterval(logWatchdogTimer)
 })
 applyTranslations()
-void selectTab('updates')
+void selectTab('maintenance')
 renderLogs()
 connectEvents()
 void (async () => {
