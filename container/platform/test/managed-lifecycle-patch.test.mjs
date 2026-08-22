@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import {
@@ -73,7 +73,30 @@ test('fails closed when upstream Profile anchors are missing or ambiguous', asyn
   await assert.rejects(Promise.resolve().then(async () => applyPatch(await fixture({ sigterm: false }))), /SIGTERM handler.*found 0/)
 })
 
-test('pins compatible Profiles to DSH_HOME without rewriting legacy store metadata', async () => {
+async function fakePnpm(root) {
+  const bin = join(root, 'bin')
+  await mkdir(bin, { recursive: true })
+  const executable = join(bin, 'pnpm')
+  await writeFile(executable, `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+if (process.env.DSH_TEST_PNPM_FAIL === '1') {
+  process.stderr.write('fixture pnpm failed\\n')
+  process.exit(1)
+}
+const workspace = await import('node:fs').then(({ readFileSync }) => readFileSync('pnpm-workspace.yaml', 'utf8'))
+const match = /^storeDir:\\s*(.+)$/m.exec(workspace)
+if (match === null) process.exit(2)
+const storeRoot = JSON.parse(match[1])
+mkdirSync('node_modules', { recursive: true })
+writeFileSync(join('node_modules', '.modules.yaml'), JSON.stringify({ storeDir: join(storeRoot, 'v11') }))
+writeFileSync(join('node_modules', 'migration-marker'), 'rebuilt\\n')
+`)
+  await chmod(executable, 0o755)
+  return bin
+}
+
+test('pins compatible Profiles to their custom DSH_HOME store', async () => {
   const root = await fixture()
   applyPatch(root)
   const storage = await import(`${pathToFileURL(join(root, PROFILE_PACKAGE_STORAGE_MODULE)).href}?storage`)
@@ -96,16 +119,6 @@ test('pins compatible Profiles to DSH_HOME without rewriting legacy store metada
       `storeDir: ${JSON.stringify(join(dshHome, '.pnpm-store')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
     ))
 
-    const legacyStore = '/workspace/.pnpm-store/v11'
-    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({ storeDir: legacyStore }))
-    await writeFile(workspacePath, 'packages:\n  - .\n')
-    assert.deepEqual(storage.prepareProfilePackageStorage('web'), {
-      status: 'migration-required',
-      currentStore: legacyStore,
-      storeRoot: join(dshHome, '.pnpm-store'),
-    })
-    assert.equal(await readFile(workspacePath, 'utf8'), 'packages:\n  - .\n')
-
     await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({
       storeDir: join(dshHome, '.pnpm-store', 'v11'),
     }))
@@ -114,6 +127,77 @@ test('pins compatible Profiles to DSH_HOME without rewriting legacy store metada
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
+  }
+})
+
+test('migrates a legacy Profile store and recovers a failed or interrupted rebuild', async () => {
+  const root = await fixture()
+  applyPatch(root)
+  const storage = await import(`${pathToFileURL(join(root, PROFILE_PACKAGE_STORAGE_MODULE)).href}?migration`)
+  const dshHome = await mkdtemp(join(tmpdir(), 'dsh-profile-migration-home-'))
+  const profileDir = join(dshHome, 'profiles', 'web')
+  const modulesRoot = join(profileDir, 'node_modules')
+  const workspacePath = join(profileDir, 'pnpm-workspace.yaml')
+  const legacyStore = join(root, 'workspace', '.pnpm-store', 'v11')
+  const originalWorkspace = `packages:\n  - .\n\nstoreDir: ${JSON.stringify(dirname(legacyStore))}\n`
+  await mkdir(modulesRoot, { recursive: true })
+  await mkdir(legacyStore, { recursive: true })
+  await writeFile(join(legacyStore, 'store-marker'), 'cached\n')
+  await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({ storeDir: legacyStore }))
+  await writeFile(join(modulesRoot, 'original-marker'), 'original\n')
+  await writeFile(join(profileDir, 'package.json'), '{"name":"dsh-profile-web","private":true}\n')
+  await writeFile(join(profileDir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+  await writeFile(workspacePath, originalWorkspace)
+  const bin = await fakePnpm(root)
+  const previous = {
+    DSH_HOME: process.env.DSH_HOME,
+    PATH: process.env.PATH,
+    DSH_TEST_PNPM_FAIL: process.env.DSH_TEST_PNPM_FAIL,
+  }
+  process.env.DSH_HOME = dshHome
+  process.env.PATH = `${bin}:${process.env.PATH}`
+  try {
+    assert.deepEqual(storage.prepareProfilePackageStorage('web'), {
+      status: 'migrated',
+      currentStore: join(dshHome, '.pnpm-store', 'v11'),
+      storeRoot: join(dshHome, '.pnpm-store'),
+    })
+    assert.equal(await readFile(join(dshHome, '.pnpm-store', 'v11', 'store-marker'), 'utf8'), 'cached\n')
+    assert.equal(await readFile(join(modulesRoot, 'migration-marker'), 'utf8'), 'rebuilt\n')
+    await assert.rejects(readFile(join(profileDir, '.dsh-platform-node_modules.previous')), { code: 'ENOENT' })
+    await assert.rejects(readFile(join(profileDir, '.dsh-platform-pnpm-workspace.previous')), { code: 'ENOENT' })
+
+    await rm(modulesRoot, { recursive: true })
+    await mkdir(modulesRoot)
+    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({ storeDir: legacyStore }))
+    await writeFile(join(modulesRoot, 'original-marker'), 'restored\n')
+    await writeFile(workspacePath, originalWorkspace)
+    process.env.DSH_TEST_PNPM_FAIL = '1'
+    assert.throws(() => storage.prepareProfilePackageStorage('web'), /fixture pnpm failed/)
+    assert.equal(await readFile(join(modulesRoot, 'original-marker'), 'utf8'), 'restored\n')
+    assert.equal(await readFile(workspacePath, 'utf8'), originalWorkspace)
+
+    delete process.env.DSH_TEST_PNPM_FAIL
+    await writeFile(join(profileDir, '.dsh-platform-pnpm-workspace.previous'), originalWorkspace)
+    await writeFile(workspacePath, `packages:\n  - .\n\nstoreDir: ${JSON.stringify(join(dshHome, '.pnpm-store'))}\n`)
+    assert.equal(storage.prepareProfilePackageStorage('web').status, 'migrated')
+    assert.equal(await readFile(join(modulesRoot, 'migration-marker'), 'utf8'), 'rebuilt\n')
+
+    await rm(modulesRoot, { recursive: true })
+    await mkdir(modulesRoot)
+    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({ storeDir: legacyStore }))
+    await writeFile(join(modulesRoot, 'original-marker'), 'interrupted\n')
+    await writeFile(workspacePath, originalWorkspace)
+    await writeFile(join(profileDir, '.dsh-platform-pnpm-workspace.previous'), originalWorkspace)
+    await rename(modulesRoot, join(profileDir, '.dsh-platform-node_modules.previous'))
+    await writeFile(workspacePath, `packages:\n  - .\n\nstoreDir: ${JSON.stringify(join(dshHome, '.pnpm-store'))}\n`)
+    assert.equal(storage.prepareProfilePackageStorage('web').status, 'migrated')
+    assert.equal(await readFile(join(modulesRoot, 'migration-marker'), 'utf8'), 'rebuilt\n')
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
   }
 })
 

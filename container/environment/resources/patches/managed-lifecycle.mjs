@@ -13,9 +13,17 @@ const SIGTERM_PATCHED = 'process.on("SIGTERM", managedSigtermHandler(interrupt))
 const HOST_PROVIDER = 'hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);'
 const HOST_PROVIDER_PATCHED = `${HOST_PROVIDER}\n\t\tprovideManagedLifecycle(hostCtx);`
 
-const PROFILE_PACKAGE_STORAGE_SOURCE = String.raw`import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+const PROFILE_PACKAGE_STORAGE_SOURCE = String.raw`import {
+	closeSync, cpSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync,
+	statSync, unlinkSync, writeFileSync
+} from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, normalize } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize } from "node:path";
+
+const MODULES_BACKUP = ".dsh-platform-node_modules.previous";
+const WORKSPACE_BACKUP = ".dsh-platform-pnpm-workspace.previous";
+const PNPM_TIMEOUT_MS = 3e5;
 
 function profileDirectory(profile) {
 	if (typeof profile !== "string" || profile === "" || profile === "." || profile === ".."
@@ -58,15 +66,121 @@ function replaceFile(path, content) {
 	}
 }
 
+function durableBackup(path, content, mode) {
+	const handle = openSync(path, "wx", mode);
+	try {
+		writeFileSync(handle, content);
+		fsyncSync(handle);
+	} finally {
+		closeSync(handle);
+	}
+}
+
+function restoreWorkspace(workspacePath, backupPath) {
+	if (!existsSync(backupPath)) return;
+	if (existsSync(workspacePath)) unlinkSync(workspacePath);
+	renameSync(backupPath, workspacePath);
+}
+
+function recoverInterruptedMigration(profileDir, workspacePath, storeRoot) {
+	const modulesPath = join(profileDir, "node_modules");
+	const modulesBackup = join(profileDir, MODULES_BACKUP);
+	const workspaceBackup = join(profileDir, WORKSPACE_BACKUP);
+	if (!existsSync(modulesBackup) && !existsSync(workspaceBackup)) return;
+	if (!existsSync(modulesBackup)) {
+		restoreWorkspace(workspacePath, workspaceBackup);
+		return;
+	}
+	let committed = false;
+	try {
+		const activeStore = installedStore(profileDir);
+		committed = existsSync(modulesBackup)
+			&& activeStore !== null
+			&& dirname(activeStore) === normalize(storeRoot);
+	} catch {}
+	if (committed) {
+		rmSync(workspaceBackup, { force: true });
+		rmSync(modulesBackup, { recursive: true, force: true });
+		return;
+	}
+	if (existsSync(modulesPath)) rmSync(modulesPath, { recursive: true, force: true });
+	if (existsSync(modulesBackup)) renameSync(modulesBackup, modulesPath);
+	restoreWorkspace(workspacePath, workspaceBackup);
+}
+
+function pnpmInstall(profileDir, offline) {
+	const arguments_ = ["install"];
+	if (offline) arguments_.push("--offline");
+	arguments_.push("--frozen-lockfile", "--reporter=append-only");
+	return spawnSync("pnpm", arguments_, {
+		cwd: profileDir,
+		encoding: "utf8",
+		env: process.env,
+		timeout: PNPM_TIMEOUT_MS,
+		maxBuffer: 1024 * 1024
+	});
+}
+
+function failureDetail(result) {
+	if (result.error !== void 0) return result.error.message;
+	const output = [result.stdout, result.stderr].filter((value) => typeof value === "string" && value.trim() !== "").join("\n");
+	return output.trim().slice(-4096) || "pnpm exited with status " + String(result.status);
+}
+
+function migrateProfile(profileDir, workspacePath, originalWorkspace, currentStore, storeRoot) {
+	const modulesPath = join(profileDir, "node_modules");
+	const modulesBackup = join(profileDir, MODULES_BACKUP);
+	const workspaceBackup = join(profileDir, WORKSPACE_BACKUP);
+	const targetStore = join(storeRoot, basename(currentStore));
+	let copiedStore = false;
+	let migratedStore;
+	try {
+		if (existsSync(currentStore) && statSync(currentStore).isDirectory()) {
+			mkdirSync(targetStore, { recursive: true });
+			cpSync(currentStore, targetStore, { recursive: true, force: false, errorOnExist: false });
+			copiedStore = true;
+		}
+		durableBackup(workspaceBackup, originalWorkspace, statSync(workspacePath).mode & 0o777);
+		replaceFile(workspacePath, withStoreDirectory(originalWorkspace, storeRoot));
+		renameSync(modulesPath, modulesBackup);
+		let result = pnpmInstall(profileDir, copiedStore);
+		if (result.status !== 0 && copiedStore) {
+			rmSync(modulesPath, { recursive: true, force: true });
+			result = pnpmInstall(profileDir, false);
+		}
+		if (result.status !== 0) throw new Error(failureDetail(result));
+		migratedStore = installedStore(profileDir);
+		if (migratedStore === null || dirname(migratedStore) !== normalize(storeRoot)) {
+			throw new Error("pnpm rebuilt the Profile with an unexpected store");
+		}
+	} catch (error) {
+		if (existsSync(modulesPath)) rmSync(modulesPath, { recursive: true, force: true });
+		if (existsSync(modulesBackup)) renameSync(modulesBackup, modulesPath);
+		restoreWorkspace(workspacePath, workspaceBackup);
+		throw new Error("failed to migrate Profile package storage: " + String(error?.message ?? error));
+	}
+	// The new layout is committed after verification. Cleanup is recoverable:
+	// removing the workspace backup first ensures any surviving modules backup
+	// is recognized as a committed migration on the next launch.
+	rmSync(workspaceBackup, { force: true });
+	rmSync(modulesBackup, { recursive: true, force: true });
+	return migratedStore;
+}
+
 export function prepareProfilePackageStorage(profile) {
 	const { dshHome, profileDir } = profileDirectory(profile);
 	const manifestPath = join(profileDir, "package.json");
 	const workspacePath = join(profileDir, "pnpm-workspace.yaml");
 	if (!existsSync(manifestPath) || !existsSync(workspacePath)) return Object.freeze({ status: "absent" });
 	const storeRoot = join(dshHome, ".pnpm-store");
+	recoverInterruptedMigration(profileDir, workspacePath, storeRoot);
 	const currentStore = installedStore(profileDir);
 	if (currentStore !== null && dirname(currentStore) !== normalize(storeRoot)) {
-		return Object.freeze({ status: "migration-required", currentStore, storeRoot });
+		const migratedStore = migrateProfile(
+			profileDir, workspacePath, readFileSync(workspacePath, "utf8"), currentStore, storeRoot
+		);
+		console.log("dsh: migrated Profile package storage from " + currentStore + " to " + migratedStore);
+		return Object.freeze({ status: "migrated", currentStore: migratedStore, storeRoot });
 	}
 	const original = readFileSync(workspacePath, "utf8");
 	const updated = withStoreDirectory(original, storeRoot);
@@ -219,9 +333,13 @@ export async function prepareManagedInvocation(invocation) {
 		delete process.env.DSH_PLATFORM_LAUNCH_TOKEN;
 		try {
 			prepareProfilePackageStorage("web");
+		} catch (error) {
+			console.error("dsh: Web Profile package storage repair failed; plugin changes may be unavailable: " + String(error?.message ?? error));
+		}
+		try {
 			repairOrphanedProfileBundles();
 		} catch (error) {
-			console.error("dsh: failed to repair the Web Profile before startup: " + String(error?.message ?? error));
+			console.error("dsh: failed to repair orphaned Web Profile bundles: " + String(error?.message ?? error));
 			return 1;
 		}
 		return null;
@@ -378,7 +496,7 @@ export function verifyPatch(dshRoot) {
   if (!adapter.includes('function repairOrphanedProfileBundles()')) {
     throw new Error('Managed lifecycle adapter is missing repairOrphanedProfileBundles')
   }
-  for (const marker of ['prepareProfilePackageStorage', 'migration-required', '.pnpm-store']) {
+  for (const marker of ['prepareProfilePackageStorage', 'migrateProfile', '.pnpm-store']) {
     if (!packageStorage.includes(marker)) throw new Error(`Managed lifecycle Profile package storage is missing ${marker}`)
   }
 }
