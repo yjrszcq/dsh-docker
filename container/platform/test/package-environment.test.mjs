@@ -81,7 +81,7 @@ test('DSH Runtime uses the generic node home environment without package-manager
 
 test('container images opt into the managed DSH lifecycle without exposing a user setting', async () => {
   const dockerfile = await readFile(join(dirname(containerRoot), 'Dockerfile'), 'utf8')
-  assert.match(dockerfile, /ENV DSH_PLATFORM_DATA=\/data\/platform \\\n+    DSH_PLATFORM_MANAGED=1 \\/)
+  assert.match(dockerfile, /ENV DSH_PLATFORM_DATA=\/data\/platform \\\n+    DSH_PLATFORM_MANAGED=1 \\\n+    DSH_PLATFORM_RUN=\/run\/dsh-platform \\/)
 })
 
 test('packager rejects source escapes and duplicate Artifact IDs without publishing output', async () => {

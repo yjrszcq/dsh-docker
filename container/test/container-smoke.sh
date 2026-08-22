@@ -585,6 +585,19 @@ done
 [ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')" = "$gateway_pid" ]
 [ "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')" != "$dsh_pid" ]
 
+dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')"
+managed_restart_result="$(docker exec -i --user node --env CURRENT_DSH_PID="$dsh_pid" \
+  "$container" /usr/local/bin/node --input-type=module \
+  < "$(dirname "$0")/managed-lifecycle-restart-smoke.mjs")"
+printf '%s\n' "$managed_restart_result" | jq -e \
+  '.helperExitCode == 0 and .sawRestarting == true and .dshCount == 1
+    and (.taskId | type == "string" and length > 0) and .oldPid != .newPid' >/dev/null
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /opt/dsh-platform/runtime/platform/stage0/index.mjs$')" = "$stage0_pid" ]
+[ "$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/bootstrap/.*/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')" = "$management_pid" ]
+[ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')" = "$gateway_pid" ]
+[ "$(docker exec "$container" pgrep -c -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')" = 1 ]
+
 if docker exec --user node "$container" curl --silent --unix-socket /run/dsh-platform/recovery.sock \
   http://localhost/v1/status >/dev/null 2>&1; then
   echo "node user unexpectedly accessed the Stage-0 recovery socket" >&2

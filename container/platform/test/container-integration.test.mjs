@@ -22,6 +22,8 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /\.source == "gateway" and \.message == "gateway\.ready"/)
   assert.match(script, /dsh_pid/)
   assert.match(script, /kill -9 "\$dsh_pid"/)
+  assert.match(script, /managed-lifecycle-restart-smoke\.mjs/)
+  assert.match(script, /\.helperExitCode == 0 and \.sawRestarting == true and \.dshCount == 1/)
   assert.match(script, /\.dshLifecycle\.state == "running" and \.recoveryMode == null/)
   assert.match(script, /DSH recovered after an explicit stop/)
   assert.match(script, /\.RestartCount/)
@@ -43,6 +45,17 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /clear only \/data\/platform/)
   assert.match(script, /Do not delete \/data\/dsh/)
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
+})
+
+test('managed lifecycle smoke rejects replacement instances and converts SIGTERM into restart', async () => {
+  const script = await readFile(new URL('../../test/managed-lifecycle-restart-smoke.mjs', import.meta.url), 'utf8')
+  assert.match(script, /spawn\(DSH_EXECUTABLE, \['web', '--no-open'\]/)
+  assert.match(script, /detached: true/)
+  assert.match(script, /DSH_PLATFORM_LAUNCH_TOKEN: ''/)
+  assert.match(script, /process\.kill\(oldPid, 'SIGTERM'\)/)
+  assert.match(script, /unregistered SIGTERM did not create a managed restart task/)
+  assert.match(script, /newPids\.length === 1/)
+  assert.doesNotMatch(script, /dsh-market|better-sidebar|net-proxy/)
 })
 
 test('standalone file smoke covers recovery-mode transfer, edit, search, symlink, and mutations', async () => {
