@@ -20,6 +20,7 @@ export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
 export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const WAIT_PATH = '/_dsh_gateway/wait'
+export const CLIENT_EVENT_PATH = '/_dsh_gateway/client-event'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
@@ -51,6 +52,12 @@ const MODULE_FAILED_STATES = new Set(['stopping', 'stopped', 'failed'])
 const REGISTERED_OPERATIONS = new Set(['restarting', 'switching', 'recovering', 'restart-failed'])
 const REGISTERED_UPDATE_STATES = new Set(['snapshotting-data', 'switching', 'probation', 'restoring-data'])
 const REGISTERED_LIFECYCLE_STATES = new Set(['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed'])
+const CLIENT_EVENTS = new Set([
+  'browser.plugin-load.failed',
+  'browser.plugin-load.recovery.started',
+  'browser.plugin-load.recovery.completed',
+  'browser.plugin-load.recovery.failed',
+])
 const upgradedSocketsByServer = new WeakMap()
 const probeTimersByServer = new WeakMap()
 const HOP_BY_HOP_HEADERS = new Set([
@@ -80,6 +87,39 @@ function copyEndToEndHeaders(headers) {
     if (!excluded.has(name.toLowerCase()) && value !== undefined) copied[name] = value
   }
   return copied
+}
+
+async function clientEvent(request) {
+  const chunks = []
+  let bytes = 0
+  for await (const chunk of request) {
+    bytes += chunk.byteLength
+    if (bytes > 8_192) throw new Error('client event exceeds size limit')
+    chunks.push(chunk)
+  }
+  const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || !CLIENT_EVENTS.has(value.event)) {
+    throw new Error('client event is invalid')
+  }
+  const text = (name, maximum, pattern) => {
+    const field = value[name]
+    if (field === null || field === undefined) return null
+    if (typeof field !== 'string' || field.length > maximum || !pattern.test(field)) throw new Error(`client event ${name} is invalid`)
+    return field
+  }
+  const attempt = Number(value.recoveryAttempt)
+  if (!Number.isSafeInteger(attempt) || attempt < 0 || attempt > 2) throw new Error('client event recoveryAttempt is invalid')
+  return {
+    event: value.event,
+    level: ['info', 'warning', 'error'].includes(value.level) ? value.level : 'warning',
+    pluginId: text('pluginId', 256, /^[^\u0000-\u001f\u007f]+$/u),
+    revision: text('revision', 128, /^[A-Za-z0-9._-]+$/),
+    pathname: text('pathname', 1_024, /^\/[^\u0000-\u001f\u007f]*$/u),
+    lifecycleState: text('lifecycleState', 64, /^[a-z-]+$/),
+    lifecycleTaskId: text('lifecycleTaskId', 128, /^[A-Za-z0-9._:-]+$/),
+    recoveryAttempt: attempt,
+    reason: text('reason', 128, /^[^\u0000-\u001f\u007f]+$/u),
+  }
 }
 
 export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
@@ -535,6 +575,26 @@ export function createGatewayServer({
       }
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
+      if (pathname === CLIENT_EVENT_PATH) {
+        if (request.method !== 'POST') {
+          rejectHttp(response, 405, 'method not allowed')
+          return
+        }
+        const value = await clientEvent(request)
+        await record(value.event, {
+          level: value.level,
+          pluginId: value.pluginId,
+          revision: value.revision,
+          pathname: value.pathname,
+          lifecycleState: value.lifecycleState,
+          lifecycleTaskId: value.lifecycleTaskId,
+          recoveryAttempt: value.recoveryAttempt,
+          reason: value.reason,
+        })
+        response.writeHead(204, { 'cache-control': 'no-store' })
+        response.end()
+        return
+      }
       if (pathname === READINESS_PATH) {
         const ready = await options.probe()
         options.availability.observe(ready)

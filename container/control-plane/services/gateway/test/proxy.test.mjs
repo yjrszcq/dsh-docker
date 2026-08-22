@@ -9,6 +9,7 @@ import test from 'node:test'
 import { parseTrustedHosts } from '../lib/config.mjs'
 import {
   closeGatewayServer,
+  CLIENT_EVENT_PATH,
   createGatewayServer,
   HEALTH_PATH,
   INTERNAL_AUTHORITY,
@@ -300,6 +301,50 @@ test('holds third-party plugin bundles until a managed DSH restart completes', a
   } finally {
     await closeGatewayServer(gateway)
     if (upstream?.listening) await close(upstream)
+  }
+})
+
+test('records bounded browser plugin recovery events without request credentials', async () => {
+  const reports = []
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort: 1,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  const port = await listen(gateway)
+  try {
+    const response = await request(port, CLIENT_EVENT_PATH, {
+      host: '127.0.0.1',
+      authorization: 'Basic must-not-appear',
+      'content-type': 'application/json',
+    }, 'POST', JSON.stringify({
+      event: 'browser.plugin-load.failed',
+      level: 'warning',
+      pluginId: '@deepseek-ai/dsh-typert-registry',
+      revision: 'f41d56e0b747',
+      pathname: '/sessions/current',
+      lifecycleState: 'restarting',
+      lifecycleTaskId: 'task-1',
+      recoveryAttempt: 1,
+      reason: 'HTTP 503',
+    }))
+    assert.equal(response.status, 204)
+    assert.deepEqual(reports, [{
+      message: 'browser.plugin-load.failed',
+      fields: {
+        level: 'warning',
+        pluginId: '@deepseek-ai/dsh-typert-registry',
+        revision: 'f41d56e0b747',
+        pathname: '/sessions/current',
+        lifecycleState: 'restarting',
+        lifecycleTaskId: 'task-1',
+        recoveryAttempt: 1,
+        reason: 'HTTP 503',
+      },
+    }])
+    assert.doesNotMatch(JSON.stringify(reports), /must-not-appear/)
+  } finally {
+    await closeGatewayServer(gateway)
   }
 })
 
