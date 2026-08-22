@@ -3,7 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import test from 'node:test'
 import { DshAvailability, availabilityPage, language } from '../lib/availability.mjs'
-import { closeGatewayServer, createGatewayServer, READINESS_PATH } from '../lib/proxy.mjs'
+import { closeGatewayServer, createGatewayServer, READINESS_PATH, WAIT_PATH, safeReturnPath } from '../lib/proxy.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
 
 async function listen(server) {
@@ -64,12 +64,12 @@ test('holding pages prefer the last DSH locale cookie over browser language', ()
   assert.equal(language({ cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), 'zh')
   assert.equal(language({ cookie: 'dsh_locale=fr', 'accept-language': 'en-US' }), 'en')
   assert.equal(language({ 'accept-language': 'fr-FR, zh-CN;q=0.8, en;q=0.5' }), 'zh')
-  assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), /平台正在恢复/)
+  assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=zh', 'accept-language': 'en-US' }), /意外停止/)
   assert.match(availabilityPage('recovering', { cookie: 'dsh_locale=en', 'accept-language': 'zh-CN' }), /Open DSH Management Console for diagnostics and recovery/)
 })
 
 test('every classified outage page links to the standalone Platform Management console', () => {
-  for (const state of ['starting', 'restarting', 'switching', 'recovering', 'failed', 'unavailable']) {
+  for (const state of ['starting', 'stopping', 'stopped', 'restarting', 'switching', 'runtime-recovering', 'recovering', 'failed', 'unavailable']) {
     const page = availabilityPage(state, { 'accept-language': 'en-US' })
     assert.match(page, /href="\/_dsh_platform\/console\/"/)
   }
@@ -80,6 +80,19 @@ test('intentional DSH restarts have explicit holding and failure states', () => 
   assert.equal(availability.classify({ operation: 'restarting' }), 'restarting')
   assert.equal(availability.classify({ operation: 'restart-failed' }), 'failed')
   assert.match(availabilityPage('restarting', { 'accept-language': 'zh-CN' }), /正在重新启动/)
+  assert.equal(availability.classify({ dshLifecycle: { state: 'stopping' } }), 'stopping')
+  assert.equal(availability.classify({ dshLifecycle: { state: 'stopped' } }), 'stopped')
+  assert.equal(availability.classify({ dshLifecycle: { state: 'recovering', attempt: 2 } }), 'recovering')
+  assert.match(availabilityPage('recovering', { 'accept-language': 'zh-CN' }, {
+    lifecycle: { attempt: 2, maxAttempts: 3 },
+  }), /第 2 \/ 3 次/)
+})
+
+test('holding-page return paths stay same-origin and reject ambiguous inputs', () => {
+  assert.equal(safeReturnPath('/sessions/current?view=chat#latest'), '/sessions/current?view=chat#latest')
+  for (const value of [null, '', '//example.com/path', '/\\example.com', 'https://example.com/', '/bad\npath']) {
+    assert.equal(safeReturnPath(value), '/')
+  }
 })
 
 test('cold start serves a holding page while API and WebSocket-shaped HTTP requests receive 503', async () => {
@@ -122,7 +135,7 @@ test('an unresponsive management service does not block the cold-start holding p
 test('platform switching, recovery, and startup failure select distinct page messages', async () => {
   for (const [platform, expected] of [
     [{ operation: 'switching' }, /Switching the DeepSeek Harness runtime/],
-    [{ operation: 'recovering' }, /Restoring DeepSeek Harness/],
+    [{ operation: 'recovering' }, /Restoring the DeepSeek Harness runtime/],
     [{ recoveryMode: 'candidate failed' }, /DeepSeek Harness could not start/],
   ]) {
     const { gateway, port } = await unavailableGateway({ platform })
@@ -134,6 +147,34 @@ test('platform switching, recovery, and startup failure select distinct page mes
     } finally {
       await closeGatewayServer(gateway)
     }
+  }
+})
+
+test('dedicated holding route preserves a safe return path and redirects when ready', async () => {
+  let ready = false
+  const context = await unavailableGateway({
+    platform: { dshLifecycle: { state: 'stopping' } },
+    probe: async () => ready,
+  })
+  try {
+    const target = '/sessions/current?view=chat#latest'
+    const waiting = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent(target)}`)
+    assert.equal(waiting.status, 200)
+    assert.match(waiting.body, /DeepSeek Harness is stopping/)
+    assert.match(waiting.body, /location\.replace\(returnPath\)/)
+    assert.match(waiting.body, /\/sessions\/current\?view=chat#latest/)
+
+    const invalid = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent('//example.com/')}`)
+    assert.equal(invalid.status, 200)
+    assert.match(invalid.body, /const returnPath="\/"/)
+
+    ready = true
+    const redirected = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent(target)}`)
+    assert.equal(redirected.status, 302)
+    assert.equal(redirected.headers.location, target)
+    assert.equal((await request(context.port, WAIT_PATH, { method: 'POST' })).status, 405)
+  } finally {
+    await closeGatewayServer(context.gateway)
   }
 })
 

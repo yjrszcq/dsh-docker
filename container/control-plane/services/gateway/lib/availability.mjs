@@ -6,17 +6,23 @@ const RECOVERING_STATES = new Set(['restoring-data'])
 const COPY = Object.freeze({
   en: Object.freeze({
     starting: 'DeepSeek Harness is starting',
+    stopping: 'DeepSeek Harness is stopping',
+    stopped: 'DeepSeek Harness is stopped',
     restarting: 'DeepSeek Harness is restarting',
     switching: 'Switching the DeepSeek Harness runtime',
-    recovering: 'Restoring DeepSeek Harness',
+    'runtime-recovering': 'Restoring the DeepSeek Harness runtime',
+    recovering: 'DeepSeek Harness stopped unexpectedly and recovery is in progress',
     failed: 'DeepSeek Harness could not start',
     unavailable: 'DeepSeek Harness is temporarily unavailable and recovery is in progress',
   }),
   zh: Object.freeze({
     starting: 'DeepSeek Harness 正在启动',
+    stopping: 'DeepSeek Harness 正在停止',
+    stopped: 'DeepSeek Harness 已停止',
     restarting: 'DeepSeek Harness 正在重新启动',
     switching: '正在切换 DeepSeek Harness 运行版本',
-    recovering: '平台正在恢复 DeepSeek Harness',
+    'runtime-recovering': '正在恢复 DeepSeek Harness 运行版本',
+    recovering: 'DeepSeek Harness 意外停止，正在尝试恢复',
     failed: 'DeepSeek Harness 启动失败',
     unavailable: 'DeepSeek Harness 暂时不可用，正在尝试恢复',
   }),
@@ -51,11 +57,15 @@ export class DshAvailability {
   classify(platform = {}) {
     if (platform.operation === 'restart-failed') return 'failed'
     if (platform.operation === 'restarting') return 'restarting'
-    if (platform.operation === 'recovering') return 'recovering'
+    if (platform.operation === 'recovering') return 'runtime-recovering'
     if (platform.operation === 'switching') return 'switching'
     const updateState = platform.update?.status
-    if (RECOVERING_STATES.has(updateState)) return 'recovering'
+    if (RECOVERING_STATES.has(updateState)) return 'runtime-recovering'
     if (SWITCHING_STATES.has(updateState)) return 'switching'
+    const lifecycle = platform.dshLifecycle ?? {}
+    if (['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed'].includes(lifecycle.state)) {
+      return lifecycle.state
+    }
     if (platform.recoveryMode !== null && platform.recoveryMode !== undefined) return 'failed'
     if (!this.everReady) return 'starting'
     if (
@@ -97,15 +107,20 @@ export function language(headers) {
   return 'en'
 }
 
-export function stateMessage(state, headers = {}) {
-  return COPY[language(headers)][state] ?? COPY.en.unavailable
-}
-
-export function availabilityPage(state, headers = {}) {
+export function stateMessage(state, headers = {}, lifecycle = {}) {
   const locale = language(headers)
   const message = COPY[locale][state] ?? COPY.en.unavailable
+  if (state !== 'recovering' || !(lifecycle.attempt > 0) || !(lifecycle.maxAttempts > 0)) return message
+  return locale === 'zh'
+    ? `${message}（第 ${String(lifecycle.attempt)} / ${String(lifecycle.maxAttempts)} 次）`
+    : `${message} (attempt ${String(lifecycle.attempt)} of ${String(lifecycle.maxAttempts)})`
+}
+
+export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPath = null } = {}) {
+  const locale = language(headers)
+  const message = stateMessage(state, headers, lifecycle)
   const managementLink = MANAGEMENT_LINK[locale]
-  const messages = JSON.stringify(COPY[locale])
+  const target = JSON.stringify(returnPath)
   return `<!doctype html>
 <html lang="${locale === 'zh' ? 'zh-CN' : 'en'}">
 <head>
@@ -119,8 +134,8 @@ html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#
 <body>
 <main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><a class="management" href="/_dsh_platform/console/">${managementLink}</a></main>
 <script>
-const messages=${messages};const status=document.querySelector('.status');
-async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){location.reload();return}if(messages[value.state])status.textContent=messages[value.state]}catch{}setTimeout(check,1000)}
+const returnPath=${target};const status=document.querySelector('.status');
+async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}
 setTimeout(check,600);
 </script>
 </body>

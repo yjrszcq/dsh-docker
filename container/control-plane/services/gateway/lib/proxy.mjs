@@ -19,6 +19,7 @@ export const INTERNAL_PORT = 3079
 export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
 export const READINESS_PATH = '/_dsh_gateway/readiness'
+export const WAIT_PATH = '/_dsh_gateway/wait'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
@@ -114,8 +115,8 @@ function isPageNavigation(request) {
     && request.headers.accept.toLowerCase().includes('text/html')
 }
 
-function sendAvailabilityPage(request, response, state) {
-  const body = Buffer.from(availabilityPage(state, request.headers))
+function sendAvailabilityPage(request, response, state, options = {}) {
+  const body = Buffer.from(availabilityPage(state, request.headers, options))
   response.writeHead(200, {
     'cache-control': 'no-store',
     'content-length': String(body.byteLength),
@@ -124,6 +125,20 @@ function sendAvailabilityPage(request, response, state) {
     'referrer-policy': 'no-referrer',
   })
   response.end(body)
+}
+
+export function safeReturnPath(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4_096
+    || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')
+    || /[\u0000-\u001f\u007f]/u.test(value)) return '/'
+  try {
+    const parsed = new URL(value, 'http://gateway.internal')
+    return parsed.origin === 'http://gateway.internal'
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : '/'
+  } catch {
+    return '/'
+  }
 }
 
 async function serveSystemPluginBundle(request, response, root, pathname, searchParams) {
@@ -244,11 +259,12 @@ async function unavailableState(options) {
 
 async function rejectDshFailure(request, response, options) {
   options.availability.observe(false)
-  const state = await unavailableState(options)
+  const platform = await boundedPlatformStatus(options.platformStatus, options)
+  const state = options.availability.classify(platform)
   if (state === 'unknown') {
     rejectHttp(response, 502, 'bad gateway')
   } else if (isPageNavigation(request)) {
-    sendAvailabilityPage(request, response, state)
+    sendAvailabilityPage(request, response, state, { lifecycle: platform.dshLifecycle })
   } else {
     rejectHttp(response, 503, stateMessage(state, request.headers))
   }
@@ -470,9 +486,35 @@ export function createGatewayServer({
         options.availability.observe(ready)
         if (ready) sendJson(response, 200, { ready: true, state: 'ready' })
         else {
-          const state = await unavailableState(options)
-          sendJson(response, state === 'unknown' ? 502 : 503, { ready: false, state })
+          const platform = await boundedPlatformStatus(options.platformStatus, options)
+          const state = options.availability.classify(platform)
+          sendJson(response, state === 'unknown' ? 502 : 503, {
+            ready: false,
+            state,
+            message: stateMessage(state, request.headers, platform.dshLifecycle),
+          })
         }
+        return
+      }
+      if (pathname === WAIT_PATH) {
+        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+          rejectHttp(response, 405, 'method not allowed')
+          return
+        }
+        const returnPath = safeReturnPath(url.searchParams.get('return'))
+        const ready = await options.probe()
+        options.availability.observe(ready)
+        if (ready) {
+          response.writeHead(302, { 'cache-control': 'no-store', location: returnPath })
+          response.end()
+          return
+        }
+        const platform = await boundedPlatformStatus(options.platformStatus, options)
+        const state = options.availability.classify(platform)
+        sendAvailabilityPage(request, response, state === 'unknown' ? 'unavailable' : state, {
+          lifecycle: platform.dshLifecycle,
+          returnPath,
+        })
         return
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
