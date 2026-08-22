@@ -120,7 +120,7 @@ export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPa
   const locale = language(headers)
   const message = stateMessage(state, headers, lifecycle)
   const managementLink = MANAGEMENT_LINK[locale]
-  const target = JSON.stringify(returnPath)
+  const target = JSON.stringify(returnPath).replaceAll('<', '\\u003c')
   return `<!doctype html>
 <html lang="${locale === 'zh' ? 'zh-CN' : 'en'}">
 <head>

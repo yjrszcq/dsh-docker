@@ -93,6 +93,9 @@ test('holding-page return paths stay same-origin and reject ambiguous inputs', (
   for (const value of [null, '', '//example.com/path', '/\\example.com', 'https://example.com/', '/bad\npath']) {
     assert.equal(safeReturnPath(value), '/')
   }
+  const page = availabilityPage('restarting', {}, { returnPath: '/</script><script>alert(1)</script>' })
+  assert.doesNotMatch(page, /const returnPath="\/<\/script>/)
+  assert.match(page, /\\u003c\/script>/)
 })
 
 test('cold start serves a holding page while API and WebSocket-shaped HTTP requests receive 503', async () => {
