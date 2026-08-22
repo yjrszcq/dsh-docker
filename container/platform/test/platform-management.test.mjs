@@ -113,11 +113,10 @@ test('Platform Management is embedded in the official settings.section slot', as
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
-  assert.match(source, /requestedRestart\.current = task\.taskId/)
   assert.match(source, /status\?\.dshLifecycle/)
-  assert.match(source, /restart\.state === 'running'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)[\s\S]*window\.location\.reload/)
+  assert.match(source, /await request\('restart-dsh'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.doesNotMatch(source, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
-  assert.match(source, /window\.location\.reload\(\)/)
+  assert.doesNotMatch(source, /window\.location\.reload\(\)/)
   assert.match(source, /const \[confirmRestart, setConfirmRestart\] = useState\(false\)/)
   assert.match(source, /setConfirmRestart\(value => !value\)/)
   assert.match(source, /'aria-controls': 'restart-dsh-confirmation'/)
@@ -258,17 +257,11 @@ test('Platform Management lifecycle guard recognizes only registered transition 
   )
 })
 
-test('Platform Management reloads only after its own requested restart completes', async () => {
+test('Platform Management leaves lifecycle navigation to the global holding-page guard', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
-  const helper = source.slice(
-    source.indexOf('function matchesRequestedRestart('),
-    source.indexOf('\n\nfunction display('),
-  )
-  const matchesRequestedRestart = new Function(`${helper}; return matchesRequestedRestart`)()
-  assert.equal(matchesRequestedRestart({ state: 'running', taskId: null }, null), false)
-  assert.equal(matchesRequestedRestart({ state: 'running' }, undefined), false)
-  assert.equal(matchesRequestedRestart({ state: 'running', taskId: 'restart-1' }, 'restart-1'), true)
-  assert.equal(matchesRequestedRestart({ state: 'running', taskId: 'restart-2' }, 'restart-1'), false)
+  assert.match(source, /window\.location\.replace\(lifecycleWaitUrl\(\)\)/)
+  assert.doesNotMatch(source, /window\.location\.reload\(\)/)
+  assert.doesNotMatch(source, /requestedRestart/)
 })
 
 test('Platform Management limits the processed log entries instead of raw fragments', async () => {

@@ -258,6 +258,51 @@ test('serves trusted System Plugin bundles across DSH restart and uninstall race
   }
 })
 
+test('holds third-party plugin bundles until a managed DSH restart completes', async () => {
+  const reservation = createServer()
+  await listen(reservation)
+  const upstreamPort = reservation.address().port
+  await close(reservation)
+  let lifecycle = 'restarting'
+  let ready = false
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    platformStatus: async () => ({ dshLifecycle: { state: lifecycle } }),
+    probe: async () => ready,
+    pluginBundleHoldTimeoutMs: 2_000,
+    pluginBundlePollIntervalMs: 10,
+  })
+  const gatewayPort = await listen(gateway)
+  const pending = [
+    '/plugins/@example/plugin/client.js?rev=0123456789ab',
+    '/plugins/@dsh-docker/platform-management/client.js?rev=stale-image-revision',
+  ].map(path => request(gatewayPort, path, { host: '127.0.0.1' }))
+  let upstream
+  try {
+    await new Promise(resolve => setTimeout(resolve, 30))
+    upstream = createServer((_incoming, response) => {
+      response.writeHead(200, { 'content-type': 'text/javascript' })
+      response.end('window.pluginLoaded = true\n')
+    })
+    await new Promise((resolve, reject) => {
+      upstream.once('error', reject)
+      upstream.listen(upstreamPort, '127.0.0.1', resolve)
+    })
+    lifecycle = 'running'
+    ready = true
+    const responses = await Promise.all(pending)
+    assert.deepEqual(responses.map(response => response.status), [200, 200])
+    assert.deepEqual(responses.map(response => response.body), [
+      'window.pluginLoaded = true\n',
+      'window.pluginLoaded = true\n',
+    ])
+  } finally {
+    await closeGatewayServer(gateway)
+    if (upstream?.listening) await close(upstream)
+  }
+})
+
 test('bounded management and Console requests use the protected local socket instead of DSH upstream', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-management-'))
   const socketPath = join(root, 'management.sock')

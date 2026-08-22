@@ -44,10 +44,6 @@ function requiresLifecycleHoldingPage(status) {
     .includes(status?.dshLifecycle?.state)
 }
 
-function matchesRequestedRestart(restart, taskId) {
-  return typeof taskId === 'string' && taskId.length > 0 && restart?.taskId === taskId
-}
-
 function lifecycleReturnPath(locationValue = window.location) {
   return `${locationValue.pathname}${locationValue.search}${locationValue.hash}`
 }
@@ -740,7 +736,6 @@ function PlatformManagement({ t }) {
   const [dataLossAccepted, setDataLossAccepted] = useState(false)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
-  const requestedRestart = useRef(null)
 
   const refresh = useCallback(() => {
     statusLoadRevision.current += 1
@@ -810,8 +805,8 @@ function PlatformManagement({ t }) {
     setActing(true)
     setError('')
     try {
-      const task = await request('restart-dsh', { method: 'POST' })
-      requestedRestart.current = task.taskId
+      await request('restart-dsh', { method: 'POST' })
+      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
       setConfirmRestart(false)
       await refresh()
     } catch (nextError) {
@@ -891,18 +886,6 @@ function PlatformManagement({ t }) {
       stateEvents?.close()
     }
   }, [checkUpdates, refresh])
-
-  useEffect(() => {
-    const restart = status?.dshLifecycle
-    if (!matchesRequestedRestart(restart, requestedRestart.current)) return
-    if (restart.state === 'running') {
-      requestedRestart.current = null
-      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-      window.location.reload()
-    } else if (restart.state === 'failed') {
-      requestedRestart.current = null
-    }
-  }, [status?.dshLifecycle])
 
   const update = status?.update ?? {}
   const restart = status?.dshLifecycle ?? {}

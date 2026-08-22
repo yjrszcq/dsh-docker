@@ -45,6 +45,12 @@ function isMaintenanceRoute(pathname) {
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
 const SYSTEM_PLUGIN_BUNDLE = /^\/plugins\/@dsh-docker\/([a-z0-9][a-z0-9._-]{0,127})\/client\.js$/
+const DSH_PLUGIN_BUNDLE = /^\/plugins\/(?:@[^/]+\/)?[^/]+\/client\.js$/
+const MODULE_HOLD_STATES = new Set(['starting', 'restarting', 'switching', 'runtime-recovering', 'recovering'])
+const MODULE_FAILED_STATES = new Set(['stopping', 'stopped', 'failed'])
+const REGISTERED_OPERATIONS = new Set(['restarting', 'switching', 'recovering', 'restart-failed'])
+const REGISTERED_UPDATE_STATES = new Set(['snapshotting-data', 'switching', 'probation', 'restoring-data'])
+const REGISTERED_LIFECYCLE_STATES = new Set(['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed'])
 const upgradedSocketsByServer = new WeakMap()
 const probeTimersByServer = new WeakMap()
 const HOP_BY_HOP_HEADERS = new Set([
@@ -265,6 +271,42 @@ async function unavailableState(options) {
   return options.availability.classify(platform)
 }
 
+function registeredAvailabilityState(platform, availability) {
+  if (!REGISTERED_OPERATIONS.has(platform.operation)
+    && !REGISTERED_UPDATE_STATES.has(platform.update?.status)
+    && !REGISTERED_LIFECYCLE_STATES.has(platform.dshLifecycle?.state)
+    && (platform.recoveryMode === null || platform.recoveryMode === undefined)) return null
+  return availability.classify(platform)
+}
+
+async function holdPluginBundleDuringTransition(request, response, options, pathname) {
+  if (!['GET', 'HEAD'].includes(request.method ?? 'GET')
+    || !DSH_PLUGIN_BUNDLE.test(pathname)) return false
+  let platform = await boundedPlatformStatus(options.platformStatus, options)
+  let state = registeredAvailabilityState(platform, options.availability)
+  if (!MODULE_HOLD_STATES.has(state) && !MODULE_FAILED_STATES.has(state)) return false
+  if (MODULE_FAILED_STATES.has(state)) {
+    rejectHttp(response, 503, stateMessage(state, request.headers, platform.dshLifecycle))
+    return true
+  }
+
+  const deadline = Date.now() + options.pluginBundleHoldTimeoutMs
+  while (!request.destroyed && !response.destroyed && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, options.pluginBundlePollIntervalMs))
+    const ready = await options.probe()
+    options.availability.observe(ready)
+    platform = await boundedPlatformStatus(options.platformStatus, options)
+    state = registeredAvailabilityState(platform, options.availability)
+    if (ready && !MODULE_HOLD_STATES.has(state) && !MODULE_FAILED_STATES.has(state)) return false
+    if (MODULE_FAILED_STATES.has(state)) {
+      rejectHttp(response, 503, stateMessage(state, request.headers, platform.dshLifecycle))
+      return true
+    }
+  }
+  if (!request.destroyed && !response.destroyed) rejectHttp(response, 503, 'DeepSeek Harness restart timed out')
+  return true
+}
+
 async function rejectDshFailure(request, response, options) {
   options.availability.observe(false)
   const platform = await boundedPlatformStatus(options.platformStatus, options)
@@ -427,6 +469,8 @@ export function createGatewayServer({
   report = async () => {},
   now = () => Date.now(),
   failureLogIntervalMs = 30_000,
+  pluginBundleHoldTimeoutMs = 60_000,
+  pluginBundlePollIntervalMs = 100,
 }) {
   const failures = new Map()
   const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
@@ -454,6 +498,7 @@ export function createGatewayServer({
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, maintenanceSocketPath, systemPluginRoot, platformStatus,
     availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
+    pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs,
   }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
@@ -489,6 +534,7 @@ export function createGatewayServer({
         return
       }
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
+      if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
       if (pathname === READINESS_PATH) {
         const ready = await options.probe()
         options.availability.observe(ready)
