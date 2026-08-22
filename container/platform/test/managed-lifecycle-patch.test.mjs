@@ -193,6 +193,23 @@ test('migrates a legacy Profile store and recovers a failed or interrupted rebui
     await writeFile(workspacePath, `packages:\n  - .\n\nstoreDir: ${JSON.stringify(join(dshHome, '.pnpm-store'))}\n`)
     assert.equal(storage.prepareProfilePackageStorage('web').status, 'migrated')
     assert.equal(await readFile(join(modulesRoot, 'migration-marker'), 'utf8'), 'rebuilt\n')
+
+    await rm(modulesRoot, { recursive: true })
+    await mkdir(modulesRoot)
+    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({
+      storeDir: join(dshHome, '.pnpm-store', 'v11'),
+    }))
+    await writeFile(join(modulesRoot, 'partial-marker'), 'partial\n')
+    await writeFile(workspacePath, `packages:\n  - .\n\nstoreDir: ${JSON.stringify(join(dshHome, '.pnpm-store'))}\n`)
+    await mkdir(join(profileDir, '.dsh-platform-node_modules.previous'))
+    await writeFile(join(profileDir, '.dsh-platform-node_modules.previous', '.modules.yaml'), JSON.stringify({
+      storeDir: legacyStore,
+    }))
+    await writeFile(join(profileDir, '.dsh-platform-node_modules.previous', 'original-marker'), 'original\n')
+    await writeFile(join(profileDir, '.dsh-platform-pnpm-workspace.previous'), originalWorkspace)
+    assert.equal(storage.prepareProfilePackageStorage('web').status, 'migrated')
+    assert.equal(await readFile(join(modulesRoot, 'migration-marker'), 'utf8'), 'rebuilt\n')
+    await assert.rejects(readFile(join(modulesRoot, 'partial-marker')), { code: 'ENOENT' })
   } finally {
     for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name]

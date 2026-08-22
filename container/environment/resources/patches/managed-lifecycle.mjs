@@ -23,6 +23,7 @@ import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 
 const MODULES_BACKUP = ".dsh-platform-node_modules.previous";
 const WORKSPACE_BACKUP = ".dsh-platform-pnpm-workspace.previous";
+const MIGRATION_COMMIT = ".dsh-platform-profile-migration.committed";
 const PNPM_TIMEOUT_MS = 3e5;
 
 function profileDirectory(profile) {
@@ -82,25 +83,20 @@ function restoreWorkspace(workspacePath, backupPath) {
 	renameSync(backupPath, workspacePath);
 }
 
-function recoverInterruptedMigration(profileDir, workspacePath, storeRoot) {
+function recoverInterruptedMigration(profileDir, workspacePath) {
 	const modulesPath = join(profileDir, "node_modules");
 	const modulesBackup = join(profileDir, MODULES_BACKUP);
 	const workspaceBackup = join(profileDir, WORKSPACE_BACKUP);
-	if (!existsSync(modulesBackup) && !existsSync(workspaceBackup)) return;
-	if (!existsSync(modulesBackup)) {
-		restoreWorkspace(workspacePath, workspaceBackup);
-		return;
-	}
-	let committed = false;
-	try {
-		const activeStore = installedStore(profileDir);
-		committed = existsSync(modulesBackup)
-			&& activeStore !== null
-			&& dirname(activeStore) === normalize(storeRoot);
-	} catch {}
-	if (committed) {
+	const commitMarker = join(profileDir, MIGRATION_COMMIT);
+	if (!existsSync(modulesBackup) && !existsSync(workspaceBackup) && !existsSync(commitMarker)) return;
+	if (existsSync(commitMarker)) {
 		rmSync(workspaceBackup, { force: true });
 		rmSync(modulesBackup, { recursive: true, force: true });
+		rmSync(commitMarker, { force: true });
+		return;
+	}
+	if (!existsSync(modulesBackup)) {
+		restoreWorkspace(workspacePath, workspaceBackup);
 		return;
 	}
 	if (existsSync(modulesPath)) rmSync(modulesPath, { recursive: true, force: true });
@@ -117,7 +113,7 @@ function pnpmInstall(profileDir, offline) {
 		encoding: "utf8",
 		env: process.env,
 		timeout: PNPM_TIMEOUT_MS,
-		maxBuffer: 1024 * 1024
+		maxBuffer: 8 * 1024 * 1024
 	});
 }
 
@@ -131,14 +127,17 @@ function migrateProfile(profileDir, workspacePath, originalWorkspace, currentSto
 	const modulesPath = join(profileDir, "node_modules");
 	const modulesBackup = join(profileDir, MODULES_BACKUP);
 	const workspaceBackup = join(profileDir, WORKSPACE_BACKUP);
+	const commitMarker = join(profileDir, MIGRATION_COMMIT);
 	const targetStore = join(storeRoot, basename(currentStore));
 	let copiedStore = false;
 	let migratedStore;
 	try {
 		if (existsSync(currentStore) && statSync(currentStore).isDirectory()) {
-			mkdirSync(targetStore, { recursive: true });
-			cpSync(currentStore, targetStore, { recursive: true, force: false, errorOnExist: false });
-			copiedStore = true;
+			try {
+				mkdirSync(targetStore, { recursive: true });
+				cpSync(currentStore, targetStore, { recursive: true, force: false, errorOnExist: false });
+				copiedStore = true;
+			} catch {}
 		}
 		durableBackup(workspaceBackup, originalWorkspace, statSync(workspacePath).mode & 0o777);
 		replaceFile(workspacePath, withStoreDirectory(originalWorkspace, storeRoot));
@@ -153,10 +152,12 @@ function migrateProfile(profileDir, workspacePath, originalWorkspace, currentSto
 		if (migratedStore === null || dirname(migratedStore) !== normalize(storeRoot)) {
 			throw new Error("pnpm rebuilt the Profile with an unexpected store");
 		}
+		durableBackup(commitMarker, "committed\n", 384);
 	} catch (error) {
 		if (existsSync(modulesPath)) rmSync(modulesPath, { recursive: true, force: true });
 		if (existsSync(modulesBackup)) renameSync(modulesBackup, modulesPath);
 		restoreWorkspace(workspacePath, workspaceBackup);
+		rmSync(commitMarker, { force: true });
 		throw new Error("failed to migrate Profile package storage: " + String(error?.message ?? error));
 	}
 	// The new layout is committed after verification. Cleanup is recoverable:
@@ -164,6 +165,7 @@ function migrateProfile(profileDir, workspacePath, originalWorkspace, currentSto
 	// is recognized as a committed migration on the next launch.
 	rmSync(workspaceBackup, { force: true });
 	rmSync(modulesBackup, { recursive: true, force: true });
+	rmSync(commitMarker, { force: true });
 	return migratedStore;
 }
 
@@ -173,7 +175,7 @@ export function prepareProfilePackageStorage(profile) {
 	const workspacePath = join(profileDir, "pnpm-workspace.yaml");
 	if (!existsSync(manifestPath) || !existsSync(workspacePath)) return Object.freeze({ status: "absent" });
 	const storeRoot = join(dshHome, ".pnpm-store");
-	recoverInterruptedMigration(profileDir, workspacePath, storeRoot);
+	recoverInterruptedMigration(profileDir, workspacePath);
 	const currentStore = installedStore(profileDir);
 	if (currentStore !== null && dirname(currentStore) !== normalize(storeRoot)) {
 		const migratedStore = migrateProfile(
