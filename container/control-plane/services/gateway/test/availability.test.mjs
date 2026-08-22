@@ -33,7 +33,7 @@ function request(port, path = '/', { method = 'GET', accept = 'text/html', heade
   })
 }
 
-async function unavailableGateway({ platform = {}, availability = new DshAvailability(), probe = async () => false } = {}) {
+async function unavailableGateway({ platform = {}, availability = new DshAvailability(), probe = async () => false, report } = {}) {
   const placeholder = createServer()
   const unavailablePort = await listen(placeholder)
   await new Promise(resolve => placeholder.close(resolve))
@@ -43,10 +43,28 @@ async function unavailableGateway({ platform = {}, availability = new DshAvailab
     platformStatus: async () => platform,
     availability,
     probe,
+    report,
     probeIntervalMs: 60_000,
   })
   return { gateway, port: await listen(gateway) }
 }
+
+test('an intentional stopped state does not report an upstream proxy failure', async () => {
+  const reports = []
+  const context = await unavailableGateway({
+    platform: { dshLifecycle: { state: 'stopped' } },
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  try {
+    const response = await request(context.port)
+    assert.equal(response.status, 200)
+    assert.match(response.body, /DeepSeek Harness is stopped/)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(reports.some(entry => entry.message === 'gateway.upstream.failed'), false)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})
 
 test('official-style holding page is self-contained and replaces the spinner with platform status', () => {
   const page = availabilityPage('switching', { 'accept-language': 'zh-CN' })

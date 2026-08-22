@@ -565,6 +565,7 @@ async function rejectDshFailure(request, response, options) {
   } else {
     rejectHttp(response, 503, stateMessage(state, request.headers))
   }
+  return state
 }
 
 function proxyHttp(request, response, options) {
@@ -606,13 +607,17 @@ function proxyHttp(request, response, options) {
   })
   upstream.on('error', error => {
     if (request.aborted || response.destroyed) return
-    options.reportFailure(`${upstreamType}-http`, 'gateway.upstream.failed', {
-      ...context,
-      error,
-      upstream: upstreamType,
+    const reportUpstreamFailure = () => options.reportFailure(`${upstreamType}-http`, 'gateway.upstream.failed', {
+      ...context, error, upstream: upstreamType,
     })
-    if (options.trackDsh === true) void rejectDshFailure(request, response, options)
-    else rejectHttp(response, 502, 'bad gateway')
+    if (options.trackDsh === true) {
+      void rejectDshFailure(request, response, options).then(state => {
+        if (state === 'unknown') reportUpstreamFailure()
+      })
+    } else {
+      reportUpstreamFailure()
+      rejectHttp(response, 502, 'bad gateway')
+    }
   })
   request.on('aborted', () => upstream.destroy())
   response.on('close', () => upstream.destroy())

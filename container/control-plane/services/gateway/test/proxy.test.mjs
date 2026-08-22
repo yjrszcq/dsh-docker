@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { parseTrustedHosts } from '../lib/config.mjs'
+import { DshAvailability } from '../lib/availability.mjs'
 import {
   closeGatewayServer,
   CLIENT_EVENT_PATH,
@@ -234,18 +235,23 @@ test('classifies, redacts, rate-limits, and closes an upstream outage', async ()
   await close(reservation)
   const reports = []
   let now = 1_000
+  const availability = new DshAvailability({ now: () => now })
+  availability.observe(true)
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({}),
     upstreamPort,
     probeIntervalMs: 1_000_000,
     now: () => now,
+    availability,
     report: (message, fields) => { reports.push({ message, fields }) },
   })
   const gatewayPort = await listen(gateway)
   try {
     await request(gatewayPort, '/private?token=must-not-appear', { host: '127.0.0.1' })
     await request(gatewayPort, '/second?secret=must-not-appear', { host: '127.0.0.1' })
-    await new Promise(resolve => setImmediate(resolve))
+    for (let attempt = 0; attempt < 20 && !reports.some(entry => entry.message === 'gateway.upstream.failed'); attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
     const failures = reports.filter(entry => entry.message === 'gateway.upstream.failed')
     assert.equal(failures.length, 1)
     assert.equal(failures[0].fields.upstream, 'dsh')
