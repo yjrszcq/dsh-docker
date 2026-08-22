@@ -58,12 +58,32 @@ function manager(value, overrides = {}) {
 }
 
 test('runs DSH plugin removal with writable user configuration directories', () => {
-  const environment = userPluginTransactionInternals.pluginEnvironment('/data/dsh', '/home/node')
-  assert.equal(environment.HOME, '/home/node')
-  assert.equal(environment.XDG_CACHE_HOME, '/home/node/.cache')
-  assert.equal(environment.XDG_CONFIG_HOME, '/home/node/.config')
-  assert.equal(environment.XDG_DATA_HOME, '/home/node/.local/share')
-  assert.equal(environment.DSH_HOME, '/data/dsh')
+  const previous = {
+    HOME: process.env.HOME,
+    npm_config_userconfig: process.env.npm_config_userconfig,
+    NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE,
+    PNPM_HOME: process.env.PNPM_HOME,
+  }
+  process.env.HOME = '/root'
+  process.env.npm_config_userconfig = '/root/.npmrc'
+  process.env.NPM_CONFIG_CACHE = '/root/.npm'
+  process.env.PNPM_HOME = '/root/.local/share/pnpm'
+  try {
+    const environment = userPluginTransactionInternals.pluginEnvironment('/data/dsh')
+    assert.equal(environment.HOME, '/home/node')
+    assert.equal(environment.XDG_CACHE_HOME, '/home/node/.cache')
+    assert.equal(environment.XDG_CONFIG_HOME, '/home/node/.config')
+    assert.equal(environment.XDG_DATA_HOME, '/home/node/.local/share')
+    assert.equal(environment.DSH_HOME, '/data/dsh')
+    assert.equal(environment.npm_config_userconfig, undefined)
+    assert.equal(environment.NPM_CONFIG_CACHE, undefined)
+    assert.equal(environment.PNPM_HOME, undefined)
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
 })
 
 test('snapshots and restores the complete Web Profile with hidden files, modes, and symlinks', async () => {

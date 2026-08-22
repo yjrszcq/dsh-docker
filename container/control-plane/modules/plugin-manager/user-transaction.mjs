@@ -1,14 +1,20 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
 import { userPluginInternals } from './user-inventory.mjs'
 
-function pluginEnvironment(dshHome, home = process.env.HOME ?? userInfo().homedir) {
-  return {
+const PACKAGE_PATH_ENVIRONMENT = new Set([
+  'npm_config_cache',
+  'npm_config_store_dir',
+  'npm_config_userconfig',
+  'pnpm_home',
+])
+
+function pluginEnvironment(dshHome, home = '/home/node') {
+  const environment = {
     ...process.env,
     HOME: home,
     XDG_CACHE_HOME: join(home, '.cache'),
@@ -16,6 +22,10 @@ function pluginEnvironment(dshHome, home = process.env.HOME ?? userInfo().homedi
     XDG_DATA_HOME: join(home, '.local', 'share'),
     DSH_HOME: dshHome,
   }
+  for (const name of Object.keys(environment)) {
+    if (PACKAGE_PATH_ENVIRONMENT.has(name.toLowerCase())) delete environment[name]
+  }
+  return environment
 }
 
 function runDshPlugin({ dshHome, profile, name }, timeoutMs = 300_000) {

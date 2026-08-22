@@ -48,6 +48,20 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
 })
 
+test('the public DSH shim keeps Profile operations under the node identity', async () => {
+  const script = await readFile(new URL('../tools/dsh-shim.sh', import.meta.url), 'utf8')
+  assert.match(script, /if \[ "\$\(id -u\)" -eq 0 \]/)
+  assert.match(script, /--reuid=1000/)
+  assert.match(script, /--regid=1000/)
+  assert.match(script, /--keep-groups/)
+  assert.match(script, /-u npm_config_userconfig/)
+  assert.match(script, /-u PNPM_HOME/)
+  assert.match(script, /HOME=\/home\/node/)
+  assert.match(script, /XDG_CONFIG_HOME=\/home\/node\/\.config/)
+  assert.match(script, /DSH_HOME="\$\{DSH_HOME:-\/data\/dsh\}"/)
+  assert.doesNotMatch(script, /HOME=\/root|XDG_CONFIG_HOME=\/root/)
+})
+
 test('managed lifecycle smoke rejects replacement instances and converts SIGTERM into restart', async () => {
   const script = await readFile(new URL('../../test/managed-lifecycle-restart-smoke.mjs', import.meta.url), 'utf8')
   assert.match(script, /spawn\(DSH_EXECUTABLE, \['web', '--no-open'\]/)
