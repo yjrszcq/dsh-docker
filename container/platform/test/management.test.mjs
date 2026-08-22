@@ -208,6 +208,9 @@ test('management exposes validated User Skill tasks only on the standalone API',
     const task = await client.request('POST', `${API_PREFIX}user-skills/action`, { entryId, revision, action: 'disable' })
     assert.match(task.taskId, /^[0-9a-f-]{36}$/)
     await assert.rejects(client.request('POST', `${API_PREFIX}restart-dsh`), error => error.statusCode === 409)
+    await assert.rejects(client.request('POST', `${API_PREFIX}user-skills/action`, {
+      entryId, revision, action: 'disable',
+    }), error => error.statusCode === 409)
     complete()
     let status
     for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {

@@ -249,6 +249,13 @@ test('DSH Platform Management uses only its restricted API without a console ses
     assert.equal(privileged.status, 404)
     assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
 
+    const userSkills = await request(port, {
+      path: '/_dsh_platform/plugin-api/v1/user-skills',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(userSkills.status, 404)
+    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+
     const consoleApi = await request(port, {
       path: '/_dsh_platform/api/v1/status',
       headers: { host: '127.0.0.1' },
