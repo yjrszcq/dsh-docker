@@ -11,6 +11,8 @@ Use the least invasive source of truth that can answer the question:
 5. Use the standalone Management Console for recovery actions, Root file inspection, or a terminal explicitly requested by the user.
 6. Inspect platform implementation files only when the user explicitly asks to debug or develop dsh-docker itself.
 
+For a restart failure immediately after plugin removal, first look for `cannot resolve profile bundle` in the structured DSH Runtime logs. A current managed startup repairs legacy orphaned Bundle references automatically; verify the subsequent lifecycle terminal state before escalating. Do not bypass that repair by editing the Web Profile manifest or lockfile directly.
+
 Stop once the cause is established. Do not enumerate Seed trees, runtime packages, sockets, process environments, or supervisor source as a substitute for trying the public operation.
 
 ## Protected trust boundary

@@ -32,6 +32,8 @@ When this command is run by an Agent inside a DSH session, submit the asynchrono
 
 The standalone Management Console can disable or uninstall a faulty Web Profile Bundle while DSH is down. It deliberately manages only DSH bundle plugins, not arbitrary dependencies or hand-written Cordis patch entries.
 
+If a plugin tool reports a successful removal but DSH then fails with `cannot resolve profile bundle`, inspect public DSH Runtime logs and restart once through `dsh-platform restart`. An authorized Web startup atomically removes only an orphaned Bundle which is no longer a declared dependency and cannot be resolved from the Profile or DSH installation. Do not hand-edit `package.json`, the lockfile, or `dsh.profile.bundles`; if the managed repair does not restore readiness, use User Plugin recovery in the standalone Management Console.
+
 ## System Plugins
 
 System Plugins are signed resources supplied by the current DSH Docker Environment. Manage them through **System Plugins** in Platform Management or the standalone Management Console. Do not install, delete, or impersonate `@dsh-docker/*` packages through the normal user-plugin CLI.

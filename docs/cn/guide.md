@@ -398,6 +398,8 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 启用、禁用和卸载会先积累为当前页面内的草稿。提交时，Management 会幂等暂停 DSH、为完整 Web Profile 创建快照、执行精确操作、校验结果，然后只重启 DSH。提交前刷新或离开页面会丢弃草稿；revision 冲突时会重新读取清单，不会覆盖并发修改。commit 前中断会恢复快照；commit 后即使 DSH 仍启动失败，也会保留本次插件修改，方便连续处理多个故障插件。此处不提供安装功能；请使用 DSH 正常插件流程或独立终端安装。
 
+旧版 DSH 或第三方插件工具可能只删除插件包，却把已经无法解析的条目留在 `dsh.profile.bundles`。每次经过授权的 Web Profile 启动前，受管 Runtime 会原子清理“已经不是 dependency，且无法从 Profile 或 DSH 安装中解析”的孤儿条目；内置 Bundle、仍声明的 dependency 和仍可解析的本地 Bundle 都会保留。修复结果会写入 DSH Runtime 日志。遇到这种旧数据时应使用当前镜像重启，不要手工改写 Profile 清单。
+
 ### 容器终端
 
 “容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录取自 `DSH_DEFAULT_WORKSPACE`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
