@@ -486,7 +486,13 @@ export function createManagementServer({
         send(response, 200, result)
       } else if (request.method === 'GET' && route === 'files/stat') {
         if (fileInventory === undefined) throw new Error('file management is not configured')
-        const result = await fileInventory.stat(url.searchParams.get('path'))
+        let result
+        try {
+          result = await fileInventory.stat(url.searchParams.get('path'))
+        } catch (error) {
+          if (url.searchParams.get('optional') !== 'true' || error?.statusCode !== 404) throw error
+          return send(response, 200, null)
+        }
         await recordAudit('files.stat.completed', { path: result.path, type: result.type })
         send(response, 200, result)
       } else if (request.method === 'GET' && route === 'files/content') {

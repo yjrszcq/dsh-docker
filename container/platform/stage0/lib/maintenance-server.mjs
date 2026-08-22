@@ -157,7 +157,12 @@ export async function createMaintenanceServer({
         })
         send(response, 200, result)
       } else if (request.method === 'GET' && route === 'files/stat') {
-        send(response, 200, await inventory.stat(url.searchParams.get('path')))
+        try {
+          send(response, 200, await inventory.stat(url.searchParams.get('path')))
+        } catch (error) {
+          if (url.searchParams.get('optional') !== 'true' || error?.statusCode !== 404) throw error
+          send(response, 200, null)
+        }
       } else if (request.method === 'GET' && route === 'files/content') {
         send(response, 200, await inventory.content(url.searchParams.get('path')))
       } else if (request.method === 'PUT' && route === 'files/content') {

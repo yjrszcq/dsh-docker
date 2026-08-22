@@ -2248,16 +2248,19 @@ async function uploadFiles(values) {
     for (const segment of directory ? segments : segments.slice(0, -1)) {
       parent = parent === '/' ? `/${segment}` : `${parent}/${segment}`
       try {
-        const existing = await api(`files/stat?path=${encodeURIComponent(parent)}`)
-        if (existing.type !== 'directory') throw new Error(`${parent}: ${t('operationFailed')}`)
-      } catch (error) {
-        if (error.statusCode !== 404) { showError(error); stopped = true; break }
+        const existing = await api(`files/stat?path=${encodeURIComponent(parent)}&optional=true`)
+        if (existing !== null && existing.type !== 'directory') throw new Error(`${parent}: ${t('operationFailed')}`)
+        if (existing !== null) continue
         const created = await runFileTask({ operation: 'mkdir', destination: parent })
         if (created?.status !== 'success') {
           fileOperationMessage(created?.error ?? t('operationFailed'), true)
           stopped = true
           break
         }
+      } catch (error) {
+        showError(error)
+        stopped = true
+        break
       }
     }
     if (stopped) break

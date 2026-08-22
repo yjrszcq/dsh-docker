@@ -1751,6 +1751,7 @@ test('management exposes authenticated file inventory, search, upload, and range
     const encodedRoot = encodeURIComponent(files)
     const listed = await client.request('GET', `${API_PREFIX}files/list?path=${encodedRoot}`)
     assert.deepEqual(listed.entries.map(entry => entry.name), ['alpha.txt'])
+    assert.equal(await client.request('GET', `${API_PREFIX}files/stat?path=${encodeURIComponent(join(files, 'missing'))}&optional=true`), null)
     const content = await client.request('GET', `${API_PREFIX}files/content?path=${encodeURIComponent(join(files, 'alpha.txt'))}`)
     assert.equal(content.content, '0123456789')
     const saved = await client.request('PUT', `${API_PREFIX}files/content`, {
