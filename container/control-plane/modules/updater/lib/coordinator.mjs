@@ -3,14 +3,8 @@ import { EventEmitter } from 'node:events'
 import { recoverInterruptedUpdate } from './recovery.mjs'
 import { planDesiredState } from './channel-state.mjs'
 import { compareDshVersions } from '../../../../platform/lib/supported-target.mjs'
-import { MetadataUnavailableError } from './metadata.mjs'
 
 export class UpdateConflictError extends Error {}
-
-function unavailableDevelopmentMetadata(error) {
-  return error instanceof MetadataUnavailableError
-    || (error?.code === 'TRUST_UNKNOWN_KEY' && error?.localApiPath === '/v1/keyring')
-}
 
 export class UpdateCoordinator extends EventEmitter {
   constructor({
@@ -88,6 +82,7 @@ export class UpdateCoordinator extends EventEmitter {
   async runCheck(source) {
     await this.transition('checking', { checkSource: source, error: null })
     try {
+      if (this.allowUnavailableMetadata) return await this.recordUnavailableMetadata(source)
       if (this.channelState !== undefined) {
         const plan = await this.desiredState()
         const rollbackPlan = await this.rollbackPlan()
@@ -136,24 +131,25 @@ export class UpdateCoordinator extends EventEmitter {
       })
       return target
     } catch (error) {
-      if (this.allowUnavailableMetadata && unavailableDevelopmentMetadata(error)) {
-        const local = await this.channelState?.read()
-        const upstream = local?.updateChannel === 'experimental' && this.npm !== undefined
-          ? await this.bestEffort('update.upstream-discovery.failed', () => this.npm.discover(), null, { checkSource: source })
-          : null
-        await this.transition('idle', {
-          metadataUnavailable: true,
-          ...(upstream === null ? {} : { upstream }),
-          updateAvailable: false,
-          checkedAt: this.now().toISOString(),
-          error: null,
-        })
-        return { unavailable: true, upstream }
-      }
       await this.record('update.check.failed', { error, checkSource: source })
       await this.transition('failed', { error: error instanceof Error ? error.message : 'update check failed' })
       throw error
     }
+  }
+
+  async recordUnavailableMetadata(source) {
+    const local = await this.channelState?.read()
+    const upstream = local?.updateChannel === 'experimental' && this.npm !== undefined
+      ? await this.bestEffort('update.upstream-discovery.failed', () => this.npm.discover(), null, { checkSource: source })
+      : null
+    await this.transition('idle', {
+      metadataUnavailable: true,
+      ...(upstream === null ? {} : { upstream }),
+      updateAvailable: false,
+      checkedAt: this.now().toISOString(),
+      error: null,
+    })
+    return { unavailable: true, upstream }
   }
 
   start() {

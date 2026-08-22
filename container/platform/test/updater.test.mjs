@@ -266,8 +266,9 @@ test('reports unpublished metadata only for development images', async () => {
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
   const channelState = new ChannelStateStore(join(root, 'state', 'channel.json'))
   await channelState.setChannel('experimental')
+  let metadataChecks = 0
   const coordinator = new UpdateCoordinator({
-    metadata: { check: async () => { throw new MetadataUnavailableError() } },
+    metadata: { check: async () => { metadataChecks += 1; throw new MetadataUnavailableError() } },
     npm: { discover: async () => ({ version: '0.1.0-rc.10' }) },
     preparer: {}, activator: {}, state, channelState,
     allowUnavailableMetadata: true,
@@ -277,6 +278,7 @@ test('reports unpublished metadata only for development images', async () => {
     unavailable: true,
     upstream: { version: '0.1.0-rc.10' },
   })
+  assert.equal(metadataChecks, 0)
   const persisted = await state.read()
   assert.equal(persisted.status, 'idle')
   assert.equal(persisted.error, null)
@@ -284,18 +286,20 @@ test('reports unpublished metadata only for development images', async () => {
   assert.deepEqual(persisted.upstream, { version: '0.1.0-rc.10' })
 })
 
-test('treats a Recovery root mismatch as unavailable only for development images', async () => {
+test('development images skip foreign Recovery roots while formal images reject them', async () => {
   const mismatch = Object.assign(new Error('keyring signature key is not trusted'), {
     code: 'TRUST_UNKNOWN_KEY',
     localApiPath: '/v1/keyring',
   })
   const developmentRoot = await mkdtemp(join(tmpdir(), 'dsh-development-root-mismatch-'))
+  let developmentMetadataChecks = 0
   const development = new UpdateCoordinator({
-    metadata: { check: async () => { throw mismatch } },
+    metadata: { check: async () => { developmentMetadataChecks += 1; throw mismatch } },
     preparer: {}, activator: {}, state: new UpdateStateStore(join(developmentRoot, 'state', 'update.json')),
     allowUnavailableMetadata: true,
   })
   assert.deepEqual(await development.check(), { unavailable: true, upstream: null })
+  assert.equal(developmentMetadataChecks, 0)
   assert.equal((await development.state.read()).metadataUnavailable, true)
 
   const targetError = Object.assign(new Error('target signature key is not trusted'), {
@@ -306,7 +310,6 @@ test('treats a Recovery root mismatch as unavailable only for development images
   const invalidTarget = new UpdateCoordinator({
     metadata: { check: async () => { throw targetError } },
     preparer: {}, activator: {}, state: new UpdateStateStore(join(targetRoot, 'state', 'update.json')),
-    allowUnavailableMetadata: true,
   })
   await assert.rejects(invalidTarget.check(), /target signature key is not trusted/)
 
