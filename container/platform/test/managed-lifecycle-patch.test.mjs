@@ -77,6 +77,7 @@ test('gates only managed Web launches and routes restart through Management', as
   const runRoot = await mkdtemp(join(tmpdir(), 'dsh-managed-lifecycle-run-'))
   const calls = []
   let claimStatus = 200
+  let disposition = 'request-restart'
   let lifecycleState = 'running'
   const broker = await listen(join(runRoot, 'dsh-lifecycle.sock'), async (request, response) => {
     const chunks = []
@@ -84,7 +85,7 @@ test('gates only managed Web launches and routes restart through Management', as
     calls.push({ socket: 'broker', path: request.url, body: JSON.parse(Buffer.concat(chunks)) })
     if (claimStatus !== 200) json(response, claimStatus, { error: 'launch already claimed' })
     else if (request.url === '/v1/runtime/claim') json(response, 200, { sessionId: 'session-1' })
-    else json(response, 200, { disposition: 'request-restart' })
+    else json(response, 200, { disposition })
   })
   const management = await listen(join(runRoot, 'management.sock'), (request, response) => {
     calls.push({ socket: 'management', path: request.url })
@@ -100,6 +101,7 @@ test('gates only managed Web launches and routes restart through Management', as
   try {
     const adapter = await import(`${pathToFileURL(join(root, MANAGED_LIFECYCLE_MODULE)).href}?authorized`)
     assert.equal(await adapter.prepareManagedInvocation({ mode: 'plugin', profile: 'web' }), null)
+    assert.equal(calls.length, 0)
     assert.equal(await adapter.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), null)
     assert.equal(process.env.DSH_PLATFORM_LAUNCH_TOKEN, undefined)
     let provided
@@ -118,13 +120,27 @@ test('gates only managed Web launches and routes restart through Management', as
     onSigterm()
     assert.equal(interrupts, 1)
 
+    disposition = 'terminate'
+    let terminationInterrupts = 0
+    const managementCalls = calls.filter(value => value.path?.endsWith('/restart-dsh')).length
+    adapter.managedSigtermHandler(() => { terminationInterrupts += 1 })()
+    for (let attempt = 0; attempt < 50 && terminationInterrupts === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(terminationInterrupts, 1)
+    assert.equal(calls.filter(value => value.path?.endsWith('/restart-dsh')).length, managementCalls)
+
     claimStatus = 409
+    disposition = 'request-restart'
     const duplicate = await import(`${pathToFileURL(join(root, MANAGED_LIFECYCLE_MODULE)).href}?duplicate`)
     assert.equal(await duplicate.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), 0)
     lifecycleState = 'stopped'
     const stopped = await import(`${pathToFileURL(join(root, MANAGED_LIFECYCLE_MODULE)).href}?stopped`)
     assert.equal(await stopped.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), 0)
     assert.equal(calls.some(value => value.path?.endsWith('/start-dsh')), true)
+    lifecycleState = 'failed'
+    const failed = await import(`${pathToFileURL(join(root, MANAGED_LIFECYCLE_MODULE)).href}?failed`)
+    assert.equal(await failed.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), 1)
   } finally {
     for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name]
