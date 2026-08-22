@@ -237,6 +237,7 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 /run/dsh-platform/
 ├── stage0-trust.sock
 ├── bootstrap.sock
+├── dsh-lifecycle.sock
 ├── management.sock
 ├── maintenance.sock
 ├── gateway-access.sock
@@ -265,7 +266,7 @@ For routine backups, preserve `/data/dsh` and `/data/platform/state`. Compose st
 
 ## Gateway
 
-The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values.
+The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values. Before forwarding to DSH, Gateway also removes external `Forwarded`, every `X-Forwarded-*`, and `X-Real-IP` header. An outer proxy such as OpenResty therefore cannot make same-origin DSH plugins mistake the trusted Gateway hop for an untrusted proxy. Management routes retain those forwarding headers, and the original external request still passes every Gateway security check.
 
 Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
 
@@ -347,6 +348,10 @@ Automatic checks default to every six hours with jitter and can be disabled or r
 The standalone console and `dsh-platform start|stop|restart` control only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running. An explicit stop lasts until DSH is started again or the container itself restarts. Lifecycle operations are mutually exclusive with update activation, rollback, Runtime reset, and plugin transactions.
 
 The CLI returns a task ID immediately by default. Agents operating through the current DSH session must use asynchronous `dsh-platform restart` and must not use `restart --wait` or `stop --wait`, because stopping DSH also interrupts that tool transport. `--wait` remains appropriate for `docker exec`, the standalone console terminal, and external automation.
+
+Before each Web Profile launch, Bootstrap issues a one-time token and binds the supervised instance through the internal Broker at `/run/dsh-platform/dsh-lifecycle.sock`. A manual command or third-party helper that runs `dsh web` again cannot create a second instance. It submits a formal start task when DSH is stopped; reports the current state and exits while DSH is running, starting, restarting, recovering, or owned by another platform transaction; and directs the user to the standalone console in failed/recovery mode. Tokens and sessions are never written to logs, persistent state, or Deployment Records.
+
+When the supervised DSH receives a first `SIGTERM` that was not registered by the platform, it asks the Broker for disposition and submits a formal asynchronous restart through Management. The browser can therefore show **Restarting DSH**, while any detached replacement created in advance remains unable to bypass the single-instance gate. During an explicit Bootstrap stop, restart, switch, or container shutdown, the Broker instead tells DSH to terminate gracefully so no duplicate task is registered. A second `SIGTERM`, request timeout, or unavailable Control Plane falls back to the original graceful exit and bounded Bootstrap recovery. `process.exit()`, uncaught exceptions, and `SIGKILL` remain unexpected exits and are never presented as normal restarts.
 
 Before a registered operation disconnects DSH, open browser pages move to a localized holding page. The page distinguishes starting, stopping, stopped, restarting, unexpected recovery, Runtime switching/recovery, and startup failure, then returns to the original same-origin path after readiness. A brief transport interruption is verified through Gateway readiness before navigation. API and WebSocket requests continue receiving `503`; unknown proxy failures remain `502`.
 

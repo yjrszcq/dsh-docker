@@ -237,6 +237,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 /run/dsh-platform/
 ├── stage0-trust.sock
 ├── bootstrap.sock
+├── dsh-lifecycle.sock
 ├── management.sock
 ├── maintenance.sock
 ├── gateway-access.sock
@@ -265,7 +266,7 @@ current Deployment 资产无法解析、Patch 校验失败或 DSH 启动失败�
 
 ## Gateway
 
-Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。
+Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。转发到 DSH 前还会移除外部 `Forwarded`、`X-Forwarded-*` 和 `X-Real-IP`，因此 OpenResty 等外层代理不会被 DSH 内的同源插件误判为不可信代理；Management 路由仍保留这些转发信息。原始外部请求的安全检查不会因此绕过。
 
 官方 DSH 根据公开 hostname 判断浏览器是否为 loopback，并可能在非 loopback 页面禁用 Host 侧设置。一个精确匹配补丁会将 Gateway 已放行的浏览器标记为 loopback，与转发给上游的 authority 保持一致。上游服务端特权 API 实现不作修改。
 
@@ -347,6 +348,10 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 独立管理中心和 `dsh-platform start|stop|restart` 只控制 `dsh-runtime`，Bootstrap、Gateway、Management 和容器保持运行。主动停止只持续到再次启动 DSH 或容器自身重启。生命周期操作与更新激活、回滚、Runtime 重置和插件事务互斥。
 
 CLI 默认立即返回任务 ID。通过当前 DSH 会话操作的 Agent 必须使用异步 `dsh-platform restart`，不得使用 `restart --wait` 或 `stop --wait`，因为停止 DSH 也会中断本次工具传输。`--wait` 仍适用于 `docker exec`、独立管理中心终端和外部自动化。
+
+Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存在于 `/run/dsh-platform/dsh-lifecycle.sock` 的内部 Broker 绑定当前受监督实例。手工命令或第三方 helper 再次执行 `dsh web` 时不能取得第二个实例：DSH 已停止时会提交正式启动任务；运行中、启动中、重启中、恢复中或平台事务占用生命周期时只报告当前状态并退出；failed/recovery mode 则明确引导到独立管理中心。令牌和 Session 不写入日志、持久状态或 Deployment Record。
+
+当前受监督 DSH 收到平台未登记的第一次 `SIGTERM` 时，会先向 Broker 查询处置，再通过 Management 提交正式异步重启。浏览器因此进入“正在重新启动 DSH”页面，第三方提前创建的 detached 替代进程也无法绕过单实例门禁。Bootstrap 主动停止、重启、切换或关闭容器时，Broker 会要求 DSH 直接优雅退出，避免重复登记任务。第二次 `SIGTERM`、请求超时或 Control Plane 不可用时也会执行原有退出，由 Bootstrap 的有限恢复兜底；`process.exit()`、未捕获异常和 `SIGKILL` 仍按意外退出处理，不伪装成正常重启。
 
 已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。短暂连接中断会先通过 Gateway readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，未分类代理故障仍返回 `502`。
 

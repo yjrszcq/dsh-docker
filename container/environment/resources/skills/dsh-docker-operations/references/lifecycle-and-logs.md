@@ -26,6 +26,8 @@ dsh-platform restart
 
 An explicit stop lasts only for the current container lifetime. An unexpected DSH exit is recovered at most three times; check `dshLifecycle` and `recoveryMode` rather than repeatedly sending restart commands.
 
+The container admits only the Bootstrap-supervised Web Profile. Do not launch a replacement with `dsh web`: when DSH is stopped that command delegates to the public start operation, and otherwise it reports the managed state without creating a second instance. An unregistered first `SIGTERM` is converted into a public asynchronous restart, but this compatibility behavior is not a reason to signal the process directly.
+
 Do not send signals to DSH, kill its PID, invoke Bootstrap sockets, or restart the whole container unless the user specifically requested that broader action. During a registered lifecycle operation, browser navigation enters the localized holding page and returns to the original same-origin path after readiness; API and WebSocket requests receive `503`.
 
 Docker health represents DSH HTTP readiness through the Gateway's internal health path. Stage-0 or Management being alive is not sufficient for a healthy container.
