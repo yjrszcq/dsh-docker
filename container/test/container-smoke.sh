@@ -463,16 +463,12 @@ docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"files.attributes.completed"' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
-attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+if docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
-  | jq -e 'any(.entries[]; .message == "gateway.upstream.failed" and .upstream == "dsh")' >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 50 ] || exit 1
-  sleep 0.1
-done
-docker logs "$container" 2>&1 \
-  | grep -E '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
+  | jq -e 'any(.entries[]; .message == "gateway.upstream.failed" and .upstream == "dsh")' >/dev/null; then
+  echo "explicit DSH stop was reported as an upstream failure" >&2
+  exit 1
+fi
 managed_start_output="$(docker exec --user node "$container" dsh web --no-open)"
 printf '%s\n' "$managed_start_output" | grep -F 'requested managed DSH start' >/dev/null
 start_task="$(printf '%s\n' "$managed_start_output" | sed -n 's/.*(task \([^)]*\)).*/\1/p')"
@@ -489,16 +485,12 @@ done
 docker exec "$container" curl --fail --silent http://127.0.0.1:3079/ >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
-attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+if docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
-  | jq -e 'any(.entries[]; .message == "gateway.upstream.recovered" and .upstream == "dsh")' >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 50 ] || exit 1
-  sleep 0.1
-done
-docker logs "$container" 2>&1 \
-  | grep -E '"source":"gateway".*"message":"gateway.upstream.recovered"' >/dev/null
+  | jq -e 'any(.entries[]; .message == "gateway.upstream.recovered" and .upstream == "dsh")' >/dev/null; then
+  echo "explicit DSH start was reported as outage recovery" >&2
+  exit 1
+fi
 
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-recovery-smoke.mjs \
