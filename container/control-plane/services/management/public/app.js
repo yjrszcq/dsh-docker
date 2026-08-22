@@ -538,7 +538,7 @@ function renderSystemSkills(values, busy) {
       button.className = className
       button.textContent = label
       button.disabled = busy
-      button.addEventListener('click', () => { void act('system-skills/action', { method: 'POST', body: { skillId: skill.id, action } }) })
+      button.addEventListener('click', () => { void runSkillTask('system-skills/action', { skillId: skill.id, action }, 'systemSkillOperation') })
       return button
     }
     if (!skill.installed) controls.append(actionButton(t('installPlugin'), 'install', 'primary'))
@@ -550,7 +550,10 @@ function renderSystemSkills(values, busy) {
       checkbox.checked = skill.enabled
       checkbox.disabled = busy
       checkbox.addEventListener('change', event => {
-        void act('system-skills/action', { method: 'POST', body: { skillId: skill.id, action: event.target.checked ? 'enable' : 'disable' } })
+        void runSkillTask('system-skills/action', {
+          skillId: skill.id,
+          action: event.target.checked ? 'enable' : 'disable',
+        }, 'systemSkillOperation')
       })
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
@@ -584,11 +587,9 @@ async function runUserSkillAction(skill, action) {
     })
     if (!confirmed) return
   }
-  const changed = await act('user-skills/action', {
-    method: 'POST',
-    body: { entryId: skill.entryId, revision: userSkillInventory.revision, action },
-  })
-  if (changed) await loadInventories()
+  await runSkillTask('user-skills/action', {
+    entryId: skill.entryId, revision: userSkillInventory.revision, action,
+  }, 'userSkillOperation')
 }
 
 function renderUserSkills(busy) {
@@ -986,6 +987,51 @@ async function act(path, options) {
     showError(error)
     return false
   } finally {
+    acting = false
+    if (status !== undefined) render(status)
+  }
+}
+
+async function refreshInventories() {
+  if (inventoryLoad !== undefined) await inventoryLoad
+  await loadInventories()
+}
+
+async function waitForManagementTask(taskId, operationKey) {
+  let lastError
+  for (let attempt = 0; attempt < 2_400; attempt += 1) {
+    try {
+      const next = await api('status')
+      render(next)
+      setConnection('online')
+      const operation = next?.[operationKey]
+      if (operation?.taskId === taskId && operation.status !== 'running') return operation
+      lastError = undefined
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 250))
+  }
+  throw lastError ?? new Error('Management task timed out')
+}
+
+async function runSkillTask(path, body, operationKey) {
+  if (acting) return false
+  acting = true
+  clearError()
+  if (status !== undefined) render(status)
+  try {
+    const task = await api(path, { method: 'POST', body })
+    visibleOperationTasks.add(task.taskId)
+    const operation = await waitForManagementTask(task.taskId, operationKey)
+    if (operation.status !== 'success') throw new Error(operation.error ?? 'Skill operation failed')
+    return true
+  } catch (error) {
+    showError(error)
+    return false
+  } finally {
+    await refreshInventories()
+    await loadStatus()
     acting = false
     if (status !== undefined) render(status)
   }
