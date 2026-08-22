@@ -221,8 +221,8 @@ The source tree follows the same boundary:
 - `container/control-plane/services/`: persistent Gateway and Management processes.
 - `container/control-plane/hooks/`: supervised one-shot recovery work.
 - `container/control-plane/modules/`: updater, logging, patch, System Plugin, and System Skill logic.
-- `container/control-plane/skills/`: signed, Bootstrap-bundled System Skill catalogs and instruction trees.
-- `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,system-plugins}`.
+- `container/environment/resources/system-skills/`: Environment-owned System Skill catalogs and instruction trees, mapped into the signed Bootstrap package for trusted runtime management.
+- `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,system-plugins,system-skills}`.
 
 ### Platform Data and Runtime Resolution
 

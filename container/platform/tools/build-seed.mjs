@@ -94,7 +94,11 @@ if (imageInput !== undefined) {
     )
   }
   await cp(join(containerRoot, 'control-plane', 'hooks'), join(bootstrapRoot, 'control-plane', 'hooks'), { recursive: true })
-  await cp(join(containerRoot, 'control-plane', 'skills'), join(bootstrapRoot, 'control-plane', 'skills'), { recursive: true })
+  await cp(
+    join(containerRoot, 'environment', 'resources', 'system-skills'),
+    join(bootstrapRoot, 'control-plane', 'skills'),
+    { recursive: true },
+  )
   await cp(join(containerRoot, 'control-plane', 'definition.json'), join(bootstrapRoot, 'control-plane', 'definition.json'))
   const packaged = spawnSync(process.execPath, [
     join(platformRoot, 'tools', 'package-environment.mjs'),
