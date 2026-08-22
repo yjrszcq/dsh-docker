@@ -417,22 +417,36 @@ dsh_pid="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runt
 docker exec "$container" kill -9 "$dsh_pid"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
-  | grep -F 'DSH Management Console' >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 20 ] || exit 1
-  sleep 0.1
-done
-attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
-  | jq -e '.recoveryMode != null' >/dev/null; do
+  | jq -e '.dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null \
+  && [ "$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')" != "$dsh_pid" ]; do
   attempt=$((attempt + 1))
-  [ "$attempt" -lt 50 ] || exit 1
+  [ "$attempt" -lt 100 ] || exit 1
   sleep 0.1
 done
 [ "$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
 [ "$(docker inspect --format '{{.RestartCount}}' "$container")" = 0 ]
+
+stop_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --request POST \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/stop-dsh | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$stop_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "stopped"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || exit 1
+  sleep 0.1
+done
+sleep 1
+if docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web' >/dev/null; then
+  echo "DSH recovered after an explicit stop" >&2
+  exit 1
+fi
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' \
+  'http://127.0.0.1:3080/_dsh_gateway/wait?return=%2Fsessions%2Fcurrent' \
+  | grep -F 'DeepSeek Harness is stopped' >/dev/null
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-file-management-smoke.mjs \
   | jq -e '.range == "3456" and .searched >= 2 and .attributes == 488 and .dshUnavailable == true' >/dev/null
@@ -456,13 +470,13 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker logs "$container" 2>&1 \
   | grep -E '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
-restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+start_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --request POST \
-  http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
+  http://127.0.0.1:3080/_dsh_platform/api/v1/start-dsh | jq -r .taskId)"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
-  | jq -e --arg task "$restart_task" \
+  | jq -e --arg task "$start_task" \
     '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 100 ] || exit 1
@@ -602,12 +616,21 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check >/dev/null
 docker exec --user node "$container" sh -c 'printf platform > /data/platform/state/updater/smoke && printf home > /data/dsh/smoke'
+stop_task="$(docker exec "$container" dsh-platform stop | jq -r .taskId)"
+attempt=0
+until docker exec "$container" dsh-platform status \
+  | jq -e --arg task "$stop_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "stopped"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.2
+done
 docker restart "$container" >/dev/null
 startup_three="$(wait_platform_ready)"
 docker exec "$container" sh -c '[ "$(cat /data/platform/state/updater/smoke)" = platform ] && [ "$(cat /data/dsh/smoke)" = home ]'
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
-  | jq -e '.automaticCheck == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' >/dev/null
+  | jq -e '.automaticCheck == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}
+    and .dshLifecycle.state == "running"' >/dev/null
 echo "Cold readiness (ms): $startup_one, $startup_two, $startup_three"
 
 docker exec "$container" dsh-platform channel experimental >/dev/null

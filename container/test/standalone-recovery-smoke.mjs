@@ -82,7 +82,8 @@ async function waitTask(kind, taskId, expected) {
   return waitFor(async () => {
     const status = await request('GET', `${API}status`)
     const operation = status[kind]
-    return operation?.taskId === taskId && expected.includes(operation.status) ? operation : false
+    const operationState = operation?.status ?? operation?.state
+    return operation?.taskId === taskId && expected.includes(operationState) ? operation : false
   }, `${kind} ${taskId}`)
 }
 
