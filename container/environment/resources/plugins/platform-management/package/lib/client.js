@@ -30,7 +30,27 @@ const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
 const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
 
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'connection']
+
+const LIFECYCLE_WAIT_PATH = '/_dsh_gateway/wait'
+const LIFECYCLE_READINESS_PATH = '/_dsh_gateway/readiness'
+const CONNECTION_LOSS_GRACE_MS = 1_000
+const READINESS_RETRY_MS = 500
+
+function requiresLifecycleHoldingPage(status) {
+  if (['restarting', 'recovering', 'restart-failed'].includes(status?.operation)) return true
+  if (['snapshotting-data', 'switching', 'probation', 'restoring-data'].includes(status?.update?.status)) return true
+  return ['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed']
+    .includes(status?.dshLifecycle?.state)
+}
+
+function lifecycleReturnPath(locationValue = window.location) {
+  return `${locationValue.pathname}${locationValue.search}${locationValue.hash}`
+}
+
+function lifecycleWaitUrl(locationValue = window.location) {
+  return `${LIFECYCLE_WAIT_PATH}?return=${encodeURIComponent(lifecycleReturnPath(locationValue))}`
+}
 
 function display(value) {
   return value === undefined || value === null || value === '' ? '-' : String(value)
@@ -521,6 +541,82 @@ function UpdateReminder({ t }) {
     h('div', { className: css.reminderActions },
       h('button', { type: 'button', onClick: () => dismiss(false) }, t('later')),
       h('button', { type: 'button', onClick: () => dismiss(true) }, t('dismissVersion'))))
+}
+
+function LifecycleGuard({ connection }) {
+  useEffect(() => {
+    let stopped = false
+    let navigating = false
+    let hadConnection = connection.hostDescription.getSnapshot() !== undefined
+    let graceTimer
+    let retryTimer
+    let events
+
+    const clearTimers = () => {
+      window.clearTimeout(graceTimer)
+      window.clearTimeout(retryTimer)
+      graceTimer = undefined
+      retryTimer = undefined
+    }
+    const navigate = () => {
+      if (stopped || navigating || window.location.pathname === LIFECYCLE_WAIT_PATH) return
+      navigating = true
+      window.location.replace(lifecycleWaitUrl())
+    }
+    const scheduleReadiness = () => {
+      if (stopped || retryTimer !== undefined) return
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined
+        void verifyReadiness()
+      }, READINESS_RETRY_MS)
+    }
+    const verifyReadiness = async () => {
+      if (stopped || connection.hostDescription.getSnapshot() !== undefined) return
+      try {
+        const response = await fetch(LIFECYCLE_READINESS_PATH, {
+          headers: { accept: 'application/json' },
+          cache: 'no-store',
+        })
+        if (response.status === 503) {
+          const value = await response.json().catch(() => ({}))
+          if (value.state !== undefined && value.state !== 'unknown') navigate()
+          else scheduleReadiness()
+          return
+        }
+      } catch {}
+      scheduleReadiness()
+    }
+    const inspectPlatformState = async () => {
+      try {
+        if (requiresLifecycleHoldingPage(await request('status'))) navigate()
+      } catch {}
+    }
+    const connectionChanged = () => {
+      if (connection.hostDescription.getSnapshot() !== undefined) {
+        hadConnection = true
+        clearTimers()
+        return
+      }
+      if (!hadConnection || graceTimer !== undefined) return
+      graceTimer = window.setTimeout(() => {
+        graceTimer = undefined
+        void verifyReadiness()
+      }, CONNECTION_LOSS_GRACE_MS)
+    }
+
+    const unsubscribe = connection.hostDescription.subscribe(connectionChanged)
+    events = new EventSource(`${API}/events`)
+    events.addEventListener('state', () => { void inspectPlatformState() })
+    void inspectPlatformState()
+    connectionChanged()
+    return () => {
+      stopped = true
+      clearTimers()
+      unsubscribe()
+      events.close()
+    }
+  }, [connection])
+  return null
 }
 
 function SystemPluginManager({ plugins, operation, busy, error, onAction, onRestart, restartBusy, t }) {
@@ -1096,4 +1192,9 @@ export function apply(ctx) {
     order: 90,
     locale: 'settings.dshPlatformManagement',
   }, UpdateReminder))
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-platform-lifecycle-guard',
+    order: -100,
+  }, () => h(LifecycleGuard, { connection: ctx.connection })))
 }
