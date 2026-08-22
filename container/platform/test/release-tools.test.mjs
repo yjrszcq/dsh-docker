@@ -232,7 +232,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
   assert.equal(stable.desired.dsh.version, supportedDshVersion)
-  assert.equal(stable.desired.environment.version, '1.0.2')
+  assert.equal(stable.desired.environment.version, '1.0.3')
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
@@ -245,7 +245,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     environmentDefinitionPath: new URL('../../environment/definition.json', import.meta.url).pathname,
   })
   assert.equal(verifiedImage.stable.targetSequence, 1)
-  assert.equal(verifiedImage.environment.manifest.version, '1.0.2')
+  assert.equal(verifiedImage.environment.manifest.version, '1.0.3')
 
   const imageInput = join(root, 'image-input')
   const seedOutput = join(root, 'formal-seed')

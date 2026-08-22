@@ -12,6 +12,7 @@ This guide expands the root [README](../../README.md) into a complete deployment
 - [Gateway](#gateway)
 - [Online Updates](#online-updates)
 - [System Plugins](#system-plugins)
+- [System Skills](#system-skills)
 - [Standalone Recovery Tools](#standalone-recovery-tools)
 - [Logs](#logs)
 - [Update Channels and Rollback](#update-channels-and-rollback)
@@ -31,7 +32,7 @@ This guide expands the root [README](../../README.md) into a complete deployment
 
 Use the Standard image for ordinary deployments. It includes the minimal compiler toolchain needed by native DSH plugin dependencies. The Devtools image adds broader diagnostics, editors, and other development utilities while using the same persistent data layout.
 
-Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `1.0.2`, `1.0`, and `1`, plus the DSH lookup tag `dsh-0.1.1-rc.1`; it never publishes Devtools tags.
+Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `1.0.3`, `1.0`, and `1`, plus the DSH lookup tag `dsh-0.1.1-rc.1`; it never publishes Devtools tags.
 
 ### Before You Start
 
@@ -182,6 +183,7 @@ Bootstrap Runtime (current / previous)
 │   │   ├── updater
 │   │   ├── patch-manager
 │   │   ├── system-plugin-manager
+│   │   ├── skill-manager
 │   │   ├── user-plugin-manager
 │   │   ├── log-manager
 │   │   └── file-manager
@@ -218,7 +220,8 @@ The source tree follows the same boundary:
 - `container/platform/`: Stage-0, Bootstrap, shared contracts, and release tools.
 - `container/control-plane/services/`: persistent Gateway and Management processes.
 - `container/control-plane/hooks/`: supervised one-shot recovery work.
-- `container/control-plane/modules/`: updater, logging, patch, and System Plugin logic.
+- `container/control-plane/modules/`: updater, logging, patch, System Plugin, and System Skill logic.
+- `container/control-plane/skills/`: signed, Bootstrap-bundled System Skill catalogs and instruction trees.
 - `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,system-plugins}`.
 
 ### Platform Data and Runtime Resolution
@@ -242,7 +245,7 @@ Persistent state and assets are deliberately separate from per-start runtime vie
 ├── deployments/
 ├── system-plugin-views/
 ├── deployment
-└── views/{bootstrap,environment,runtime,system-plugins}
+└── views/{bootstrap,environment,runtime,system-plugins,skills}
 ```
 
 `state` is authoritative selection, trust, and transaction state. `store` contains immutable Managed assets and rollback material and is reclaimed only when no slot, transaction, Hold, receipt, or snapshot refers to it. `cache` is disposable: `downloads` holds untrusted transfer data and `npm` reuses integrity-checked dependency downloads while constructing future Pristine DSH versions. `/run/dsh-platform` is rebuilt on every container start and must never be backed up or mounted as persistent data. `/data/dsh` remains a separate user-data volume.
@@ -316,7 +319,7 @@ When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge
 
 Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
 
-When `DSH_PROXY_PASSWORD` is empty, the standalone console's `/_dsh_platform/console/*` routes, full management API, SSE streams, and terminal WebSocket are protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. Platform Management inside DSH settings uses a separate restricted API and does not require a console session. That API exposes only the plugin's update, DSH restart, log, and System Plugin operations; it does not expose the container terminal, file manager, or User Plugin recovery. Anyone who can access the DSH page can therefore use those plugin operations.
+When `DSH_PROXY_PASSWORD` is empty, the standalone console's `/_dsh_platform/console/*` routes, full management API, SSE streams, and terminal WebSocket are protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. Platform Management inside DSH settings uses a separate restricted API and does not require a console session. That API exposes only the plugin's update, DSH restart, log, System Plugin, and System Skill operations; it does not expose the container terminal, file manager, or User Plugin recovery. Anyone who can access the DSH page can therefore use those plugin operations.
 
 When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
 
@@ -338,7 +341,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening its Updates tab performs a read-only check, while page-open and manual checks refresh the saved result without notifying. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, and System Plugin workflows.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening its Updates tab performs a read-only check, while page-open and manual checks refresh the saved result without notifying. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, System Plugin, and System Skill workflows.
 
 ### Runtime Maintenance
 
@@ -352,12 +355,22 @@ The Container Environment currently includes:
 
 | Plugin | Purpose |
 | --- | --- |
-| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, and System Plugin controls |
+| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugin, and System Skill controls |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 
 The standalone console lists every System Plugin bundled by the current Environment and can install, uninstall, enable, or disable them, including recovery of the `platform-management` DSH integration. The integration inside DSH shows missing plugins with an Install action and limits installed plugins to enable/disable; it cannot uninstall them. Changes are marked **Pending restart** and take effect only after restarting DSH. Refreshing before restart discards the pending draft. Installation rebuilds and verifies the complete System Plugin Set from the current Deployment's local trusted Environment Artifact against the Deployment Record content hash. It never contacts GitHub or npm, never copies files from a built Runtime, and never reinstalls a missing plugin automatically.
 
 The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
+
+## System Skills
+
+The signed Bootstrap includes `dsh-docker-operations`, an English machine-facing operations guide for the official container environment. Its compact `SKILL.md` routes the Agent to focused references covering identity and permissions, workspaces and development tools, DSH and extensions, lifecycle and logs, updates and recovery, networking and authentication, and ordered diagnostics. The guide instructs the Agent to answer in the user's language and to use `dsh`, `dsh-platform`, their current help, and the Management interfaces before inspecting platform implementation details. It explicitly forbids credential discovery, direct socket calls, manual Trust/Store/Runtime-view mutation, and package-manager environment overrides during ordinary operations.
+
+Bootstrap publishes enabled skills from its verified local bundle into `/run/dsh-platform/views/skills`, and DSH discovers that fixed root through `DSH_BUNDLED_SKILL_DIR`. System Skills use `id + SHA-256` identity and have no independent release version. Their selection is stored at `/data/platform/state/deployments/skills.json`; uninstalling removes only the active selection, so the signed Bootstrap copy remains available for offline reinstallation. No management action accepts a URL, path, uploaded body, or client-supplied hash.
+
+The standalone console lists every System Skill supplied by the current Bootstrap and supports install, uninstall, enable, and disable. Platform Management inside DSH can install a missing skill and enable or disable an installed one, but cannot uninstall it. All changes atomically update the stable skill view and are picked up by DSH's native filesystem watcher without restarting DSH. The same state survives container restarts, newly signed skills default to installed and enabled, and skills removed by a newer Bootstrap are pruned. Project and user skills retain DSH's native precedence over bundled skills; disabling a System Skill does not alter either override.
+
+`dsh-docker-operations` is model-discoverable and can also be invoked explicitly as `/dsh-docker-operations`. It applies to operating the installed environment, not to developing dsh-docker itself. Only an explicit platform-development or implementation-debugging request permits inspection of `/opt/dsh-platform` and `/run/dsh-platform` internals.
 
 ## Standalone Recovery Tools
 

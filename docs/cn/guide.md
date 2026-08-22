@@ -12,6 +12,7 @@
 - [Gateway](#gateway)
 - [在线更新](#在线更新)
 - [系统插件](#系统插件)
+- [系统技能](#系统技能)
 - [独立恢复工具](#独立恢复工具)
 - [日志](#日志)
 - [更新通道与回滚](#更新通道与回滚)
@@ -31,7 +32,7 @@
 
 普通部署应使用标准版；标准版已包含 DSH 原生插件依赖所需的最小编译工具链。开发工具版额外提供更完整的诊断、编辑和开发工具，但使用相同的持久化数据布局。
 
-Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`1.0.2`、`1.0`、`1`，并提供 DSH 定位标签 `dsh-0.1.1-rc.1`；GHCR 不发布任何 Devtools 标签。
+Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`1.0.3`、`1.0`、`1`，并提供 DSH 定位标签 `dsh-0.1.1-rc.1`；GHCR 不发布任何 Devtools 标签。
 
 ### 使用前须知
 
@@ -182,6 +183,7 @@ Bootstrap Runtime（current / previous）
 │   │   ├── updater
 │   │   ├── patch-manager
 │   │   ├── system-plugin-manager
+│   │   ├── skill-manager
 │   │   ├── user-plugin-manager
 │   │   ├── log-manager
 │   │   └── file-manager
@@ -218,7 +220,8 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 - `container/platform/`：Stage-0、Bootstrap、共享合约和发布工具。
 - `container/control-plane/services/`：常驻 Gateway 和 Management 进程。
 - `container/control-plane/hooks/`：受监督的一次性恢复任务。
-- `container/control-plane/modules/`：更新、日志、补丁和 System Plugin 逻辑。
+- `container/control-plane/modules/`：更新、日志、补丁、System Plugin 和 System Skill 逻辑。
+- `container/control-plane/skills/`：随已签名 Bootstrap 打包的 System Skill 清单与指引树。
 - `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,system-plugins}`。
 
 ### 平台数据与 Runtime 解析
@@ -242,7 +245,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 ├── deployments/
 ├── system-plugin-views/
 ├── deployment
-└── views/{bootstrap,environment,runtime,system-plugins}
+└── views/{bootstrap,environment,runtime,system-plugins,skills}
 ```
 
 `state` 保存权威的选择、信任和事务状态。`store` 保存不可变的 Managed 资产与回滚材料；只有 slots、事务、Hold、receipt 和快照都不再引用时才会回收。`cache` 可以随时清理：`downloads` 保存不可信下载，`npm` 复用经过完整性校验的依赖下载以构建后续 Pristine DSH。`/run/dsh-platform` 在每次容器启动时重建，不应备份或挂载为持久数据。`/data/dsh` 始终是独立的用户数据卷。
@@ -316,7 +319,7 @@ docker run -d \
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”插件使用单独的受限 API，不要求管理中心会话；它只开放插件自身所需的更新、DSH 重启、日志和系统插件操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些插件操作。
+`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”插件使用单独的受限 API，不要求管理中心会话；它只开放插件自身所需的更新、DSH 重启、日志、系统插件和系统技能操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些插件操作。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 
@@ -338,7 +341,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 `/data` 是容器内的数据命名空间。平台状态位于 `/data/platform`；DSH 设置、会话、凭据和第三方插件位于 `/data/dsh`。两个目录必须继续使用独立 Volume。
 
-自动检查默认每六小时带抖动执行一次，可在任一管理前端中关闭或调整频率。检查不会自动下载或激活更新。可选提醒只在 DSH 页面中显示，且只由自动检查触发；独立管理中心不显示更新弹窗。打开其中的“更新管理”标签会执行一次只读检查，打开页面和手动检查都只刷新已保存结果，不触发提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立管理中心；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志和系统插件操作。
+自动检查默认每六小时带抖动执行一次，可在任一管理前端中关闭或调整频率。检查不会自动下载或激活更新。可选提醒只在 DSH 页面中显示，且只由自动检查触发；独立管理中心不显示更新弹窗。打开其中的“更新管理”标签会执行一次只读检查，打开页面和手动检查都只刷新已保存结果，不触发提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立管理中心；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志、系统插件和系统技能操作。
 
 ### Runtime 维护
 
@@ -352,12 +355,22 @@ Container Environment 当前包含：
 
 | 插件 | 用途 |
 | --- | --- |
-| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志和系统插件管理 |
+| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志、系统插件和系统技能管理 |
 | `@dsh-docker/settings-document-editor` | 将只能在桌面打开配置文件的操作替换为可选的浏览器 `settings.yaml` 编辑器 |
 
 独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
 可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
+
+## 系统技能
+
+已签名 Bootstrap 内置 `dsh-docker-operations`，这是面向 Agent 的英文 DSH Docker 完整操作手册。精简的 `SKILL.md` 只负责触发和路由，并按任务读取身份与权限、工作区与开发工具、DSH 与扩展、生命周期与日志、更新与恢复、网络与认证、有序诊断等引用文件。手册要求 Agent 继续使用用户的语言回答，并优先使用 `dsh`、`dsh-platform`、它们当前的帮助以及管理界面，而不是从平台内部反推公共操作。日常操作中明确禁止搜索凭据、直接调用 socket、手工修改 Trust/Store/Runtime view，以及覆盖包管理器环境。
+
+Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/dsh-platform/views/skills`，DSH 通过 `DSH_BUNDLED_SKILL_DIR` 发现这个固定根目录。System Skill 只使用 `id + SHA-256` 标识，没有独立发布版本。选择状态保存于 `/data/platform/state/deployments/skills.json`；“卸载”只移除运行选择，不删除已签名 Bootstrap 中的不变副本，因此可离线重新安装。管理接口不接受 URL、任意路径、上传内容或客户端 Hash。
+
+独立管理中心始终列出当前 Bootstrap 提供的全部 System Skill，并支持安装、卸载、启用和禁用。DSH 内的“平台管理”可安装缺失技能，已安装时只允许启用或禁用，不提供卸载。所有变更都会原子更新稳定 Skill view，并由 DSH 原生文件系统 watcher 热加载，无需重启 DSH。容器重启后保留选择；新签名 Skill 默认安装并启用，新 Bootstrap 已移除的 Skill 会从状态中清理。项目或用户的同名 Skill 仍按 DSH 原生优先级覆盖内置副本；禁用 System Skill 不会修改这些覆盖。
+
+`dsh-docker-operations` 可被模型自动发现，也可显式调用 `/dsh-docker-operations`。它用于操作已安装的容器环境，不用于开发 dsh-docker 平台本身。只有用户明确要求平台开发或实现调试时，才允许检查 `/opt/dsh-platform` 和 `/run/dsh-platform` 内部。
 
 ## 独立恢复工具
 

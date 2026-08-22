@@ -178,10 +178,16 @@ The Container Environment includes these DSH-Docker integrations:
 
 | Plugin | Purpose |
 | --- | --- |
-| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, and System Plugin controls; this integration is platform-managed |
+| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugins, and System Skills; this integration is platform-managed |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 
 Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Changes are marked pending and take effect after restarting DSH. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.
+
+## System Skills
+
+DSH Docker includes the signed `dsh-docker-operations` System Skill. It gives the Agent container-specific instructions for files, development tools, plugins, lifecycle, logs, updates, recovery, networking, and permissions, and can also be invoked explicitly as `/dsh-docker-operations`.
+
+System Skills are available under **Platform Management** in DSH and **System Skills** in the standalone Management Console. Changes are applied immediately without restarting DSH. The standalone console can install, uninstall, enable, or disable a bundled skill; Platform Management can restore a missing skill and enable or disable it. Project and user skills with the same name retain DSH's native precedence and can override the bundled copy.
 
 ## Security
 
@@ -195,5 +201,5 @@ The [complete guide](docs/en/guide.md) covers:
 
 - deployment prerequisites, both Compose layouts, and Docker Run;
 - all configuration variables, storage, gateway, and remote-access behavior;
-- platform architecture, online updates, System Plugins, logs, trust, recovery, and rollback;
+- platform architecture, online updates, System Plugins, System Skills, logs, trust, recovery, and rollback;
 - standalone recovery tools, release automation, local builds, tests, and devtools.
