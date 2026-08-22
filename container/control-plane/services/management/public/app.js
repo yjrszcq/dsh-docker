@@ -404,6 +404,10 @@ function operationResultVisible(operation, activeStatus) {
   return operation?.taskId !== null && operation?.taskId !== undefined && visibleOperationTasks.has(operation.taskId)
 }
 
+function hasTaskId(operation) {
+  return typeof operation?.taskId === 'string' && operation.taskId.length > 0
+}
+
 function holdReason(hold) {
   return locale === 'en' ? display(hold.reason) : t(hold.type === 'combination' ? 'holdCombination' : 'holdVersion')
 }
@@ -786,7 +790,7 @@ function render(next) {
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
   const checkingUpdates = checking || update.status === 'checking'
-  if (restart.state === 'running' && restart.taskId !== null && !plugins.some(plugin => plugin.pendingRestart)) {
+  if (restart.state === 'running' && hasTaskId(restart) && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
   }
   const hasSupportedTarget = next.supported !== null && next.supported !== undefined

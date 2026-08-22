@@ -257,6 +257,19 @@ test('Platform Management lifecycle guard recognizes only registered transition 
   )
 })
 
+test('Platform Management reloads only after its own requested restart completes', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helper = source.slice(
+    source.indexOf('function matchesRequestedRestart('),
+    source.indexOf('\n\nfunction display('),
+  )
+  const matchesRequestedRestart = new Function(`${helper}; return matchesRequestedRestart`)()
+  assert.equal(matchesRequestedRestart({ state: 'running', taskId: null }, null), false)
+  assert.equal(matchesRequestedRestart({ state: 'running' }, undefined), false)
+  assert.equal(matchesRequestedRestart({ state: 'running', taskId: 'restart-1' }, 'restart-1'), true)
+  assert.equal(matchesRequestedRestart({ state: 'running', taskId: 'restart-2' }, 'restart-1'), false)
+})
+
 test('Platform Management limits the processed log entries instead of raw fragments', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))

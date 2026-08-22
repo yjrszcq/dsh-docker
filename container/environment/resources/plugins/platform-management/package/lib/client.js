@@ -44,6 +44,10 @@ function requiresLifecycleHoldingPage(status) {
     .includes(status?.dshLifecycle?.state)
 }
 
+function matchesRequestedRestart(restart, taskId) {
+  return typeof taskId === 'string' && taskId.length > 0 && restart?.taskId === taskId
+}
+
 function lifecycleReturnPath(locationValue = window.location) {
   return `${locationValue.pathname}${locationValue.search}${locationValue.hash}`
 }
@@ -890,7 +894,7 @@ function PlatformManagement({ t }) {
 
   useEffect(() => {
     const restart = status?.dshLifecycle
-    if (restart?.taskId !== requestedRestart.current) return
+    if (!matchesRequestedRestart(restart, requestedRestart.current)) return
     if (restart.state === 'running') {
       requestedRestart.current = null
       window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)

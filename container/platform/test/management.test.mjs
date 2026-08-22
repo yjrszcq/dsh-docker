@@ -1201,6 +1201,9 @@ test('standalone console keeps localized feature parity on the shared Management
   for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
+  const extensionTabs = ['tab-plugins', 'tab-user-plugins', 'tab-skills', 'tab-user-skills']
+    .map(id => html.indexOf(`id="${id}"`))
+  assert.deepEqual(extensionTabs, [...extensionTabs].sort((left, right) => left - right))
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
@@ -1292,7 +1295,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /pluginPendingRestart: '待重启'/)
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
   assert.match(script, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)[\s\S]*bundled-plugins\/discard/)
-  assert.match(script, /restart\.state === 'running'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
+  assert.match(script, /function hasTaskId\(operation\)[\s\S]*typeof operation\?\.taskId === 'string'[\s\S]*operation\.taskId\.length > 0/)
+  assert.match(script, /restart\.state === 'running' && hasTaskId\(restart\)[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.doesNotMatch(script, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(script, /\(acting && !checking\)/)
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
