@@ -567,6 +567,13 @@ bootstrap_pid="$(docker exec "$container" pgrep -f '/opt/dsh-platform/seed/boots
 management_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')"
 gateway_pid="$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')"
 dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')"
+docker exec --user node "$container" node -e '
+  const fs = require("node:fs")
+  const path = "/data/dsh/profiles/web/package.json"
+  const manifest = JSON.parse(fs.readFileSync(path, "utf8"))
+  manifest.dsh.profile.bundles.push("smoke-removed-plugin")
+  fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n")
+'
 restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
@@ -585,6 +592,10 @@ done
 [ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/management/index.mjs$')" = "$management_pid" ]
 [ "$(docker exec "$container" pgrep -f '^/usr/local/bin/node /run/dsh-platform/views/bootstrap/control-plane/services/gateway/index.mjs$')" = "$gateway_pid" ]
 [ "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')" != "$dsh_pid" ]
+docker exec "$container" jq -e '.dsh.profile.bundles | index("smoke-removed-plugin") == null' \
+  /data/dsh/profiles/web/package.json >/dev/null
+docker logs "$container" 2>&1 \
+  | grep -F 'dsh: removed orphaned profile bundle(s): smoke-removed-plugin' >/dev/null
 
 dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ')"
 managed_restart_result="$(docker exec -i --user node --env CURRENT_DSH_PID="$dsh_pid" \
