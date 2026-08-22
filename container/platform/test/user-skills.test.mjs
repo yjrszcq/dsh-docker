@@ -78,10 +78,25 @@ test('atomically disables and enables exact entries without confusing duplicate 
   await assert.rejects(lstat(join(value.dshHome, 'skills/first-entry')), error => error.code === 'ENOENT')
   assert.equal((await lstat(join(value.dshHome, 'skills/.disabled/first-entry'))).isDirectory(), true)
 
+  const afterManagementRestart = await new UserSkillManager({ dshHome: value.dshHome, agentsHome: value.agentsHome }).list()
+  assert.equal(afterManagementRestart.skills.find(skill => skill.source === 'user-dsh').enabled, false)
+
   const disabledEntry = disabled.skills.find(skill => skill.source === 'user-dsh')
   const enabled = await value.manager.configure({ entryId: disabledEntry.entryId, revision: disabled.revision, action: 'enable' })
   assert.equal(enabled.skills.find(skill => skill.source === 'user-dsh').enabled, true)
   assert.match(await readFile(join(value.dshHome, 'skills/first-entry/SKILL.md'), 'utf8'), /duplicate-name/)
+})
+
+test('accepts a directory skill whose SKILL.md is a symlink like native discovery', async t => {
+  const value = await fixture()
+  t.after(() => rm(value.root, { recursive: true, force: true }))
+  const sharedDocument = join(value.root, 'shared-skill.md')
+  await writeFile(sharedDocument, '---\nname: linked-document\ndescription: Linked document\n---\n\nLinked body.\n')
+  await mkdir(join(value.dshHome, 'skills/linked-document'), { recursive: true })
+  await symlink(sharedDocument, join(value.dshHome, 'skills/linked-document/SKILL.md'))
+  const inventory = await value.manager.list()
+  assert.equal(inventory.skills[0].name, 'linked-document')
+  assert.equal(inventory.skills[0].damaged, false)
 })
 
 test('rejects stale revisions and destination conflicts', async t => {

@@ -50,7 +50,7 @@ async function inspectEntry(root, source, location, entryName) {
   try {
     type = await entryType(path, entryName)
     if (type === undefined) return undefined
-    const metadata = await lstat(type.documentPath)
+    const metadata = await stat(type.documentPath)
     if (!metadata.isFile() || metadata.size > MAX_SKILL_BYTES) {
       throw new Error(metadata.size > MAX_SKILL_BYTES ? 'SKILL.md is too large' : 'SKILL.md is not a regular file')
     }
