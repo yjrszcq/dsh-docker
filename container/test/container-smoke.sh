@@ -681,10 +681,18 @@ NODE
 docker exec --user node "$container" sh -c 'printf changed-after-snapshot > /data/dsh/smoke'
 docker restart "$container" >/dev/null
 attempt=0
-until docker exec "$container" dsh-platform status >/dev/null 2>&1; do
+until docker exec "$container" sh -c '
+  test "$(cat /data/dsh/smoke 2>/dev/null)" = home \
+    && test "$(jq -r .phase /data/platform/state/updater/transaction.json 2>/dev/null)" = rolled-back \
+    && test "$(dsh-platform channel 2>/dev/null)" = experimental
+' >/dev/null 2>&1; do
   attempt=$((attempt + 1))
-  [ "$attempt" -lt 60 ] || exit 1
-  sleep 1
+  if [ "$attempt" -ge 60 ]; then
+    docker logs "$container" >&2
+    echo "Experimental restart recovery did not complete" >&2
+    exit 1
+  fi
+  sleep 0.2
 done
 docker exec "$container" sh -c '
   set -eu

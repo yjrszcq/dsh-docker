@@ -235,6 +235,28 @@ test('Platform Management does not present ordinary DSH stderr as an error', asy
   assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'warning: retrying' }), 'warning')
 })
 
+test('Platform Management lifecycle guard recognizes only registered transition states', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(
+    source.indexOf('function requiresLifecycleHoldingPage('),
+    source.indexOf('\n\nfunction display('),
+  )
+  const { requiresLifecycleHoldingPage, lifecycleWaitUrl } = new Function(
+    `const LIFECYCLE_WAIT_PATH = '/_dsh_gateway/wait'; ${helpers}; return { requiresLifecycleHoldingPage, lifecycleWaitUrl }`,
+  )()
+  for (const operation of ['restarting', 'switching', 'recovering', 'restart-failed']) {
+    assert.equal(requiresLifecycleHoldingPage({ operation }), true)
+  }
+  for (const state of ['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed']) {
+    assert.equal(requiresLifecycleHoldingPage({ dshLifecycle: { state } }), true)
+  }
+  assert.equal(requiresLifecycleHoldingPage({ dshLifecycle: { state: 'running' }, update: { status: 'checking' } }), false)
+  assert.equal(
+    lifecycleWaitUrl({ pathname: '/sessions/current', search: '?view=chat', hash: '#latest' }),
+    '/_dsh_gateway/wait?return=%2Fsessions%2Fcurrent%3Fview%3Dchat%23latest',
+  )
+})
+
 test('Platform Management limits the processed log entries instead of raw fragments', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))

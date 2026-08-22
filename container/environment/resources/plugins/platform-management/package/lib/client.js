@@ -38,7 +38,7 @@ const CONNECTION_LOSS_GRACE_MS = 1_000
 const READINESS_RETRY_MS = 500
 
 function requiresLifecycleHoldingPage(status) {
-  if (['restarting', 'recovering', 'restart-failed'].includes(status?.operation)) return true
+  if (['restarting', 'switching', 'recovering', 'restart-failed'].includes(status?.operation)) return true
   if (['snapshotting-data', 'switching', 'probation', 'restoring-data'].includes(status?.update?.status)) return true
   return ['starting', 'stopping', 'stopped', 'restarting', 'recovering', 'failed']
     .includes(status?.dshLifecycle?.state)
