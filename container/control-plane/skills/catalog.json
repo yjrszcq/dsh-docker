@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "skills": [
+    {
+      "id": "dsh-docker-operations",
+      "source": "dsh-docker-operations",
+      "description": {
+        "zh": "在 DSH Docker 环境中使用受支持的命令完成开发、插件、维护、更新、恢复与诊断。",
+        "en": "Use supported commands for development, plugins, maintenance, updates, recovery, and diagnostics in the DSH Docker Environment."
+      }
+    }
+  ]
+}
