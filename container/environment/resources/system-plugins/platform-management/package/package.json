@@ -10,8 +10,8 @@
   },
   "dshDocker": {
     "description": {
-      "zh": "管理 DSH Docker 更新、运行维护与系统插件。",
-      "en": "Manage DSH Docker updates, runtime maintenance, and System Plugins."
+      "zh": "管理 DSH Docker 更新、运行维护、系统插件与系统技能。",
+      "en": "Manage DSH Docker updates, runtime maintenance, System Plugins, and System Skills."
     }
   },
   "dsh": {

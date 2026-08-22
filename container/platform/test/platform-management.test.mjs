@@ -13,7 +13,7 @@ test('Platform Management declares a DSH web client and a platform-namespaced ov
   assert.equal(packageJson.exports['./package.json'], './package.json')
   assert.equal(await readFile(new URL('lib/style.module.css', root), 'utf8').then(value => value.includes('@media (max-width: 640px)')), true)
   assert.equal(packageJson.name, '@dsh-docker/platform-management')
-  assert.equal(packageJson.dshDocker.description.zh, '管理 DSH Docker 更新、运行维护与系统插件。')
+  assert.equal(packageJson.dshDocker.description.zh, '管理 DSH Docker 更新、运行维护、系统插件与系统技能。')
   assert.equal(patch[0].insert[0].id, 'dsh-docker.platform-management.plugin')
 })
 
@@ -56,9 +56,9 @@ test('Platform Management is embedded in the official settings.section slot', as
   const tabs = source.slice(source.indexOf("h('div', { className: css.tabs"), source.indexOf("\n\n    h('div', {\n      id: 'platform-tab-updates'"))
   assert.doesNotMatch(tabs, /disabled:/)
   assert.match(source, /role: 'tabpanel'/)
-  assert.match(source, /updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件'/)
-  assert.match(source, /updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins'/)
-  assert.match(source, /\['updates', 'maintenance', 'plugins'\]\.map/)
+  assert.match(source, /updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能'/)
+  assert.match(source, /updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills'/)
+  assert.match(source, /\['updates', 'maintenance', 'plugins', 'skills'\]\.map/)
   assert.doesNotMatch(source, /platform-tab-(?:automatic|logs)(?:-button)?/)
   assert.match(source, /h\(LogViewer, \{ active: activeTab === 'maintenance', t \}\)/)
   assert.match(source, /LOG_STREAM_LIMIT = 5_000/)
@@ -106,7 +106,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(checkUpdates, /await request\('check'/)
   assert.doesNotMatch(checkUpdates, /await act\(/)
   assert.doesNotMatch(source, /运行详情|平台日志/)
-  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins\\/action', 'bundled-plugins\\/recovery-action', 'bundled-plugins\\/toggle', 'bundled-plugins\\/discard']) {
+  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins\\/action', 'bundled-plugins\\/recovery-action', 'bundled-plugins\\/toggle', 'bundled-plugins\\/discard', 'system-skills', 'system-skills\\/action']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
   assert.match(source, /confirmDataLoss: true/)
@@ -154,6 +154,10 @@ test('Platform Management is embedded in the official settings.section slot', as
   const systemPluginManager = source.slice(source.indexOf('function SystemPluginManager('), source.indexOf('function PlatformManagement('))
   assert.match(systemPluginManager, /!plugin\.installed[\s\S]*onAction\(plugin, 'install'\)/)
   assert.doesNotMatch(systemPluginManager, /onAction\([^\n]+, 'uninstall'\)|t\('uninstallPlugin'\)/)
+  const systemSkillManager = source.slice(source.indexOf('function SystemSkillManager('), source.indexOf('function PlatformManagement('))
+  assert.match(systemSkillManager, /!skill\.installed[\s\S]*onAction\(skill, 'install'\)/)
+  assert.match(systemSkillManager, /event\.target\.checked \? 'enable' : 'disable'/)
+  assert.doesNotMatch(systemSkillManager, /onAction\([^\n]+, 'uninstall'\)|t\('uninstallPlugin'\)/)
   assert.doesNotMatch(source, /trust\/reset/)
   assert.match(source, /status\?\.updateChannel === 'experimental'\s*\? h\(VersionCell, \{ label: t\('upstream'\)/)
   assert.match(source, /`env-\$\{String\(value\)\}`/)

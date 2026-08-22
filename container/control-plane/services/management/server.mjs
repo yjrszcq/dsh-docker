@@ -532,6 +532,10 @@ export function createManagementServer({
         send(response, 200, result)
       } else if (request.method === 'POST' && route === 'system-skills/action') {
         const body = await jsonBody(request)
+        if (body === null || typeof body !== 'object' || Array.isArray(body)
+          || Object.keys(body).sort().join(',') !== 'action,skillId') {
+          throw new Error('System Skill request is invalid')
+        }
         send(response, 202, startSystemSkillAction(body.skillId, body.action))
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)

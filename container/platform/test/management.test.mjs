@@ -118,6 +118,53 @@ test('management socket exposes status, check, update, logs, and local rollback'
   }
 })
 
+test('management exposes audited System Skill tasks through the shared runtime mutex', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-system-skills-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let complete
+  const pending = new Promise(resolve => { complete = resolve })
+  const calls = []
+  const skills = [{
+    id: 'dsh-docker-operations', sha256: 'a'.repeat(64),
+    description: { zh: '容器操作手册', en: 'Container operations guide' }, installed: true, enabled: true,
+  }]
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    listSystemSkills: async () => skills,
+    configureSystemSkill: async (skillId, action) => { calls.push({ skillId, action }); await pending },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    assert.deepEqual((await client.request('GET', `${API_PREFIX}system-skills`)).skills, skills)
+    const task = await client.request('POST', `${API_PREFIX}system-skills/action`, {
+      skillId: 'dsh-docker-operations', action: 'disable',
+    })
+    assert.match(task.taskId, /^[0-9a-f-]{36}$/)
+    await assert.rejects(client.request('POST', `${API_PREFIX}restart-dsh`), error => error.statusCode === 409)
+    await assert.rejects(client.request('POST', `${API_PREFIX}system-skills/action`, {
+      skillId: 'dsh-docker-operations', action: 'disable', unexpected: true,
+    }), error => error.statusCode === 400)
+    complete()
+    let status
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.systemSkillOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.systemSkillOperation.status, 'success')
+    assert.deepEqual(calls, [{ skillId: 'dsh-docker-operations', action: 'disable' }])
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'system-skill.disable.started'), true)
+    assert.equal(audit.some(entry => entry.message === 'system-skill.disable.completed'), true)
+  } finally {
+    complete()
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management live logs preserve the requested source filter', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-log-stream-'))
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
@@ -970,13 +1017,13 @@ test('standalone console keeps localized feature parity on the shared Management
   const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const maintenanceSource = await readFile(new URL('../stage0/lib/maintenance-server.mjs', import.meta.url), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/system-plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins', 'user-plugins', 'terminal', 'files']) {
+  for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
-    'bundled-plugins/discard', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
+    'bundled-plugins/discard', 'system-skills', 'system-skills/action', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
     'files/config', 'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
@@ -995,7 +1042,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /statusLoadRevision \+= 1/)
   assert.match(script, /while \(loadedRevision !== statusLoadRevision\)/)
   assert.match(script, /if \(inventoryLoad !== undefined\) return inventoryLoad/)
-  assert.match(script, /function loadInventories\(\)[\s\S]*Promise\.all\(\[api\('bundled-plugins'\), api\('user-plugins'\)\]\)/)
+  assert.match(script, /function loadInventories\(\)[\s\S]*Promise\.all\(\[api\('bundled-plugins'\), api\('system-skills'\), api\('user-plugins'\)\]\)/)
   assert.match(script, /next = await api\('status'\)[\s\S]*render\(next\)[\s\S]*void loadInventories\(\)/)
   assert.match(script, /inventoriesLoaded = true/)
   assert.match(script, /if \(inventoriesLoaded\) \{[\s\S]*renderBundledPlugins/)
@@ -1186,6 +1233,12 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(style, /height: clamp\(260px, 52dvh, 420px\)/)
   assert.match(script, /userPluginsTab: '用户插件'/)
   assert.match(script, /userPluginsTab: 'User plugins'/)
+  assert.match(script, /skillsTab: '系统技能'/)
+  assert.match(script, /skillsTab: 'System skills'/)
+  assert.match(html, /id="tab-skills"/)
+  assert.match(html, /id="panel-skills"/)
+  assert.match(script, /function renderSystemSkills\(values, busy\)/)
+  assert.match(script, /skill\.id, action/)
   assert.match(script, /applyUserPluginChanges: '应用并重新启动 DSH'/)
   assert.match(script, /applyUserPluginChanges: 'Apply and restart DSH'/)
   assert.match(script, /const userPluginDraft = new Map\(\)/)

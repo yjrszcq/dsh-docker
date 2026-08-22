@@ -273,6 +273,7 @@ test('bounded management and Console requests use the protected local socket ins
     for (const [method, path] of [
       ['GET', '/_dsh_platform/api/v1/rollback-plan'],
       ['GET', '/_dsh_platform/api/v1/bundled-plugins'],
+      ['GET', '/_dsh_platform/api/v1/system-skills'],
       ['GET', '/_dsh_platform/api/v1/settings-document'],
       ['GET', '/_dsh_platform/api/v1/user-plugins'],
       ['GET', '/_dsh_platform/api/v1/files/config'],
@@ -294,6 +295,7 @@ test('bounded management and Console requests use the protected local socket ins
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/action'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/toggle'],
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/recovery-action'],
+      ['POST', '/_dsh_platform/api/v1/system-skills/action'],
       ['POST', '/_dsh_platform/api/v1/user-plugins/apply'],
       ['POST', '/_dsh_platform/api/v1/terminal/sessions'],
       ['POST', '/_dsh_platform/api/v1/files/upload'],
