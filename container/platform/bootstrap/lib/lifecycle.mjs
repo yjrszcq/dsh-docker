@@ -83,6 +83,16 @@ function defaultCapture(child, componentId) {
   }
 }
 
+export class ComponentExitError extends Error {
+  constructor(componentId, code, signal) {
+    super(`${componentId} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`)
+    this.name = 'ComponentExitError'
+    this.componentId = componentId
+    this.exitCode = code
+    this.signal = signal
+  }
+}
+
 export async function loadEnvironment(root) {
   const environmentRoot = resolve(root)
   const manifest = parseEnvironmentManifest(await readFile(join(environmentRoot, 'environment.manifest.json')))
@@ -238,7 +248,7 @@ export class EnvironmentRunner {
         this.emitLifecycle('component.spawned', { componentId: component.id, pid: child.pid ?? null })
         child.once('exit', (code, signal) => {
           if (running.ready && !this.stopping && this.running.includes(running)) {
-            const error = new Error(`${component.id} exited unexpectedly (code=${String(code)}, signal=${String(signal)})`)
+            const error = new ComponentExitError(component.id, code, signal)
             this.emitLifecycle('component.exited', {
               componentId: component.id,
               code,

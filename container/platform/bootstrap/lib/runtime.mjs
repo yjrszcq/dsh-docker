@@ -5,8 +5,21 @@ export class BootstrapRuntime {
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
     onEnvironmentFatal = async () => {},
+    onDshRecovered = async () => {},
+    ownsDshLifecycle = async () => false,
+    recoveryDelaysMs = [0, 2_000, 5_000],
+    sleep = (milliseconds, signal) => new Promise(resolve => {
+      if (milliseconds === 0 || signal?.aborted) return resolve()
+      const timer = setTimeout(resolve, milliseconds)
+      timer.unref?.()
+      signal?.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+    }),
     report = async () => {},
   }) {
+    if (!Array.isArray(recoveryDelaysMs) || recoveryDelaysMs.length !== 3
+      || recoveryDelaysMs.some(value => !Number.isFinite(value) || value < 0)) {
+      throw new Error('DSH recovery delays must contain three non-negative durations')
+    }
     this.controlPlane = controlPlane
     this.environment = environment
     this.fatal = controlPlane.fatal
@@ -17,30 +30,98 @@ export class BootstrapRuntime {
       error: null, updatedAt: new Date().toISOString(),
     })
     this.recovery = Promise.resolve()
+    this.recoveryAbort = new AbortController()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
     this.onEnvironmentFatal = onEnvironmentFatal
+    this.onDshRecovered = onDshRecovered
+    this.ownsDshLifecycle = ownsDshLifecycle
+    this.recoveryDelaysMs = Object.freeze([...recoveryDelaysMs])
+    this.sleep = sleep
     this.report = report
     const handleEnvironmentFatal = error => {
-      this.recoveryMode = error instanceof Error ? error.message : String(error)
-      this.recovery = this.recovery.then(async () => {
-        try {
-          await this.onEnvironmentFatal(error)
-        } catch (reportError) {
-          await this.record('environment.recovery-report.failed', { error: reportError, originalError: String(error) })
-        }
-        try {
-          await this.environment.stop()
-        } catch (stopError) {
-          await this.record('environment.recovery-stop.failed', { error: stopError, originalError: String(error) })
-        }
-      })
+      const recover = () => this.handleEnvironmentFatal(error)
+      this.recovery = this.recovery.then(recover, recover).catch(recoveryError => this.record(
+        'environment.recovery.failed', { error: recoveryError, originalError: String(error) },
+      ))
     }
     if (typeof environment.onFatal === 'function') {
       this.offEnvironmentFatal = environment.onFatal(handleEnvironmentFatal)
     } else {
       void environment.fatal.then(handleEnvironmentFatal)
       this.offEnvironmentFatal = undefined
+    }
+  }
+
+  async lifecycleOwned() {
+    try {
+      return await this.ownsDshLifecycle()
+    } catch (error) {
+      await this.record('dsh.recovery-ownership.failed', { error, level: 'warning' })
+      return true
+    }
+  }
+
+  async handleEnvironmentFatal(error) {
+    if (error?.componentId !== 'dsh-runtime') return this.isolateEnvironmentFailure(error)
+    const message = error instanceof Error ? error.message : String(error)
+    if (await this.lifecycleOwned()) {
+      this.publishDshLifecycle({ state: 'recovering', action: 'auto-recover', attempt: 0, error: message })
+      await this.record('dsh.recovery.deferred', { error, reason: 'deployment-transaction-active', level: 'warning' })
+      return
+    }
+    for (let index = 0; index < this.recoveryDelaysMs.length; index += 1) {
+      const attempt = index + 1
+      await this.sleep(this.recoveryDelaysMs[index], this.recoveryAbort.signal)
+      if (this.recoveryAbort.signal.aborted) return
+      if (await this.lifecycleOwned()) {
+        this.publishDshLifecycle({ state: 'recovering', action: 'auto-recover', attempt: attempt - 1, error: message })
+        await this.record('dsh.recovery.deferred', { error, reason: 'deployment-transaction-active', level: 'warning' })
+        return
+      }
+      this.publishDshLifecycle({ state: 'recovering', action: 'auto-recover', attempt, error: message })
+      await this.record('dsh.recovery.attempt.started', { attempt, maxAttempts: this.recoveryDelaysMs.length })
+      try {
+        await this.validateDeployment()
+        await this.prepareDeployment()
+        await this.environment.restart('dsh-runtime')
+        this.recoveryMode = null
+        this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+        try {
+          await this.onDshRecovered()
+        } catch (statusError) {
+          await this.record('dsh.recovery-status.failed', { error: statusError, level: 'warning' })
+        }
+        await this.record('dsh.recovery.completed', { attempt, maxAttempts: this.recoveryDelaysMs.length })
+        return
+      } catch (recoveryError) {
+        await this.record('dsh.recovery.attempt.failed', {
+          attempt,
+          error: recoveryError,
+          maxAttempts: this.recoveryDelaysMs.length,
+          level: 'warning',
+        })
+      }
+    }
+    await this.isolateEnvironmentFailure(error)
+  }
+
+  async isolateEnvironmentFailure(error) {
+    this.recoveryMode = error instanceof Error ? error.message : String(error)
+    this.publishDshLifecycle({
+      state: 'failed', action: null,
+      attempt: error?.componentId === 'dsh-runtime' ? this.recoveryDelaysMs.length : 0,
+      error: this.recoveryMode,
+    })
+    try {
+      await this.onEnvironmentFatal(error)
+    } catch (reportError) {
+      await this.record('environment.recovery-report.failed', { error: reportError, originalError: String(error) })
+    }
+    try {
+      await this.environment.stop()
+    } catch (stopError) {
+      await this.record('environment.recovery-stop.failed', { error: stopError, originalError: String(error) })
     }
   }
 
@@ -113,6 +194,7 @@ export class BootstrapRuntime {
 
   async stop() {
     this.offEnvironmentFatal?.()
+    this.recoveryAbort.abort()
     await this.recovery
     const failures = []
     try { await this.environment.stop() } catch (error) { failures.push(error) }
@@ -192,7 +274,7 @@ export class BootstrapRuntime {
 
   enterRecovery(error) {
     this.recoveryMode = error instanceof Error ? error.message : String(error)
-    this.publishDshLifecycle({ state: 'failed', action: null, error: this.recoveryMode })
+    this.publishDshLifecycle({ state: 'failed', action: null, attempt: 0, error: this.recoveryMode })
   }
 
   status() {

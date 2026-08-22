@@ -164,6 +164,11 @@ const runtime = new BootstrapRuntime({
     })
   },
   prepareDeployment: applySystemPluginSelection,
+  ownsDshLifecycle: async () => await deployments.activation() !== undefined,
+  onDshRecovered: async () => {
+    await deployments.publishStatus({ recoveryMode: null })
+    await logs.diagnostic('bootstrap', 'dsh.recovery-mode.cleared')
+  },
   report: reportLifecycle,
   onEnvironmentFatal: async error => {
     const state = await deployments.state().catch(() => ({ current: null }))

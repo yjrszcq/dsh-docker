@@ -234,6 +234,8 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   await runner.start()
   const error = await runner.fatal
   assert.match(error.message, /service exited unexpectedly.*code=7/)
+  assert.equal(error.componentId, 'service')
+  assert.equal(error.exitCode, 7)
   assert.equal(observed[0], error)
   assert.equal(reports.find(report => report.message === 'component.exited').fields.level, 'error')
   await runner.stop()
@@ -285,6 +287,10 @@ test('suspends, resumes, and restarts one service while keeping other Environmen
   assert.notEqual(runner.status().components.find(value => value.id === 'dsh-runtime').pid, firstDshPid)
   assert.equal(runner.status().components.find(value => value.id === 'platform-management').pid, managementPid)
   assert.equal((await runner.health()).healthy, true)
+  assert.equal(await Promise.race([
+    runner.fatal.then(() => 'fatal'),
+    new Promise(resolve => setTimeout(() => resolve('intentional'), 20)),
+  ]), 'intentional')
   await runner.stop()
 })
 
@@ -526,7 +532,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   ])
 })
 
-test('isolates an unexpected Environment exit and keeps the Control Plane available', async () => {
+test('isolates a non-DSH Environment exit and keeps the Control Plane available', async () => {
   const calls = []
   let emitEnvironmentFatal
   const controlPlane = {
@@ -552,15 +558,16 @@ test('isolates an unexpected Environment exit and keeps the Control Plane availa
     onEnvironmentFatal: async error => { calls.push(`recovery:${error.message}`) },
   })
   await runtime.start()
-  emitEnvironmentFatal(new Error('dsh-runtime exited unexpectedly'))
+  const failure = Object.assign(new Error('worker exited unexpectedly'), { componentId: 'worker' })
+  emitEnvironmentFatal(failure)
   await runtime.recovery
 
-  assert.equal(runtime.status().recoveryMode, 'dsh-runtime exited unexpectedly')
+  assert.equal(runtime.status().recoveryMode, 'worker exited unexpectedly')
   assert.deepEqual(runtime.status().controlPlane.map(component => component.id), ['gateway', 'platform-management'])
   assert.deepEqual(calls, [
     'control:start',
     'environment:start',
-    'recovery:dsh-runtime exited unexpectedly',
+    'recovery:worker exited unexpectedly',
     'environment:stop',
   ])
   assert.equal(await Promise.race([
@@ -570,6 +577,134 @@ test('isolates an unexpected Environment exit and keeps the Control Plane availa
 
   await runtime.restart('dsh-runtime')
   assert.equal(runtime.status().recoveryMode, null)
+  await runtime.stop()
+})
+
+test('recovers an unexpected DSH exit without stopping the Control Plane', async () => {
+  const calls = []
+  let emitEnvironmentFatal
+  const environmentRunner = {
+    fatal: new Promise(() => {}),
+    onFatal: listener => { emitEnvironmentFatal = listener; return () => {} },
+    start: async () => { calls.push('environment:start') },
+    stop: async () => { calls.push('environment:stop') },
+    restart: async id => { calls.push(`environment:restart:${id}`); return { components: [{ id }] } },
+    status: () => ({ environmentVersion: '1.0.3', components: [{ id: 'dsh-runtime' }] }),
+  }
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => { calls.push('control:start') },
+      stop: async () => { calls.push('control:stop') },
+      status: () => ({ components: [{ id: 'gateway' }] }),
+    },
+    environment: environmentRunner,
+    validateDeployment: async () => { calls.push('validate') },
+    prepareDeployment: async () => { calls.push('prepare') },
+    onDshRecovered: async () => { calls.push('recovery:published') },
+    recoveryDelaysMs: [0, 2_000, 5_000],
+    sleep: async milliseconds => { calls.push(`delay:${String(milliseconds)}`) },
+  })
+  await runtime.start()
+  calls.length = 0
+  emitEnvironmentFatal(Object.assign(new Error('dsh-runtime exited unexpectedly'), { componentId: 'dsh-runtime' }))
+  await runtime.recovery
+
+  assert.deepEqual(calls, [
+    'delay:0', 'validate', 'prepare', 'environment:restart:dsh-runtime', 'recovery:published',
+  ])
+  assert.deepEqual(runtime.status().dshLifecycle, {
+    state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
+    error: null, updatedAt: runtime.status().dshLifecycle.updatedAt,
+  })
+  assert.equal(runtime.status().recoveryMode, null)
+  await runtime.stop()
+})
+
+test('requires exactly three bounded DSH recovery delays', () => {
+  const runner = {
+    fatal: new Promise(() => {}), onFatal: () => () => {},
+    start: async () => {}, stop: async () => {}, status: () => ({ components: [] }),
+  }
+  assert.throws(() => new BootstrapRuntime({
+    controlPlane: runner, environment: runner, recoveryDelaysMs: [0, 2_000],
+  }), /three non-negative/)
+  assert.throws(() => new BootstrapRuntime({
+    controlPlane: runner, environment: runner, recoveryDelaysMs: [0, -1, 5_000],
+  }), /three non-negative/)
+})
+
+test('limits unexpected DSH recovery to three attempts before recovery mode', async () => {
+  const delays = []
+  const reports = []
+  let emitEnvironmentFatal
+  let restarts = 0
+  let stopped = 0
+  let isolated = 0
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}), start: async () => {}, stop: async () => {},
+      status: () => ({ components: [{ id: 'gateway' }] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      onFatal: listener => { emitEnvironmentFatal = listener; return () => {} },
+      start: async () => {},
+      stop: async () => { stopped += 1 },
+      restart: async () => { restarts += 1; throw new Error(`restart ${String(restarts)} failed`) },
+      status: () => ({ environmentVersion: '1.0.3', components: [] }),
+    },
+    recoveryDelaysMs: [0, 2_000, 5_000],
+    sleep: async milliseconds => { delays.push(milliseconds) },
+    onEnvironmentFatal: async () => { isolated += 1 },
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  await runtime.start()
+  emitEnvironmentFatal(Object.assign(new Error('DSH repeatedly crashed'), { componentId: 'dsh-runtime' }))
+  await runtime.recovery
+
+  assert.deepEqual(delays, [0, 2_000, 5_000])
+  assert.equal(restarts, 3)
+  assert.equal(isolated, 1)
+  assert.equal(stopped, 1)
+  assert.equal(runtime.status().dshLifecycle.state, 'failed')
+  assert.equal(runtime.status().dshLifecycle.attempt, 3)
+  assert.equal(runtime.status().recoveryMode, 'DSH repeatedly crashed')
+  assert.deepEqual(reports.filter(entry => entry.message === 'dsh.recovery.attempt.failed')
+    .map(entry => entry.fields.attempt), [1, 2, 3])
+  await runtime.stop()
+})
+
+test('defers unexpected DSH recovery while a Deployment transaction owns lifecycle', async () => {
+  let emitEnvironmentFatal
+  let restarts = 0
+  let stops = 0
+  const reports = []
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}), start: async () => {}, stop: async () => {},
+      status: () => ({ components: [{ id: 'gateway' }] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      onFatal: listener => { emitEnvironmentFatal = listener; return () => {} },
+      start: async () => {},
+      stop: async () => { stops += 1 },
+      restart: async () => { restarts += 1 },
+      status: () => ({ environmentVersion: '1.0.3', components: [] }),
+    },
+    ownsDshLifecycle: async () => true,
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  await runtime.start()
+  emitEnvironmentFatal(Object.assign(new Error('candidate exited'), { componentId: 'dsh-runtime' }))
+  await runtime.recovery
+
+  assert.equal(restarts, 0)
+  assert.equal(stops, 0)
+  assert.equal(runtime.status().dshLifecycle.state, 'recovering')
+  assert.equal(runtime.status().dshLifecycle.attempt, 0)
+  assert.equal(reports.some(entry => entry.message === 'dsh.recovery.deferred'), true)
   await runtime.stop()
 })
 

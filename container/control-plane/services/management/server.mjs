@@ -171,7 +171,11 @@ export function createManagementServer({
     if (lifecycleTask !== undefined || platformLifecycle === undefined) return lifecycleState
     const localTime = Date.parse(lifecycleState.updatedAt ?? '')
     const platformTime = Date.parse(platformLifecycle.updatedAt ?? '')
-    return Number.isFinite(platformTime) && (!Number.isFinite(localTime) || platformTime > localTime)
+    return Number.isFinite(platformTime) && (
+      !Number.isFinite(localTime)
+      || platformTime > localTime
+      || (platformTime === localTime && platformLifecycle.state !== lifecycleState.state)
+    )
       ? platformLifecycle
       : lifecycleState
   }
