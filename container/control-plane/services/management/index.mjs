@@ -77,6 +77,7 @@ const coordinator = new UpdateCoordinator({
 })
 const settingsDocument = new SettingsDocumentStore(dshHome)
 const listBundledPlugins = async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins
+const listSystemSkills = async () => (await bootstrap.request('GET', '/v1/system-skills')).skills
 const userPluginInventory = new UserPluginInventory({
   dshHome,
   selectionPath: paths.userPluginStatePath,
@@ -143,6 +144,8 @@ server = createManagementServer({
   configureBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/action', { id, action }),
   recoverBundledPlugin: (id, action) => bootstrap.request('POST', '/v1/system-plugins/recovery-action', { id, action }),
   discardBundledPluginChanges: () => bootstrap.request('POST', '/v1/system-plugins/discard'),
+  listSystemSkills,
+  configureSystemSkill: (skillId, action) => bootstrap.request('POST', '/v1/system-skills/action', { skillId, action }),
   listUserPlugins,
   markUserPluginsLoaded,
   validateUserPluginActions: value => userPluginTransactions.validate(value),

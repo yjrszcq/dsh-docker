@@ -11,7 +11,7 @@
     "HOME": "/home/node",
     "LOGNAME": "node",
     "USER": "node",
-    "DSH_BUNDLED_SKILL_DIR": "/run/dsh-platform/views/bootstrap/control-plane/skills",
+    "DSH_BUNDLED_SKILL_DIR": "/run/dsh-platform/views/skills",
     "XDG_CACHE_HOME": "/home/node/.cache",
     "XDG_CONFIG_HOME": "/home/node/.config",
     "XDG_DATA_HOME": "/home/node/.local/share"

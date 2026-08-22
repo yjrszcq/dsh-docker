@@ -20,6 +20,7 @@ import {
 } from '../../control-plane/modules/system-plugin-manager/index.mjs'
 import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
+import { SystemSkillManager } from '../../control-plane/modules/skill-manager/index.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -77,6 +78,16 @@ await linkSystemPluginScope({
   viewRoot: join(paths.viewsRoot, 'system-plugins'),
 })
 const systemPluginSelections = new SystemPluginSelectionStore(join(paths.deploymentStateRoot, 'system-plugins.json'))
+const systemSkillManager = new SystemSkillManager({
+  sourceRoot: join(import.meta.dirname, '..', '..', 'control-plane', 'skills'),
+  viewRoot: paths.systemSkillsView,
+  statePath: paths.systemSkillStatePath,
+})
+await systemSkillManager.initialize()
+const systemSkills = {
+  list: () => systemSkillManager.list(),
+  configure: (skillId, action) => deployments.exclusive(() => systemSkillManager.configure(skillId, action)),
+}
 const applySystemPluginSelection = async () => {
   const selected = await deployments.selected()
   if (selected === null) return []
@@ -210,7 +221,7 @@ const systemPlugins = {
 }
 systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
 systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)
-const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins })
+const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins, systemSkills })
 await listenBootstrapControl(server, paths.bootstrapSocket)
 let imageCandidateHealthy = true
 try {

@@ -66,7 +66,7 @@ test('DSH Runtime uses the generic node home environment without package-manager
     join(containerRoot, 'environment', 'dsh-runtime', 'component.json'),
   ))
   assert.deepEqual(component.environment, {
-    DSH_BUNDLED_SKILL_DIR: '/run/dsh-platform/views/bootstrap/control-plane/skills',
+    DSH_BUNDLED_SKILL_DIR: '/run/dsh-platform/views/skills',
     HOME: '/home/node',
     LOGNAME: 'node',
     USER: 'node',

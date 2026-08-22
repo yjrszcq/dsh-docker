@@ -22,6 +22,7 @@ export class PlatformPaths {
     this.bootstrapStateRoot = join(this.stateRoot, 'bootstrap')
     this.deploymentStateRoot = join(this.stateRoot, 'deployments')
     this.deploymentStatusPath = join(this.deploymentStateRoot, 'status.json')
+    this.systemSkillStatePath = join(this.deploymentStateRoot, 'skills.json')
     this.updaterStateRoot = join(this.stateRoot, 'updater')
     this.managementStateRoot = join(this.stateRoot, 'management')
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
@@ -41,6 +42,7 @@ export class PlatformPaths {
     this.viewsRoot = join(this.runRoot, 'views')
     this.deploymentViewsRoot = join(this.runRoot, 'deployments')
     this.systemPluginViewsRoot = join(this.runRoot, 'system-plugin-views')
+    this.systemSkillsView = join(this.viewsRoot, 'skills')
     this.deploymentView = join(this.runRoot, 'deployment')
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
@@ -83,6 +85,7 @@ export async function resetRuntimeLayout(paths) {
   await mkdir(paths.viewsRoot, { recursive: true })
   await mkdir(paths.deploymentViewsRoot, { recursive: true })
   await mkdir(paths.systemPluginViewsRoot, { recursive: true })
+  await mkdir(paths.systemSkillsView, { recursive: true })
   for (const name of ['environment', 'runtime']) {
     await symlink(join('..', 'deployment', name), join(paths.viewsRoot, name), 'dir')
   }
@@ -97,6 +100,8 @@ export async function resetRuntimeLayout(paths) {
     await chmod(paths.deploymentViewsRoot, 0o755)
     await chown(paths.systemPluginViewsRoot, 1000, 1000)
     await chmod(paths.systemPluginViewsRoot, 0o755)
+    await chown(paths.systemSkillsView, 1000, 1000)
+    await chmod(paths.systemSkillsView, 0o755)
   }
 }
 

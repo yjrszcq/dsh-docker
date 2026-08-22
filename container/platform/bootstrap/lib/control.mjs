@@ -19,7 +19,7 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createBootstrapControl(runner, { deployments, trust, systemPlugins } = {}) {
+export function createBootstrapControl(runner, { deployments, trust, systemPlugins, systemSkills } = {}) {
   return createServer(async (request, response) => {
     let pathname = 'invalid-url'
     try {
@@ -40,6 +40,11 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         send(response, 200, { plugins: await systemPlugins.recover(body.id, body.action) })
       } else if (request.method === 'POST' && pathname === '/v1/system-plugins/discard' && systemPlugins !== undefined) {
         send(response, 200, { plugins: await systemPlugins.discard() })
+      } else if (request.method === 'GET' && pathname === '/v1/system-skills' && systemSkills !== undefined) {
+        send(response, 200, { skills: await systemSkills.list() })
+      } else if (request.method === 'POST' && pathname === '/v1/system-skills/action' && systemSkills !== undefined) {
+        const body = await jsonBody(request)
+        send(response, 200, { skills: await systemSkills.configure(body.skillId, body.action) })
       }
       else if (request.method === 'GET' && pathname === '/v1/deployments/current' && deployments !== undefined) {
         const state = await deployments.state()

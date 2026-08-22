@@ -220,6 +220,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/modules/file-manager/editor.mjs',
     'control-plane/modules/file-manager/tasks.mjs',
     'control-plane/modules/file-manager/archives.mjs',
+    'control-plane/modules/skill-manager/index.mjs',
     'control-plane/skills/catalog.json',
     'control-plane/skills/dsh-docker-operations/SKILL.md',
     'control-plane/skills/dsh-docker-operations/references/diagnostics-and-boundaries.md',

@@ -152,6 +152,7 @@ try {
     'control-plane/skills',
     'control-plane/services/gateway', 'control-plane/modules/log-manager',
     'control-plane/services/management', 'control-plane/modules/patch-manager',
+    'control-plane/modules/skill-manager',
     'control-plane/modules/system-plugin-manager', 'control-plane/modules/updater',
     'control-plane/modules/user-plugin-manager', 'control-plane/modules/file-manager',
   ], 'Bootstrap packaging')

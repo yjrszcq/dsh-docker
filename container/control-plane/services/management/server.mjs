@@ -97,6 +97,8 @@ export function createManagementServer({
   configureBundledPlugin = async () => { throw new Error('System Plugin management is not configured') },
   recoverBundledPlugin = async () => { throw new Error('System Plugin recovery is not configured') },
   discardBundledPluginChanges = async () => { throw new Error('System Plugin draft management is not configured') },
+  listSystemSkills = async () => [],
+  configureSystemSkill = async () => { throw new Error('System Skill management is not configured') },
   listUserPlugins = async () => { throw new Error('User Plugin inventory is not configured') },
   markUserPluginsLoaded = async () => {},
   validateUserPluginActions = async () => { throw new Error('User Plugin recovery is not configured') },
@@ -124,10 +126,12 @@ export function createManagementServer({
   let restartTask
   let runtimeResetTask
   let pluginTask
+  let systemSkillTask
   let userPluginTask
   let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let runtimeResetState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
+  let systemSkillState = Object.freeze({ status: 'idle', taskId: null, skillId: null, action: null, error: null, updatedAt: null })
   let userPluginState = Object.freeze(initialUserPluginTransaction === undefined
     ? { status: 'idle', taskId: null, phase: null, error: null, updatedAt: null }
     : {
@@ -162,6 +166,11 @@ export function createManagementServer({
     server.emit('management-state', pluginState)
   }
 
+  const publishSystemSkill = value => {
+    systemSkillState = Object.freeze({ ...systemSkillState, ...value, updatedAt: new Date().toISOString() })
+    server.emit('management-state', systemSkillState)
+  }
+
   const publishUserPlugin = value => {
     userPluginState = Object.freeze({ ...userPluginState, ...value, updatedAt: new Date().toISOString() })
     if (userPluginState.taskId !== null) {
@@ -175,6 +184,7 @@ export function createManagementServer({
     if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
     if (runtimeResetTask !== undefined) throw new UpdateConflictError('the DSH Runtime is already resetting')
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
+    if (systemSkillTask !== undefined) throw new UpdateConflictError('a System Skill operation is already running')
     if (userPluginTask !== undefined) throw new UpdateConflictError('a User Plugin operation is already running')
     if (fileTasks?.hasManagedMutation === true) throw new UpdateConflictError('a managed file operation is already running')
     if (privilegedMutationActive()) throw new UpdateConflictError('a privileged file operation is already running')
@@ -247,6 +257,34 @@ export function createManagementServer({
       )
       .finally(() => { pluginTask = undefined })
     pluginTask.catch(() => {})
+    return { taskId }
+  }
+
+  const startSystemSkillAction = (skillId, action) => {
+    if (typeof skillId !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skillId) || skillId.length > 64) {
+      throw new Error('System Skill ID is invalid')
+    }
+    if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) throw new Error('System Skill action is invalid')
+    requireRuntimeIdle()
+    if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    publishSystemSkill({ status: 'running', taskId, skillId, action, error: null })
+    systemSkillTask = Promise.resolve()
+      .then(() => recordAudit(`system-skill.${action}.started`, { taskId, skillId }))
+      .then(() => configureSystemSkill(skillId, action))
+      .then(
+        async () => {
+          await recordAudit(`system-skill.${action}.completed`, { taskId, skillId })
+          publishSystemSkill({ status: 'success', taskId, skillId, action, error: null })
+        },
+        async error => {
+          const message = error instanceof Error ? error.message : 'System Skill operation failed'
+          await recordAudit(`system-skill.${action}.failed`, { error, taskId, skillId })
+          publishSystemSkill({ status: 'failed', taskId, skillId, action, error: message })
+        },
+      )
+      .finally(() => { systemSkillTask = undefined })
+    systemSkillTask.catch(() => {})
     return { taskId }
   }
 
@@ -323,10 +361,13 @@ export function createManagementServer({
           dshRestart: restartState,
           runtimeReset: runtimeResetState,
           systemPluginOperation: pluginState,
+          systemSkillOperation: systemSkillState,
           userPluginOperation: userPluginState,
         })
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
+      } else if (request.method === 'GET' && route === 'system-skills') {
+        send(response, 200, { skills: await listSystemSkills() })
       } else if (request.method === 'GET' && route === 'user-plugins') {
         send(response, 200, await listUserPlugins())
       } else if (request.method === 'POST' && route === 'user-plugins/apply') {
@@ -489,6 +530,9 @@ export function createManagementServer({
         publishPlugin({ restartRequired: false })
         await audit('system-plugin.changes.discarded')
         send(response, 200, result)
+      } else if (request.method === 'POST' && route === 'system-skills/action') {
+        const body = await jsonBody(request)
+        send(response, 202, startSystemSkillAction(body.skillId, body.action))
       } else if (request.method === 'PUT' && route === 'channel') {
         const body = await jsonBody(request)
         const value = await coordinator.setChannel(body.channel)
