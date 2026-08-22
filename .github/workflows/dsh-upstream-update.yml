@@ -184,7 +184,9 @@ jobs:
             -f context='DSH candidate Runtime' \
             -f description="$description" \
             -f target_url="$run_url" >/dev/null
-          gh pr comment "$PR_NUMBER" --body "DSH \`${UPSTREAM_VERSION}\` with Environment \`${ENVIRONMENT_VERSION}\` **${label}** compatibility validation. [Open workflow run](${run_url})."
+          gh pr comment "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "DSH \`${UPSTREAM_VERSION}\` with Environment \`${ENVIRONMENT_VERSION}\` **${label}** compatibility validation. [Open workflow run](${run_url})."
           printf 'Candidate validation %s: %s\n' "$label" "$run_url" >> "$GITHUB_STEP_SUMMARY"
 
   notify-discovered:

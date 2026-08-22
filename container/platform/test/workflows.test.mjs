@@ -76,6 +76,7 @@ test('discovery run reports candidate status without duplicate result notificati
   const workflow = await readFile(workflowUrl, 'utf8')
   assert.match(workflow, /uses: \.\/\.github\/workflows\/dsh-candidate-validation\.yml/)
   assert.match(workflow, /statuses: write/)
+  assert.match(workflow, /gh pr comment "\$PR_NUMBER" \\\n+\s+--repo "\$GITHUB_REPOSITORY"/)
   assert.match(workflow, /DSH candidate Runtime/)
   assert.match(workflow, /notify-discovered:[\s\S]*发现 DSH 上游新版本/)
   assert.match(workflow, /notify-result:[\s\S]*DSH 上游检查失败/)
