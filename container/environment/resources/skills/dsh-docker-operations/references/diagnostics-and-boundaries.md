@@ -13,7 +13,7 @@ Use the least invasive source of truth that can answer the question:
 
 For a restart failure immediately after plugin removal, first look for `cannot resolve profile bundle` in the structured DSH Runtime logs. A current managed startup repairs legacy orphaned Bundle references automatically; verify the subsequent lifecycle terminal state before escalating. Do not bypass that repair by editing the Web Profile manifest or lockfile directly.
 
-For a browser `Failed to load plugins` page around a restart, correlate the current `dshLifecycle` task with `browser.plugin-load.failed` and the matching recovery event. `browser.plugin-load.recovery.completed` identifies a recovered transition race; `browser.plugin-load.recovery.failed`, or a failure without lifecycle evidence, identifies a persistent bundle problem that should be diagnosed from the named plugin and DSH Runtime logs. Do not create a reload loop or assume every plugin-load failure is transient.
+For a browser `Failed to load plugins` page around a restart, correlate the current `dshLifecycle` task with `browser.plugin-load.failed` and the matching recovery event. Apply this diagnosis equally to official DSH plugins, bundled System Plugins, and User Plugins. `browser.plugin-load.recovery.completed` identifies a recovered transition race; `browser.plugin-load.recovery.failed`, or a failure without lifecycle evidence, identifies a persistent bundle problem that should be diagnosed from the named plugin and DSH Runtime logs. Do not create a reload loop or assume every plugin-load failure is transient.
 
 Stop once the cause is established. Do not enumerate Seed trees, runtime packages, sockets, process environments, or supervisor source as a substitute for trying the public operation.
 

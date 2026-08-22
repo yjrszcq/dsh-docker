@@ -355,7 +355,7 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。短暂连接中断会先通过 Gateway readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，未分类代理故障仍返回 `502`。
 
-如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready；前端仍遇到短暂 `502`、`503` 或网络失败时，会在确认平台生命周期状态后最多自动转入等待页一次。相同生命周期内再次加载失败时不再循环刷新，而是保留 DSH 的真实插件加载错误页。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务和失败原因。
+如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready。该保护覆盖 DSH 加载的所有客户端 Bundle，包括 DSH 官方插件、内置系统插件和用户插件。前端仍遇到短暂 `502`、`503`、网络失败，或 DSH 的动态导入器已经显示 `Failed to load plugins` 时，守卫会先确认平台生命周期状态，再最多自动转入等待页一次。相同生命周期内再次加载失败时不再循环刷新，而是保留 DSH 的真实插件加载错误页。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务和失败原因。
 
 `dsh-runtime` 在没有平台操作登记时意外退出，Bootstrap 最多恢复三次，间隔依次为立即、2 秒和 5 秒。更新、回滚、重置或 probation 已持有生命周期时不会并行恢复。三次均失败后进入 recovery mode，Gateway 和独立管理中心继续可用。
 
