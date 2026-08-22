@@ -7,7 +7,13 @@ on:
         description: Candidate commit to validate
         required: true
         type: string
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to validate (defaults to the selected workflow ref)
+        required: false
+        type: string
+  pull_request_target:
     branches:
       - main
       - dev
@@ -19,7 +25,7 @@ on:
       - .github/workflows/dsh-candidate-validation.yml
 
 concurrency:
-  group: dsh-candidate-${{ inputs.ref || github.event.pull_request.head.sha }}
+  group: dsh-candidate-${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -28,13 +34,17 @@ permissions:
 jobs:
   validate:
     name: Build candidate with current Environment
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      github.event.pull_request.head.ref != 'automation/dsh-upstream-candidate'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

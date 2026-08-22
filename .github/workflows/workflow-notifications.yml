@@ -19,7 +19,8 @@ jobs:
        (github.event.workflow_run.conclusion == 'success' ||
         github.event.workflow_run.conclusion == 'failure')) ||
       (github.event.workflow_run.name == 'DSH Candidate Validation' &&
-       github.event.workflow_run.event == 'pull_request' &&
+       (github.event.workflow_run.event == 'pull_request_target' ||
+        github.event.workflow_run.event == 'workflow_dispatch') &&
        github.event.workflow_run.head_branch != 'automation/dsh-upstream-candidate' &&
        (github.event.workflow_run.conclusion == 'success' ||
         github.event.workflow_run.conclusion == 'failure'))
@@ -38,8 +39,12 @@ jobs:
            format('签名目标和必要的 Environment Release 已发布。独立镜像工作流已经启动；如果 production-image 启用了审批，镜像发布会等待批准。镜像工作流：{0}/{1}/actions/workflows/docker.yaml', github.server_url, github.repository) ||
            format('签名目标或 Environment Release 发布失败。工作流：{0}', github.event.workflow_run.html_url)) ||
           (github.event.workflow_run.conclusion == 'success' &&
-           format('Pull Request 的 DSH 候选版本兼容性验证通过。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url) ||
-           format('Pull Request 的 DSH 候选版本兼容性验证失败。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url))
+           (github.event.workflow_run.event == 'workflow_dispatch' &&
+            format('手动发起的 DSH 候选版本兼容性验证通过。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url) ||
+            format('Pull Request 的 DSH 候选版本兼容性验证通过。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url)) ||
+           (github.event.workflow_run.event == 'workflow_dispatch' &&
+            format('手动发起的 DSH 候选版本兼容性验证失败。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url) ||
+            format('Pull Request 的 DSH 候选版本兼容性验证失败。候选提交：{0}。工作流：{1}', github.event.workflow_run.head_sha, github.event.workflow_run.html_url)))
         }}
       priority: ${{ github.event.workflow_run.conclusion == 'failure' && 8 || 7 }}
     secrets:
