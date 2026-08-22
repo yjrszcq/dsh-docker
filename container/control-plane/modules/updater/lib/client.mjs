@@ -25,6 +25,8 @@ export class LocalApiClient {
           if ((response.statusCode ?? 500) >= 400) {
             const error = new Error(value.error ?? `local API returned ${String(response.statusCode)}`)
             error.statusCode = response.statusCode
+            if (typeof value.code === 'string') error.code = value.code
+            error.localApiPath = path
             reject(error)
           } else resolve(value)
         })

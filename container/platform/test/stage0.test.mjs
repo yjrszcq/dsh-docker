@@ -15,6 +15,7 @@ import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
 import { createRecoveryServer, listenRecovery } from '../stage0/lib/recovery-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
+import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { keyPair } from './helpers.mjs'
 import {
   deriveImageBuildId,
@@ -364,6 +365,30 @@ test('exposes a bounded local Trust API without trust-root mutation routes', asy
       && entry.fields.pathname === '/v1/dsh/ensure'
       && entry.fields.error instanceof Error), true)
     assert.equal((await readFile(socketPath).catch(error => error.code)), 'ENXIO')
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('returns structured Trust errors to local clients', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-trust-error-server-'))
+  const error = Object.assign(new Error('keyring signature key is not trusted'), { code: 'TRUST_UNKNOWN_KEY' })
+  const server = createTrustServer({
+    ledger: { acceptKeyring: async () => { throw error } },
+    objects: {},
+  })
+  const socketPath = join(root, 'run', 'trust.sock')
+  await listenUnix(server, socketPath)
+  try {
+    assert.deepEqual(await unixRequest(socketPath, 'POST', '/v1/keyring', { document: '', signature: {} }), {
+      status: 400,
+      body: { error: error.message, code: error.code },
+    })
+    await assert.rejects(new LocalApiClient(socketPath).acceptKeyring(Buffer.alloc(0), {}), failure => {
+      assert.equal(failure.code, error.code)
+      assert.equal(failure.localApiPath, '/v1/keyring')
+      return true
+    })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

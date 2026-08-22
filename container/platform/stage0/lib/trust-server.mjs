@@ -94,7 +94,10 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
       }
     } catch (error) {
       await record('trust.request.failed', { error, method: request.method ?? null, pathname })
-      send(response, 400, { error: error instanceof Error ? error.message : 'invalid request' })
+      send(response, 400, {
+        error: error instanceof Error ? error.message : 'invalid request',
+        ...(typeof error?.code === 'string' ? { code: error.code } : {}),
+      })
     }
   })
 }

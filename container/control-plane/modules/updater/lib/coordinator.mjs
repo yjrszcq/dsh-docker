@@ -7,6 +7,11 @@ import { MetadataUnavailableError } from './metadata.mjs'
 
 export class UpdateConflictError extends Error {}
 
+function unavailableDevelopmentMetadata(error) {
+  return error instanceof MetadataUnavailableError
+    || (error?.code === 'TRUST_UNKNOWN_KEY' && error?.localApiPath === '/v1/keyring')
+}
+
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
@@ -131,7 +136,7 @@ export class UpdateCoordinator extends EventEmitter {
       })
       return target
     } catch (error) {
-      if (error instanceof MetadataUnavailableError && this.allowUnavailableMetadata) {
+      if (this.allowUnavailableMetadata && unavailableDevelopmentMetadata(error)) {
         const local = await this.channelState?.read()
         const upstream = local?.updateChannel === 'experimental' && this.npm !== undefined
           ? await this.bestEffort('update.upstream-discovery.failed', () => this.npm.discover(), null, { checkSource: source })

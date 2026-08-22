@@ -284,6 +284,40 @@ test('reports unpublished metadata only for development images', async () => {
   assert.deepEqual(persisted.upstream, { version: '0.1.0-rc.10' })
 })
 
+test('treats a Recovery root mismatch as unavailable only for development images', async () => {
+  const mismatch = Object.assign(new Error('keyring signature key is not trusted'), {
+    code: 'TRUST_UNKNOWN_KEY',
+    localApiPath: '/v1/keyring',
+  })
+  const developmentRoot = await mkdtemp(join(tmpdir(), 'dsh-development-root-mismatch-'))
+  const development = new UpdateCoordinator({
+    metadata: { check: async () => { throw mismatch } },
+    preparer: {}, activator: {}, state: new UpdateStateStore(join(developmentRoot, 'state', 'update.json')),
+    allowUnavailableMetadata: true,
+  })
+  assert.deepEqual(await development.check(), { unavailable: true, upstream: null })
+  assert.equal((await development.state.read()).metadataUnavailable, true)
+
+  const targetError = Object.assign(new Error('target signature key is not trusted'), {
+    code: 'TRUST_UNKNOWN_KEY',
+    localApiPath: '/v1/target',
+  })
+  const targetRoot = await mkdtemp(join(tmpdir(), 'dsh-development-target-mismatch-'))
+  const invalidTarget = new UpdateCoordinator({
+    metadata: { check: async () => { throw targetError } },
+    preparer: {}, activator: {}, state: new UpdateStateStore(join(targetRoot, 'state', 'update.json')),
+    allowUnavailableMetadata: true,
+  })
+  await assert.rejects(invalidTarget.check(), /target signature key is not trusted/)
+
+  const formalRoot = await mkdtemp(join(tmpdir(), 'dsh-formal-root-mismatch-'))
+  const formal = new UpdateCoordinator({
+    metadata: { check: async () => { throw mismatch } },
+    preparer: {}, activator: {}, state: new UpdateStateStore(join(formalRoot, 'state', 'update.json')),
+  })
+  await assert.rejects(formal.check(), /keyring signature key is not trusted/)
+})
+
 test('treats unpublished metadata as a formal image failure by default', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-formal-metadata-'))
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
