@@ -400,6 +400,8 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 旧版 DSH 或第三方插件工具可能只删除插件包，却把已经无法解析的条目留在 `dsh.profile.bundles`。每次经过授权的 Web Profile 启动前，受管 Runtime 会原子清理“已经不是 dependency，且无法从 Profile 或 DSH 安装中解析”的孤儿条目；内置 Bundle、仍声明的 dependency 和仍可解析的本地 Bundle 都会保留。修复结果会写入 DSH Runtime 日志。遇到这种旧数据时应使用当前镜像重启，不要手工改写 Profile 清单。
 
+受管 Runtime 还会把 Web Profile 的 pnpm store 固定到 `$DSH_HOME/.pnpm-store`。现有 Profile 如果仍指向旧镜像留下的 `/workspace/.pnpm-store` 或其他用户目录，启动时会复用可用的旧 store 内容，并由镜像固定版本的 pnpm 按 lockfile 重建链接；迁移失败或中断时会恢复原 workspace 配置和 `node_modules`。即使从容器 Root shell 调用，公开 `dsh` 命令也会自动使用 `node` 身份，避免插件文件变成 Root 所有；`dsh-platform` 和管理中心终端仍是 Root 维护工具。遇到 store 不匹配时不要删除 `/data/dsh`、手工修改 `.modules.yaml`，也不要通过修改 Root 包管理目录权限绕过错误。
+
 ### 容器终端
 
 “容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录取自 `DSH_DEFAULT_WORKSPACE`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。

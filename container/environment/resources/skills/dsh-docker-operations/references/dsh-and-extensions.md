@@ -20,7 +20,9 @@ Remove it with:
 dsh plugin --profile web remove <package-name>
 ```
 
-Run these commands with the inherited `node` environment. Do not redirect pnpm configuration or caches and do not invoke profile-internal pnpm commands as Root. Prefer the package declared by the plugin project; clone/build source only when the user explicitly requests source installation or no published package exists.
+Run these commands with the inherited `node` environment. The public container `dsh` shim also drops a Root caller to the managed `node` identity, but that protection is not a reason to invoke profile-internal pnpm commands as Root. Do not redirect pnpm configuration or caches. Prefer the package declared by the plugin project; clone/build source only when the user explicitly requests source installation or no published package exists.
+
+The platform pins the Web Profile store below `$DSH_HOME/.pnpm-store` and transactionally migrates a legacy Profile whose pnpm metadata points at an older workspace or home. If a package operation reports `ERR_PNPM_UNEXPECTED_STORE`, restart DSH once through the public lifecycle command and inspect the DSH Runtime log for the migration result. Do not delete `$DSH_HOME`, edit `node_modules/.modules.yaml`, or create/chmod the old store path to suppress the check.
 
 Some plugin changes require DSH to restart. Use:
 

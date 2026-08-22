@@ -32,6 +32,7 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /gateway\.upstream\.recovered/)
   assert.match(script, /standalone-recovery-smoke\.mjs/)
   assert.match(script, /standalone-file-management-smoke\.mjs/)
+  assert.match(script, /profile-package-compatibility-smoke\.sh/)
   assert.match(script, /--group-add dsh-sudo-false/)
   assert.match(script, /sudo -n true/)
   assert.match(script, /--unix-socket \/run\/dsh-platform\/maintenance\.sock/)
@@ -46,6 +47,17 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /clear only \/data\/platform/)
   assert.match(script, /Do not delete \/data\/dsh/)
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
+})
+
+test('Profile compatibility smoke migrates old stores and preserves node ownership', async () => {
+  const script = await readFile(new URL('../../test/profile-package-compatibility-smoke.sh', import.meta.url), 'utf8')
+  assert.match(script, /dsh-platform stop --wait/)
+  assert.match(script, /pnpm install --offline --frozen-lockfile/)
+  assert.match(script, /dsh-platform start --wait/)
+  assert.match(script, /npm_config_userconfig=\/root\/\.config\/npm\/npmrc/)
+  assert.match(script, /dsh plugin --profile web add/)
+  assert.match(script, /stat -c %U/)
+  assert.match(script, /dsh plugin --profile web remove/)
 })
 
 test('the public DSH shim keeps Profile operations under the node identity', async () => {
