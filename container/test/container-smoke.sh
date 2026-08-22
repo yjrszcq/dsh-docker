@@ -185,6 +185,90 @@ done
 docker exec "$container" sh -c "test -L '$skill_view' && test -f '$skill_view/SKILL.md'"
 docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"system-skill.disable.completed"' >/dev/null
 docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"system-skill.enable.completed"' >/dev/null
+docker exec -i --user node \
+  --env DSH_HOME=/data/dsh \
+  --env DSH_DEFAULT_WORKSPACE=/workspace \
+  --env DSH_BUNDLED_SKILL_DIR=/run/dsh-platform/views/skills \
+  "$container" /usr/local/bin/node --input-type=module \
+  < "$(dirname "$0")/user-skill-watcher-smoke.mjs" \
+  | jq -e '. == {"discovered":true,"disabled":true,"enabled":true,"deleted":true}' >/dev/null
+docker exec --user node "$container" sh -c '
+  set -eu
+  skill=/data/dsh/skills/smoke-managed-user-skill
+  mkdir -p "$skill"
+  cat > "$skill/SKILL.md" <<"EOF"
+---
+name: smoke-managed-user-skill
+description: Smoke-test Management user skill actions.
+---
+
+# Smoke Managed User Skill
+EOF
+'
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
+user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
+user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
+user_skill_dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )"
+user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
+    '{entryId:$entryId,revision:$revision,action:"disable"}')" \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.1
+done
+docker exec "$container" test -f /data/dsh/skills/.disabled/smoke-managed-user-skill/SKILL.md
+[ "$user_skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
+user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
+user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
+user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
+    '{entryId:$entryId,revision:$revision,action:"enable"}')" \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.1
+done
+docker exec "$container" test -f /data/dsh/skills/smoke-managed-user-skill/SKILL.md
+[ "$user_skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
+user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
+user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
+user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
+    '{entryId:$entryId,revision:$revision,action:"delete"}')" \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.1
+done
+if docker exec "$container" test -e /data/dsh/skills/smoke-managed-user-skill; then
+  echo "deleted User Skill remained in the active user root" >&2
+  exit 1
+fi
+[ "$user_skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.disable.completed"' >/dev/null
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.enable.completed"' >/dev/null
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.delete.completed"' >/dev/null
 settings_document="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document)"
 [ "$(echo "$settings_document" | jq -r .exists)" = false ]
