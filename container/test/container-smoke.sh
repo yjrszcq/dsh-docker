@@ -83,7 +83,7 @@ docker exec "$container" sh -c '
   "$venv/bin/pip" --version >/dev/null
 '
 
-"$(dirname "$0")/profile-package-compatibility-smoke.sh" "$container"
+sh "$(dirname "$0")/profile-package-compatibility-smoke.sh" "$container"
 
 status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
   --header 'Host: evil.example' http://127.0.0.1:3080/)"

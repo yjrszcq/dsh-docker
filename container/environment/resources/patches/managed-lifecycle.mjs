@@ -52,8 +52,9 @@ function installedStore(profileDir) {
 
 function withStoreDirectory(source, storeRoot) {
 	const line = "storeDir: " + JSON.stringify(storeRoot) + "\n";
-	const pattern = /^storeDir:[^\r\n]*(?:\r?\n|$)/m;
-	if (pattern.test(source)) return source.replace(pattern, line);
+	const matches = source.match(/^storeDir:[^\r\n]*(?:\r?\n|$)/gm) ?? [];
+	if (matches.length > 1) throw new Error("Web Profile pnpm workspace has multiple storeDir entries");
+	if (matches.length === 1) return source.replace(/^storeDir:[^\r\n]*(?:\r?\n|$)/m, line);
 	return source.replace(/(?:\r?\n)?$/, "\n\n" + line);
 }
 

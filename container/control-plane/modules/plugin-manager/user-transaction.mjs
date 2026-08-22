@@ -8,6 +8,7 @@ import { userPluginInternals } from './user-inventory.mjs'
 
 const PACKAGE_PATH_ENVIRONMENT = new Set([
   'npm_config_cache',
+  'npm_config_prefix',
   'npm_config_store_dir',
   'npm_config_userconfig',
   'pnpm_home',
@@ -20,6 +21,7 @@ function pluginEnvironment(dshHome, home = '/home/node') {
     XDG_CACHE_HOME: join(home, '.cache'),
     XDG_CONFIG_HOME: join(home, '.config'),
     XDG_DATA_HOME: join(home, '.local', 'share'),
+    XDG_STATE_HOME: join(home, '.local', 'state'),
     DSH_HOME: dshHome,
   }
   for (const name of Object.keys(environment)) {

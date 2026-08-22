@@ -124,6 +124,11 @@ test('pins compatible Profiles to their custom DSH_HOME store', async () => {
     }))
     assert.equal(storage.prepareProfilePackageStorage('web').status, 'ready')
     assert.equal((await readFile(workspacePath, 'utf8')).match(/^storeDir:/gm)?.length, 1)
+
+    const ambiguous = `${await readFile(workspacePath, 'utf8')}storeDir: "/another/store"\n`
+    await writeFile(workspacePath, ambiguous)
+    assert.throws(() => storage.prepareProfilePackageStorage('web'), /multiple storeDir entries/)
+    assert.equal(await readFile(workspacePath, 'utf8'), ambiguous)
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
