@@ -37,6 +37,7 @@
       <button id="tab-maintenance" type="button" role="tab" aria-selected="false" aria-controls="panel-maintenance" data-tab="maintenance" data-i18n="maintenanceTab">Maintenance</button>
       <button id="tab-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-plugins" data-tab="plugins" data-i18n="pluginsTab">System plugins</button>
       <button id="tab-skills" type="button" role="tab" aria-selected="false" aria-controls="panel-skills" data-tab="skills" data-i18n="skillsTab">System skills</button>
+      <button id="tab-user-skills" type="button" role="tab" aria-selected="false" aria-controls="panel-user-skills" data-tab="user-skills" data-i18n="userSkillsTab">User skills</button>
       <button id="tab-user-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-user-plugins" data-tab="user-plugins" data-i18n="userPluginsTab">User plugins</button>
       <button id="tab-terminal" type="button" role="tab" aria-selected="false" aria-controls="panel-terminal" data-tab="terminal" data-i18n="terminalTab">Terminal</button>
       <button id="tab-files" type="button" role="tab" aria-selected="false" aria-controls="panel-files" data-tab="files" data-i18n="filesTab">Files</button>
@@ -160,6 +161,15 @@
         <div id="system-skills" class="plugin-list"></div>
         <p id="empty-skills" class="empty-state" data-i18n="noSystemSkills" hidden>The current Bootstrap provides no System Skills.</p>
         <p id="skill-operation" class="operation-result" role="status" aria-live="polite" hidden></p>
+      </section>
+    </div>
+
+    <div id="panel-user-skills" class="tab-panel" role="tabpanel" aria-labelledby="tab-user-skills" hidden>
+      <section aria-labelledby="user-skills-title">
+        <div class="section-heading"><div><h2 id="user-skills-title" data-i18n="userSkills">User skills</h2><p data-i18n="userSkillsDetail">Enable, disable, or permanently delete skills from the DSH user roots.</p></div></div>
+        <div id="user-skills" class="plugin-list"></div>
+        <p id="empty-user-skills" class="empty-state" data-i18n="noUserSkills" hidden>No user skills were found.</p>
+        <p id="user-skill-operation" class="operation-result" role="status" aria-live="polite" hidden></p>
       </section>
     </div>
 

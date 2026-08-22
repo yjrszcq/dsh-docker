@@ -27,7 +27,7 @@ const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
     switchLanguage: '切换为英文',
-    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
+    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
@@ -63,6 +63,7 @@ const COPY = Object.freeze({
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
     pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
     systemSkills: '系统技能', systemSkillsConsoleDetail: '管理当前 Bootstrap 提供的已签名 Agent 操作指引。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillEnabled: '已安装并启用', skillDisabled: '已安装但已禁用', skillActionWorking: '正在应用技能设置', skillActionComplete: '技能设置已应用',
+    userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
     userPlugins: '用户插件', userPluginsDetail: '无需启动 DSH，即可恢复 Web Profile 中由用户安装的插件。',
     noUserPlugins: 'Web Profile 中没有可管理的用户插件。', dshUnavailable: 'DSH 当前不可用',
     userPluginVersion: '版本', userPluginSpec: '依赖规格', userPluginSource: '来源', userPluginSourceRegistry: '软件包源',
@@ -100,7 +101,7 @@ const COPY = Object.freeze({
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
     switchLanguage: 'Switch to Chinese',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
@@ -136,6 +137,7 @@ const COPY = Object.freeze({
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
     pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
     systemSkills: 'System skills', systemSkillsConsoleDetail: 'Manage signed Agent guidance supplied by the current Bootstrap.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillEnabled: 'Installed and enabled', skillDisabled: 'Installed but disabled', skillActionWorking: 'Applying skill settings', skillActionComplete: 'Skill settings applied',
+    userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
     userPlugins: 'User plugins', userPluginsDetail: 'Recover user-installed Web Profile plugins without starting DSH.',
     noUserPlugins: 'No managed user plugins were found in the Web Profile.', dshUnavailable: 'DSH is unavailable',
     userPluginVersion: 'Version', userPluginSpec: 'Dependency spec', userPluginSource: 'Source', userPluginSourceRegistry: 'Registry',
@@ -200,6 +202,7 @@ const RUNTIME_RESET_PHASES = Object.freeze({
 let status
 let plugins = []
 let systemSkills = []
+let userSkillInventory = { revision: null, skills: [] }
 let userPluginInventory = { revision: null, plugins: [] }
 let inventoriesLoaded = false
 const userPluginDraft = new Map()
@@ -377,6 +380,7 @@ function runtimeBusy(next = status) {
     || (!UPDATE_TERMINAL_STATES.has(update.status ?? 'idle') && update.status !== 'checking')
     || next?.systemPluginOperation?.status === 'running'
     || next?.systemSkillOperation?.status === 'running'
+    || next?.userSkillOperation?.status === 'running'
     || next?.userPluginOperation?.status === 'running'
     || next?.dshRestart?.status === 'restarting'
     || next?.runtimeReset?.status === 'resetting'
@@ -559,6 +563,74 @@ function renderSystemSkills(values, busy) {
   }
 }
 
+function userSkillSource(source) {
+  return t(source === 'user-dsh' ? 'userSkillSourceDsh' : 'userSkillSourceAgents')
+}
+
+async function runUserSkillAction(skill, action) {
+  if (action === 'delete') {
+    const confirmed = await requestConfirmation({
+      title: t('deleteUserSkillTitle'),
+      detail: t('deleteUserSkillDetail', { name: skill.name ?? skill.entryName }),
+      confirmLabel: t('deleteUserSkill'),
+      danger: true,
+    })
+    if (!confirmed) return
+  }
+  const changed = await act('user-skills/action', {
+    method: 'POST',
+    body: { entryId: skill.entryId, revision: userSkillInventory.revision, action },
+  })
+  if (changed) await loadInventories()
+}
+
+function renderUserSkills(busy) {
+  const values = userSkillInventory.skills ?? []
+  const operation = status?.userSkillOperation ?? {}
+  const locked = busy || operation.status === 'running'
+  elements['user-skills'].replaceChildren()
+  elements['empty-user-skills'].hidden = values.length !== 0
+  elements['user-skills'].hidden = values.length === 0
+  for (const skill of values) {
+    const row = document.createElement('article')
+    row.className = 'plugin-row'
+    const identity = document.createElement('div')
+    identity.className = 'plugin-identity'
+    const name = document.createElement('strong')
+    name.textContent = skill.name ?? skill.entryName
+    const description = document.createElement('span')
+    description.textContent = skill.description ?? localizedError(skill.metadataError ?? t('userSkillDamaged'))
+    const metadata = document.createElement('small')
+    metadata.className = 'user-skill-metadata'
+    metadata.textContent = `${userSkillSource(skill.source)} · ${skill.entryName}`
+    identity.append(name, description, metadata)
+    const controls = document.createElement('div')
+    controls.className = 'plugin-actions'
+    const toggle = document.createElement('label')
+    toggle.className = 'toggle'
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = skill.enabled
+    checkbox.disabled = locked
+    checkbox.setAttribute('aria-label', `${skill.enabled ? t('userSkillEnabled') : t('userSkillDisabled')}: ${skill.name ?? skill.entryName}`)
+    checkbox.addEventListener('change', () => { void runUserSkillAction(skill, checkbox.checked ? 'enable' : 'disable') })
+    const track = document.createElement('span')
+    track.setAttribute('aria-hidden', 'true')
+    const label = document.createElement('strong')
+    label.textContent = skill.enabled ? t('userSkillEnabled') : t('userSkillDisabled')
+    toggle.append(checkbox, track, label)
+    const deleteButton = document.createElement('button')
+    deleteButton.type = 'button'
+    deleteButton.className = 'danger-text'
+    deleteButton.textContent = t('deleteUserSkill')
+    deleteButton.disabled = locked
+    deleteButton.addEventListener('click', () => { void runUserSkillAction(skill, 'delete') })
+    controls.append(toggle, deleteButton)
+    row.append(identity, controls)
+    elements['user-skills'].append(row)
+  }
+}
+
 function userPluginSource(value) {
   return t({
     registry: 'userPluginSourceRegistry', file: 'userPluginSourceFile', git: 'userPluginSourceGit',
@@ -706,6 +778,7 @@ function render(next) {
   const runtimeResetVisible = operationResultVisible(runtimeReset, 'resetting')
   const pluginOperation = next.systemPluginOperation ?? {}
   const skillOperation = next.systemSkillOperation ?? {}
+  const userSkillOperation = next.userSkillOperation ?? {}
   const pluginOperationVisible = operationResultVisible(pluginOperation, 'running')
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
@@ -807,9 +880,17 @@ function render(next) {
   elements['skill-operation'].hidden = !skillOperationVisible
   elements['skill-operation'].textContent = skillOperation.status === 'running'
     ? t('skillActionWorking') : skillOperation.status === 'failed' ? localizedError(skillOperation.error ?? '') : t('skillActionComplete')
+  const userSkillOperationVisible = operationResultVisible(userSkillOperation, 'running')
+  elements['user-skill-operation'].hidden = !userSkillOperationVisible
+  elements['user-skill-operation'].textContent = userSkillOperation.status === 'running'
+    ? t('userSkillActionWorking')
+    : userSkillOperation.status === 'failed'
+      ? `${t('userSkillActionFailed')}: ${localizedError(userSkillOperation.error ?? '')}`
+      : t('userSkillActionComplete')
   if (inventoriesLoaded) {
     renderBundledPlugins(plugins, pluginBusy)
     renderSystemSkills(systemSkills, busy)
+    renderUserSkills(busy)
     renderUserPlugins(busy)
   }
 }
@@ -818,9 +899,10 @@ function loadInventories() {
   if (inventoryLoad !== undefined) return inventoryLoad
   inventoryLoad = (async () => {
     try {
-      const [bundled, skills, users] = await Promise.all([api('bundled-plugins'), api('system-skills'), api('user-plugins')])
+      const [bundled, skills, userSkills, users] = await Promise.all([api('bundled-plugins'), api('system-skills'), api('user-skills'), api('user-plugins')])
       plugins = bundled.plugins ?? []
       systemSkills = skills.skills ?? []
+      userSkillInventory = userSkills
       userPluginInventory = users
       inventoriesLoaded = true
       if (status !== undefined) render(status)
@@ -2268,7 +2350,7 @@ async function selectTab(tab) {
     fitTerminal()
     window.requestAnimationFrame(() => terminalEmulator?.focus())
   }
-  if (tab === 'user-plugins' || tab === 'skills') void loadInventories()
+  if (tab === 'user-plugins' || tab === 'skills' || tab === 'user-skills') void loadInventories()
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
   return true

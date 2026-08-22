@@ -420,6 +420,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .plugin-identity strong, .plugin-identity span { display: block; overflow-wrap: anywhere; }
 .plugin-identity strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .plugin-identity span { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.plugin-identity .user-skill-metadata { display: block; margin-top: 4px; color: var(--faint); font: 11px/17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .plugin-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .plugin-action-state { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .plugin-pending { display: inline-block !important; width: fit-content; margin-top: 5px !important; color: var(--warning) !important; font-weight: 600; }
