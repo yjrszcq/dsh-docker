@@ -94,6 +94,11 @@ test('trusted HTTP requests reach upstream with loopback headers', async () => {
     const response = await request(gatewayPort, '/echo?x=1', {
       host: 'dsh.example',
       origin: 'https://dsh.example',
+      forwarded: 'for=198.51.100.4;proto=https',
+      'x-forwarded-for': '198.51.100.4',
+      'x-forwarded-host': 'public.example',
+      'x-forwarded-proto': 'https',
+      'x-real-ip': '198.51.100.4',
     })
     assert.equal(response.status, 200)
     const payload = JSON.parse(response.body)
@@ -101,6 +106,11 @@ test('trusted HTTP requests reach upstream with loopback headers', async () => {
     assert.equal(payload.headers.host, INTERNAL_AUTHORITY)
     assert.equal(payload.headers.origin, `http://${INTERNAL_AUTHORITY}`)
     assert.equal(payload.headers['accept-encoding'], 'identity')
+    assert.equal(payload.headers.forwarded, undefined)
+    assert.equal(payload.headers['x-forwarded-for'], undefined)
+    assert.equal(payload.headers['x-forwarded-host'], undefined)
+    assert.equal(payload.headers['x-forwarded-proto'], undefined)
+    assert.equal(payload.headers['x-real-ip'], undefined)
   })
 })
 
@@ -111,11 +121,25 @@ test('upstream headers remove connection tokens and gateway authorization', () =
     cookie: 'dsh_plugin_session=preserved',
     host: 'dsh.example',
     'x-remove': 'hop-by-hop',
+    Forwarded: 'for=198.51.100.4',
+    'X-Forwarded-Custom': 'external',
+    'X-Real-IP': '198.51.100.4',
   })
   assert.equal(headers.connection, undefined)
   assert.equal(headers['x-remove'], undefined)
   assert.equal(headers.authorization, undefined)
   assert.equal(headers.cookie, 'dsh_plugin_session=preserved')
+  assert.equal(headers.Forwarded, undefined)
+  assert.equal(headers['X-Forwarded-Custom'], undefined)
+  assert.equal(headers['X-Real-IP'], undefined)
+  const management = upstreamRequestHeaders({
+    forwarded: 'for=198.51.100.4',
+    'x-forwarded-for': '198.51.100.4',
+    'x-real-ip': '198.51.100.4',
+  }, { dsh: false })
+  assert.equal(management.forwarded, 'for=198.51.100.4')
+  assert.equal(management['x-forwarded-for'], '198.51.100.4')
+  assert.equal(management['x-real-ip'], '198.51.100.4')
 })
 
 test('untrusted requests are rejected without reaching upstream', async () => {
@@ -240,7 +264,7 @@ test('bounded management and Console requests use the protected local socket ins
   const maintenanceSocketPath = join(root, 'maintenance.sock')
   const management = createServer((incoming, response) => {
     response.writeHead(202, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ method: incoming.method, path: incoming.url }))
+    response.end(JSON.stringify({ method: incoming.method, path: incoming.url, forwarded: incoming.headers.forwarded }))
   })
   await new Promise((resolve, reject) => {
     management.once('error', reject)
@@ -266,9 +290,13 @@ test('bounded management and Console requests use the protected local socket ins
   })
   const gatewayPort = await listen(gateway)
   try {
-    const result = await request(gatewayPort, '/_dsh_platform/api/v1/status', { host: 'dsh.example' })
+    const result = await request(gatewayPort, '/_dsh_platform/api/v1/status', {
+      host: 'dsh.example', forwarded: 'for=198.51.100.4;proto=https',
+    })
     assert.equal(result.status, 202)
-    assert.deepEqual(JSON.parse(result.body), { method: 'GET', path: '/_dsh_platform/api/v1/status' })
+    assert.deepEqual(JSON.parse(result.body), {
+      method: 'GET', path: '/_dsh_platform/api/v1/status', forwarded: 'for=198.51.100.4;proto=https',
+    })
     assert.equal(upstreamRequests, 0)
     for (const [method, path] of [
       ['GET', '/_dsh_platform/api/v1/rollback-plan'],
@@ -424,6 +452,9 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
       'Upgrade: websocket',
       'Sec-WebSocket-Key: dGVzdA==',
       'Sec-WebSocket-Version: 13',
+      'Forwarded: for=198.51.100.4;proto=https',
+      'X-Forwarded-For: 198.51.100.4',
+      'X-Real-IP: 198.51.100.4',
       '',
       '',
     ].join('\r\n'))
@@ -442,6 +473,9 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
     assert.match(received, /^HTTP\/1\.1 101/)
     assert.equal(seenHeaders.host, INTERNAL_AUTHORITY)
     assert.equal(seenHeaders.origin, `http://${INTERNAL_AUTHORITY}`)
+    assert.equal(seenHeaders.forwarded, undefined)
+    assert.equal(seenHeaders['x-forwarded-for'], undefined)
+    assert.equal(seenHeaders['x-real-ip'], undefined)
 
     client.write('ping')
     const echo = await new Promise((resolve, reject) => {
@@ -502,6 +536,9 @@ test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket',
       'Upgrade: websocket',
       'Sec-WebSocket-Key: dGVzdA==',
       'Sec-WebSocket-Version: 13',
+      'Forwarded: for=198.51.100.4;proto=https',
+      'X-Forwarded-For: 198.51.100.4',
+      'X-Real-IP: 198.51.100.4',
       '',
       '',
     ].join('\r\n'))
@@ -520,6 +557,9 @@ test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket',
     assert.match(received, /^HTTP\/1\.1 101/)
     assert.equal(seenHeaders.host, INTERNAL_AUTHORITY)
     assert.equal(seenHeaders.origin, `http://${INTERNAL_AUTHORITY}`)
+    assert.equal(seenHeaders.forwarded, 'for=198.51.100.4;proto=https')
+    assert.equal(seenHeaders['x-forwarded-for'], '198.51.100.4')
+    assert.equal(seenHeaders['x-real-ip'], '198.51.100.4')
     client.write('terminal-ping')
     assert.equal(await new Promise(resolve => client.once('data', data => resolve(data.toString()))), 'terminal-ping')
 

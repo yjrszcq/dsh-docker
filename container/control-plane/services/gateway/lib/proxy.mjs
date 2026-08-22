@@ -76,9 +76,17 @@ function copyEndToEndHeaders(headers) {
   return copied
 }
 
-export function upstreamRequestHeaders(headers) {
+export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
   const excluded = excludedHeaderNames(headers)
   const rewritten = copyEndToEndHeaders(headers)
+  if (dsh) {
+    for (const name of Object.keys(rewritten)) {
+      const normalized = name.toLowerCase()
+      if (normalized === 'forwarded' || normalized === 'x-real-ip' || normalized.startsWith('x-forwarded-')) {
+        delete rewritten[name]
+      }
+    }
+  }
   rewritten.host = INTERNAL_AUTHORITY
   rewritten['accept-encoding'] = 'identity'
   if (!excluded.has('origin') && typeof headers.origin === 'string') {
@@ -273,7 +281,7 @@ async function rejectDshFailure(request, response, options) {
 function proxyHttp(request, response, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const context = requestContext(request)
-  const headers = upstreamRequestHeaders(request.headers)
+  const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
   }
@@ -358,7 +366,7 @@ function proxyUpgrade(request, clientSocket, head, options) {
   const context = requestContext(request)
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const failureKey = `${upstreamType}-websocket`
-  const headers = upstreamRequestHeaders(request.headers)
+  const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
   }
