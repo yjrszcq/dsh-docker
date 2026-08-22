@@ -79,13 +79,17 @@ test('gates only managed Web launches and routes restart through Management', as
   let claimStatus = 200
   let disposition = 'request-restart'
   let lifecycleState = 'running'
+  let signalDelayMs = 0
   const broker = await listen(join(runRoot, 'dsh-lifecycle.sock'), async (request, response) => {
     const chunks = []
     for await (const chunk of request) chunks.push(chunk)
     calls.push({ socket: 'broker', path: request.url, body: JSON.parse(Buffer.concat(chunks)) })
     if (claimStatus !== 200) json(response, claimStatus, { error: 'launch already claimed' })
     else if (request.url === '/v1/runtime/claim') json(response, 200, { sessionId: 'session-1' })
-    else json(response, 200, { disposition })
+    else {
+      if (signalDelayMs > 0) await new Promise(resolve => setTimeout(resolve, signalDelayMs))
+      json(response, 200, { disposition })
+    }
   })
   const management = await listen(join(runRoot, 'management.sock'), (request, response) => {
     calls.push({ socket: 'management', path: request.url })
@@ -119,6 +123,17 @@ test('gates only managed Web launches and routes restart through Management', as
     assert.equal(interrupts, 0)
     onSigterm()
     assert.equal(interrupts, 1)
+
+    const restartCallsBeforeCancellation = calls.filter(value => value.path?.endsWith('/restart-dsh')).length
+    signalDelayMs = 30
+    let cancellationInterrupts = 0
+    const cancelSigterm = adapter.managedSigtermHandler(() => { cancellationInterrupts += 1 })
+    cancelSigterm()
+    cancelSigterm()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    assert.equal(cancellationInterrupts, 1)
+    assert.equal(calls.filter(value => value.path?.endsWith('/restart-dsh')).length, restartCallsBeforeCancellation)
+    signalDelayMs = 0
 
     disposition = 'terminate'
     let terminationInterrupts = 0

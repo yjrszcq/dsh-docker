@@ -121,9 +121,11 @@ export function managedSigtermHandler(interrupt) {
 	if (managedSessionId === null) return () => interrupt(0);
 	let count = 0;
 	let fallback;
+	let abandoned = false;
 	return () => {
 		count += 1;
 		if (count > 1) {
+			abandoned = true;
 			if (fallback !== void 0) clearTimeout(fallback);
 			interrupt(0);
 			return;
@@ -132,6 +134,7 @@ export function managedSigtermHandler(interrupt) {
 			sessionId: managedSessionId,
 			signal: "SIGTERM"
 		}).then(async ({ disposition }) => {
+			if (abandoned) return;
 			if (disposition === "terminate") {
 				interrupt(0);
 				return;

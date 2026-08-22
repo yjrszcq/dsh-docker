@@ -470,9 +470,10 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker logs "$container" 2>&1 \
   | grep -E '"source":"gateway".*"message":"gateway.upstream.failed"' >/dev/null
-start_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
-  --header 'Host: smoke.example' --request POST \
-  http://127.0.0.1:3080/_dsh_platform/api/v1/start-dsh | jq -r .taskId)"
+managed_start_output="$(docker exec --user node "$container" dsh web --no-open)"
+printf '%s\n' "$managed_start_output" | grep -F 'requested managed DSH start' >/dev/null
+start_task="$(printf '%s\n' "$managed_start_output" | sed -n 's/.*(task \([^)]*\)).*/\1/p')"
+[ -n "$start_task" ]
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
