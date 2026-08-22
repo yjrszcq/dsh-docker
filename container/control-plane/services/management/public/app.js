@@ -241,6 +241,7 @@ let terminalResizeFrame
 let terminalRestored = false
 let terminalLeaving = false
 let runtimeResetExpanded = false
+let runtimeResetProgress = 0
 let filesLoaded = false
 let fileConfigLoad
 let fileLoading = false
@@ -873,12 +874,13 @@ function render(next) {
     ? t('runtimeResetting') : t(runtimeResetExpanded ? 'cancelRuntimeReset' : 'runtimeReset')
   const resetActive = runtimeReset.status === 'resetting'
   const resetPhase = RUNTIME_RESET_PHASES[next.operation] ?? { progress: 5, label: 'runtimeResetting' }
+  runtimeResetProgress = resetActive ? Math.max(runtimeResetProgress, resetPhase.progress) : 0
   elements['runtime-reset-progress'].hidden = !resetActive
   elements['runtime-reset-state'].textContent = t(resetPhase.label)
-  elements['runtime-reset-progress-value'].value = `${String(resetPhase.progress)}%`
-  elements['runtime-reset-progress-value'].textContent = `${String(resetPhase.progress)}%`
-  elements['runtime-reset-progress-track'].setAttribute('aria-valuenow', String(resetPhase.progress))
-  elements['runtime-reset-progress-bar'].style.width = `${String(resetPhase.progress)}%`
+  elements['runtime-reset-progress-value'].value = `${String(runtimeResetProgress)}%`
+  elements['runtime-reset-progress-value'].textContent = `${String(runtimeResetProgress)}%`
+  elements['runtime-reset-progress-track'].setAttribute('aria-valuenow', String(runtimeResetProgress))
+  elements['runtime-reset-progress-bar'].style.width = `${String(runtimeResetProgress)}%`
   elements['runtime-reset-result'].hidden = resetActive || !runtimeResetVisible
   elements['runtime-reset-result'].textContent = runtimeReset.status === 'success'
     ? t('runtimeResetComplete')

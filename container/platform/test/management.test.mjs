@@ -1386,6 +1386,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /elements\['restart-state'\]\.hidden = !restartVisible/)
   assert.match(script, /elements\['runtime-reset-progress'\]\.hidden = !resetActive/)
   assert.match(script, /RUNTIME_RESET_PHASES\[next\.operation\]/)
+  assert.match(script, /runtimeResetProgress = resetActive \? Math\.max\(runtimeResetProgress, resetPhase\.progress\) : 0/)
   assert.match(html, /id="runtime-reset-progress-track"[^>]*role="progressbar"/)
   assert.match(script, /elements\['runtime-reset'\]\.disabled = busy \|\| next\.current === null/)
   assert.match(html, /id="runtime-reset"[^>]*disabled/)
