@@ -22,6 +22,6 @@ Treat the returned key as a secret. Give it only to the requesting user through 
 
 Do not read configured passwords from environment files, `/proc`, process listings, or service memory. Ask the user to authenticate through the normal browser flow.
 
-The Platform Management plugin uses its platform-issued internal authorization and must not require a separate Management Console login. Do not copy that internal credential into commands or expose it to third-party plugins.
+The Platform Management and Settings Document Editor System Plugins use the restricted DSH-side platform API and must not require a separate Management Console login. Access is inherited from the protected DSH page and limited by an exact Gateway route allowlist; do not search for a console session token or invent a separate plugin credential.
 
 When the Gateway is behind another proxy, use the public Gateway URL for checks. A direct request with an untrusted Host can correctly return `403`; that is not evidence that DSH itself failed.

@@ -319,7 +319,7 @@ docker run -d \
 
 凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
 
-`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”插件使用单独的受限 API，不要求管理中心会话；它只开放插件自身所需的更新、DSH 重启、日志、系统插件和系统技能操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些插件操作。
+`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”和“设置文档编辑器”使用单独的受限 API，不要求管理中心会话；该接口只开放这些 DSH 集成所需的更新、DSH 重启、日志、系统插件、系统技能和设置文档操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些集成操作。
 
 两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
 
@@ -353,7 +353,7 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 当前受监督 DSH 收到平台未登记的第一次 `SIGTERM` 时，会先向 Broker 查询处置，再通过 Management 提交正式异步重启。浏览器因此进入“正在重新启动 DSH”页面，第三方提前创建的 detached 替代进程也无法绕过单实例门禁。Bootstrap 主动停止、重启、切换或关闭容器时，Broker 会要求 DSH 直接优雅退出，避免重复登记任务。第二次 `SIGTERM`、请求超时或 Control Plane 不可用时也会执行原有退出，由 Bootstrap 的有限恢复兜底；`process.exit()`、未捕获异常和 `SIGKILL` 仍按意外退出处理，不伪装成正常重启。
 
-已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。Gateway readiness 同时要求 DSH HTTP 上游可以响应，并且平台生命周期已经离开启动、重启、恢复和切换状态；因此，即使 DSH 已开始监听，只要 Bootstrap 仍在完成插件健康检查，浏览器就不会提前返回。短暂连接中断会先通过这项组合 readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，未分类代理故障仍返回 `502`。
+已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。Gateway readiness 同时要求 DSH HTTP 上游可以响应，并且平台生命周期已经离开启动、重启、恢复和切换状态；因此，即使 DSH 已开始监听，只要 Bootstrap 仍在完成插件健康检查，浏览器就不会提前返回。短暂连接中断会先通过这项组合 readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，这些已分类的生命周期响应不会记录成上游故障或故障恢复。未分类代理故障仍返回 `502` 并保留错误日志。
 
 如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready。该保护覆盖 DSH 加载的所有客户端 Bundle，包括 DSH 官方插件、内置系统插件和用户插件。前端仍遇到短暂 `502`、`503`、网络失败，或 DSH 的动态导入器已经显示 `Failed to load plugins` 时，守卫会先确认平台生命周期状态，再最多自动转入等待页一次。相同生命周期内再次加载失败时不再循环刷新，而是保留 DSH 的真实插件加载错误页。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务和失败原因。
 
@@ -374,7 +374,7 @@ Container Environment 当前包含：
 
 独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
-可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `$DSH_HOME/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
+可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `$DSH_HOME/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。它与“平台管理”共用 DSH 侧的受限平台边界，无需先登录独立管理中心即可使用。
 
 ## 系统技能
 

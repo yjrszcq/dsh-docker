@@ -185,6 +185,8 @@ Container Environment 包含以下 DSH-Docker 集成：
 
 除“平台管理”本身外，已安装的系统插件可在 DSH 的“平台管理”中启用或禁用；“平台管理”不能修改自身。独立的“DSH 管理中心”可以安装、卸载、启用或禁用 Environment 随附的系统插件，并能在“平台管理”缺失时将其恢复。变更会标记为待重启，并在重新启动 DSH 后生效。安装只使用经过验证的本地 Environment 资产，不会从 GitHub 或 npm 下载。第三方用户插件与系统插件分开管理，不会被视为系统插件。
 
+“平台管理”和“设置文档编辑器”使用 DSH 侧的受限平台接口，不要求用户另行登录 DSH 管理中心。
+
 ## 系统技能
 
 DSH Docker 内置已签名的 `dsh-docker-operations` System Skill，为 Agent 提供文件、开发工具、插件、生命周期、日志、更新、恢复、网络和权限等容器环境操作指引，也可显式调用 `/dsh-docker-operations`。
