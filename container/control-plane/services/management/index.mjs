@@ -27,6 +27,7 @@ import { UserPluginJournal } from '../../modules/user-plugin-manager/journal.mjs
 import { UserPluginSnapshots } from '../../modules/user-plugin-manager/snapshots.mjs'
 import { UserPluginSelectionStore } from '../../modules/user-plugin-manager/state.mjs'
 import { UserPluginTransactionManager } from '../../modules/user-plugin-manager/transaction.mjs'
+import { UserSkillManager } from './user-skills.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -78,6 +79,10 @@ const coordinator = new UpdateCoordinator({
 const settingsDocument = new SettingsDocumentStore(dshHome)
 const listBundledPlugins = async () => (await bootstrap.request('GET', '/v1/system-plugins')).plugins
 const listSystemSkills = async () => (await bootstrap.request('GET', '/v1/system-skills')).skills
+const userSkills = new UserSkillManager({
+  dshHome,
+  agentsHome: process.env.DSH_AGENTS_HOME ?? '/home/node/.agents',
+})
 const userPluginInventory = new UserPluginInventory({
   dshHome,
   selectionPath: paths.userPluginStatePath,
@@ -146,6 +151,9 @@ server = createManagementServer({
   discardBundledPluginChanges: () => bootstrap.request('POST', '/v1/system-plugins/discard'),
   listSystemSkills,
   configureSystemSkill: (skillId, action) => bootstrap.request('POST', '/v1/system-skills/action', { skillId, action }),
+  listUserSkills: () => userSkills.list(),
+  validateUserSkillAction: value => userSkills.validate(value),
+  configureUserSkill: value => userSkills.configure(value),
   listUserPlugins,
   markUserPluginsLoaded,
   validateUserPluginActions: value => userPluginTransactions.validate(value),

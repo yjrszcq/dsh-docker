@@ -23,8 +23,8 @@ export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
-  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'settings-document', 'user-plugins', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-plugins/apply', 'terminal/sessions', 'files/upload', 'files/tasks'])],
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'user-skills', 'settings-document', 'user-plugins', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'terminal/sessions', 'files/upload', 'files/tasks'])],
   ['PUT', new Set(['channel', 'automatic-check', 'settings-document', 'files/content'])],
 ])
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/

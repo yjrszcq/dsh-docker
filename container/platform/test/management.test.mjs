@@ -165,6 +165,77 @@ test('management exposes audited System Skill tasks through the shared runtime m
   }
 })
 
+test('management exposes validated User Skill tasks only on the standalone API', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-user-skills-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let complete
+  const pending = new Promise(resolve => { complete = resolve })
+  const revision = `sha256:${'a'.repeat(64)}`
+  const entryId = `sha256:${'b'.repeat(64)}`
+  const inventory = {
+    schema: 1, revision,
+    skills: [{ entryId, entryName: 'local-guide', source: 'user-dsh', kind: 'directory', name: 'local-guide', description: 'Local guide', enabled: true, damaged: false, metadataError: null, symbolicLink: false }],
+  }
+  const calls = []
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    listUserSkills: async () => inventory,
+    validateUserSkillAction: async value => {
+      if (value.revision !== revision) {
+        const error = new Error('User Skill state changed')
+        error.statusCode = 409
+        throw error
+      }
+    },
+    configureUserSkill: async value => {
+      calls.push(value)
+      if (value.action === 'delete') throw new Error('permission denied')
+      await pending
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    assert.deepEqual(await client.request('GET', `${API_PREFIX}user-skills`), inventory)
+    await assert.rejects(client.request('POST', `${API_PREFIX}user-skills/action`, {
+      entryId, revision: `sha256:${'c'.repeat(64)}`, action: 'disable',
+    }), error => error.statusCode === 409)
+    await assert.rejects(client.request('POST', `${API_PREFIX}user-skills/action`, {
+      entryId, revision, action: 'disable', unexpected: true,
+    }), error => error.statusCode === 400)
+    const task = await client.request('POST', `${API_PREFIX}user-skills/action`, { entryId, revision, action: 'disable' })
+    assert.match(task.taskId, /^[0-9a-f-]{36}$/)
+    await assert.rejects(client.request('POST', `${API_PREFIX}restart-dsh`), error => error.statusCode === 409)
+    complete()
+    let status
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.userSkillOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.userSkillOperation.status, 'success')
+    const failedTask = await client.request('POST', `${API_PREFIX}user-skills/action`, { entryId, revision, action: 'delete' })
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.userSkillOperation.taskId === failedTask.taskId && status.userSkillOperation.status === 'failed') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.userSkillOperation.status, 'failed')
+    assert.equal(status.userSkillOperation.error, 'permission denied')
+    assert.deepEqual(calls, [{ entryId, revision, action: 'disable' }, { entryId, revision, action: 'delete' }])
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'user-skill.disable.started'), true)
+    assert.equal(audit.some(entry => entry.message === 'user-skill.disable.completed'), true)
+    assert.equal(audit.some(entry => entry.message === 'user-skill.delete.started'), true)
+    assert.equal(audit.some(entry => entry.message === 'user-skill.delete.failed' && entry.error === 'permission denied'), true)
+  } finally {
+    complete()
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management live logs preserve the requested source filter', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-log-stream-'))
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
@@ -1017,13 +1088,13 @@ test('standalone console keeps localized feature parity on the shared Management
   const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const maintenanceSource = await readFile(new URL('../stage0/lib/maintenance-server.mjs', import.meta.url), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/system-plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-plugins', 'terminal', 'files']) {
+  for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
     'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
-    'bundled-plugins/discard', 'system-skills', 'system-skills/action', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
+    'bundled-plugins/discard', 'system-skills', 'system-skills/action', 'user-skills', 'user-skills/action', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
     'files/config', 'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))

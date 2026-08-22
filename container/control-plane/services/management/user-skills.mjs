@@ -148,7 +148,7 @@ export class UserSkillManager {
     return inventory
   }
 
-  async configure({ entryId: requestedId, revision, action }) {
+  async validate({ entryId: requestedId, revision, action }) {
     if (typeof requestedId !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(requestedId)) throw new Error('User Skill entry ID is invalid')
     if (typeof revision !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(revision)) throw new Error('User Skill revision is invalid')
     if (!['enable', 'disable', 'delete'].includes(action)) throw new Error('User Skill action is invalid')
@@ -158,7 +158,11 @@ export class UserSkillManager {
     if (entry === undefined) throw new UserSkillConflictError('User Skill entry no longer exists')
     if (action === 'enable' && entry.enabled) throw new UserSkillConflictError('User Skill is already enabled')
     if (action === 'disable' && !entry.enabled) throw new UserSkillConflictError('User Skill is already disabled')
+    return Object.freeze({ action, entry, revision })
+  }
 
+  async configure(request) {
+    const { action, entry } = await this.validate(request)
     if (action === 'delete') {
       const trash = join(entry.root, `.user-skill-delete-${randomUUID()}`)
       await rename(entry.path, trash)
