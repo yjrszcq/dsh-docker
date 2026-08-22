@@ -319,6 +319,18 @@ function registeredAvailabilityState(platform, availability) {
   return availability.classify(platform)
 }
 
+async function readiness(options) {
+  const upstreamReady = await options.probe()
+  options.availability.observe(upstreamReady)
+  const platform = await boundedPlatformStatus(options.platformStatus, options)
+  const registeredState = registeredAvailabilityState(platform, options.availability)
+  return {
+    ready: upstreamReady && registeredState === null,
+    state: registeredState ?? options.availability.classify(platform),
+    platform,
+  }
+}
+
 async function holdPluginBundleDuringTransition(request, response, options, pathname) {
   if (!['GET', 'HEAD'].includes(request.method ?? 'GET')
     || !DSH_PLUGIN_BUNDLE.test(pathname)) return false
@@ -596,16 +608,13 @@ export function createGatewayServer({
         return
       }
       if (pathname === READINESS_PATH) {
-        const ready = await options.probe()
-        options.availability.observe(ready)
-        if (ready) sendJson(response, 200, { ready: true, state: 'ready' })
+        const result = await readiness(options)
+        if (result.ready) sendJson(response, 200, { ready: true, state: 'ready' })
         else {
-          const platform = await boundedPlatformStatus(options.platformStatus, options)
-          const state = options.availability.classify(platform)
-          sendJson(response, state === 'unknown' ? 502 : 503, {
+          sendJson(response, result.state === 'unknown' ? 502 : 503, {
             ready: false,
-            state,
-            message: stateMessage(state, request.headers, platform.dshLifecycle),
+            state: result.state,
+            message: stateMessage(result.state, request.headers, result.platform.dshLifecycle),
           })
         }
         return
@@ -616,17 +625,14 @@ export function createGatewayServer({
           return
         }
         const returnPath = safeReturnPath(url.searchParams.get('return'))
-        const ready = await options.probe()
-        options.availability.observe(ready)
-        if (ready) {
+        const result = await readiness(options)
+        if (result.ready) {
           response.writeHead(302, { 'cache-control': 'no-store', location: returnPath })
           response.end()
           return
         }
-        const platform = await boundedPlatformStatus(options.platformStatus, options)
-        const state = options.availability.classify(platform)
-        sendAvailabilityPage(request, response, state === 'unknown' ? 'unavailable' : state, {
-          lifecycle: platform.dshLifecycle,
+        sendAvailabilityPage(request, response, result.state === 'unknown' ? 'unavailable' : result.state, {
+          lifecycle: result.platform.dshLifecycle,
           returnPath,
         })
         return

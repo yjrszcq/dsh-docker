@@ -158,8 +158,9 @@ test('platform switching, recovery, and startup failure select distinct page mes
 
 test('dedicated holding route preserves a safe return path and redirects when ready', async () => {
   let ready = false
+  const platform = { dshLifecycle: { state: 'stopping' } }
   const context = await unavailableGateway({
-    platform: { dshLifecycle: { state: 'stopping' } },
+    platform,
     probe: async () => ready,
   })
   try {
@@ -175,9 +176,18 @@ test('dedicated holding route preserves a safe return path and redirects when re
     assert.match(invalid.body, /const returnPath="\/"/)
 
     ready = true
+    const premature = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent(target)}`)
+    assert.equal(premature.status, 200)
+    assert.match(premature.body, /DeepSeek Harness is stopping/)
+    const prematureReadiness = await request(context.port, READINESS_PATH)
+    assert.equal(prematureReadiness.status, 503)
+    assert.equal(JSON.parse(prematureReadiness.body).state, 'stopping')
+
+    platform.dshLifecycle.state = 'running'
     const redirected = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent(target)}`)
     assert.equal(redirected.status, 302)
     assert.equal(redirected.headers.location, target)
+    assert.deepEqual(JSON.parse((await request(context.port, READINESS_PATH)).body), { ready: true, state: 'ready' })
     assert.equal((await request(context.port, WAIT_PATH, { method: 'POST' })).status, 405)
   } finally {
     await closeGatewayServer(context.gateway)
