@@ -634,6 +634,72 @@ test('requires exactly three bounded DSH recovery delays', () => {
   }), /three non-negative/)
 })
 
+test('replaces a SIGKILLed DSH process while preserving the Control Plane', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-runtime-sigkill-recovery-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const environmentRunner = new EnvironmentRunner({
+    environmentRoot: await environment([component('dsh-runtime', service, 'service')]),
+    capture: () => {},
+  })
+  let controlStarts = 0
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => { controlStarts += 1 },
+      stop: async () => {},
+      status: () => ({ components: [{ id: 'gateway', pid: 100 }] }),
+    },
+    environment: environmentRunner,
+    recoveryDelaysMs: [0, 0, 0],
+  })
+  await runtime.start()
+  runtime.markStartupComplete()
+  const firstPid = runtime.status().components.find(value => value.id === 'dsh-runtime').pid
+  process.kill(firstPid, 'SIGKILL')
+
+  let secondPid = firstPid
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    secondPid = runtime.status().components.find(value => value.id === 'dsh-runtime')?.pid
+    if (runtime.status().dshLifecycle.state === 'running' && secondPid !== undefined && secondPid !== firstPid) break
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.notEqual(secondPid, firstPid)
+  assert.equal(runtime.status().dshLifecycle.state, 'running')
+  assert.equal(runtime.status().recoveryMode, null)
+  assert.equal(controlStarts, 1)
+  await runtime.stop()
+})
+
+test('does not restart DSH again when recovered-status publication fails', async () => {
+  let emitEnvironmentFatal
+  let restarts = 0
+  const reports = []
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}), start: async () => {}, stop: async () => {},
+      status: () => ({ components: [{ id: 'gateway' }] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      onFatal: listener => { emitEnvironmentFatal = listener; return () => {} },
+      start: async () => {}, stop: async () => {},
+      restart: async () => { restarts += 1 },
+      status: () => ({ environmentVersion: '1.0.3', components: [{ id: 'dsh-runtime' }] }),
+    },
+    onDshRecovered: async () => { throw new Error('status unavailable') },
+    recoveryDelaysMs: [0, 0, 0],
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  await runtime.start()
+  emitEnvironmentFatal(Object.assign(new Error('dsh-runtime exited'), { componentId: 'dsh-runtime' }))
+  await runtime.recovery
+  assert.equal(restarts, 1)
+  assert.equal(runtime.status().dshLifecycle.state, 'running')
+  assert.equal(reports.some(entry => entry.message === 'dsh.recovery-status.failed'), true)
+  await runtime.stop()
+})
+
 test('limits unexpected DSH recovery to three attempts before recovery mode', async () => {
   const delays = []
   const reports = []
