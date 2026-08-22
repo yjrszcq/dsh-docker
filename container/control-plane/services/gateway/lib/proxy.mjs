@@ -33,9 +33,9 @@ const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
 const FILE_TASK_ROUTE = /^files\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const PLUGIN_MANAGEMENT_ROUTES = new Map([
-  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills'])],
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'settings-document'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action'])],
-  ['PUT', new Set(['channel', 'automatic-check'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'settings-document'])],
 ])
 
 function isMaintenanceRoute(pathname) {

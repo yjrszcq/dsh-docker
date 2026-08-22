@@ -13,7 +13,7 @@ const React = require('react')
 const { useCallback, useEffect, useRef, useState } = React
 const { createPortal } = require('react-dom')
 
-const API = '/_dsh_platform/api/v1/settings-document'
+const API = '/_dsh_platform/plugin-api/v1/settings-document'
 const h = React.createElement
 
 const inject = ['slots', 'locale', 'connection']

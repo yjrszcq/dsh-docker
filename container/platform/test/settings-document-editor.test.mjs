@@ -29,6 +29,8 @@ test('Settings Document Editor checked-in bundle matches its source', async () =
 
 test('Settings Document Editor replaces and restores the pathless DSH open action', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  assert.match(source, /\/_dsh_platform\/plugin-api\/v1\/settings-document/)
+  assert.doesNotMatch(source, /\/_dsh_platform\/api\/v1\/settings-document/)
   assert.match(source, /connection\.api\.settings\.openDocument = intercepted/)
   assert.match(source, /connection\.api\.settings\.openDocument = original/)
   assert.doesNotMatch(source, /openDocument\(.*path|body:.*path/s)

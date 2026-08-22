@@ -242,19 +242,37 @@ test('DSH Platform Management uses only its restricted API without a console ses
     assert.equal(plugin.body, 'management')
     assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
 
+    const document = await request(port, {
+      path: '/_dsh_platform/plugin-api/v1/settings-document',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(document.status, 200)
+    const saved = await request(port, {
+      method: 'PUT',
+      path: '/_dsh_platform/plugin-api/v1/settings-document',
+      headers: { host: '127.0.0.1', 'content-type': 'application/json' },
+      body: '{"content":"locale: en\\n","revision":null}',
+    })
+    assert.equal(saved.status, 200)
+    assert.deepEqual(received, [
+      'GET /_dsh_platform/api/v1/status?source=plugin',
+      'GET /_dsh_platform/api/v1/settings-document',
+      'PUT /_dsh_platform/api/v1/settings-document',
+    ])
+
     const privileged = await request(port, {
       path: '/_dsh_platform/plugin-api/v1/files/list',
       headers: { host: '127.0.0.1' },
     })
     assert.equal(privileged.status, 404)
-    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+    assert.equal(received.length, 3)
 
     const userSkills = await request(port, {
       path: '/_dsh_platform/plugin-api/v1/user-skills',
       headers: { host: '127.0.0.1' },
     })
     assert.equal(userSkills.status, 404)
-    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+    assert.equal(received.length, 3)
 
     for (const action of ['start', 'stop']) {
       const lifecycle = await request(port, {
@@ -264,7 +282,7 @@ test('DSH Platform Management uses only its restricted API without a console ses
       })
       assert.equal(lifecycle.status, 404)
     }
-    assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
+    assert.equal(received.length, 3)
 
     const consoleApi = await request(port, {
       path: '/_dsh_platform/api/v1/status',

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import css from './style.module.css'
 const { createPortal } = require('react-dom')
 
-const API = '/_dsh_platform/api/v1/settings-document'
+const API = '/_dsh_platform/plugin-api/v1/settings-document'
 const h = React.createElement
 
 export const inject = ['slots', 'locale', 'connection']
