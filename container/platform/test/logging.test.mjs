@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { appendFile, mkdtemp, readFile, readdir, stat, utimes } from 'node:fs/promises'
+import { appendFile, chmod, mkdtemp, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -73,6 +73,18 @@ test('applies an explicit shared-reader mode to newly created and rotated log fi
   await logs.append('stage0', 'platform', 'x'.repeat(1_000))
   await logs.append('stage0', 'platform', 'rotated')
   assert.equal((await stat(join(root, 'stage0.jsonl'))).mode & 0o777, 0o640)
+})
+
+test('repairs existing log files for shared Control Plane writers', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-shared-writers-'))
+  const path = join(root, 'audit.jsonl')
+  await writeFile(path, '{}\n')
+  await chmod(path, 0o640)
+  const logs = new JsonlLogManager({ root, fileMode: 0o660 })
+  await logs.prepare()
+  assert.equal((await stat(path)).mode & 0o777, 0o660)
+  await logs.append('audit', 'audit', 'shared-writer.ready')
+  assert.equal((await readFile(path, 'utf8')).includes('shared-writer.ready'), true)
 })
 
 test('rotates files and enforces the aggregate byte budget', async () => {

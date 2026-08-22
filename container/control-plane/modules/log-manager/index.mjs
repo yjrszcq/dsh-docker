@@ -74,7 +74,7 @@ export class JsonlLogManager extends EventEmitter {
     rotateBytes = 10 * 1024 * 1024,
     now = () => new Date(),
     output,
-    fileMode = 0o600,
+    fileMode = 0o660,
     fileUid,
     fileGid,
   }) {
@@ -93,6 +93,18 @@ export class JsonlLogManager extends EventEmitter {
     this.fileUid = fileUid
     this.fileGid = fileGid
     this.queue = Promise.resolve()
+  }
+
+  prepare() {
+    return this.serialized(async () => {
+      await mkdir(this.root, { recursive: true })
+      const names = (await readdir(this.root)).filter(name => name.endsWith('.jsonl'))
+      for (const name of names) {
+        const path = join(this.root, name)
+        if (this.fileGid !== undefined) await chown(path, -1, this.fileGid)
+        await chmod(path, this.fileMode)
+      }
+    })
   }
 
   writeOutput(stream, line) {
