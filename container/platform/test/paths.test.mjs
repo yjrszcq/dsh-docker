@@ -53,6 +53,7 @@ test('rebuilds only the ephemeral run directory', async () => {
   assert.equal(await readlink(join(paths.viewsRoot, 'environment')), join('..', 'deployment', 'environment'))
   assert.equal(await readlink(join(paths.viewsRoot, 'system-plugins')), join('..', 'system-plugin-views', 'current'))
   assert.equal((await lstat(paths.systemPluginViewsRoot)).isDirectory(), true)
+  assert.equal(paths.dshLifecycleSocket, join(paths.runRoot, 'dsh-lifecycle.sock'))
   assert.equal(
     await readlink(join(paths.systemPluginViewsRoot, 'current')),
     join('..', 'deployment', 'system-plugins'),

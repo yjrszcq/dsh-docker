@@ -46,6 +46,7 @@ export class PlatformPaths {
     this.deploymentView = join(this.runRoot, 'deployment')
     this.trustSocket = join(this.runRoot, 'stage0-trust.sock')
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
+    this.dshLifecycleSocket = join(this.runRoot, 'dsh-lifecycle.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
     this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')

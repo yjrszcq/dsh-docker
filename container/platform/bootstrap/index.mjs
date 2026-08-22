@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { EnvironmentRunner, loadControlPlane } from './lib/lifecycle.mjs'
 import { BootstrapRuntime } from './lib/runtime.mjs'
 import { createBootstrapControl, listenBootstrapControl } from './lib/control.mjs'
+import { createDshLifecycleServer, DshLifecycleBroker, listenDshLifecycle } from './lib/dsh-lifecycle.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
@@ -143,6 +144,15 @@ const capture = (child, source, declaration) => logs.capture(
   { acceptForwarded: ['gateway', 'platform-management'].includes(source) },
 )
 const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
+let runtime
+const dshLifecycleBroker = new DshLifecycleBroker({
+  report: reportLifecycle,
+  shouldTerminate: async () => {
+    const lifecycle = runtime?.status().dshLifecycle
+    return ['stopping', 'restarting'].includes(lifecycle?.state)
+      || await deployments.activation() !== undefined
+  },
+})
 const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
@@ -152,9 +162,10 @@ const controlPlane = new EnvironmentRunner({
 const environment = new EnvironmentRunner({
   environmentRoot: join(paths.viewsRoot, 'environment'),
   capture,
+  prepareService: component => dshLifecycleBroker.prepareLaunch(component.id),
   report: reportLifecycle,
 })
-const runtime = new BootstrapRuntime({
+runtime = new BootstrapRuntime({
   controlPlane,
   environment,
   validateDeployment: async () => {
@@ -227,7 +238,9 @@ const systemPlugins = {
 systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
 systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)
 const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins, systemSkills })
+const dshLifecycleServer = createDshLifecycleServer(dshLifecycleBroker)
 await listenBootstrapControl(server, paths.bootstrapSocket)
+await listenDshLifecycle(dshLifecycleServer, paths.dshLifecycleSocket)
 let imageCandidateHealthy = true
 try {
   await runtime.start({
@@ -251,6 +264,7 @@ try {
 } catch (error) {
   await logs.diagnostic('bootstrap', 'bootstrap.start.failed', { error })
   server.close()
+  dshLifecycleServer.close()
   throw error
 }
 if (runtime.recoveryMode === null) {
@@ -311,7 +325,9 @@ const outcome = await Promise.race([
 ])
 if (outcome.type === 'fatal') await logs.diagnostic('bootstrap', 'bootstrap.fatal', { error: outcome.error })
 else await logs.diagnostic('bootstrap', 'bootstrap.stopping')
+dshLifecycleBroker.beginShutdown()
 server.close()
+dshLifecycleServer.close()
 await runtime.stop().catch(error => logs.diagnostic('bootstrap', 'bootstrap.stop.failed', { error }))
 await logs.diagnostic('bootstrap', 'bootstrap.stopped')
 if (outcome.type === 'fatal') throw outcome.error

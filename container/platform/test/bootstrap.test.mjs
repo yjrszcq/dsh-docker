@@ -195,6 +195,54 @@ test('component environment replaces an inherited root user environment', async 
   }
 })
 
+test('binds prepared service environment and cleanup to one process launch', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-prepared-service-'))
+  const output = join(temp, 'launch-token')
+  const service = join(temp, 'service.mjs')
+  const health = join(temp, 'health.mjs')
+  await writeFile(service, `import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], process.env.DSH_PLATFORM_LAUNCH_TOKEN); setInterval(() => {}, 1000)`)
+  await writeFile(health, `import { existsSync } from 'node:fs'; process.exit(existsSync(process.argv[2]) ? 0 : 1)`)
+  let releases = 0
+  const candidate = component('dsh-runtime', service, 'service')
+  candidate.command = command(service, [output])
+  candidate.health = {
+    type: 'exec', command: command(health, [output]), intervalSeconds: 1, timeoutSeconds: 5,
+  }
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate]),
+    capture: () => {},
+    prepareService: async value => ({
+      environment: { DSH_PLATFORM_LAUNCH_TOKEN: `token-for-${value.id}` },
+      release: () => { releases += 1 },
+    }),
+  })
+  try {
+    await runner.start()
+    assert.equal(await readFile(output, 'utf8'), 'token-for-dsh-runtime')
+    assert.equal(releases, 0)
+  } finally {
+    await runner.stop()
+  }
+  assert.equal(releases, 1)
+})
+
+test('releases prepared service ownership when process spawn fails', async () => {
+  let releases = 0
+  const candidate = component('dsh-runtime', '/path/that/does/not/exist', 'service')
+  candidate.command.executable = '/path/that/does/not/exist'
+  candidate.command.args = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate]),
+    capture: () => {},
+    prepareService: async () => ({
+      environment: { DSH_PLATFORM_LAUNCH_TOKEN: 'unused-token' },
+      release: () => { releases += 1 },
+    }),
+  })
+  await assert.rejects(runner.start(), /ENOENT/)
+  assert.equal(releases, 1)
+})
+
 test('stops already-started services when a later component fails', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-failure-'))
   const service = join(temp, 'service.mjs')

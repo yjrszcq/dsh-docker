@@ -145,11 +145,19 @@ export async function loadControlPlane(root) {
 }
 
 export class EnvironmentRunner {
-  constructor({ environmentRoot, spawnImpl = spawn, capture = defaultCapture, loader = loadEnvironment, report = () => {} }) {
+  constructor({
+    environmentRoot,
+    spawnImpl = spawn,
+    capture = defaultCapture,
+    loader = loadEnvironment,
+    prepareService = async () => ({ environment: {}, release: () => {} }),
+    report = () => {},
+  }) {
     this.environmentRoot = environmentRoot
     this.spawnImpl = spawnImpl
     this.capture = capture
     this.loader = loader
+    this.prepareService = prepareService
     this.report = report
     this.running = []
     this.environment = undefined
@@ -230,13 +238,22 @@ export class EnvironmentRunner {
     const startedAt = Date.now()
     this.emitLifecycle('component.starting', { componentId: component.id, componentType: component.type })
     let running
+    let releaseService = () => {}
     try {
       if (prepare) await this.phase(component, 'prepare')
       await this.phase(component, 'preStart')
       if (component.type === 'service') {
         const options = this.commandOptions(component)
+        const launch = await this.prepareService(component)
+        let released = false
+        const release = () => {
+          if (released) return
+          released = true
+          launch.release?.()
+        }
+        releaseService = release
         const child = this.spawnImpl(component.command.executable, component.command.args, {
-          env: options.environment,
+          env: { ...options.environment, ...launch.environment },
           stdio: ['ignore', 'pipe', 'pipe'],
         })
         this.capture(child, component.id, component.logging)
@@ -244,9 +261,10 @@ export class EnvironmentRunner {
           once(child, 'spawn'),
           once(child, 'error').then(([error]) => { throw error }),
         ])
-        running = { component, child, ready: false }
+        running = { component, child, ready: false, release }
         this.emitLifecycle('component.spawned', { componentId: component.id, pid: child.pid ?? null })
         child.once('exit', (code, signal) => {
+          release()
           if (running.ready && !this.stopping && this.running.includes(running)) {
             const error = new ComponentExitError(component.id, code, signal)
             this.emitLifecycle('component.exited', {
@@ -293,6 +311,8 @@ export class EnvironmentRunner {
             originalError: error instanceof Error ? error.message : String(error),
           })
         }
+      } else if (component.type === 'service') {
+        releaseService()
       }
       throw error
     }
