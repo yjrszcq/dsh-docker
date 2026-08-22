@@ -45,6 +45,8 @@ function isMaintenanceRoute(pathname) {
 }
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
+const DEFAULT_PLUGIN_BUNDLE_MAX_BYTES = 16 * 1024 * 1024
+const DEFAULT_PLUGIN_BUNDLE_CACHE_MAX_BYTES = 64 * 1024 * 1024
 const SYSTEM_PLUGIN_BUNDLE = /^\/plugins\/@dsh-docker\/([a-z0-9][a-z0-9._-]{0,127})\/client\.js$/
 const DSH_PLUGIN_BUNDLE = /^\/plugins\/(?:@[^/]+\/)?[^/]+\/client\.js$/
 const MODULE_HOLD_STATES = new Set(['starting', 'restarting', 'switching', 'runtime-recovering', 'recovering'])
@@ -236,6 +238,128 @@ function proxyResponseHeaders(headers) {
   return copyEndToEndHeaders(headers)
 }
 
+function createPluginBundleCache(maxBytes) {
+  const entries = new Map()
+  let bytes = 0
+  return {
+    get(key) {
+      const value = entries.get(key)
+      if (value === undefined) return undefined
+      entries.delete(key)
+      entries.set(key, value)
+      return value
+    },
+    set(key, value) {
+      if (value.body.byteLength > maxBytes) return
+      const previous = entries.get(key)
+      if (previous !== undefined) bytes -= previous.body.byteLength
+      entries.delete(key)
+      entries.set(key, value)
+      bytes += value.body.byteLength
+      while (bytes > maxBytes) {
+        const oldest = entries.entries().next().value
+        if (oldest === undefined) break
+        entries.delete(oldest[0])
+        bytes -= oldest[1].body.byteLength
+      }
+    },
+  }
+}
+
+function deploymentRecordId(platform) {
+  return typeof platform.current?.recordId === 'string' && platform.current.recordId.length > 0
+    ? platform.current.recordId
+    : null
+}
+
+function recentLifecycleTransition(platform, now, windowMs) {
+  const lifecycle = platform.dshLifecycle ?? {}
+  const updatedAt = Date.parse(lifecycle.updatedAt ?? '')
+  return typeof lifecycle.taskId === 'string' && lifecycle.taskId.length > 0
+    && Number.isFinite(updatedAt) && now() - updatedAt >= 0 && now() - updatedAt < windowMs
+}
+
+function bufferedPluginHeaders(headers, body) {
+  const result = proxyResponseHeaders(headers)
+  result['content-length'] = String(body.byteLength)
+  delete result['transfer-encoding']
+  return result
+}
+
+function sendBufferedPluginBundle(request, response, value) {
+  response.writeHead(value.statusCode, value.statusMessage, bufferedPluginHeaders(value.headers, value.body))
+  response.end(request.method === 'HEAD' ? undefined : value.body)
+}
+
+function pluginCacheValue(value) {
+  const headers = {}
+  for (const name of ['cache-control', 'content-language', 'content-type', 'etag', 'last-modified']) {
+    if (value.headers[name] !== undefined) headers[name] = value.headers[name]
+  }
+  return Object.freeze({ statusCode: 200, statusMessage: value.statusMessage, headers, body: value.body })
+}
+
+function isJavaScriptBundle(value) {
+  const contentType = value.headers['content-type']
+  return value.statusCode === 200 && typeof contentType === 'string'
+    && /(?:java|ecma)script/i.test(contentType)
+}
+
+function fetchPluginBundle(request, options) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const upstream = httpRequest({
+      hostname: options.upstreamHost,
+      port: options.upstreamPort,
+      method: request.method,
+      path: request.url,
+      headers: upstreamRequestHeaders(request.headers),
+    })
+    upstream.once('response', (upstreamResponse) => {
+      void (async () => {
+        const chunks = []
+        let bytes = 0
+        for await (const chunk of upstreamResponse) {
+          bytes += chunk.byteLength
+          if (bytes > options.pluginBundleMaxBytes) {
+            throw new Error('upstream plugin bundle exceeds gateway limit')
+          }
+          chunks.push(chunk)
+        }
+        resolvePromise({
+          statusCode: upstreamResponse.statusCode ?? 502,
+          statusMessage: upstreamResponse.statusMessage,
+          headers: upstreamResponse.headers,
+          body: Buffer.concat(chunks),
+        })
+      })().catch(rejectPromise)
+    })
+    upstream.once('error', rejectPromise)
+    upstream.end()
+  })
+}
+
+function pluginReturnPath(request) {
+  if (typeof request.headers.referer !== 'string') return '/'
+  try {
+    const value = new URL(request.headers.referer)
+    return safeReturnPath(`${value.pathname}${value.search}${value.hash}`)
+  } catch {
+    return '/'
+  }
+}
+
+function sendPluginHoldingModule(request, response) {
+  const returnPath = pluginReturnPath(request)
+  const waitPath = `${WAIT_PATH}?return=${encodeURIComponent(returnPath)}`
+  const body = Buffer.from(`globalThis.location.replace(${JSON.stringify(waitPath)});\nawait new Promise(function(){});\n`)
+  response.writeHead(200, {
+    'cache-control': 'no-store',
+    'content-length': String(body.byteLength),
+    'content-type': 'text/javascript; charset=utf-8',
+  })
+  response.end(request.method === 'HEAD' ? undefined : body)
+}
+
 function isInjectableHtml(request, response) {
   if (request.method === 'HEAD') return false
   const contentType = response.headers['content-type']
@@ -356,6 +480,77 @@ async function holdPluginBundleDuringTransition(request, response, options, path
     }
   }
   if (!request.destroyed && !response.destroyed) rejectHttp(response, 503, 'DeepSeek Harness restart timed out')
+  return true
+}
+
+async function proxyPluginBundle(request, response, options, pathname) {
+  if (!['GET', 'HEAD'].includes(request.method ?? 'GET') || !DSH_PLUGIN_BUNDLE.test(pathname)) return false
+  const deadline = Date.now() + options.pluginBundleHoldTimeoutMs
+  let attempts = 0
+  let lastResponse
+  let lastError
+  let recoveryEligible = false
+
+  while (!request.destroyed && !response.destroyed && Date.now() < deadline) {
+    attempts += 1
+    const before = await boundedPlatformStatus(options.platformStatus, options)
+    const beforeRecord = deploymentRecordId(before)
+    const cacheKey = beforeRecord === null ? null : `${beforeRecord}\u0000${request.url}`
+    const cached = cacheKey === null ? undefined : options.pluginBundleCache.get(cacheKey)
+    try {
+      const value = await fetchPluginBundle(request, options)
+      lastResponse = value
+      lastError = undefined
+      const ready = await options.probe()
+      options.availability.observe(ready)
+      const after = await boundedPlatformStatus(options.platformStatus, options)
+      const state = registeredAvailabilityState(after, options.availability)
+      const sameDeployment = beforeRecord === deploymentRecordId(after)
+      recoveryEligible = recoveryEligible || MODULE_HOLD_STATES.has(state)
+        || recentLifecycleTransition(after, options.now, options.pluginBundleRecentWindowMs)
+
+      if (ready && sameDeployment && !MODULE_HOLD_STATES.has(state) && !MODULE_FAILED_STATES.has(state)) {
+        if (isJavaScriptBundle(value)) {
+          if (cacheKey !== null && request.method === 'GET') options.pluginBundleCache.set(cacheKey, pluginCacheValue(value))
+          sendBufferedPluginBundle(request, response, value)
+          return true
+        }
+        if (cached !== undefined && value.statusCode >= 400) {
+          sendBufferedPluginBundle(request, response, cached)
+          return true
+        }
+        if (!recoveryEligible || (value.statusCode < 500 && value.statusCode !== 404)) {
+          sendBufferedPluginBundle(request, response, value)
+          return true
+        }
+      }
+    } catch (error) {
+      lastError = error
+      if (cached !== undefined) {
+        sendBufferedPluginBundle(request, response, cached)
+        return true
+      }
+      const after = await boundedPlatformStatus(options.platformStatus, options)
+      const state = registeredAvailabilityState(after, options.availability)
+      recoveryEligible = recoveryEligible || MODULE_HOLD_STATES.has(state)
+        || recentLifecycleTransition(after, options.now, options.pluginBundleRecentWindowMs)
+      options.reportFailure('dsh-plugin-bundle', 'gateway.plugin-bundle.failed', {
+        ...requestContext(request), error, level: 'warning', attempt: attempts,
+      })
+    }
+
+    if (!recoveryEligible && attempts >= 2) break
+    await new Promise(resolvePromise => setTimeout(resolvePromise, options.pluginBundlePollIntervalMs))
+  }
+
+  if (request.destroyed || response.destroyed) return true
+  if (recoveryEligible) {
+    sendPluginHoldingModule(request, response)
+  } else if (lastResponse !== undefined) {
+    sendBufferedPluginBundle(request, response, lastResponse)
+  } else {
+    rejectHttp(response, 502, lastError?.message ?? 'bad gateway')
+  }
   return true
 }
 
@@ -523,6 +718,9 @@ export function createGatewayServer({
   failureLogIntervalMs = 30_000,
   pluginBundleHoldTimeoutMs = 60_000,
   pluginBundlePollIntervalMs = 100,
+  pluginBundleMaxBytes = DEFAULT_PLUGIN_BUNDLE_MAX_BYTES,
+  pluginBundleCacheMaxBytes = DEFAULT_PLUGIN_BUNDLE_CACHE_MAX_BYTES,
+  pluginBundleRecentWindowMs = 30_000,
 }) {
   const failures = new Map()
   const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
@@ -550,7 +748,8 @@ export function createGatewayServer({
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, maintenanceSocketPath, systemPluginRoot, platformStatus,
     availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
-    pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs,
+    now, pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs, pluginBundleMaxBytes,
+    pluginBundleRecentWindowMs, pluginBundleCache: createPluginBundleCache(pluginBundleCacheMaxBytes),
   }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
@@ -587,6 +786,7 @@ export function createGatewayServer({
       }
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
+      if (await proxyPluginBundle(request, response, options, pathname)) return
       if (pathname === CLIENT_EVENT_PATH) {
         if (request.method !== 'POST') {
           rejectHttp(response, 405, 'method not allowed')

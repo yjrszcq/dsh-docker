@@ -21,7 +21,8 @@ wait_platform_ready() {
   started="$(date +%s%3N)"
   while ! docker exec "$container" sh -c '
     curl --fail --silent http://127.0.0.1:3080/_dsh_gateway/health >/dev/null \
-      && curl --fail --silent --noproxy "*" http://127.0.0.1:3079/ >/dev/null
+      && curl --fail --silent --noproxy "*" http://127.0.0.1:3079/ >/dev/null \
+      && dsh-platform status | jq -e '\''.dshLifecycle.state == "running"'\'' >/dev/null
   ' >/dev/null 2>&1; do
     now="$(date +%s%3N)"
     if [ $((now - started)) -ge 10000 ]; then

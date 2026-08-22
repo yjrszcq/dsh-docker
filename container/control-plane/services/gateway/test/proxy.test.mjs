@@ -304,6 +304,104 @@ test('holds third-party plugin bundles until a managed DSH restart completes', a
   }
 })
 
+test('publishes plugin bundles only after the complete response is stable', async () => {
+  let requests = 0
+  const upstream = createServer((_incoming, response) => {
+    requests += 1
+    response.writeHead(200, { 'content-type': 'text/javascript' })
+    if (requests === 1) {
+      response.write('window.partial = true\n')
+      response.destroy()
+      return
+    }
+    response.end('window.complete = true\n')
+  })
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    platformStatus: async () => ({ current: { recordId: 'deployment-a' }, dshLifecycle: { state: 'running' } }),
+    probe: async () => true,
+    pluginBundleHoldTimeoutMs: 1_000,
+    pluginBundlePollIntervalMs: 10,
+  })
+  const gatewayPort = await listen(gateway)
+  try {
+    const response = await request(gatewayPort, '/plugins/example/client.js?rev=complete', { host: '127.0.0.1' })
+    assert.equal(response.status, 200)
+    assert.equal(response.body, 'window.complete = true\n')
+    assert.equal(requests, 2)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
+test('reuses a complete plugin bundle only within the same Deployment', async () => {
+  let body = 'window.deployment = "a"\n'
+  let status = 200
+  const upstream = createServer((_incoming, response) => {
+    response.writeHead(status, { 'content-type': status === 200 ? 'text/javascript' : 'text/plain' })
+    response.end(status === 200 ? body : 'temporarily unavailable\n')
+  })
+  const upstreamPort = await listen(upstream)
+  let recordId = 'deployment-a'
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    platformStatus: async () => ({ current: { recordId }, dshLifecycle: { state: 'running' } }),
+    probe: async () => true,
+  })
+  const gatewayPort = await listen(gateway)
+  const path = '/plugins/example/client.js?rev=stable'
+  try {
+    assert.equal((await request(gatewayPort, path, { host: '127.0.0.1' })).body, body)
+    status = 503
+    assert.equal((await request(gatewayPort, path, { host: '127.0.0.1' })).body, body)
+
+    recordId = 'deployment-b'
+    body = 'window.deployment = "b"\n'
+    status = 200
+    assert.equal((await request(gatewayPort, path, { host: '127.0.0.1' })).body, body)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
+test('returns a holding module instead of an import failure after a recent restart', async () => {
+  const upstream = createServer((_incoming, response) => {
+    response.writeHead(503, { 'content-type': 'text/plain' })
+    response.end('temporarily unavailable\n')
+  })
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    platformStatus: async () => ({
+      current: { recordId: 'deployment-a' },
+      dshLifecycle: { state: 'running', taskId: 'restart-1', updatedAt: new Date().toISOString() },
+    }),
+    probe: async () => true,
+    pluginBundleHoldTimeoutMs: 40,
+    pluginBundlePollIntervalMs: 5,
+  })
+  const gatewayPort = await listen(gateway)
+  try {
+    const response = await request(gatewayPort, '/plugins/example/client.js?rev=missing', {
+      host: '127.0.0.1',
+      referer: 'http://127.0.0.1/sessions/current?tab=plugins',
+    })
+    assert.equal(response.status, 200)
+    assert.match(response.headers['content-type'], /text\/javascript/)
+    assert.match(response.body, /\/_dsh_gateway\/wait\?return=/)
+    assert.match(response.body, /new Promise/)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
 test('records bounded browser plugin recovery events without request credentials', async () => {
   const reports = []
   const gateway = createGatewayServer({

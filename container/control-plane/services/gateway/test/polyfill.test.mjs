@@ -3,7 +3,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { injectRandomUuidPolyfill, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
 
-async function simulateFailedBoot(bundlePath) {
+async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
   let notifyMutation
   let replacement
   const events = []
@@ -13,11 +13,13 @@ async function simulateFailedBoot(bundlePath) {
     crypto: globalThis.crypto,
     document: {
       documentElement: {},
-      querySelectorAll: () => [{
-        children: [],
-        textContent: 'Failed to load plugins',
-        parentElement: { textContent: `Failed to load plugins failed to import ${bundlePath}` },
-      }],
+      querySelector: selector => bootRoot && selector === '[data-dsh-boot]' ? {
+        querySelectorAll: () => [{
+          children: [],
+          textContent: 'Failed to load plugins',
+          parentElement: { textContent: `Failed to load plugins failed to import ${bundlePath}` },
+        }],
+      } : null,
     },
     location: {
       href: 'http://gateway.local/sessions/current',
@@ -79,6 +81,7 @@ test('plugin recovery guard runs before DSH modules and permits only one lifecyc
   assert.match(PLUGIN_RECOVERY_GUARD, /previous&&previous\.identity===identity/)
   assert.match(PLUGIN_RECOVERY_GUARD, /browser\.plugin-load\.recovery\.completed/)
   assert.match(PLUGIN_RECOVERY_GUARD, /MutationObserver/)
+  assert.match(PLUGIN_RECOVERY_GUARD, /\[data-dsh-boot\]/)
   assert.match(PLUGIN_RECOVERY_GUARD, /Failed to load plugins/)
   assert.match(PLUGIN_RECOVERY_GUARD, /DSH plugin loader failed/)
   assert.doesNotMatch(PLUGIN_RECOVERY_GUARD, /localStorage/)
@@ -96,6 +99,12 @@ test('plugin recovery guard catches official and third-party dynamic import fail
       ['browser.plugin-load.recovery.started', pluginId],
     ])
   }
+})
+
+test('plugin recovery guard ignores matching text outside the DSH boot page', async () => {
+  const result = await simulateFailedBoot('/plugins/example/client.js?rev=abc123', { bootRoot: false })
+  assert.equal(result.replacement, undefined)
+  assert.deepEqual(result.events, [])
 })
 
 test('polyfill is feature guarded and uses no weak random source', () => {
