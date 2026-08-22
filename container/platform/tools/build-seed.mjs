@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { buildRuntime } from '../../control-plane/modules/patch-manager/index.mjs'
-import { reconcileSystemPlugins } from '../../control-plane/modules/system-plugin-manager/index.mjs'
+import { reconcileSystemPlugins } from '../../control-plane/modules/plugin-manager/system.mjs'
 import { artifactForReference, parseEnvironmentManifest } from '../lib/contracts.mjs'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { deriveImageBuildId, deriveRecordId, parseImageInventory } from '../lib/deployment-contracts.mjs'
@@ -79,7 +79,7 @@ if (imageInput !== undefined) {
   for (const directory of ['bootstrap', 'lib']) {
     await cp(join(platformRoot, directory), join(bootstrapRoot, 'platform', directory), { recursive: true })
   }
-  for (const directory of ['file-manager', 'log-manager', 'patch-manager', 'skill-manager', 'system-plugin-manager', 'updater', 'user-plugin-manager']) {
+  for (const directory of ['file-manager', 'log-manager', 'patch-manager', 'plugin-manager', 'skill-manager', 'updater']) {
     await cp(
       join(containerRoot, 'control-plane', 'modules', directory),
       join(bootstrapRoot, 'control-plane', 'modules', directory),

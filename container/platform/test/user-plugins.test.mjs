@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { markUserPluginRestartState, UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
+import { markUserPluginRestartState, UserPluginInventory } from '../../control-plane/modules/plugin-manager/user-inventory.mjs'
 
 async function fixture({ dependencies, bundles, packages = {}, selection } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-user-plugins-'))

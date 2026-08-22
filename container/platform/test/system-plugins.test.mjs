@@ -13,7 +13,7 @@ import {
   rebuildBundledSystemPluginView,
   reconcileSystemPlugins,
   SystemPluginSelectionStore,
-} from '../../control-plane/modules/system-plugin-manager/index.mjs'
+} from '../../control-plane/modules/plugin-manager/system.mjs'
 import { createHash } from 'node:crypto'
 import { hashTree } from '../lib/tree-hash.mjs'
 

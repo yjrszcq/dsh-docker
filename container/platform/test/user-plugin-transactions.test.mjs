@@ -3,11 +3,11 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFil
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { UserPluginInventory } from '../../control-plane/modules/user-plugin-manager/index.mjs'
-import { UserPluginJournal, userPluginJournalInternals } from '../../control-plane/modules/user-plugin-manager/journal.mjs'
-import { UserPluginSnapshots, userPluginSnapshotInternals } from '../../control-plane/modules/user-plugin-manager/snapshots.mjs'
-import { UserPluginSelectionStore, userPluginStateInternals } from '../../control-plane/modules/user-plugin-manager/state.mjs'
-import { UserPluginTransactionManager, userPluginTransactionInternals } from '../../control-plane/modules/user-plugin-manager/transaction.mjs'
+import { UserPluginInventory } from '../../control-plane/modules/plugin-manager/user-inventory.mjs'
+import { UserPluginJournal, userPluginJournalInternals } from '../../control-plane/modules/plugin-manager/user-journal.mjs'
+import { UserPluginSnapshots, userPluginSnapshotInternals } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
+import { UserPluginSelectionStore, userPluginStateInternals } from '../../control-plane/modules/plugin-manager/user-state.mjs'
+import { UserPluginTransactionManager, userPluginTransactionInternals } from '../../control-plane/modules/plugin-manager/user-transaction.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-user-plugin-transaction-'))

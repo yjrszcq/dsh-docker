@@ -2,7 +2,7 @@ import { open, readFile, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
-import { userPluginInternals } from './index.mjs'
+import { userPluginInternals } from './user-inventory.mjs'
 
 function parse(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)

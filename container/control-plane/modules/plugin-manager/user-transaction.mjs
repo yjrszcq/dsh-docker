@@ -5,7 +5,7 @@ import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
-import { userPluginInternals } from './index.mjs'
+import { userPluginInternals } from './user-inventory.mjs'
 
 function pluginEnvironment(dshHome, home = process.env.HOME ?? userInfo().homedir) {
   return {

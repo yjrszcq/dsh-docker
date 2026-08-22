@@ -17,7 +17,7 @@ import {
   materializeSystemPluginSelection,
   pruneSystemPluginSelectionViews,
   SystemPluginSelectionStore,
-} from '../../control-plane/modules/system-plugin-manager/index.mjs'
+} from '../../control-plane/modules/plugin-manager/system.mjs'
 import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
 import { SystemSkillManager } from '../../control-plane/modules/skill-manager/index.mjs'

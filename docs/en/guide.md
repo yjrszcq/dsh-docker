@@ -182,9 +182,8 @@ Bootstrap Runtime (current / previous)
 │   ├── Managers
 │   │   ├── updater
 │   │   ├── patch-manager
-│   │   ├── system-plugin-manager
+│   │   ├── plugin-manager
 │   │   ├── skill-manager
-│   │   ├── user-plugin-manager
 │   │   ├── log-manager
 │   │   └── file-manager
 │   └── Recovery hooks

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { durableReplace } from '../../../platform/lib/atomic.mjs'
-import { userPluginInternals } from './index.mjs'
+import { userPluginInternals } from './user-inventory.mjs'
 
 const PHASES = new Set([
   'validated', 'paused', 'snapshotted', 'mutating', 'committed', 'restarting',
