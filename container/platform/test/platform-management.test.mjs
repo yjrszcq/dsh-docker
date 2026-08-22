@@ -111,8 +111,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   }
   assert.match(source, /confirmDataLoss: true/)
   assert.match(source, /requestedRestart\.current = task\.taskId/)
-  assert.match(source, /status\?\.dshRestart/)
-  assert.match(source, /restart\.status === 'success'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)[\s\S]*window\.location\.reload/)
+  assert.match(source, /status\?\.dshLifecycle/)
+  assert.match(source, /restart\.state === 'running'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)[\s\S]*window\.location\.reload/)
   assert.doesNotMatch(source, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(source, /window\.location\.reload\(\)/)
   assert.match(source, /const \[confirmRestart, setConfirmRestart\] = useState\(false\)/)
@@ -188,7 +188,7 @@ test('Platform Management compacts multiline JSON only in the log presentation',
     platformLayout: 1,
     recoveryMode: null,
     trust: { keyringGeneration: 1, targetSequence: null, officialDshVersion: null },
-    dshRestart: { status: 'idle', taskId: null, error: null, updatedAt: null },
+    dshLifecycle: { state: 'running', taskId: null, error: null, updatedAt: null },
   }
   let index = 0
   const entry = message => ({

@@ -12,6 +12,10 @@ export class BootstrapRuntime {
     this.fatal = controlPlane.fatal
     this.recoveryMode = null
     this.startupComplete = false
+    this.dshLifecycle = Object.freeze({
+      state: 'starting', action: 'start', taskId: null, attempt: 0, maxAttempts: 3,
+      error: null, updatedAt: new Date().toISOString(),
+    })
     this.recovery = Promise.resolve()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
@@ -42,6 +46,15 @@ export class BootstrapRuntime {
 
   record(message, fields = {}) {
     return Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
+  }
+
+  publishDshLifecycle(value) {
+    this.dshLifecycle = Object.freeze({
+      ...this.dshLifecycle,
+      ...value,
+      updatedAt: new Date().toISOString(),
+    })
+    return this.dshLifecycle
   }
 
   async stopControlPlane(phase, cause) {
@@ -115,15 +128,33 @@ export class BootstrapRuntime {
     return status
   }
   suspend(componentId) { return this.environment.suspend(componentId) }
-  pause(componentId) { return this.environment.pause(componentId, { allowMissing: componentId === 'dsh-runtime' }) }
+  async pause(componentId) {
+    if (componentId !== 'dsh-runtime') return this.environment.pause(componentId)
+    this.publishDshLifecycle({ state: 'stopping', action: 'stop', attempt: 0, error: null })
+    try {
+      const status = await this.environment.pause(componentId, { allowMissing: true })
+      this.publishDshLifecycle({ state: 'stopped', action: null, attempt: 0, error: null })
+      return status
+    } catch (error) {
+      this.publishDshLifecycle({
+        state: 'failed', action: null,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  }
   async resume(componentId, options) {
+    if (componentId === 'dsh-runtime') this.publishDshLifecycle({ state: 'starting', action: 'start', attempt: 0, error: null })
     try {
       if (componentId === 'dsh-runtime') {
         if (options?.skipValidation !== true) await this.validateDeployment()
         if (options?.skipPreparation !== true) await this.prepareDeployment()
       }
       const status = await this.environment.resume(componentId)
-      if (componentId === 'dsh-runtime') this.recoveryMode = null
+      if (componentId === 'dsh-runtime') {
+        this.recoveryMode = null
+        this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+      }
       return status
     } catch (error) {
       if (componentId === 'dsh-runtime') this.enterRecovery(error)
@@ -131,13 +162,17 @@ export class BootstrapRuntime {
     }
   }
   async restart(componentId, options) {
+    if (componentId === 'dsh-runtime') this.publishDshLifecycle({ state: 'restarting', action: 'restart', attempt: 0, error: null })
     try {
       if (componentId === 'dsh-runtime') {
         if (options?.skipValidation !== true) await this.validateDeployment()
         if (options?.skipPreparation !== true) await this.prepareDeployment()
       }
       const status = await this.environment.restart(componentId, options)
-      if (componentId === 'dsh-runtime') this.recoveryMode = null
+      if (componentId === 'dsh-runtime') {
+        this.recoveryMode = null
+        this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+      }
       return status
     } catch (error) {
       if (componentId === 'dsh-runtime') this.enterRecovery(error)
@@ -146,10 +181,18 @@ export class BootstrapRuntime {
   }
   health() { return this.environment.health() }
 
-  markStartupComplete() { this.startupComplete = true }
+  markStartupComplete() {
+    this.startupComplete = true
+    if (this.recoveryMode === null && this.environment.status().components.some(value => value.id === 'dsh-runtime')) {
+      this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+    } else if (this.recoveryMode !== null) {
+      this.publishDshLifecycle({ state: 'failed', action: null, error: this.recoveryMode })
+    }
+  }
 
   enterRecovery(error) {
     this.recoveryMode = error instanceof Error ? error.message : String(error)
+    this.publishDshLifecycle({ state: 'failed', action: null, error: this.recoveryMode })
   }
 
   status() {
@@ -158,6 +201,7 @@ export class BootstrapRuntime {
       ...environment,
       controlPlane: this.controlPlane.status().components,
       recoveryMode: this.recoveryMode,
+      dshLifecycle: this.dshLifecycle,
       startupComplete: this.startupComplete,
     })
   }

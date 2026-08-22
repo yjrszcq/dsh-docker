@@ -363,6 +363,7 @@ export class EnvironmentRunner {
       if (this.environment === undefined) throw new Error('Environment is not loaded')
       const component = this.environment.components.find(value => value.id === componentId)
       if (component === undefined) throw new Error(`component ${componentId} does not exist`)
+      if (this.running.some(value => value.component.id === componentId)) return this.status()
       await this.startComponentUnlocked(component, true)
       return this.status()
     })

@@ -382,7 +382,7 @@ function runtimeBusy(next = status) {
     || next?.systemSkillOperation?.status === 'running'
     || next?.userSkillOperation?.status === 'running'
     || next?.userPluginOperation?.status === 'running'
-    || next?.dshRestart?.status === 'restarting'
+    || ['starting', 'stopping', 'restarting', 'recovering'].includes(next?.dshLifecycle?.state)
     || next?.runtimeReset?.status === 'resetting'
 }
 
@@ -394,7 +394,8 @@ function setRuntimeResetExpanded(expanded) {
 }
 
 function operationResultVisible(operation, activeStatus) {
-  if (operation?.status === activeStatus) {
+  const operationState = operation?.status ?? operation?.state
+  if (operationState === activeStatus) {
     if (operation.taskId) visibleOperationTasks.add(operation.taskId)
     return true
   }
@@ -772,7 +773,7 @@ function render(next) {
   status = next
   rollbackPlan = next.rollbackPlan
   const update = next.update ?? {}
-  const restart = next.dshRestart ?? {}
+  const restart = next.dshLifecycle ?? {}
   const runtimeReset = next.runtimeReset ?? {}
   const restartVisible = operationResultVisible(restart, 'restarting')
   const runtimeResetVisible = operationResultVisible(runtimeReset, 'resetting')
@@ -783,7 +784,7 @@ function render(next) {
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
   const checkingUpdates = checking || update.status === 'checking'
-  if (restart.status === 'success' && !plugins.some(plugin => plugin.pendingRestart)) {
+  if (restart.state === 'running' && restart.taskId !== null && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
   }
   const hasSupportedTarget = next.supported !== null && next.supported !== undefined
@@ -849,8 +850,8 @@ function render(next) {
 
   elements['restart-dsh'].disabled = busy
   elements['restart-state'].hidden = !restartVisible
-  elements['restart-state'].textContent = restart.status === 'restarting'
-    ? t('restarting') : restart.status === 'success' ? t('restartComplete') : restart.status === 'failed' ? t('restartFailed') : ''
+  elements['restart-state'].textContent = restart.state === 'restarting'
+    ? t('restarting') : restart.state === 'running' ? t('restartComplete') : restart.state === 'failed' ? t('restartFailed') : ''
   elements['runtime-reset'].disabled = busy || next.current === null || next.current === undefined
   elements['confirm-runtime-reset'].disabled = busy || next.current === null || next.current === undefined
   elements['runtime-reset'].textContent = runtimeReset.status === 'resetting'
@@ -875,7 +876,7 @@ function render(next) {
   elements['plugin-restart-required'].hidden = !plugins.some(plugin => plugin.pendingRestart)
   const pluginBusy = busy || discardingPluginDraft
   elements['plugin-restart-dsh'].disabled = pluginBusy
-  elements['plugin-restart-dsh'].textContent = restart.status === 'restarting' ? t('restarting') : t('restartDsh')
+  elements['plugin-restart-dsh'].textContent = restart.state === 'restarting' ? t('restarting') : t('restartDsh')
   const skillOperationVisible = operationResultVisible(skillOperation, 'running')
   elements['skill-operation'].hidden = !skillOperationVisible
   elements['skill-operation'].textContent = skillOperation.status === 'running'

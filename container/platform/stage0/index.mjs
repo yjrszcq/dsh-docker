@@ -132,7 +132,7 @@ const maintenance = await createMaintenanceServer({
     try {
       const status = await management.status()
       return !['idle', 'success', 'failed'].includes(status.update?.status)
-        || status.dshRestart?.status === 'restarting'
+        || ['starting', 'stopping', 'restarting', 'recovering'].includes(status.dshLifecycle?.state)
         || status.runtimeReset?.status === 'resetting'
         || status.systemPluginOperation?.status === 'running'
         || status.userPluginOperation?.status === 'running'

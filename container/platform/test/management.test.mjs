@@ -405,6 +405,7 @@ test('management restarts only DSH as an audited task and excludes update activa
   const server = createManagementServer({
     coordinator,
     logs,
+    restartDelayMs: 0,
     restartDsh: async () => {
       restarts += 1
       await restartCompletion
@@ -424,7 +425,7 @@ test('management restarts only DSH as an audited task and excludes update activa
       await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(restarts, 1)
-    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).dshRestart.status, 'restarting')
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).dshLifecycle.state, 'restarting')
     await assert.rejects(
       client.request('POST', '/_dsh_platform/api/v1/restart-dsh'),
       error => error.statusCode === 409,
@@ -437,8 +438,8 @@ test('management restarts only DSH as an audited task and excludes update activa
     await new Promise(resolve => setImmediate(resolve))
     await logs.queue
     const status = await client.request('GET', '/_dsh_platform/api/v1/status')
-    assert.equal(status.dshRestart.status, 'success')
-    assert.equal(status.dshRestart.taskId, task.taskId)
+    assert.equal(status.dshLifecycle.state, 'running')
+    assert.equal(status.dshLifecycle.taskId, task.taskId)
     assert.equal(loadedStateCaptures, 1)
     finishLoadedStateCapture()
     assert.deepEqual(
@@ -457,6 +458,7 @@ test('management rejects DSH restart while an update task is active', async () =
   const server = createManagementServer({
     coordinator,
     logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    restartDelayMs: 0,
     restartDsh: async () => {},
   })
   const socketPath = join(root, 'run', 'management.sock')
@@ -466,6 +468,85 @@ test('management rejects DSH restart while an update task is active', async () =
       new LocalApiClient(socketPath).request('POST', '/_dsh_platform/api/v1/restart-dsh'),
       error => error.statusCode === 409,
     )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management starts and stops DSH through the unified lifecycle state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-lifecycle-'))
+  const calls = []
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    startDsh: async () => { calls.push('start') },
+    stopDsh: async () => { calls.push('stop') },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const stopped = await client.request('POST', `${API_PREFIX}stop-dsh`)
+    let status
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.dshLifecycle.taskId === stopped.taskId && status.dshLifecycle.state === 'stopped') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.dshLifecycle.state, 'stopped')
+    assert.equal(status.dshLifecycle.action, null)
+
+    const started = await client.request('POST', `${API_PREFIX}start-dsh`)
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.dshLifecycle.taskId === started.taskId && status.dshLifecycle.state === 'running') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.dshLifecycle.state, 'running')
+    assert.deepEqual(calls, ['stop', 'start'])
+    assert.deepEqual((await logs.query({ sources: ['audit'] })).map(entry => entry.message), [
+      'dsh.stop.started', 'dsh.stop.completed', 'dsh.start.started', 'dsh.start.completed',
+    ])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('management preserves a completed lifecycle task until Bootstrap publishes a newer state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-lifecycle-merge-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  let bootstrapLifecycle = {
+    state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
+    error: null, updatedAt: '2026-08-22T00:00:00.000Z',
+  }
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs,
+    platformStatus: async () => ({ dshLifecycle: bootstrapLifecycle }),
+    startDsh: async () => {},
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const started = await client.request('POST', `${API_PREFIX}start-dsh`)
+    let status
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.dshLifecycle.taskId === started.taskId && status.dshLifecycle.state === 'running') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(status.dshLifecycle.taskId, started.taskId)
+
+    bootstrapLifecycle = {
+      ...bootstrapLifecycle,
+      state: 'recovering', action: 'auto-recover', attempt: 1,
+      updatedAt: '2099-08-22T00:00:00.000Z',
+    }
+    status = await client.request('GET', `${API_PREFIX}status`)
+    assert.equal(status.dshLifecycle.state, 'recovering')
+    assert.equal(status.dshLifecycle.attempt, 1)
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
@@ -665,6 +746,7 @@ test('standalone Management disables a startup-faulting Bundle while DSH is alre
     snapshots: new UserPluginSnapshots({ root: join(root, 'platform/store/snapshots/user-plugins'), profileRoot }),
     journal: new UserPluginJournal(join(root, 'platform/state/management/user-plugin-transaction.json')),
     pauseDsh: async () => { paused += 1 },
+    restartDelayMs: 0,
     restartDsh: async () => {
       restarted += 1
       const manifest = JSON.parse(await readFile(join(profileRoot, 'package.json'), 'utf8'))
@@ -726,6 +808,7 @@ test('management changes a bundled plugin as an audited task and excludes runtim
       calls.push([id, action])
       await completion
     },
+    restartDelayMs: 0,
     restartDsh: async () => {},
   })
   const socketPath = join(root, 'run', 'management.sock')
@@ -765,10 +848,10 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     let restarted
     for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       restarted = await client.request('GET', '/_dsh_platform/api/v1/status')
-      if (restarted.dshRestart.status === 'success') break
+      if (restarted.dshLifecycle.state === 'running') break
       await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
-    assert.equal(restarted.dshRestart.status, 'success')
+    assert.equal(restarted.dshLifecycle.state, 'running')
     assert.equal(restarted.systemPluginOperation.restartRequired, false)
   } finally {
     await new Promise(resolve => server.close(resolve))
@@ -858,6 +941,7 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
     coordinator: new Coordinator(),
     logs,
     configureBundledPlugin: async () => {},
+    restartDelayMs: 0,
     restartDsh: async () => { throw new Error('restart failed') },
   })
   const socketPath = join(root, 'run', 'management.sock')
@@ -877,10 +961,10 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
     await client.request('POST', '/_dsh_platform/api/v1/restart-dsh')
     for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
       status = await client.request('GET', '/_dsh_platform/api/v1/status')
-      if (status.dshRestart.status === 'failed') break
+      if (status.dshLifecycle.state === 'failed') break
       await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
-    assert.equal(status.dshRestart.status, 'failed')
+    assert.equal(status.dshLifecycle.state, 'failed')
     assert.equal(status.systemPluginOperation.restartRequired, true)
     await logs.queue
     assert.equal((await logs.query({ sources: ['audit'] })).find(entry => entry.message === 'dsh.restart.failed').level, 'error')
@@ -1185,7 +1269,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /pluginPendingRestart: '待重启'/)
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
   assert.match(script, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)[\s\S]*bundled-plugins\/discard/)
-  assert.match(script, /restart\.status === 'success'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
+  assert.match(script, /restart\.state === 'running'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.doesNotMatch(script, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(script, /\(acting && !checking\)/)
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
@@ -1430,7 +1514,10 @@ test('management CLI emits each JSON result as one log-safe line', async () => {
   const output = []
   const status = {
     officialDshVersion: null,
-    dshRestart: { status: 'idle', taskId: null, error: null, updatedAt: null },
+    dshLifecycle: {
+      state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
+      error: null, updatedAt: null,
+    },
   }
   assert.equal(await runCli({
     argv: ['status'],
@@ -1441,7 +1528,9 @@ test('management CLI emits each JSON result as one log-safe line', async () => {
   assert.equal(output[0].includes('\n'), false)
 })
 
-test('restart CLI has a fixed DSH scope and waits only for its own task', async () => {
+test('lifecycle CLI has a fixed DSH scope and waits only for its own task', async () => {
+  assert.deepEqual(parseCli(['start']), { command: 'start', wait: false })
+  assert.deepEqual(parseCli(['stop', '--wait']), { command: 'stop', wait: true })
   assert.deepEqual(parseCli(['restart']), { command: 'restart', wait: false })
   assert.deepEqual(parseCli(['restart', '--wait']), { command: 'restart', wait: true })
   assert.throws(() => parseCli(['restart', 'gateway']))
@@ -1460,9 +1549,9 @@ test('restart CLI has a fixed DSH scope and waits only for its own task', async 
   assert.deepEqual(immediateCalls, [['POST', '/_dsh_platform/api/v1/restart-dsh']])
   const output = []
   const statuses = [
-    { dshRestart: { taskId: 'old-task', status: 'success' } },
-    { dshRestart: { taskId: 'restart-task', status: 'restarting' } },
-    { dshRestart: { taskId: 'restart-task', status: 'success' } },
+    { dshLifecycle: { taskId: 'old-task', state: 'running' } },
+    { dshLifecycle: { taskId: 'restart-task', state: 'restarting' } },
+    { dshLifecycle: { taskId: 'restart-task', state: 'running' } },
   ]
   const calls = []
   const management = {
@@ -1483,7 +1572,7 @@ test('restart CLI has a fixed DSH scope and waits only for its own task', async 
   assert.equal(waits, 2)
   assert.deepEqual(calls[0], ['POST', '/_dsh_platform/api/v1/restart-dsh'])
   assert.match(output[0], /restart-task/)
-  assert.match(output.at(-1), /success/)
+  assert.match(output.at(-1), /running/)
 })
 
 test('CLI parses channel controls and refuses noninteractive Stable return', async () => {

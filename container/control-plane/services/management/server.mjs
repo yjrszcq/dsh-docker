@@ -91,6 +91,8 @@ export function createManagementServer({
   coordinator,
   logs,
   platformStatus = async () => ({}),
+  startDsh = async () => { throw new Error('DSH start is not configured') },
+  stopDsh = async () => { throw new Error('DSH stop is not configured') },
   restartDsh = async () => { throw new Error('DSH restart is not configured') },
   resetRuntime = async () => { throw new Error('Runtime reset is not configured') },
   listBundledPlugins = async () => [],
@@ -123,16 +125,20 @@ export function createManagementServer({
   fileLocations = Object.freeze({ defaultPath: '/workspace', shortcuts: Object.freeze(['/workspace', '/data/dsh', '/data/platform', '/']) }),
   privilegedMutationActive = () => false,
   stateHeartbeatMs = 15_000,
+  restartDelayMs = 2_000,
   consoleRoot = join(import.meta.dirname, 'public'),
   consoleDependencyRoot = join(import.meta.dirname, 'node_modules'),
 }) {
-  let restartTask
+  let lifecycleTask
   let runtimeResetTask
   let pluginTask
   let systemSkillTask
   let userSkillTask
   let userPluginTask
-  let restartState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
+  let lifecycleState = Object.freeze({
+    state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
+    error: null, updatedAt: null,
+  })
   let runtimeResetState = Object.freeze({ status: 'idle', taskId: null, error: null, updatedAt: null })
   let pluginState = Object.freeze({ status: 'idle', taskId: null, pluginId: null, action: null, error: null, restartRequired: false, updatedAt: null })
   let systemSkillState = Object.freeze({ status: 'idle', taskId: null, skillId: null, action: null, error: null, updatedAt: null })
@@ -156,9 +162,18 @@ export function createManagementServer({
     .then(() => markUserPluginsLoaded())
     .catch(error => recordAudit('user-plugin.loaded-state.capture.failed', { error }))
 
-  const publishRestart = value => {
-    restartState = Object.freeze({ ...restartState, ...value, updatedAt: new Date().toISOString() })
-    server.emit('management-state', restartState)
+  const publishLifecycle = value => {
+    lifecycleState = Object.freeze({ ...lifecycleState, ...value, updatedAt: new Date().toISOString() })
+    server.emit('management-state', lifecycleState)
+  }
+
+  const currentLifecycle = platformLifecycle => {
+    if (lifecycleTask !== undefined || platformLifecycle === undefined) return lifecycleState
+    const localTime = Date.parse(lifecycleState.updatedAt ?? '')
+    const platformTime = Date.parse(platformLifecycle.updatedAt ?? '')
+    return Number.isFinite(platformTime) && (!Number.isFinite(localTime) || platformTime > localTime)
+      ? platformLifecycle
+      : lifecycleState
   }
 
   const publishRuntimeReset = value => {
@@ -191,7 +206,7 @@ export function createManagementServer({
   }
 
   const requireRuntimeIdle = () => {
-    if (restartTask !== undefined) throw new UpdateConflictError('DSH is already restarting')
+    if (lifecycleTask !== undefined) throw new UpdateConflictError('a DSH lifecycle operation is already running')
     if (runtimeResetTask !== undefined) throw new UpdateConflictError('the DSH Runtime is already resetting')
     if (pluginTask !== undefined) throw new UpdateConflictError('a System Plugin operation is already running')
     if (systemSkillTask !== undefined) throw new UpdateConflictError('a System Skill operation is already running')
@@ -333,32 +348,38 @@ export function createManagementServer({
     return { taskId }
   }
 
-  const startRestart = () => {
+  const startLifecycle = action => {
+    if (!['start', 'stop', 'restart'].includes(action)) throw new Error('DSH lifecycle action is invalid')
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const taskId = randomUUID()
-    publishRestart({ status: 'restarting', taskId, error: null })
-    restartTask = Promise.resolve()
-      .then(() => recordAudit('dsh.restart.started', { taskId }))
-      .then(() => restartDsh())
+    const state = action === 'start' ? 'starting' : action === 'stop' ? 'stopping' : 'restarting'
+    const operation = action === 'start' ? startDsh : action === 'stop' ? stopDsh : restartDsh
+    publishLifecycle({ state, action, taskId, attempt: 0, error: null })
+    lifecycleTask = Promise.resolve()
+      .then(() => recordAudit(`dsh.${action}.started`, { taskId }))
+      .then(() => action === 'restart' && restartDelayMs > 0
+        ? new Promise(resolve => setTimeout(resolve, restartDelayMs))
+        : undefined)
+      .then(() => operation())
       .then(
         async () => {
-          await recordAudit('dsh.restart.completed', { taskId })
-          publishRestart({ status: 'success', taskId, error: null })
-          publishPlugin({ restartRequired: false })
+          await recordAudit(`dsh.${action}.completed`, { taskId })
+          publishLifecycle({ state: action === 'stop' ? 'stopped' : 'running', action: null, taskId, attempt: 0, error: null })
+          if (action !== 'stop') publishPlugin({ restartRequired: false })
           // DSH readiness is the restart completion boundary. Refreshing the
           // user-plugin inventory can be slow on mounted or CI filesystems and
           // must not keep an already-ready Runtime in the restarting state.
-          void refreshLoadedUserPlugins()
+          if (action !== 'stop') void refreshLoadedUserPlugins()
         },
         async error => {
-          const message = error instanceof Error ? error.message : 'DSH restart failed'
-          await recordAudit('dsh.restart.failed', { error, taskId })
-          publishRestart({ status: 'failed', taskId, error: message })
+          const message = error instanceof Error ? error.message : `DSH ${action} failed`
+          await recordAudit(`dsh.${action}.failed`, { error, taskId })
+          publishLifecycle({ state: 'failed', action: null, taskId, error: message })
         },
       )
-      .finally(() => { restartTask = undefined })
-    restartTask.catch(() => {})
+      .finally(() => { lifecycleTask = undefined })
+    lifecycleTask.catch(() => {})
     return { taskId }
   }
 
@@ -400,10 +421,11 @@ export function createManagementServer({
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'GET' && route === 'status') {
+        const currentPlatformStatus = await platformStatus()
         send(response, 200, {
           ...(await coordinator.publicStatus()),
-          ...(await platformStatus()),
-          dshRestart: restartState,
+          ...currentPlatformStatus,
+          dshLifecycle: currentLifecycle(currentPlatformStatus.dshLifecycle),
           runtimeReset: runtimeResetState,
           systemPluginOperation: pluginState,
           systemSkillOperation: systemSkillState,
@@ -556,8 +578,8 @@ export function createManagementServer({
           .catch(() => {})
         await audit('update.started', { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
-      } else if (request.method === 'POST' && route === 'restart-dsh') {
-        const task = startRestart()
+      } else if (request.method === 'POST' && ['start-dsh', 'stop-dsh', 'restart-dsh'].includes(route)) {
+        const task = startLifecycle(route.slice(0, -4))
         send(response, 202, task)
       } else if (request.method === 'POST' && route === 'runtime/reset') {
         const task = startRuntimeReset()

@@ -142,7 +142,10 @@ server = createManagementServer({
   platformStatus: async () => ({
     ...await readDeploymentStatus(paths.deploymentStatusPath),
     trust: await trust.status(),
+    dshLifecycle: (await bootstrap.status()).dshLifecycle,
   }),
+  startDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/resume'),
+  stopDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/pause'),
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),
   resetRuntime: () => bootstrap.request('POST', '/v1/deployments/runtime/reset'),
   listBundledPlugins,

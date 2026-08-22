@@ -804,24 +804,24 @@ function PlatformManagement({ t }) {
   }, [checkUpdates, refresh])
 
   useEffect(() => {
-    const restart = status?.dshRestart
+    const restart = status?.dshLifecycle
     if (restart?.taskId !== requestedRestart.current) return
-    if (restart.status === 'success') {
+    if (restart.state === 'running') {
       requestedRestart.current = null
       window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
       window.location.reload()
-    } else if (restart.status === 'failed') {
+    } else if (restart.state === 'failed') {
       requestedRestart.current = null
     }
-  }, [status?.dshRestart])
+  }, [status?.dshLifecycle])
 
   const update = status?.update ?? {}
-  const restart = status?.dshRestart ?? {}
+  const restart = status?.dshLifecycle ?? {}
   const pluginOperation = status?.systemPluginOperation ?? {}
   const skillOperation = status?.systemSkillOperation ?? {}
   const checkingUpdates = checking || update.status === 'checking'
   const rollbackPlan = status?.rollbackPlan
-  const restartBusy = restart.status === 'restarting'
+  const restartBusy = restart.state === 'restarting'
   const busy = (acting && !checking) || restartBusy || pluginOperation.status === 'running' || skillOperation.status === 'running'
     || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
   const updateActive = !TERMINAL.has(update.status ?? 'idle')
@@ -998,7 +998,7 @@ function PlatformManagement({ t }) {
           'aria-expanded': confirmRestart,
           onClick: () => setConfirmRestart(value => !value),
         }, restartBusy ? t('restarting') : t(confirmRestart ? 'cancelRestartDsh' : 'restartDsh'))),
-      restart.status === 'failed'
+      restart.state === 'failed'
         ? h('p', { className: css.error, role: 'alert' }, `${t('restartFailed')}: ${localizedError(restart.error, t)}`)
         : restartBusy
           ? h('p', { className: css.maintenanceStatus, 'aria-live': 'polite' }, t('restarting'))

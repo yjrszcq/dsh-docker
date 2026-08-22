@@ -103,7 +103,7 @@ assert.match(identity, /home=\/root/)
 assert.match(identity, /dsh=\/data\/dsh/)
 
 const restart = await request('POST', `${API}restart-dsh`)
-await waitTask('dshRestart', restart.taskId, ['success'])
+await waitTask('dshLifecycle', restart.taskId, ['running'])
 first.socket.send(JSON.stringify({ type: 'input', data: "printf 'terminal-after-restart-中文\\n'\n" }))
 await first.waitOutput('terminal-after-restart-中文', 2)
 first.socket.close()
@@ -148,7 +148,7 @@ for (const name of faultNames) {
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
 const brokenRestart = await request('POST', `${API}restart-dsh`)
-await waitTask('dshRestart', brokenRestart.taskId, ['failed'])
+await waitTask('dshLifecycle', brokenRestart.taskId, ['failed'])
 await waitFor(async () => (await request('GET', `${API}status`)).recoveryMode ?? false, 'DSH recovery mode')
 
 let inventory = await request('GET', `${API}user-plugins`)

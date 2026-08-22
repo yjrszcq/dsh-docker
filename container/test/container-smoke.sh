@@ -392,7 +392,7 @@ attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" \
-    '.dshRestart.taskId == $task and .dshRestart.status == "success"
+    '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"
       and .systemPluginOperation.restartRequired == false' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 100 ] || exit 1
@@ -463,7 +463,7 @@ attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" \
-    '.dshRestart.taskId == $task and .dshRestart.status == "success" and .recoveryMode == null' >/dev/null; do
+    '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null; do
   attempt=$((attempt + 1))
   [ "$attempt" -lt 100 ] || exit 1
   sleep 0.1
@@ -556,7 +556,7 @@ restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
 attempt=0
 until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
-  | jq -e --arg task "$restart_task" '.dshRestart.taskId == $task and .dshRestart.status == "success"' >/dev/null; do
+  | jq -e --arg task "$restart_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"' >/dev/null; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 60 ]; then
     docker logs "$container" >&2
