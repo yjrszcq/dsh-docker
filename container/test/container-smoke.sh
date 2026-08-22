@@ -113,7 +113,7 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "id":"platform-management",
     "artifactId":"system-plugin-platform-management",
     "sha256":.plugins[0].sha256,
-    "description":{"zh":"管理 DSH Docker 更新、运行维护与系统插件。","en":"Manage DSH Docker updates, runtime maintenance, and System Plugins."},
+    "description":{"zh":"管理 DSH Docker 更新、运行维护、系统插件与系统技能。","en":"Manage DSH Docker updates, runtime maintenance, System Plugins, and System Skills."},
     "installed":true,
     "enabled":true,
     "activeInstalled":true,
@@ -134,6 +134,57 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "protected":false,
     "reason":null
   }]' >/dev/null
+docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills \
+  | jq -e '.skills == [{
+    "id":"dsh-docker-operations",
+    "sha256":.skills[0].sha256,
+    "description":{"zh":"在 DSH Docker 环境中使用受支持的命令完成开发、插件、维护、更新、恢复与诊断。","en":"Use supported commands for development, plugins, maintenance, updates, recovery, and diagnostics in the DSH Docker Environment."},
+    "installed":true,
+    "enabled":true
+  }]' >/dev/null
+skill_view="/run/dsh-platform/views/skills/dsh-docker-operations"
+docker exec "$container" sh -c "test -L '$skill_view' && test -f '$skill_view/SKILL.md'"
+docker exec -i --user node \
+  --env DSH_HOME=/data/dsh \
+  --env DSH_DEFAULT_WORKSPACE=/workspace \
+  --env DSH_BUNDLED_SKILL_DIR=/run/dsh-platform/views/skills \
+  "$container" /usr/local/bin/node --input-type=module \
+  < "$(dirname "$0")/system-skill-discovery-smoke.mjs" \
+  | jq -e '.name == "dsh-docker-operations" and .source == "bundled" and .provider == "filesystem" and .contentBytes > 500' >/dev/null
+skill_dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )"
+skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"skillId":"dsh-docker-operations","action":"disable"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$skill_task" '.systemSkillOperation.taskId == $task and .systemSkillOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.1
+done
+if docker exec "$container" test -e "$skill_view"; then
+  echo "disabled System Skill remained in the active view" >&2
+  exit 1
+fi
+[ "$skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
+skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' --header 'Content-Type: application/json' \
+  --data '{"skillId":"dsh-docker-operations","action":"enable"}' \
+  http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills/action | jq -r .taskId)"
+attempt=0
+until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+  --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
+  | jq -e --arg task "$skill_task" '.systemSkillOperation.taskId == $task and .systemSkillOperation.status == "success"' >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || exit 1
+  sleep 0.1
+done
+docker exec "$container" sh -c "test -L '$skill_view' && test -f '$skill_view/SKILL.md'"
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"system-skill.disable.completed"' >/dev/null
+docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"system-skill.enable.completed"' >/dev/null
 settings_document="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document)"
 [ "$(echo "$settings_document" | jq -r .exists)" = false ]
