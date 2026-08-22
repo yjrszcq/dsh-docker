@@ -30,7 +30,7 @@ The container admits only the Bootstrap-supervised Web Profile. Do not launch a 
 
 Do not send signals to DSH, kill its PID, invoke Bootstrap sockets, or restart the whole container unless the user specifically requested that broader action. During a registered lifecycle operation, browser navigation enters the localized holding page and returns to the original same-origin path after readiness; API and WebSocket requests receive `503`.
 
-Docker health represents DSH HTTP readiness through the Gateway's internal health path. Stage-0 or Management being alive is not sufficient for a healthy container.
+Docker health probes the DSH HTTP listener directly at loopback `127.0.0.1:3079`. It represents DSH readiness; Stage-0, Gateway, or Management being alive is not sufficient for a healthy container. An intentional DSH stop therefore makes Docker report the container as unhealthy even though the standalone Management Console remains available.
 
 ## Logs
 

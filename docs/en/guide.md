@@ -357,6 +357,8 @@ Before a registered operation disconnects DSH, open browser pages move to a loca
 
 If `dsh-runtime` exits without a registered platform operation, Bootstrap retries it at most three times with immediate, 2-second, and 5-second delays. Recovery does not run in parallel with an update, rollback, reset, or probation owner. Three failed attempts enter recovery mode while Gateway and the Management Console remain available.
 
+The image HEALTHCHECK probes the DSH HTTP listener directly at loopback `127.0.0.1:3079`. It represents DSH readiness, not merely Stage-0, Gateway, or Management liveness. An intentional DSH stop therefore makes Docker report the container as unhealthy even though the standalone Management Console remains available.
+
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
 ## System Plugins
@@ -370,7 +372,7 @@ The Container Environment currently includes:
 
 The standalone console lists every System Plugin bundled by the current Environment and can install, uninstall, enable, or disable them, including recovery of the `platform-management` DSH integration. The integration inside DSH shows missing plugins with an Install action and limits installed plugins to enable/disable; it cannot uninstall them. Changes are marked **Pending restart** and take effect only after restarting DSH. Refreshing before restart discards the pending draft. Installation rebuilds and verifies the complete System Plugin Set from the current Deployment's local trusted Environment Artifact against the Deployment Record content hash. It never contacts GitHub or npm, never copies files from a built Runtime, and never reinstalls a missing plugin automatically.
 
-The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `/data/dsh/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
+The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `$DSH_HOME/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded.
 
 ## System Skills
 
@@ -386,7 +388,7 @@ The standalone console lists every System Skill supplied by the current Bootstra
 
 ### User Skill Management
 
-The standalone console's **User Skills** tab inventories native directory and flat-file skills from `DSH_HOME/skills` and `DSH_AGENTS_HOME/skills`. It does not scan or modify project-level skills. Each entry shows its source, native entry name, parsed Skill name and description, enabled state, and any metadata error; malformed entries remain visible so they can still be disabled or deleted.
+The standalone console's **User Skills** tab inventories native directory and flat-file skills from `$DSH_HOME/skills` and `$DSH_AGENTS_HOME/skills`. It does not scan or modify project-level skills. Each entry shows its source, native entry name, parsed Skill name and description, enabled state, and any metadata error; malformed entries remain visible so they can still be disabled or deleted.
 
 Disabling atomically moves the exact entry into that user root's hidden disabled directory while preserving its contents. Enabling restores it to the same root, and Delete permanently removes only the selected entry. Symbolic links are handled as links and deletion never follows their targets. Every action carries the current inventory revision, conflicts with other managed mutations, and is audited as started, completed, or failed. DSH's native filesystem watcher applies enable and disable changes immediately without restarting DSH. The Platform Management integration inside DSH deliberately does not expose User Skill controls.
 
@@ -394,7 +396,7 @@ Disabling atomically moves the exact entry into that user root's hidden disabled
 
 The **User Plugins** and **Container terminal** tabs in `/_dsh_platform/console/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
 
-User Plugin recovery manages only Bundle plugins declared by `/data/dsh/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
+User Plugin recovery manages only Bundle plugins declared by `$DSH_HOME/profiles/web/package.json`: a package must be both a dependency and an ordered member of `dsh.profile.bundles`. Ordinary dependencies and hand-written entries in `cordis.patch.yml` are never rewritten. Damaged installed metadata remains visible and uninstallable. Names reserved by the verified Environment System Plugin manifest cannot be enabled as User Plugins, regardless of package scope or prefix.
 
 Enable, disable, and uninstall changes are accumulated as a page-local draft. Applying them pauses DSH idempotently, snapshots the complete Web Profile, performs the exact actions, validates the resulting Profile, and restarts only DSH. Refreshing or leaving before Apply discards the draft. A revision conflict returns the latest inventory instead of overwriting concurrent changes. Pre-commit interruption restores the snapshot; after commit, a plugin change is retained even if DSH still fails, so multiple faulty plugins can be removed over consecutive attempts. Installation is intentionally not offered here; use DSH's normal plugin flow or the standalone terminal.
 
@@ -437,6 +439,8 @@ docker exec deepseek-harness dsh-platform logs --source updater
 docker exec deepseek-harness dsh-platform rollback
 docker exec -it deepseek-harness dsh-platform return-stable
 ```
+
+An Agent running inside the current DSH session must start activation asynchronously with `dsh-platform update` and report the returned task ID. `update --wait` is reserved for `docker exec`, the standalone console terminal, and external automation because activation may switch DSH and interrupt the current tool transport.
 
 Changing channels modifies only local desired state. Stable converges to the signed supported DSH and Environment. Experimental first converges the official Environment, then offers the newest verified upstream DSH. When current DSH is ahead of Latest Supported, the complete combination is frozen until Stable catches up.
 

@@ -357,6 +357,8 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 `dsh-runtime` 在没有平台操作登记时意外退出，Bootstrap 最多恢复三次，间隔依次为立即、2 秒和 5 秒。更新、回滚、重置或 probation 已持有生命周期时不会并行恢复。三次均失败后进入 recovery mode，Gateway 和独立管理中心继续可用。
 
+镜像 HEALTHCHECK 会直接探测回环地址 `127.0.0.1:3079` 上的 DSH HTTP 监听器。它表示 DSH 是否 Ready，而不只是 Stage-0、Gateway 或 Management 是否存活。因此，主动停止 DSH 后，即使独立管理中心仍可使用，Docker 也会把容器标记为 unhealthy。
+
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
 ## 系统插件
@@ -370,7 +372,7 @@ Container Environment 当前包含：
 
 独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
-可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `/data/dsh/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
+可选的“设置文档编辑器”System Plugin 会在容器环境中接管 DSH 的“打开配置文件”操作，改为显示响应式网页编辑器。它只能编辑当前的 `$DSH_HOME/settings.yaml`，采用原子保存，并在文件自页面载入后发生变化时拒绝覆盖。
 
 ## 系统技能
 
@@ -386,7 +388,7 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 ### 用户技能管理
 
-独立管理中心的“用户技能”会读取 `DSH_HOME/skills` 和 `DSH_AGENTS_HOME/skills` 中 DSH 原生支持的目录 Skill 与单文件 Skill，不扫描或修改项目级 Skill。清单显示来源、原生条目名、解析出的技能名称与描述、启用状态和 metadata 错误；即使 metadata 已损坏，条目仍会显示，方便禁用或删除。
+独立管理中心的“用户技能”会读取 `$DSH_HOME/skills` 和 `$DSH_AGENTS_HOME/skills` 中 DSH 原生支持的目录 Skill 与单文件 Skill，不扫描或修改项目级 Skill。清单显示来源、原生条目名、解析出的技能名称与描述、启用状态和 metadata 错误；即使 metadata 已损坏，条目仍会显示，方便禁用或删除。
 
 禁用会把指定条目原子移动到同一用户根目录的隐藏禁用目录，并完整保留内容；启用会恢复到原来的用户根，删除则只永久移除选中的条目。符号链接始终按链接本身处理，删除不会跟随目标。所有动作携带当前清单 revision，与其他受管修改互斥，并分别记录 started、completed 或 failed 审计。DSH 原生文件系统 watcher 会立即接收启禁变化，无需重启 DSH。DSH 内的“平台管理”集成不会提供用户技能控制。
 
@@ -394,7 +396,7 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 `/_dsh_platform/console/` 中的“用户插件”和“容器终端”由 Management 提供，不依赖 DSH。即使 `dsh-runtime` 已停止，或在加载插件时启动失败，这两个标签页仍然可用。DSH 内的“平台管理”集成不会显示这两个恢复标签。
 
-用户插件恢复只管理 `/data/dsh/profiles/web/package.json` 声明的 Bundle Plugin：包必须同时存在于 dependencies 和有序的 `dsh.profile.bundles` 中。普通依赖和用户手写的 `cordis.patch.yml` Entry 不会被改写。本地 metadata 损坏时仍会显示并允许卸载。System Plugin 身份来自已验证的 Environment 清单；与其同名的用户包不能启用，与包名前缀或 scope 无关。
+用户插件恢复只管理 `$DSH_HOME/profiles/web/package.json` 声明的 Bundle Plugin：包必须同时存在于 dependencies 和有序的 `dsh.profile.bundles` 中。普通依赖和用户手写的 `cordis.patch.yml` Entry 不会被改写。本地 metadata 损坏时仍会显示并允许卸载。System Plugin 身份来自已验证的 Environment 清单；与其同名的用户包不能启用，与包名前缀或 scope 无关。
 
 启用、禁用和卸载会先积累为当前页面内的草稿。提交时，Management 会幂等暂停 DSH、为完整 Web Profile 创建快照、执行精确操作、校验结果，然后只重启 DSH。提交前刷新或离开页面会丢弃草稿；revision 冲突时会重新读取清单，不会覆盖并发修改。commit 前中断会恢复快照；commit 后即使 DSH 仍启动失败，也会保留本次插件修改，方便连续处理多个故障插件。此处不提供安装功能；请使用 DSH 正常插件流程或独立终端安装。
 
@@ -437,6 +439,8 @@ docker exec deepseek-harness dsh-platform logs --source updater
 docker exec deepseek-harness dsh-platform rollback
 docker exec -it deepseek-harness dsh-platform return-stable
 ```
+
+Agent 在当前 DSH 会话内执行激活时，必须使用异步的 `dsh-platform update`，并报告返回的任务 ID。`update --wait` 只用于 `docker exec`、独立管理中心终端和外部自动化，因为激活过程可能切换 DSH 并中断当前工具传输。
 
 切换通道只修改本地 desired state。Stable 收敛到已签名的受支持 DSH 和 Environment；Experimental 先收敛正式 Environment，再提供经过验证的最新上游 DSH。当前 DSH 领先 Latest Supported 时，完整组合会冻结，直到 Stable 追上。
 

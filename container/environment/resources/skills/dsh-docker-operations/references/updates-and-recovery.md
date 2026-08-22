@@ -11,8 +11,10 @@ dsh-platform check
 Inspect `dsh-platform status` after the check. Activate the latest supported target only after the user confirms:
 
 ```sh
-dsh-platform update --wait
+dsh-platform update
 ```
+
+For an Agent running inside the current DSH session, activation must remain asynchronous: report the returned task ID and do not use `update --wait`, because switching DSH can interrupt the tool transport. `--wait` is reserved for `docker exec`, the standalone Management Console terminal, and external automation.
 
 Use `dsh-platform channel` to inspect the current channel and `dsh-platform channel stable|experimental` only when the user requests a channel change.
 
