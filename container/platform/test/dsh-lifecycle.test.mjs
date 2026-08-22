@@ -38,6 +38,8 @@ test('authorizes exactly one claim for each supervised DSH launch', async () => 
   assert.deepEqual(reports.map(value => value.message), [
     'dsh.launch.authorized', 'dsh.launch.claimed', 'dsh.launch.released',
   ])
+  assert.doesNotMatch(JSON.stringify(reports), new RegExp(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN))
+  assert.doesNotMatch(JSON.stringify(reports), new RegExp(first.sessionId))
 })
 
 test('invalidates an old launch without allowing its cleanup to release the replacement', () => {
@@ -85,5 +87,10 @@ test('serves only claim and signal over a private Unix socket', async t => {
   assert.equal((await call(socketPath, '/v1/runtime/claim', {
     launchToken: launch.environment.DSH_PLATFORM_LAUNCH_TOKEN,
   })).status, 409)
+  assert.equal((await call(socketPath, '/v1/runtime/signal', {
+    sessionId: claim.body.sessionId,
+    signal: 'SIGTERM',
+    unexpected: true,
+  })).status, 400)
   assert.equal((await call(socketPath, '/v1/unknown', {})).status, 404)
 })
