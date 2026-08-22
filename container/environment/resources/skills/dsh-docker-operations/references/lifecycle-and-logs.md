@@ -11,10 +11,22 @@ dsh-platform status
 Restart only DSH, while keeping Gateway and Management available, with:
 
 ```sh
-dsh-platform restart --wait
+dsh-platform restart
 ```
 
-Do not send signals to DSH, kill its PID, invoke Bootstrap sockets, or restart the whole container unless the user specifically requested that broader action. A DSH restart can temporarily return the Gateway's localized startup/maintenance page for browser navigation while API requests receive `503`.
+For an Agent running inside the current DSH session, `restart` must remain asynchronous: report the returned task ID and let the browser enter the lifecycle holding page. Never run `restart --wait` or `stop --wait` from that session because DSH shutdown interrupts the tool transport. `--wait` is reserved for `docker exec`, the standalone Management Console terminal, and external automation.
+
+The standalone Management Console and CLI also expose explicit lifecycle operations:
+
+```sh
+dsh-platform start
+dsh-platform stop
+dsh-platform restart
+```
+
+An explicit stop lasts only for the current container lifetime. An unexpected DSH exit is recovered at most three times; check `dshLifecycle` and `recoveryMode` rather than repeatedly sending restart commands.
+
+Do not send signals to DSH, kill its PID, invoke Bootstrap sockets, or restart the whole container unless the user specifically requested that broader action. During a registered lifecycle operation, browser navigation enters the localized holding page and returns to the original same-origin path after readiness; API and WebSocket requests receive `503`.
 
 Docker health represents DSH HTTP readiness through the Gateway's internal health path. Stage-0 or Management being alive is not sufficient for a healthy container.
 

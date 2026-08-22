@@ -342,9 +342,15 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening its Updates tab performs a read-only check, while page-open and manual checks refresh the saved result without notifying. The Management component serves the standalone console at `/_dsh_platform/console/`; it follows the saved DSH locale when available and exposes the same update, maintenance, log, System Plugin, and System Skill workflows.
 
-### Runtime Maintenance
+### DSH Lifecycle and Runtime Maintenance
 
-The Runtime maintenance action and `dsh-platform restart` restart only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running, so an already loaded DSH Management Console view continues reporting progress and reloads after DSH passes its health check. Restart is mutually exclusive with update activation and complete rollback. The CLI returns the task immediately by default; `--wait` follows only that task to completion.
+The standalone console and `dsh-platform start|stop|restart` control only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running. An explicit stop lasts until DSH is started again or the container itself restarts. Lifecycle operations are mutually exclusive with update activation, rollback, Runtime reset, and plugin transactions.
+
+The CLI returns a task ID immediately by default. Agents operating through the current DSH session must use asynchronous `dsh-platform restart` and must not use `restart --wait` or `stop --wait`, because stopping DSH also interrupts that tool transport. `--wait` remains appropriate for `docker exec`, the standalone console terminal, and external automation.
+
+Before a registered operation disconnects DSH, open browser pages move to a localized holding page. The page distinguishes starting, stopping, stopped, restarting, unexpected recovery, Runtime switching/recovery, and startup failure, then returns to the original same-origin path after readiness. A brief transport interruption is verified through Gateway readiness before navigation. API and WebSocket requests continue receiving `503`; unknown proxy failures remain `502`.
+
+If `dsh-runtime` exits without a registered platform operation, Bootstrap retries it at most three times with immediate, 2-second, and 5-second delays. Recovery does not run in parallel with an update, rollback, reset, or probation owner. Three failed attempts enter recovery mode while Gateway and the Management Console remain available.
 
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
@@ -413,6 +419,8 @@ New Platform and DSH log entries are also emitted as source-tagged JSON to conta
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform stop --wait
+docker exec deepseek-harness dsh-platform start --wait
 docker exec deepseek-harness dsh-platform restart --wait
 docker exec deepseek-harness dsh-platform channel experimental
 docker exec deepseek-harness dsh-platform retry

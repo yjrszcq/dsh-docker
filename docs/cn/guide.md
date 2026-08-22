@@ -342,9 +342,15 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 自动检查默认每六小时带抖动执行一次，可在任一管理前端中关闭或调整频率。检查不会自动下载或激活更新。可选提醒只在 DSH 页面中显示，且只由自动检查触发；独立管理中心不显示更新弹窗。打开其中的“更新管理”标签会执行一次只读检查，打开页面和手动检查都只刷新已保存结果，不触发提醒。Management 组件通过 `/_dsh_platform/console/` 提供独立管理中心；它优先使用已保存的 DSH 语言，并提供相同的更新、运行维护、日志、系统插件和系统技能操作。
 
-### Runtime 维护
+### DSH 生命周期与 Runtime 维护
 
-“运行维护”和 `dsh-platform restart` 都只重新启动 `dsh-runtime`。Bootstrap、Gateway、Management 和容器保持运行，因此已经打开的 DSH 管理中心会继续显示进度，并在 DSH 通过健康检查后刷新。重启与更新激活、完整回滚互斥。CLI 默认提交任务后立即返回；`--wait` 只跟踪本次任务直到结束。
+独立管理中心和 `dsh-platform start|stop|restart` 只控制 `dsh-runtime`，Bootstrap、Gateway、Management 和容器保持运行。主动停止只持续到再次启动 DSH 或容器自身重启。生命周期操作与更新激活、回滚、Runtime 重置和插件事务互斥。
+
+CLI 默认立即返回任务 ID。通过当前 DSH 会话操作的 Agent 必须使用异步 `dsh-platform restart`，不得使用 `restart --wait` 或 `stop --wait`，因为停止 DSH 也会中断本次工具传输。`--wait` 仍适用于 `docker exec`、独立管理中心终端和外部自动化。
+
+已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。短暂连接中断会先通过 Gateway readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，未分类代理故障仍返回 `502`。
+
+`dsh-runtime` 在没有平台操作登记时意外退出，Bootstrap 最多恢复三次，间隔依次为立即、2 秒和 5 秒。更新、回滚、重置或 probation 已持有生命周期时不会并行恢复。三次均失败后进入 recovery mode，Gateway 和独立管理中心继续可用。
 
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
@@ -413,6 +419,8 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 docker exec deepseek-harness dsh-platform status
 docker exec deepseek-harness dsh-platform check
 docker exec deepseek-harness dsh-platform update --wait
+docker exec deepseek-harness dsh-platform stop --wait
+docker exec deepseek-harness dsh-platform start --wait
 docker exec deepseek-harness dsh-platform restart --wait
 docker exec deepseek-harness dsh-platform channel experimental
 docker exec deepseek-harness dsh-platform retry
