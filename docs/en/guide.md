@@ -374,6 +374,12 @@ The standalone console lists every System Skill supplied by the current Bootstra
 
 ## Standalone Recovery Tools
 
+### User Skill Management
+
+The standalone console's **User Skills** tab inventories native directory and flat-file skills from `DSH_HOME/skills` and `DSH_AGENTS_HOME/skills`. It does not scan or modify project-level skills. Each entry shows its source, native entry name, parsed Skill name and description, enabled state, and any metadata error; malformed entries remain visible so they can still be disabled or deleted.
+
+Disabling atomically moves the exact entry into that user root's hidden disabled directory while preserving its contents. Enabling restores it to the same root, and Delete permanently removes only the selected entry. Symbolic links are handled as links and deletion never follows their targets. Every action carries the current inventory revision, conflicts with other managed mutations, and is audited as started, completed, or failed. DSH's native filesystem watcher applies enable and disable changes immediately without restarting DSH. The Platform Management integration inside DSH deliberately does not expose User Skill controls.
+
 ### User Plugin Recovery
 
 The **User Plugins** and **Container terminal** tabs in `/_dsh_platform/console/` are provided by Management, not DSH. They remain available when `dsh-runtime` is stopped or fails during plugin startup. The Platform Management integration inside DSH deliberately does not expose these two recovery tabs.
