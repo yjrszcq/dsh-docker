@@ -605,6 +605,7 @@ function proxyHttp(request, response, options) {
     }))
   })
   upstream.on('error', error => {
+    if (request.aborted || response.destroyed) return
     options.reportFailure(`${upstreamType}-http`, 'gateway.upstream.failed', {
       ...context,
       error,

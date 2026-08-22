@@ -72,6 +72,10 @@ async function withServers(callback, { polyfill = true, report } = {}) {
       setTimeout(() => response.end('data: second\n\n'), 50)
       return
     }
+    if (incoming.url === '/delayed') {
+      setTimeout(() => response.end('delayed'), 50)
+      return
+    }
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end(JSON.stringify({ headers: incoming.headers, url: incoming.url }))
   })
@@ -109,6 +113,25 @@ test('client cancellation of a streamed response is not an upstream failure', as
     await new Promise(resolve => setTimeout(resolve, 100))
   }, { report: (message, fields) => { reports.push({ message, fields }) } })
   assert.equal(reports.some(entry => entry.message === 'gateway.upstream-response.failed'), false)
+})
+
+test('client cancellation before response headers is not an upstream outage', async () => {
+  const reports = []
+  await withServers(async ({ gatewayPort }) => {
+    await new Promise((resolve, reject) => {
+      const outgoing = httpRequest({
+        hostname: '127.0.0.1', port: gatewayPort, path: '/delayed', headers: { host: 'dsh.example' },
+      })
+      outgoing.once('error', error => {
+        if (error.code === 'ECONNRESET') resolve()
+        else reject(error)
+      })
+      outgoing.end()
+      setTimeout(() => outgoing.destroy(), 10)
+    })
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }, { report: (message, fields) => { reports.push({ message, fields }) } })
+  assert.equal(reports.some(entry => entry.message === 'gateway.upstream.failed'), false)
 })
 
 test('trusted HTTP requests reach upstream with loopback headers', async () => {
