@@ -12,7 +12,7 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 - **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
 - **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers. A strong `DSH_PROXY_PASSWORD` is recommended, together with HTTPS or another trusted network boundary. Do not expose privileged Docker or host resources to the container.
 - **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. If they do not need root, remove that `group_add` entry from the minimal Compose example (or omit `--group-add dsh-sudo-true` from `docker run`); with the repository Compose file, set `DSH_SUDO_ENABLED=false`. This does not disable the standalone Management Console's terminal and file manager, which always operate as container root and must remain protected by authentication and a trusted network boundary.
-- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start and provides updates, recovery, logs, plugin management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
+- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
 
 | Variant | Rolling tag | Versioned tag | Contents |
 | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ See the [complete configuration reference](docs/en/guide.md#configuration) for a
 
 Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/console/>. Checks do not download or activate anything until you confirm an update.
 
-The standalone page remains available when DSH is down and includes User Plugin recovery, file management, and a container terminal.
+The standalone page remains available when DSH is down. It provides DSH lifecycle and recovery controls, live logs, bundled System Plugin and System Skill management, User Plugin and User Skill recovery, root file management, and a container terminal.
 
 When the gateway password is empty, DSH Management Console uses its separate `DSH_PLATFORM_PASSWORD`. If that password is also empty, the console stays locked until you create a temporary access key. The key expires after 10 minutes, and creating another immediately invalidates the previous key:
 
@@ -187,11 +187,17 @@ Other installed System Plugins can be enabled or disabled from **Platform Manage
 
 Platform Management and the Settings Document Editor use the restricted DSH-side platform API. They do not require a separate DSH Management Console login.
 
-## System Skills
+## User Plugins
+
+The standalone Management Console inventories Bundle plugins in the DSH Web Profile and can enable, disable, or uninstall an exact User Plugin. Applying a change snapshots the complete Web Profile and restarts only DSH. Installation remains in DSH's normal plugin flow or the container terminal; the recovery page does not install arbitrary packages.
+
+## System and User Skills
 
 DSH Docker includes the signed `dsh-docker-operations` System Skill. It gives the Agent container-specific instructions for files, development tools, plugins, lifecycle, logs, updates, recovery, networking, and permissions, and can also be invoked explicitly as `/dsh-docker-operations`.
 
 System Skills are available under **Platform Management** in DSH and **System Skills** in the standalone Management Console. Changes are applied immediately without restarting DSH. The standalone console can install, uninstall, enable, or disable a bundled skill; Platform Management can restore a missing skill and enable or disable it. Project and user skills with the same name retain DSH's native precedence and can override the bundled copy.
+
+The standalone console also inventories native User Skills from the configured DSH and Agent Skill roots. It can enable, disable, or delete an exact entry without modifying project-level Skills.
 
 ## Security
 
@@ -205,5 +211,5 @@ The [complete guide](docs/en/guide.md) covers:
 
 - deployment prerequisites, both Compose layouts, and Docker Run;
 - all configuration variables, storage, gateway, and remote-access behavior;
-- platform architecture, online updates, System Plugins, System Skills, logs, trust, recovery, and rollback;
+- platform architecture, online updates, System and User Plugins, System and User Skills, logs, trust, recovery, and rollback;
 - standalone recovery tools, release automation, local builds, tests, and devtools.
