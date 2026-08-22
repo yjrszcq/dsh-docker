@@ -51,7 +51,7 @@ function request(port, path, headers = {}, method = 'GET', body) {
   })
 }
 
-async function withServers(callback, { polyfill = true } = {}) {
+async function withServers(callback, { polyfill = true, report } = {}) {
   let upstreamRequests = 0
   const upstream = createServer((incoming, response) => {
     upstreamRequests += 1
@@ -80,6 +80,7 @@ async function withServers(callback, { polyfill = true } = {}) {
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     polyfill,
     upstreamPort,
+    report,
   })
   const gatewayPort = await listen(gateway)
   try {
@@ -89,6 +90,26 @@ async function withServers(callback, { polyfill = true } = {}) {
     await close(upstream)
   }
 }
+
+test('client cancellation of a streamed response is not an upstream failure', async () => {
+  const reports = []
+  await withServers(async ({ gatewayPort }) => {
+    await new Promise((resolve, reject) => {
+      const outgoing = httpRequest({
+        hostname: '127.0.0.1', port: gatewayPort, path: '/stream', headers: { host: 'dsh.example' },
+      }, response => {
+        response.once('data', () => {
+          response.destroy()
+          resolve()
+        })
+      })
+      outgoing.once('error', reject)
+      outgoing.end()
+    })
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }, { report: (message, fields) => { reports.push({ message, fields }) } })
+  assert.equal(reports.some(entry => entry.message === 'gateway.upstream-response.failed'), false)
+})
 
 test('trusted HTTP requests reach upstream with loopback headers', async () => {
   await withServers(async ({ gatewayPort }) => {

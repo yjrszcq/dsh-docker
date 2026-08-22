@@ -394,7 +394,7 @@ function pipeHttpResponse(upstream, response, onError = () => {}) {
     proxyResponseHeaders(upstream.headers),
   )
   upstream.on('error', error => {
-    onError(error)
+    if (!response.destroyed) onError(error)
     response.destroy()
   })
   upstream.pipe(response)
