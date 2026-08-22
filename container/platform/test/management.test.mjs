@@ -473,6 +473,29 @@ test('management rejects DSH restart while an update task is active', async () =
   }
 })
 
+test('management returns the restart task before the configured restart delay elapses', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-restart-delay-'))
+  let restarted = false
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    restartDelayMs: 40,
+    restartDsh: async () => { restarted = true },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    const task = await client.request('POST', `${API_PREFIX}restart-dsh`)
+    assert.equal(typeof task.taskId, 'string')
+    assert.equal(restarted, false)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    assert.equal(restarted, true)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management starts and stops DSH through the unified lifecycle state', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-lifecycle-'))
   const calls = []
