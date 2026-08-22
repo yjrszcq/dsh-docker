@@ -146,11 +146,11 @@ try {
   const bootstrapPath = join(staging, 'bootstrap.tgz')
   run('tar', [
     '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
-    '--transform=s,^environment/resources/system-skills,control-plane/skills,',
+    '--transform=s,^environment/resources/skills,control-plane/skills,',
     '-czf', bootstrapPath, '-C', containerRoot,
     'platform/bootstrap', 'platform/lib',
     'control-plane/definition.json', 'control-plane/hooks/recovery', 'control-plane/hooks/dsh-web-ready.mjs',
-    'environment/resources/system-skills',
+    'environment/resources/skills',
     'control-plane/services/gateway', 'control-plane/modules/log-manager',
     'control-plane/services/management', 'control-plane/modules/patch-manager',
     'control-plane/modules/skill-manager',

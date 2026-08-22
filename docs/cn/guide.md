@@ -221,8 +221,8 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 - `container/control-plane/services/`：常驻 Gateway 和 Management 进程。
 - `container/control-plane/hooks/`：受监督的一次性恢复任务。
 - `container/control-plane/modules/`：更新、日志、补丁、System Plugin 和 System Skill 逻辑。
-- `container/environment/resources/system-skills/`：由 Environment 归属的 System Skill 清单与指引树，发布时映射进已签名 Bootstrap 包，由其执行可信运行管理。
-- `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,system-plugins,system-skills}`。
+- `container/environment/resources/skills/`：由 Environment 归属的 System Skill 清单与指引树，发布时映射进已签名 Bootstrap 包，由其执行可信运行管理。
+- `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,plugins,skills}`。
 
 ### 平台数据与 Runtime 解析
 

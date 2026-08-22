@@ -1090,7 +1090,7 @@ test('standalone console keeps localized feature parity on the shared Management
   const style = await readFile(new URL('style.css', publicRoot), 'utf8')
   const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const maintenanceSource = await readFile(new URL('../stage0/lib/maintenance-server.mjs', import.meta.url), 'utf8')
-  const pluginSource = await readFile(new URL('../../environment/resources/system-plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
+  const pluginSource = await readFile(new URL('../../environment/resources/plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
   for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }

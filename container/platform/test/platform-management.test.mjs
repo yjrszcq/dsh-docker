@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 
-const root = new URL('../../environment/resources/system-plugins/platform-management/package/', import.meta.url)
+const root = new URL('../../environment/resources/plugins/platform-management/package/', import.meta.url)
 
 test('Platform Management declares a DSH web client and a platform-namespaced overlay row', async () => {
   const packageJson = JSON.parse(await readFile(new URL('package.json', root)))

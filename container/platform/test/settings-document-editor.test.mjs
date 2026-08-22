@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 
-const root = new URL('../../environment/resources/system-plugins/settings-document-editor/package/', import.meta.url)
+const root = new URL('../../environment/resources/plugins/settings-document-editor/package/', import.meta.url)
 
 test('Settings Document Editor is an optional DSH web System Plugin', async () => {
   const metadata = JSON.parse(await readFile(new URL('package.json', root)))

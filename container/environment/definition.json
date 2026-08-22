@@ -27,13 +27,13 @@
     {
       "id": "platform-management",
       "artifactId": "system-plugin-platform-management",
-      "source": "resources/system-plugins/platform-management/package",
+      "source": "resources/plugins/platform-management/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
     },
     {
       "id": "settings-document-editor",
       "artifactId": "system-plugin-settings-document-editor",
-      "source": "resources/system-plugins/settings-document-editor/package",
+      "source": "resources/plugins/settings-document-editor/package",
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
     }
   ]

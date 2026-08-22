@@ -95,7 +95,7 @@ if (imageInput !== undefined) {
   }
   await cp(join(containerRoot, 'control-plane', 'hooks'), join(bootstrapRoot, 'control-plane', 'hooks'), { recursive: true })
   await cp(
-    join(containerRoot, 'environment', 'resources', 'system-skills'),
+    join(containerRoot, 'environment', 'resources', 'skills'),
     join(bootstrapRoot, 'control-plane', 'skills'),
     { recursive: true },
   )
