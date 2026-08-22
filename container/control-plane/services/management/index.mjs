@@ -51,6 +51,7 @@ await logs.diagnostic('platform-management', 'management.starting', {
 const metadata = new MetadataClient({
   baseUrl: process.env.DSH_UPDATE_METADATA_URL,
   trust,
+  retryRequestTimeoutMs: 15_000,
 })
 const preparer = new TargetPreparer({ untrustedRoot: paths.downloadsRoot, trust })
 const activator = new PlatformActivator({ dataRoot, runRoot, stage0: trust })
@@ -66,7 +67,7 @@ const coordinator = new UpdateCoordinator({
   preparer,
   activator,
   state: new UpdateStateStore(join(paths.updaterStateRoot, 'status.json')),
-  npm: new NpmRegistryClient({}),
+  npm: new NpmRegistryClient({ retryRequestTimeoutMs: 15_000 }),
   journal,
   snapshots,
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),

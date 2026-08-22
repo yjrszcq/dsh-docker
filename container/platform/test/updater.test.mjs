@@ -330,6 +330,96 @@ test('bounds stalled signed metadata and npm Registry requests', async () => {
   await assert.rejects(npm.discover(), error => error?.name === 'TimeoutError')
 })
 
+test('retries only a slow metadata file with the extended retry budget', async () => {
+  const fixture = await releaseFixture()
+  const requests = new Map()
+  const fetchImpl = async (url, options) => {
+    const key = String(url)
+    requests.set(key, (requests.get(key) ?? 0) + 1)
+    if (key.endsWith('/keyring.json')) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 20)
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(options.signal.reason)
+        }, { once: true })
+      })
+    }
+    return response(fixture.files.get(key) ?? 'missing', fixture.files.has(key) ? 200 : 404)
+  }
+  const ledger = new TrustLedger(await mkdtemp(join(tmpdir(), 'dsh-metadata-retry-')), fixture.recovery.publicKey)
+  const metadata = new MetadataClient({
+    baseUrl: 'https://metadata.example/',
+    trust: {
+      acceptKeyring: (bytes, value) => ledger.acceptKeyring(bytes, value),
+      acceptTarget: (bytes, value) => ledger.acceptTarget(bytes, value),
+    },
+    fetchImpl,
+    retryMs: 1,
+    requestTimeoutMs: 10,
+    retryRequestTimeoutMs: 40,
+  })
+
+  assert.equal((await metadata.check()).value.targetSequence, 1)
+  assert.equal(requests.get('https://metadata.example/keyring.json'), 2)
+  assert.equal(requests.get('https://metadata.example/keyring.sig.json'), 1)
+  assert.equal(requests.get('https://metadata.example/stable.json'), 1)
+  assert.equal(requests.get('https://metadata.example/stable.sig.json'), 1)
+})
+
+test('refetches only the metadata pair whose signature is briefly inconsistent', async () => {
+  const fixture = await releaseFixture()
+  const requests = new Map()
+  const fetchImpl = async url => {
+    const key = String(url)
+    requests.set(key, (requests.get(key) ?? 0) + 1)
+    if (key.endsWith('/stable.sig.json') && requests.get(key) === 1) return response('{}')
+    return response(fixture.files.get(key) ?? 'missing', fixture.files.has(key) ? 200 : 404)
+  }
+  const ledger = new TrustLedger(await mkdtemp(join(tmpdir(), 'dsh-metadata-pair-retry-')), fixture.recovery.publicKey)
+  const metadata = new MetadataClient({
+    baseUrl: 'https://metadata.example/',
+    trust: {
+      acceptKeyring: (bytes, value) => ledger.acceptKeyring(bytes, value),
+      acceptTarget: (bytes, value) => ledger.acceptTarget(bytes, value),
+    },
+    fetchImpl,
+    retryMs: 1,
+  })
+
+  assert.equal((await metadata.check()).value.targetSequence, 1)
+  assert.equal(requests.get('https://metadata.example/keyring.json'), 1)
+  assert.equal(requests.get('https://metadata.example/keyring.sig.json'), 1)
+  assert.equal(requests.get('https://metadata.example/stable.json'), 2)
+  assert.equal(requests.get('https://metadata.example/stable.sig.json'), 2)
+})
+
+test('uses the extended retry budget for a slow npm Registry response', async () => {
+  let requests = 0
+  const npm = new NpmRegistryClient({
+    requestTimeoutMs: 10,
+    retryRequestTimeoutMs: 40,
+    retryMs: 1,
+    fetchImpl: async (_url, options) => {
+      requests += 1
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 20)
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(options.signal.reason)
+        }, { once: true })
+      })
+      return response(JSON.stringify({
+        'dist-tags': { latest: '0.1.1-rc.1' },
+        versions: { '0.1.1-rc.1': { version: '0.1.1-rc.1' } },
+      }))
+    },
+  })
+
+  assert.deepEqual(await npm.discover(), { version: '0.1.1-rc.1' })
+  assert.equal(requests, 2)
+})
+
 test('serializes one update task and persists success progress', async () => {
   const { root, metadata, preparer } = await system()
   let activated
