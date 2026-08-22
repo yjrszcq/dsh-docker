@@ -1203,7 +1203,7 @@ test('standalone console keeps localized feature parity on the shared Management
   }
   for (const route of [
     'status', 'check', 'update', 'channel', 'automatic-check', 'holds/retry', 'rollback',
-    'return-stable', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
+    'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'bundled-plugins', 'bundled-plugins/recovery-action',
     'bundled-plugins/discard', 'system-skills', 'system-skills/action', 'user-skills', 'user-skills/action', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
     'files/config', 'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
@@ -1328,8 +1328,12 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /dsh-platform-logs-.*\.jsonl/)
   assert.match(script, /logIdentities\.has\(identity\)/)
   assert.match(script, /function scheduleLogRender\(\)/)
-  assert.match(script, /maintenance: '重启 DSH'/)
-  assert.match(script, /maintenance: 'Restart DSH'/)
+  assert.match(script, /maintenance: 'DSH 生命周期'/)
+  assert.match(script, /maintenance: 'DSH lifecycle'/)
+  assert.match(html, /id="start-dsh"[\s\S]*id="stop-dsh"[\s\S]*id="restart-dsh"/)
+  assert.match(html, /id="stop-dialog"/)
+  assert.match(script, /act\('start-dsh', \{ method: 'POST' \}\)/)
+  assert.match(script, /act\('stop-dsh', \{ method: 'POST' \}\)/)
   assert.match(script, /TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'/)
   assert.match(script, /sessionStorage\.setItem\(TERMINAL_SESSION_KEY, value\)/)
   assert.match(script, /new WebSocket\(terminalWebSocketUrl\(sessionId\)\)/)

@@ -45,9 +45,10 @@ const COPY = Object.freeze({
     automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭',
     checkInterval: '检查频率', updateNotifications: '更新提醒', updateNotificationsDetail: '自动检查发现新版本时，在 DSH 页面弹窗提醒更新。',
     interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
-    maintenance: '重启 DSH', maintenanceDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH',
-    restarting: '正在重新启动 DSH', restartComplete: 'DSH 已重新启动', restartFailed: 'DSH 重启失败',
+    maintenance: 'DSH 生命周期', maintenanceDetail: '启动、停止或重新启动 DSH，容器和管理中心服务保持运行。', startDsh: '启动 DSH', stopDsh: '停止 DSH', restartDsh: '重新启动 DSH',
+    starting: '正在启动 DSH', stopping: '正在停止 DSH', stopped: 'DSH 已停止', restarting: '正在重新启动 DSH', lifecycleRunning: 'DSH 正在运行', lifecycleFailed: 'DSH 操作失败',
     restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，此独立控制台保持可用。', confirmRestart: '确认重启',
+    stopTitle: '确认停止 DSH', stopWarning: 'DSH 将保持停止，直到在此重新启动或容器重启。管理中心保持可用。', confirmStop: '确认停止',
     runtimeReset: '重置运行时', runtimeResetDetail: '从已验证的 DSH 原始文件和当前平台补丁重新构建运行时，不会删除配置、会话、用户插件或工作区。',
     cancelRuntimeReset: '取消重置', runtimeResetConfirmTitle: '重置当前运行时', runtimeResetWarning: 'DSH 会短暂停止，当前版本和用户数据保持不变。', confirmRuntimeReset: '重置并重启 DSH',
     runtimeResetting: '正在重置运行时', runtimeResetBuilding: '正在从已验证文件重建运行时', runtimeResetVerifying: '正在验证重建结果', runtimeResetSwitching: '正在切换运行时', runtimeResetStarting: '正在启动并检查 DSH', runtimeResetRecovering: '重置失败，正在恢复原运行时', runtimeResetProgress: '运行时重置进度', runtimeResetComplete: '运行时已重置并重新启动 DSH', runtimeResetFailed: '运行时重置失败',
@@ -119,9 +120,10 @@ const COPY = Object.freeze({
     automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off',
     checkInterval: 'Check frequency', updateNotifications: 'Update notifications', updateNotificationsDetail: 'Show an update notification popup on DSH pages when an automatic check finds a new version.',
     interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
-    maintenance: 'Restart DSH', maintenanceDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH',
-    restarting: 'Restarting DSH', restartComplete: 'DSH restarted', restartFailed: 'DSH restart failed',
+    maintenance: 'DSH lifecycle', maintenanceDetail: 'Start, stop, or restart DSH while the container and management console services remain running.', startDsh: 'Start DSH', stopDsh: 'Stop DSH', restartDsh: 'Restart DSH',
+    starting: 'Starting DSH', stopping: 'Stopping DSH', stopped: 'DSH stopped', restarting: 'Restarting DSH', lifecycleRunning: 'DSH is running', lifecycleFailed: 'DSH operation failed',
     restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This standalone console remains available.', confirmRestart: 'Restart',
+    stopTitle: 'Stop DSH?', stopWarning: 'DSH remains stopped until it is started here or the container restarts. The management console remains available.', confirmStop: 'Stop DSH',
     runtimeReset: 'Reset runtime', runtimeResetDetail: 'Rebuild the runtime from verified DSH files and current platform patches without deleting configuration, sessions, user plugins, or workspaces.',
     cancelRuntimeReset: 'Cancel reset', runtimeResetConfirmTitle: 'Reset the current runtime', runtimeResetWarning: 'DSH stops briefly. The current version and user data remain unchanged.', confirmRuntimeReset: 'Reset and restart DSH',
     runtimeResetting: 'Resetting runtime', runtimeResetBuilding: 'Rebuilding runtime from verified files', runtimeResetVerifying: 'Verifying rebuilt runtime', runtimeResetSwitching: 'Switching runtime', runtimeResetStarting: 'Starting and checking DSH', runtimeResetRecovering: 'Reset failed; restoring the previous runtime', runtimeResetProgress: 'Runtime reset progress', runtimeResetComplete: 'Runtime reset and DSH restarted', runtimeResetFailed: 'Runtime reset failed',
@@ -775,7 +777,7 @@ function render(next) {
   const update = next.update ?? {}
   const restart = next.dshLifecycle ?? {}
   const runtimeReset = next.runtimeReset ?? {}
-  const restartVisible = operationResultVisible(restart, 'restarting')
+  const restartVisible = ['starting', 'stopping', 'restarting'].some(state => operationResultVisible(restart, state))
   const runtimeResetVisible = operationResultVisible(runtimeReset, 'resetting')
   const pluginOperation = next.systemPluginOperation ?? {}
   const skillOperation = next.systemSkillOperation ?? {}
@@ -848,10 +850,18 @@ function render(next) {
   elements['notifications-enabled'].checked = automatic.notificationsEnabled
   elements['notifications-enabled'].disabled = acting || !automatic.enabled
 
-  elements['restart-dsh'].disabled = busy
+  const dshRunning = restart.state === 'running'
+  const dshStopped = ['stopped', 'failed'].includes(restart.state)
+  elements['start-dsh'].disabled = busy || !dshStopped
+  elements['stop-dsh'].disabled = busy || !dshRunning
+  elements['restart-dsh'].disabled = busy || !dshRunning
   elements['restart-state'].hidden = !restartVisible
-  elements['restart-state'].textContent = restart.state === 'restarting'
-    ? t('restarting') : restart.state === 'running' ? t('restartComplete') : restart.state === 'failed' ? t('restartFailed') : ''
+  elements['restart-state'].textContent = restart.state === 'starting' ? t('starting')
+    : restart.state === 'stopping' ? t('stopping')
+      : restart.state === 'stopped' ? t('stopped')
+        : restart.state === 'restarting' ? t('restarting')
+          : restart.state === 'running' ? t('lifecycleRunning')
+            : restart.state === 'failed' ? `${t('lifecycleFailed')}: ${localizedError(restart.error ?? '')}` : ''
   elements['runtime-reset'].disabled = busy || next.current === null || next.current === undefined
   elements['confirm-runtime-reset'].disabled = busy || next.current === null || next.current === undefined
   elements['runtime-reset'].textContent = runtimeReset.status === 'resetting'
@@ -2465,6 +2475,8 @@ elements['language-switch'].addEventListener('change', event => { void (async ()
   window.location.reload()
 })() })
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['start-dsh'].addEventListener('click', () => { void act('start-dsh', { method: 'POST' }) })
+elements['stop-dsh'].addEventListener('click', () => elements['stop-dialog'].showModal())
 elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
 elements['cancel-runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(false))
@@ -2668,6 +2680,10 @@ elements['confirmation-dialog-form'].addEventListener('submit', event => { event
 elements['confirm-restart'].addEventListener('click', async () => {
   elements['restart-dialog'].close()
   await act('restart-dsh', { method: 'POST' })
+})
+elements['confirm-stop'].addEventListener('click', async () => {
+  elements['stop-dialog'].close()
+  await act('stop-dsh', { method: 'POST' })
 })
 elements['log-limit'].value = String(logDisplayLimit)
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {

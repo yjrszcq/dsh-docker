@@ -96,8 +96,8 @@
     <div id="panel-maintenance" class="tab-panel" role="tabpanel" aria-labelledby="tab-maintenance" hidden>
       <section aria-labelledby="maintenance-title">
         <div class="section-heading">
-          <div><h2 id="maintenance-title" data-i18n="maintenance">Restart DSH</h2><p data-i18n="maintenanceDetail">Restart DSH only. The container and management console services remain running.</p></div>
-          <button type="button" id="restart-dsh" class="secondary" data-i18n="restartDsh">Restart DSH</button>
+          <div><h2 id="maintenance-title" data-i18n="maintenance">DSH lifecycle</h2><p data-i18n="maintenanceDetail">Start, stop, or restart DSH while the container and management console remain running.</p></div>
+          <div class="lifecycle-actions"><button type="button" id="start-dsh" class="secondary" data-i18n="startDsh">Start DSH</button><button type="button" id="stop-dsh" class="secondary" data-i18n="stopDsh">Stop DSH</button><button type="button" id="restart-dsh" class="secondary" data-i18n="restartDsh">Restart DSH</button></div>
         </div>
         <p id="restart-state" class="operation-result" hidden></p>
       </section>
@@ -259,6 +259,7 @@
 
   <dialog id="stable-dialog" aria-labelledby="stable-dialog-title"><form method="dialog"><h2 id="stable-dialog-title" data-i18n="returnStableTitle">Restore Stable state</h2><p><span data-i18n="returnStableWarning">The following data snapshot will be restored and newer data will be lost:</span> <strong id="stable-snapshot">-</strong></p><label class="confirm"><input type="checkbox" id="confirm-data-loss"><span data-i18n="confirmDataLoss">I understand and confirm the loss of newer data</span></label><div class="dialog-actions"><button value="cancel" class="secondary" data-i18n="cancel">Cancel</button><button type="button" id="confirm-stable" class="danger" data-i18n="confirm" disabled>Restore</button></div></form></dialog>
   <dialog id="restart-dialog" aria-labelledby="restart-dialog-title"><form method="dialog"><h2 id="restart-dialog-title" data-i18n="restartTitle">Restart DSH?</h2><p data-i18n="restartWarning">The current DSH connection will be interrupted briefly. This console remains available.</p><div class="dialog-actions"><button value="cancel" class="secondary" data-i18n="cancel">Cancel</button><button type="button" id="confirm-restart" class="primary" data-i18n="confirmRestart">Restart</button></div></form></dialog>
+  <dialog id="stop-dialog" aria-labelledby="stop-dialog-title"><form method="dialog"><h2 id="stop-dialog-title" data-i18n="stopTitle">Stop DSH?</h2><p data-i18n="stopWarning">DSH remains stopped until it is started here or the container restarts. The management console remains available.</p><div class="dialog-actions"><button value="cancel" class="secondary" data-i18n="cancel">Cancel</button><button type="button" id="confirm-stop" class="danger" data-i18n="confirmStop">Stop DSH</button></div></form></dialog>
   <dialog id="file-conflict-dialog" class="file-conflict-dialog" aria-labelledby="file-conflict-title">
     <form id="file-conflict-form">
       <h2 id="file-conflict-title" data-i18n="fileConflictTitle">Destination already exists</h2>

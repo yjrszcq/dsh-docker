@@ -140,6 +140,7 @@ section {
 }
 .section-heading h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0; }
 .section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 20px; }
+.lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 button.primary, button.secondary, button.danger, button.danger-text, button.compact {
   display: inline-flex;
@@ -595,6 +596,8 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   main { padding-top: 24px; }
   .brand div > span { display: none; }
   .section-heading { flex-direction: column; gap: 10px; }
+  .lifecycle-actions { width: 100%; }
+  .lifecycle-actions button { flex: 1; }
   .action-heading { align-items: flex-start; }
   .segmented, .actions { width: 100%; }
   .segmented button { flex: 1; }
