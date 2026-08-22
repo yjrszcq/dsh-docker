@@ -68,7 +68,8 @@ test('returns restart only for an active session outside an owned shutdown', asy
 test('serves only claim and signal over a private Unix socket', async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-broker-'))
   const socketPath = join(root, 'dsh-lifecycle.sock')
-  const broker = new DshLifecycleBroker()
+  const reports = []
+  const broker = new DshLifecycleBroker({ report: (message, fields) => reports.push({ message, fields }) })
   const server = createDshLifecycleServer(broker)
   t.after(() => server.close())
   await listenDshLifecycle(server, socketPath)
@@ -93,4 +94,8 @@ test('serves only claim and signal over a private Unix socket', async t => {
     unexpected: true,
   })).status, 400)
   assert.equal((await call(socketPath, '/v1/unknown', {})).status, 404)
+  assert.equal(reports.at(-2).message, 'dsh.lifecycle-request.failed')
+  assert.equal(reports.at(-2).fields.level, 'warning')
+  assert.equal(reports.at(-1).message, 'dsh.lifecycle-request.failed')
+  assert.equal(reports.at(-1).fields.level, 'error')
 })

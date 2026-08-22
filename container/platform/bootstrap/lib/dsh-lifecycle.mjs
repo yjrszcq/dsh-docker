@@ -122,6 +122,7 @@ export function createDshLifecycleServer(broker) {
         error,
         method: request.method ?? null,
         pathname,
+        level: error?.statusCode === 409 ? 'warning' : 'error',
       })
       send(response, Number.isInteger(error?.statusCode) ? error.statusCode : 400, {
         error: error instanceof Error ? error.message : 'invalid lifecycle request',
