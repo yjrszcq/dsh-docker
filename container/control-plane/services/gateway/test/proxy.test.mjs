@@ -264,7 +264,13 @@ test('bounded management and Console requests use the protected local socket ins
   const maintenanceSocketPath = join(root, 'maintenance.sock')
   const management = createServer((incoming, response) => {
     response.writeHead(202, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ method: incoming.method, path: incoming.url, forwarded: incoming.headers.forwarded }))
+    response.end(JSON.stringify({
+      method: incoming.method,
+      path: incoming.url,
+      forwarded: incoming.headers.forwarded,
+      forwardedFor: incoming.headers['x-forwarded-for'],
+      realIp: incoming.headers['x-real-ip'],
+    }))
   })
   await new Promise((resolve, reject) => {
     management.once('error', reject)
@@ -291,11 +297,18 @@ test('bounded management and Console requests use the protected local socket ins
   const gatewayPort = await listen(gateway)
   try {
     const result = await request(gatewayPort, '/_dsh_platform/api/v1/status', {
-      host: 'dsh.example', forwarded: 'for=198.51.100.4;proto=https',
+      host: 'dsh.example',
+      forwarded: 'for=198.51.100.4;proto=https',
+      'x-forwarded-for': '198.51.100.4',
+      'x-real-ip': '198.51.100.4',
     })
     assert.equal(result.status, 202)
     assert.deepEqual(JSON.parse(result.body), {
-      method: 'GET', path: '/_dsh_platform/api/v1/status', forwarded: 'for=198.51.100.4;proto=https',
+      method: 'GET',
+      path: '/_dsh_platform/api/v1/status',
+      forwarded: 'for=198.51.100.4;proto=https',
+      forwardedFor: '198.51.100.4',
+      realIp: '198.51.100.4',
     })
     assert.equal(upstreamRequests, 0)
     for (const [method, path] of [
