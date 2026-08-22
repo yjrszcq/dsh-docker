@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
 export const MANAGED_LIFECYCLE_MODULE = 'lib/dsh-docker-managed-lifecycle.js'
+export const PROFILE_PACKAGE_STORAGE_MODULE = 'lib/dsh-docker-profile-package-storage.js'
 const BIN_TARGET = 'lib/bin.js'
 const BIN_IMPORT = 'import { prepareManagedInvocation } from "./dsh-docker-managed-lifecycle.js";'
 const PROFILE_IMPORT = 'import { managedSigtermHandler, provideManagedLifecycle } from "./dsh-docker-managed-lifecycle.js";'
@@ -12,11 +13,74 @@ const SIGTERM_PATCHED = 'process.on("SIGTERM", managedSigtermHandler(interrupt))
 const HOST_PROVIDER = 'hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);'
 const HOST_PROVIDER_PATCHED = `${HOST_PROVIDER}\n\t\tprovideManagedLifecycle(hostCtx);`
 
+const PROFILE_PACKAGE_STORAGE_SOURCE = String.raw`import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, normalize } from "node:path";
+
+function profileDirectory(profile) {
+	if (typeof profile !== "string" || profile === "" || profile === "." || profile === ".."
+		|| profile === "node_modules" || profile.includes("/") || profile.includes("\\")) {
+		throw new Error("invalid managed DSH Profile name");
+	}
+	const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
+	return { dshHome, profileDir: join(dshHome, "profiles", profile) };
+}
+
+function installedStore(profileDir) {
+	const modulesState = join(profileDir, "node_modules", ".modules.yaml");
+	if (!existsSync(modulesState)) return null;
+	let value;
+	try {
+		value = JSON.parse(readFileSync(modulesState, "utf8"));
+	} catch {
+		throw new Error("Web Profile package metadata is not valid pnpm state");
+	}
+	if (typeof value?.storeDir !== "string" || !isAbsolute(value.storeDir)) {
+		throw new Error("Web Profile package metadata has no absolute pnpm store");
+	}
+	return normalize(value.storeDir);
+}
+
+function withStoreDirectory(source, storeRoot) {
+	const line = "storeDir: " + JSON.stringify(storeRoot) + "\n";
+	const pattern = /^storeDir:[^\r\n]*(?:\r?\n|$)/m;
+	if (pattern.test(source)) return source.replace(pattern, line);
+	return source.replace(/(?:\r?\n)?$/, "\n\n" + line);
+}
+
+function replaceFile(path, content) {
+	const temporary = path + ".dsh-platform-" + String(process.pid) + "-" + String(Date.now()) + ".tmp";
+	try {
+		writeFileSync(temporary, content, { flag: "wx", mode: statSync(path).mode & 0o777 });
+		renameSync(temporary, path);
+	} finally {
+		try { unlinkSync(temporary); } catch {}
+	}
+}
+
+export function prepareProfilePackageStorage(profile) {
+	const { dshHome, profileDir } = profileDirectory(profile);
+	const manifestPath = join(profileDir, "package.json");
+	const workspacePath = join(profileDir, "pnpm-workspace.yaml");
+	if (!existsSync(manifestPath) || !existsSync(workspacePath)) return Object.freeze({ status: "absent" });
+	const storeRoot = join(dshHome, ".pnpm-store");
+	const currentStore = installedStore(profileDir);
+	if (currentStore !== null && dirname(currentStore) !== normalize(storeRoot)) {
+		return Object.freeze({ status: "migration-required", currentStore, storeRoot });
+	}
+	const original = readFileSync(workspacePath, "utf8");
+	const updated = withStoreDirectory(original, storeRoot);
+	if (updated !== original) replaceFile(workspacePath, updated);
+	return Object.freeze({ status: "ready", currentStore, storeRoot });
+}
+`;
+
 const ADAPTER_SOURCE = String.raw`import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareProfilePackageStorage } from "./dsh-docker-profile-package-storage.js";
 
 const API_PREFIX = "/_dsh_platform/api/v1/";
 const REQUEST_TIMEOUT_MS = 3e3;
@@ -121,6 +185,15 @@ async function management(method, path) {
 }
 
 export async function prepareManagedInvocation(invocation) {
+	if (process.env.DSH_PLATFORM_MANAGED === "1" && invocation?.mode === "plugin") {
+		try {
+			prepareProfilePackageStorage(invocation.profile);
+		} catch (error) {
+			console.error("dsh: failed to prepare Profile package storage: " + String(error?.message ?? error));
+			return 1;
+		}
+		return null;
+	}
 	if (!managedWeb(invocation)) return null;
 	if (typeof process.env.DSH_PLATFORM_RUN !== "string" || process.env.DSH_PLATFORM_RUN === "") {
 		console.error("dsh: managed lifecycle runtime directory is unavailable");
@@ -145,6 +218,7 @@ export async function prepareManagedInvocation(invocation) {
 		managedSessionId = claimed.sessionId;
 		delete process.env.DSH_PLATFORM_LAUNCH_TOKEN;
 		try {
+			prepareProfilePackageStorage("web");
 			repairOrphanedProfileBundles();
 		} catch (error) {
 			console.error("dsh: failed to repair the Web Profile before startup: " + String(error?.message ?? error));
@@ -266,6 +340,7 @@ export function applyPatch(dshRoot) {
   let profile = readFileSync(profilePath, 'utf8')
   if (readFileSync(binPath, 'utf8').includes(BIN_IMPORT)) throw new Error('Managed lifecycle Patch is already applied')
   if (existsSync(join(root, MANAGED_LIFECYCLE_MODULE))) throw new Error('Managed lifecycle adapter path already exists')
+  if (existsSync(join(root, PROFILE_PACKAGE_STORAGE_MODULE))) throw new Error('Profile package storage adapter path already exists')
   exactlyOnce(bin, /^#!\/usr\/bin\/env node$/gm, 'DSH bin shebang', binPath)
   let patchedBin = bin.replace(/^#!\/usr\/bin\/env node$/m, `#!/usr/bin/env node\n${BIN_IMPORT}`)
   patchedBin = replaceOnce(patchedBin, BIN_DISPATCH, BIN_DISPATCH_PATCHED, 'DSH invocation dispatch', binPath)
@@ -273,6 +348,7 @@ export function applyPatch(dshRoot) {
   profile = replaceOnce(profile, SIGTERM, SIGTERM_PATCHED, 'Web Profile SIGTERM handler', profilePath)
   profile = replaceOnce(profile, HOST_PROVIDER, HOST_PROVIDER_PATCHED, 'Web Profile host provider', profilePath)
   writeFileSync(join(root, MANAGED_LIFECYCLE_MODULE), ADAPTER_SOURCE)
+  writeFileSync(join(root, PROFILE_PACKAGE_STORAGE_MODULE), PROFILE_PACKAGE_STORAGE_SOURCE)
   writeFileSync(profilePath, profile)
   writeFileSync(binPath, patchedBin)
 }
@@ -284,6 +360,7 @@ export function verifyPatch(dshRoot) {
   const profilePath = profileImplementation(root, bin)
   const profile = readFileSync(profilePath, 'utf8')
   const adapter = readFileSync(join(root, MANAGED_LIFECYCLE_MODULE), 'utf8')
+  const packageStorage = readFileSync(join(root, PROFILE_PACKAGE_STORAGE_MODULE), 'utf8')
   if (bin.split(BIN_IMPORT).length - 1 !== 1 || bin.split(BIN_DISPATCH_PATCHED).length - 1 !== 1) {
     throw new Error(`Managed lifecycle bin Patch verification failed for ${binPath}`)
   }
@@ -300,5 +377,8 @@ export function verifyPatch(dshRoot) {
   }
   if (!adapter.includes('function repairOrphanedProfileBundles()')) {
     throw new Error('Managed lifecycle adapter is missing repairOrphanedProfileBundles')
+  }
+  for (const marker of ['prepareProfilePackageStorage', 'migration-required', '.pnpm-store']) {
+    if (!packageStorage.includes(marker)) throw new Error(`Managed lifecycle Profile package storage is missing ${marker}`)
   }
 }

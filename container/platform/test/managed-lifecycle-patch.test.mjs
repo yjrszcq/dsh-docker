@@ -8,6 +8,7 @@ import test from 'node:test'
 import {
   applyPatch,
   MANAGED_LIFECYCLE_MODULE,
+  PROFILE_PACKAGE_STORAGE_MODULE,
   verifyPatch,
 } from '../../environment/resources/patches/managed-lifecycle.mjs'
 
@@ -62,6 +63,7 @@ test('patches a hash-independent Profile import chain exactly once', async () =>
   assert.match(await readFile(join(root, 'lib/bin.js'), 'utf8'), /prepareManagedInvocation/)
   assert.match(await readFile(join(root, 'lib/profile-boot-anyHash.js'), 'utf8'), /managedSigtermHandler/)
   assert.match(await readFile(join(root, MANAGED_LIFECYCLE_MODULE), 'utf8'), /dshPlatformLifecycle/)
+  assert.match(await readFile(join(root, PROFILE_PACKAGE_STORAGE_MODULE), 'utf8'), /prepareProfilePackageStorage/)
   assert.throws(() => applyPatch(root), /already applied/)
 })
 
@@ -69,6 +71,50 @@ test('fails closed when upstream Profile anchors are missing or ambiguous', asyn
   await assert.rejects(Promise.resolve().then(async () => applyPatch(await fixture({ duplicateImport: true }))), /found 2/)
   await assert.rejects(Promise.resolve().then(async () => applyPatch(await fixture({ wrapper: false }))), /found 0/)
   await assert.rejects(Promise.resolve().then(async () => applyPatch(await fixture({ sigterm: false }))), /SIGTERM handler.*found 0/)
+})
+
+test('pins compatible Profiles to DSH_HOME without rewriting legacy store metadata', async () => {
+  const root = await fixture()
+  applyPatch(root)
+  const storage = await import(`${pathToFileURL(join(root, PROFILE_PACKAGE_STORAGE_MODULE)).href}?storage`)
+  const dshHome = await mkdtemp(join(tmpdir(), 'dsh-profile-storage-home-'))
+  const profileDir = join(dshHome, 'profiles', 'web')
+  const workspacePath = join(profileDir, 'pnpm-workspace.yaml')
+  const modulesRoot = join(profileDir, 'node_modules')
+  await mkdir(modulesRoot, { recursive: true })
+  await writeFile(join(profileDir, 'package.json'), '{"name":"dsh-profile-web"}\n')
+  await writeFile(workspacePath, 'packages:\n  - .\n\nnodeLinker: hoisted\n')
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = dshHome
+  try {
+    assert.deepEqual(storage.prepareProfilePackageStorage('web'), {
+      status: 'ready',
+      currentStore: null,
+      storeRoot: join(dshHome, '.pnpm-store'),
+    })
+    assert.match(await readFile(workspacePath, 'utf8'), new RegExp(
+      `storeDir: ${JSON.stringify(join(dshHome, '.pnpm-store')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+    ))
+
+    const legacyStore = '/workspace/.pnpm-store/v11'
+    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({ storeDir: legacyStore }))
+    await writeFile(workspacePath, 'packages:\n  - .\n')
+    assert.deepEqual(storage.prepareProfilePackageStorage('web'), {
+      status: 'migration-required',
+      currentStore: legacyStore,
+      storeRoot: join(dshHome, '.pnpm-store'),
+    })
+    assert.equal(await readFile(workspacePath, 'utf8'), 'packages:\n  - .\n')
+
+    await writeFile(join(modulesRoot, '.modules.yaml'), JSON.stringify({
+      storeDir: join(dshHome, '.pnpm-store', 'v11'),
+    }))
+    assert.equal(storage.prepareProfilePackageStorage('web').status, 'ready')
+    assert.equal((await readFile(workspacePath, 'utf8')).match(/^storeDir:/gm)?.length, 1)
+  } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+  }
 })
 
 test('gates only managed Web launches and routes restart through Management', async t => {
@@ -81,6 +127,7 @@ test('gates only managed Web launches and routes restart through Management', as
   await mkdir(join(root, 'node_modules', 'built-in-bundle'), { recursive: true })
   await writeFile(join(root, 'node_modules', 'built-in-bundle', 'package.json'), '{"name":"built-in-bundle"}\n')
   const profileManifest = join(profileDir, 'package.json')
+  await writeFile(join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\n')
   await writeFile(profileManifest, JSON.stringify({
     dependencies: { 'missing-dependency': '1.0.0' },
     dsh: { profile: { bundles: ['built-in-bundle', 'removed-plugin', '../../outside', 'missing-dependency'] } },
@@ -117,6 +164,9 @@ test('gates only managed Web launches and routes restart through Management', as
     const adapter = await import(`${pathToFileURL(join(root, MANAGED_LIFECYCLE_MODULE)).href}?authorized`)
     assert.equal(await adapter.prepareManagedInvocation({ mode: 'plugin', profile: 'web' }), null)
     assert.equal(calls.length, 0)
+    assert.match(await readFile(join(profileDir, 'pnpm-workspace.yaml'), 'utf8'), new RegExp(
+      `storeDir: ${JSON.stringify(join(dshHome, '.pnpm-store')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+    ))
     assert.equal(await adapter.prepareManagedInvocation({ mode: 'profile', profile: 'web' }), null)
     assert.equal(process.env.DSH_PLATFORM_LAUNCH_TOKEN, undefined)
     assert.deepEqual(
