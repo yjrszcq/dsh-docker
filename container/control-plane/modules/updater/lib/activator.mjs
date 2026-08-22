@@ -118,9 +118,12 @@ export class PlatformActivator {
     return this.bootstrap.request('GET', '/v1/deployments/rollback-plan')
   }
 
-  async currentDeployment() {
+  async currentDeployment({ required = true } = {}) {
     const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
-    if (record === null) throw new Error('current Deployment is required')
+    if (record === null) {
+      if (required) throw new Error('current Deployment is required')
+      return null
+    }
     return Object.freeze({
       dsh: record.dshVersion,
       runtime: record.id,

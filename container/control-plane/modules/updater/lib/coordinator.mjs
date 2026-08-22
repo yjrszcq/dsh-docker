@@ -254,7 +254,13 @@ export class UpdateCoordinator extends EventEmitter {
     const [update, local, current, rollbackPlan, journal, automatic] = await Promise.all([
       this.state.read(),
       this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
-      this.bestEffort('update.status.current.failed', () => this.activator.currentDeployment(), null, {}, 60_000),
+      this.bestEffort(
+        'update.status.current.failed',
+        () => this.activator.currentDeployment({ required: false }),
+        null,
+        {},
+        60_000,
+      ),
       this.bestEffort('update.status.rollback-plan.failed', () => this.rollbackPlan(), null, {}, 60_000),
       this.journal === undefined
         ? Promise.resolve(undefined)

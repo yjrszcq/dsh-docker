@@ -764,6 +764,40 @@ test('replaces the prior official DSH authority while retaining Stable deploymen
   )
 })
 
+test('treats an uninitialized Deployment as an empty public status without hiding read failures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-uninitialized-status-'))
+  const reports = []
+  let fail = false
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async (method, path) => {
+      if (path === '/v1/deployments/current') {
+        if (fail) throw new Error('Bootstrap socket is unavailable')
+        return { record: null }
+      }
+      if (path === '/v1/deployments/rollback-plan') return { plan: null }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+  const coordinator = new UpdateCoordinator({
+    activator,
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+
+  assert.equal((await coordinator.publicStatus()).current, null)
+  assert.equal(reports.some(entry => entry.message === 'update.status.current.failed'), false)
+
+  fail = true
+  assert.equal((await coordinator.publicStatus()).current, null)
+  assert.equal(reports.some(entry => (
+    entry.message === 'update.status.current.failed'
+    && entry.fields.level === 'warning'
+    && entry.fields.error.message === 'Bootstrap socket is unavailable'
+  )), true)
+})
+
 test('restores a staged complete Deployment through Bootstrap candidate cancellation', async () => {
   const calls = []
   const activator = new PlatformActivator({
