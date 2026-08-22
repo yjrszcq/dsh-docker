@@ -17,7 +17,26 @@ const containerRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 async function pristine() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-pristine-'))
   await mkdir(join(root, 'lib'), { recursive: true })
-  await writeFile(join(root, 'lib', 'bin.js'), '#!/usr/bin/env node\n')
+  await writeFile(join(root, 'lib', 'bin.js'), `#!/usr/bin/env node
+const invocation = parseDshArgs(process.argv.slice(2), readVersion());
+switch (invocation.mode) {
+  case "profile": {
+    const { runProfile } = await import("./profile-boot-fixture.js");
+  }
+}
+`)
+  await writeFile(join(root, 'lib', 'profile-boot-fixture.js'), 'import { r as runProfile } from "./profile-boot-implementation.js";\nexport { runProfile };\n')
+  await writeFile(join(root, 'lib', 'profile-boot-implementation.js'), `async function runProfile(options) {
+\tprocess.on("SIGTERM", () => {
+\t\tinterrupt(0);
+\t});
+\tprocess.on("SIGINT", () => { interrupt(130); });
+\tconst ctx = await boot(NAME, rootConfig, patches, (hostCtx) => {
+\t\thostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);
+\t});
+}
+export { runProfile as r };
+`)
   const picker = join(root, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(root, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
   await mkdir(picker, { recursive: true })
@@ -71,6 +90,7 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
   const patches = [
     join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
     join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
+    join(containerRoot, 'environment/resources/patches/managed-lifecycle.mjs'),
   ]
   const first = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'one', patchPaths: patches })
   const second = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'two', patchPaths: patches })
@@ -78,6 +98,8 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
   for (const runtime of [first, second]) {
     assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib/index.js'), 'utf8'), /DSH_DEFAULT_WORKSPACE/)
     assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'), 'utf8'), /isLoopback: true/)
+    assert.match(await readFile(join(runtime, 'package/lib/bin.js'), 'utf8'), /prepareManagedInvocation/)
+    assert.match(await readFile(join(runtime, 'package/lib/profile-boot-implementation.js'), 'utf8'), /managedSigtermHandler/)
     assert.equal(await readlink(join(runtime, 'package/node_modules/.bin/tool')), '../tool/bin.js')
   }
 })
@@ -101,6 +123,7 @@ test('verifies mandatory Patch Artifacts and their applied Runtime effects befor
   const patches = [
     join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
     join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
+    join(containerRoot, 'environment/resources/patches/managed-lifecycle.mjs'),
   ]
   const runtimeRoot = await buildRuntime({
     pristineRoot: source,
@@ -109,7 +132,7 @@ test('verifies mandatory Patch Artifacts and their applied Runtime effects befor
     patchPaths: patches,
   })
   const environmentRoot = await environment(root, patches)
-  assert.deepEqual(await verifyRuntimePatches({ runtimeRoot, environmentRoot }), ['patch-1', 'patch-2'])
+  assert.deepEqual(await verifyRuntimePatches({ runtimeRoot, environmentRoot }), ['patch-1', 'patch-2', 'patch-3'])
 
   await writeFile(
     join(runtimeRoot, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'),

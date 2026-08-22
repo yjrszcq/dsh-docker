@@ -28,7 +28,9 @@ test('packages the initial Environment deterministically from real resources', a
   assert.deepEqual(firstManifest, secondManifest)
   const manifest = parseEnvironmentManifest(firstManifest)
   assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime'])
-  assert.deepEqual(manifest.patches.map(patch => patch.id), ['directory-picker', 'browser-loopback'])
+  assert.deepEqual(manifest.patches.map(patch => patch.id), [
+    'directory-picker', 'browser-loopback', 'managed-lifecycle',
+  ])
   assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['platform-management', 'settings-document-editor'])
   for (const reference of [...manifest.components, ...manifest.patches, ...manifest.systemPlugins]) {
     assert.deepEqual(Object.keys(reference).sort(), ['id', 'sha256'])
@@ -75,6 +77,11 @@ test('DSH Runtime uses the generic node home environment without package-manager
     XDG_DATA_HOME: '/home/node/.local/share',
   })
   assert.doesNotMatch(JSON.stringify(component.environment), /NPM_CONFIG_CACHE|PNPM_HOME/)
+})
+
+test('container images opt into the managed DSH lifecycle without exposing a user setting', async () => {
+  const dockerfile = await readFile(join(dirname(containerRoot), 'Dockerfile'), 'utf8')
+  assert.match(dockerfile, /ENV DSH_PLATFORM_DATA=\/data\/platform \\\n+    DSH_PLATFORM_MANAGED=1 \\/)
 })
 
 test('packager rejects source escapes and duplicate Artifact IDs without publishing output', async () => {

@@ -21,6 +21,12 @@
       "artifactId": "patch-browser-loopback",
       "source": "resources/patches/browser-loopback.mjs",
       "mediaType": "text/javascript"
+    },
+    {
+      "id": "managed-lifecycle",
+      "artifactId": "patch-managed-lifecycle",
+      "source": "resources/patches/managed-lifecycle.mjs",
+      "mediaType": "text/javascript"
     }
   ],
   "systemPlugins": [

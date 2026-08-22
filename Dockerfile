@@ -85,6 +85,7 @@ RUN chmod 755 /usr/local/bin/dsh \
     && chmod 755 /usr/local/bin/dsh-platform
 
 ENV DSH_PLATFORM_DATA=/data/platform \
+    DSH_PLATFORM_MANAGED=1 \
     DSH_HOME=/data/dsh \
     DSH_DEFAULT_WORKSPACE=/workspace \
     DSH_PROXY_POLYFILL=true \

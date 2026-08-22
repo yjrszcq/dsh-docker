@@ -12,6 +12,7 @@ import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
 import { createEnvironmentRelease } from '../tools/environment-release.mjs'
 import { verifyManagementDependencies } from '../tools/verify-management-dependencies.mjs'
+import { writeDshEntrypointFixture } from './fixtures/dsh-package.mjs'
 
 const supportedTargetUrl = new URL('../../../release/supported-target.json', import.meta.url)
 const supportedDshVersion = JSON.parse(await readFile(supportedTargetUrl, 'utf8')).latestSupportedDsh
@@ -164,9 +165,8 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(result.status, 0, result.stderr)
 
   const packageRoot = join(root, 'npm', 'package')
-  await mkdir(join(packageRoot, 'lib'), { recursive: true })
+  await writeDshEntrypointFixture(packageRoot)
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: supportedDshVersion }))
-  await writeFile(join(packageRoot, 'lib/bin.js'), '#!/usr/bin/env node\n')
   const picker = join(packageRoot, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(packageRoot, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
   await mkdir(picker, { recursive: true })

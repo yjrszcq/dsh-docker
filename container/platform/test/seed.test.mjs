@@ -9,6 +9,7 @@ import test from 'node:test'
 import { provisionPlatformSeed } from '../stage0/lib/seed.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
+import { writeDshEntrypointFixture } from './fixtures/dsh-package.mjs'
 
 const execute = promisify(execFile)
 
@@ -110,9 +111,8 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   const root = await mkdtemp(join(tmpdir(), 'dsh-build-seed-'))
   const installed = join(root, 'installed')
   const output = join(root, 'output')
-  await mkdir(join(installed, 'lib'), { recursive: true })
+  await writeDshEntrypointFixture(installed)
   await writeFile(join(installed, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.fixture' }))
-  await writeFile(join(installed, 'lib/bin.js'), '#!/usr/bin/env node\n')
   const picker = join(installed, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(installed, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
   await mkdir(picker, { recursive: true })
@@ -139,5 +139,5 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   assert.deepEqual(await verifyRuntimePatches({
     runtimeRoot: join(output, 'runtimes', inventory.deployment.runtime.id),
     environmentRoot: join(output, 'environments', inventory.deployment.environment.id),
-  }), ['directory-picker', 'browser-loopback'])
+  }), ['directory-picker', 'browser-loopback', 'managed-lifecycle'])
 })

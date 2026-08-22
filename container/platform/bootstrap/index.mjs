@@ -150,6 +150,7 @@ const dshLifecycleBroker = new DshLifecycleBroker({
   shouldTerminate: async () => {
     const lifecycle = runtime?.status().dshLifecycle
     return ['stopping', 'restarting'].includes(lifecycle?.state)
+      || environment?.stopping === true
       || await deployments.activation() !== undefined
   },
 })
