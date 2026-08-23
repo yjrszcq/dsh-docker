@@ -431,6 +431,7 @@ a.secondaryButton { text-decoration: none; }
 .progressStageItem .progressStageMetric, .progressStageItem .progressStagePercent { grid-column: 2; }
 .progressStageError { margin: 4px 0 0 21px !important; color: var(--dsw-alias-state-error-primary) !important; font-size: 11px !important; overflow-wrap: anywhere; }
 .progressLogGroupList { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-module-platform); }
+.progressLogGroupListPopulated { height: clamp(160px, 24dvh, 240px); max-height: none; align-content: start; }
 .progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 7px 9px; }
 .progressLogEntry:last-child { border-bottom: 0; }
 .progressLogEntry summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; cursor: pointer; font-size: 11px; line-height: 18px; list-style: none; }
@@ -843,6 +844,7 @@ a.secondaryButton { text-decoration: none; }
 .reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 @media (max-width: 640px) {
+  .progressLogGroupListPopulated { height: 180px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }
   .resourceSearch { width: 100%; margin-left: 0; }

@@ -417,6 +417,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-stage-item .progress-stage-metric, .progress-stage-item .progress-stage-percent { grid-column: 2; color: var(--text); }
 .progress-stage-error { margin: 4px 0 0 21px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 .progress-log-group-list { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.progress-log-group-list.populated { height: clamp(160px, 24dvh, 240px); max-height: none; align-content: start; }
 .progress-log-entry { min-width: 0; border-bottom: 1px solid var(--border); padding: 7px 9px; }
 .progress-log-entry:last-child { border-bottom: 0; }
 .progress-log-entry summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; list-style: none; }
@@ -693,6 +694,7 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
 }
 
 @media (max-width: 640px) {
+  .progress-log-group-list.populated { height: 180px; }
   .topbar-inner, main { width: calc(100% - 28px); }
   .management-navigation { padding-top: 24px; }
   .brand div > span { display: none; }

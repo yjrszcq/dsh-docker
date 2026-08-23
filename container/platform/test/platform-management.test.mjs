@@ -72,6 +72,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /returnStableProgress: '返回稳定通道'/)
   assert.match(source, /const groupPrefix = isRecoveryOperation\(update\?\.operation\) \? 'rollback' : 'update'/)
   assert.match(source, /function TransactionStageLogs\(\{ update, visible, t, onViewFullLog \}\)/)
+  assert.match(source, /progressLogGroupListPopulated/)
   assert.match(source, /operation: String\(update\.operation \?\? 'update'\)[\s\S]*logs\/stream\?\$\{params\.toString\(\)\}/)
   assert.match(source, /function LogViewer\(\{ active, focusTaskId, t \}\)/)
   assert.match(source, /if \(focusTaskId\) setQuery\(String\(focusTaskId\)\)/)

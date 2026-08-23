@@ -707,7 +707,7 @@ function renderProgressLogs() {
       checklist.append(error)
     }
     const entries = document.createElement('div')
-    entries.className = 'progress-log-group-list'
+    entries.className = `progress-log-group-list${group.entries.length > 0 ? ' populated' : ''}`
     if (group.entries.length === 0) {
       const empty = document.createElement('p')
       empty.className = 'progress-log-empty'

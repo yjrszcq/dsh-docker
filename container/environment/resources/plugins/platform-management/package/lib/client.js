@@ -1180,7 +1180,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
             item.state === 'active' || item.state === 'failed' ? metricLines.map(line => h('span', { className: css.progressStageMetric, key: line }, line)) : null,
             item.state === 'active' && metricProgress !== undefined ? h('span', { className: css.progressStagePercent }, t('stageProgress').replace('{progress}', String(metricProgress))) : null))),
           state === 'failed' ? h('p', { className: css.progressStageError }, localizedError(update.error ?? latest?.error ?? t('statusFailed'), t)) : null,
-          h('div', { className: css.progressLogGroupList, ref: group.key === currentStage.key ? activeList : undefined }, group.entries.length === 0
+          h('div', { className: `${css.progressLogGroupList}${group.entries.length > 0 ? ` ${css.progressLogGroupListPopulated}` : ''}`, ref: group.key === currentStage.key ? activeList : undefined }, group.entries.length === 0
             ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
             : group.entries.slice(-200).map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
               h('summary', null,
