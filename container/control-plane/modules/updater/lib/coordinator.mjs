@@ -231,8 +231,15 @@ export class UpdateCoordinator extends EventEmitter {
       }
       const result = await this.completeRecovery.restore(planId, {
         ...options,
-        onProgress: (rollbackPhase, progress) => this.transition('restoring-data', {
-          taskId, progress, operation: 'rollback', rollbackPhase,
+        onProgress: (rollbackPhase, progress, metrics = {}) => this.transition('restoring-data', {
+          taskId,
+          progress,
+          operation: 'rollback',
+          rollbackPhase,
+          processedBytes: metrics.processedBytes ?? null,
+          totalBytes: metrics.totalBytes ?? null,
+          processedItems: metrics.processedItems ?? null,
+          totalItems: metrics.totalItems ?? null,
         }),
       })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
@@ -326,15 +333,49 @@ export class UpdateCoordinator extends EventEmitter {
   async run(taskId) {
     try {
       await this.transition('planning', {
-        taskId, progress: 0, operation: 'update', rollbackPhase: null, rollbackIncludesSnapshot: null, error: null,
+        taskId, progress: 0, operation: 'update', rollbackPhase: null, rollbackIncludesSnapshot: null,
+        processedBytes: null, totalBytes: null, processedItems: null, totalItems: null,
+        readyServices: null, totalServices: null, detail: null, error: null,
       })
       const target = await this.metadata.check()
-      await this.transition('downloading', { taskId, progress: 10, targetSequence: target.value.targetSequence })
-      const prepared = await this.preparer.prepare(target.value)
+      const artifacts = Array.isArray(target.value.artifacts) ? target.value.artifacts : []
+      await this.transition('downloading', {
+        taskId,
+        progress: 10,
+        targetSequence: target.value.targetSequence,
+        processedBytes: 0,
+        totalBytes: artifacts.reduce((total, artifact) => total + artifact.size, 0),
+        processedItems: 0,
+        totalItems: artifacts.length,
+        detail: 'downloading',
+      })
+      const prepared = await this.preparer.prepare(target.value, {
+        onProgress: metrics => this.transition('downloading', {
+          taskId,
+          progress: artifacts.length === 0 || metrics.totalBytes === 0
+            ? 10
+            : 10 + Math.round((metrics.processedBytes / metrics.totalBytes) * 55),
+          processedBytes: metrics.processedBytes,
+          totalBytes: metrics.totalBytes,
+          processedItems: metrics.processedItems,
+          totalItems: metrics.totalItems,
+        }),
+      })
       await this.transition('validating', { taskId, progress: 70 })
       await this.transition('building-candidate', { taskId, progress: 75 })
       await this.activator.activate(prepared, {
-        onProgress: progress => this.transition('building-candidate', { taskId, progress }),
+        onProgress: progress => {
+          if (typeof progress === 'number') return this.transition('building-candidate', { taskId, progress })
+          const ratio = progress.totalBytes > 0 ? progress.processedBytes / progress.totalBytes : 0
+          return this.transition('building-candidate', {
+            taskId,
+            progress: 75 + Math.round(Math.max(0, Math.min(1, ratio)) * 14),
+            processedBytes: progress.processedBytes,
+            totalBytes: progress.totalBytes,
+            processedItems: progress.processedItems,
+            totalItems: progress.totalItems,
+          })
+        },
         onSwitching: () => this.transition('switching', { taskId, progress: 90 }),
       })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
@@ -395,6 +436,14 @@ export class UpdateCoordinator extends EventEmitter {
         runtimeId: from.runtime,
         environmentVersion: from.environment,
         dshVersion: from.dsh,
+        onProgress: metrics => this.transition('snapshotting-data', {
+          taskId,
+          progress: 55,
+          processedBytes: metrics.processedBytes ?? null,
+          totalBytes: metrics.totalBytes ?? null,
+          processedItems: metrics.processedItems ?? null,
+          totalItems: metrics.totalItems ?? null,
+        }),
       })
       const candidateRuntimeId = this.activator.bindExperimentalSnapshot === undefined
         ? built.runtimeId

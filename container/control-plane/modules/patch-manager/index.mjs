@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TrustError } from '../../../platform/lib/validation.mjs'
@@ -67,7 +67,39 @@ export async function loadEnvironmentPatchSet(environmentRoot) {
   })
 }
 
-export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patchPaths }) {
+async function measureTree(path) {
+  const details = await lstat(path)
+  if (details.isSymbolicLink()) return { bytes: 0, items: 1 }
+  if (!details.isDirectory()) return { bytes: details.size, items: 1 }
+  let bytes = 0
+  let items = 0
+  for (const entry of await readdir(path)) {
+    const measured = await measureTree(join(path, entry))
+    bytes += measured.bytes
+    items += measured.items
+  }
+  return { bytes, items }
+}
+
+async function copyTree(source, destination, onProgress = async () => {}) {
+  const details = await lstat(source)
+  if (details.isSymbolicLink()) {
+    await symlink(await import('node:fs/promises').then(({ readlink }) => readlink(source)), destination)
+    await onProgress({ processedBytes: 0, processedItems: 1 })
+    return
+  }
+  if (!details.isDirectory()) {
+    await cp(source, destination, { preserveTimestamps: true, verbatimSymlinks: true })
+    await onProgress({ processedBytes: details.size, processedItems: 1 })
+    return
+  }
+  await mkdir(destination, { recursive: true })
+  for (const entry of await readdir(source)) {
+    await copyTree(join(source, entry), join(destination, entry), onProgress)
+  }
+}
+
+export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patchPaths, onProgress = async () => {} }) {
   if (typeof runtimeId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(runtimeId)) {
     throw new Error('Runtime ID is invalid')
   }
@@ -84,7 +116,14 @@ export async function buildRuntime({ pristineRoot, versionsRoot, runtimeId, patc
   try {
     const packageRoot = join(staging, 'package')
     await mkdir(staging)
-    await cloneTree(pristineRoot, packageRoot)
+    const total = await measureTree(pristineRoot)
+    let processedBytes = 0
+    let processedItems = 0
+    await copyTree(pristineRoot, packageRoot, async update => {
+      processedBytes += update.processedBytes
+      processedItems += update.processedItems
+      await onProgress({ processedBytes, totalBytes: total.bytes, processedItems, totalItems: total.items })
+    })
     await applyPatchSet(packageRoot, patchPaths)
     const binTarget = join(packageRoot, 'lib', 'bin.js')
     const details = await lstat(binTarget)

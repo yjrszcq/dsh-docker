@@ -29,17 +29,21 @@ test('snapshots and restores complete DSH_HOME contents and permissions', async 
   await writeFile(join(sourceRoot, 'nested', 'database'), 'rows')
   await chmod(join(sourceRoot, 'nested', 'database'), 0o640)
   await symlink('nested/database', join(sourceRoot, 'database-link'))
-  const snapshot = await snapshots.create(state)
+  const createProgress = []
+  const snapshot = await snapshots.create({ ...state, onProgress: value => { createProgress.push(value) } })
   assert.equal(snapshot.createdAt, '2026-08-19T00:00:00.000Z')
+  assert.equal(createProgress.at(-1).processedItems, createProgress.at(-1).totalItems)
 
   await writeFile(join(sourceRoot, '.config'), 'after')
   await writeFile(join(sourceRoot, 'new-data'), 'remove me')
-  await snapshots.restore(state.id)
+  const restoreProgress = []
+  await snapshots.restore(state.id, { onProgress: value => { restoreProgress.push(value) } })
   assert.equal(await readFile(join(sourceRoot, '.config'), 'utf8'), 'before')
   assert.equal(await readFile(join(sourceRoot, 'nested', 'database'), 'utf8'), 'rows')
   assert.equal((await lstat(join(sourceRoot, 'nested', 'database'))).mode & 0o777, 0o640)
   assert.equal(await readlink(join(sourceRoot, 'database-link')), 'nested/database')
   await assert.rejects(readFile(join(sourceRoot, 'new-data')), { code: 'ENOENT' })
+  assert.equal(restoreProgress.at(-1).processedItems, restoreProgress.at(-1).totalItems)
   assert.equal((await snapshots.list())[0].id, state.id)
 })
 

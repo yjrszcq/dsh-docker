@@ -117,7 +117,7 @@ export class ManagedDeploymentBuilder {
     }
   }
 
-  async runtime(prepared, pristine, environment) {
+  async runtime(prepared, pristine, environment, { onProgress = async () => {} } = {}) {
     const patches = prepared.environment.manifest.patches.map(reference => {
       const artifact = artifactForReference(prepared.environment.manifest, reference)
       return { id: reference.id, artifactId: artifact.id, sha256: artifact.sha256 }
@@ -138,6 +138,7 @@ export class ManagedDeploymentBuilder {
       versionsRoot: this.paths.runtimesRoot,
       runtimeId: id,
       patchPaths: patches.map(patch => prepared.paths.get(patch.artifactId)),
+      onProgress,
     })
     return Object.freeze({ id, sha256: await verifyDirectory(destination), path: destination })
   }
@@ -176,7 +177,9 @@ export class ManagedDeploymentBuilder {
     await onProgress(80)
     const environment = await this.environment(prepared)
     await onProgress(82)
-    const runtime = await this.runtime(prepared, pristine, environment)
+    const runtime = await this.runtime(prepared, pristine, environment, {
+      onProgress: metrics => onProgress({ stage: 'runtime', ...metrics }),
+    })
     await onProgress(87)
     const systemPlugins = await this.systemPlugins(prepared, environment)
     await onProgress(89)

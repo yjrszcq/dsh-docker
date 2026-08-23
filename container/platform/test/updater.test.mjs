@@ -148,7 +148,8 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
     requestedVersion = version
     return ensureOfficialDsh(version)
   }
-  const prepared = await preparer.prepare(checked.value)
+  const progress = []
+  const prepared = await preparer.prepare(checked.value, { onProgress: value => { progress.push(value) } })
   assert.equal(prepared.receipts.size, 6)
   assert.equal(prepared.dsh.receipt.authorityType, 'official-dsh')
   assert.equal(prepared.receiptTokens.length, 7)
@@ -156,6 +157,8 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   assert.equal([...prepared.paths.values()].every(path => path.includes('/trust/objects/')), true)
   assert.equal((await ledger.currentKeyring()).value.generation, 1)
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
+  assert.equal(progress.at(-1).processedBytes, progress.at(-1).totalBytes)
+  assert.equal(progress.at(-1).processedItems, progress.at(-1).totalItems)
 })
 
 test('constructs Pristine DSH only from a receipt-backed archive', async () => {

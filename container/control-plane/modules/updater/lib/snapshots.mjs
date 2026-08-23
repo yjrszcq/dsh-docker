@@ -75,6 +75,14 @@ async function syncDirectory(path) {
   try { await handle.sync() } finally { await handle.close() }
 }
 
+async function countTree(path) {
+  const details = await lstat(path)
+  if (!details.isDirectory() || details.isSymbolicLink()) return 1
+  let count = 0
+  for (const entry of await readdir(path)) count += await countTree(join(path, entry))
+  return count
+}
+
 export class PersistentStateSnapshots {
   constructor({ root, sourceRoot = '/data/dsh', now = () => new Date(), runImpl = run }) {
     this.root = resolve(root)
@@ -87,7 +95,7 @@ export class PersistentStateSnapshots {
     return join(this.root, 'versions', validId(id))
   }
 
-  async create({ id = randomUUID(), runtimeId, environmentVersion, dshVersion }) {
+  async create({ id = randomUUID(), runtimeId, environmentVersion, dshVersion, onProgress = async () => {} }) {
     validId(id)
     const sourceDetails = await lstat(this.sourceRoot)
     if (!sourceDetails.isDirectory() || sourceDetails.isSymbolicLink()) {
@@ -104,7 +112,10 @@ export class PersistentStateSnapshots {
     await mkdir(staging)
     const archive = join(staging, 'data.tar.gz')
     try {
+      const totalItems = await countTree(this.sourceRoot)
+      await onProgress({ processedItems: 0, totalItems })
       await this.run('tar', ['-czpf', archive, '-C', this.sourceRoot, '.'])
+      await onProgress({ processedItems: totalItems, totalItems })
       const measured = await hashFile(archive)
       const manifest = canonicalJson({
         schema: 1,
@@ -149,13 +160,16 @@ export class PersistentStateSnapshots {
     return Object.freeze({ ...manifest, archive })
   }
 
-  async restore(id) {
+  async restore(id, { onProgress = async () => {} } = {}) {
     const snapshot = await this.inspect(id)
     await mkdir(this.sourceRoot, { recursive: true })
     for (const entry of await readdir(this.sourceRoot)) {
       await rm(join(this.sourceRoot, entry), { recursive: true, force: true })
     }
+    const entries = (await this.run('tar', ['-tzf', snapshot.archive])).split('\n').filter(Boolean)
+    await onProgress({ processedItems: 0, totalItems: entries.length })
     await this.run('tar', ['-xzpf', snapshot.archive, '--no-same-owner', '-C', this.sourceRoot])
+    await onProgress({ processedItems: entries.length, totalItems: entries.length })
     await syncDirectory(this.sourceRoot)
     return snapshot
   }
