@@ -13,6 +13,7 @@ import {
   preparePersistentLayout,
   replaceRuntimeView,
   resetRuntimeLayout,
+  trustStateRootForAuthority,
 } from '../lib/paths.mjs'
 import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 import { readDeploymentStatus } from '../lib/deployment-status.mjs'
@@ -29,6 +30,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
+const trustStateRoot = trustStateRootForAuthority(paths, inventory.authority)
 await preparePersistentLayout(paths)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
@@ -53,10 +55,10 @@ await logs.diagnostic('stage0', 'stage0.starting', {
   targetSequence: inventory.targetSequence,
 })
 await startup('runtime-layout', () => resetRuntimeLayout(paths))
-const ledger = new TrustLedger(paths.trustStateRoot, recoveryPublicKey)
+const ledger = new TrustLedger(trustStateRoot, recoveryPublicKey)
 const objects = new VerifiedObjectStore({
   objectRoot: paths.objectsRoot,
-  receiptRoot: join(paths.trustStateRoot, 'receipts'),
+  receiptRoot: join(trustStateRoot, 'receipts'),
   untrustedRoot: paths.downloadsRoot,
   ledger,
 })

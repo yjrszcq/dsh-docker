@@ -8,12 +8,14 @@ import {
   preparePersistentLayout,
   rejectLegacyLayout,
   resetRuntimeLayout,
+  trustStateRootForAuthority,
 } from '../lib/paths.mjs'
 
 test('creates state, store, cache, and logs without persistent runtime views', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-layout-'))
   const paths = new PlatformPaths(join(root, 'platform'), join(root, 'run'))
   await preparePersistentLayout(paths)
+  assert.equal(paths.developmentTrustStateRoot, join(paths.trustStateRoot, 'development'))
   for (const path of [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
     paths.managementStateRoot,
@@ -22,6 +24,12 @@ test('creates state, store, cache, and logs without persistent runtime views', a
     paths.downloadsRoot, paths.npmCacheRoot, paths.logsRoot,
   ]) assert.equal((await lstat(path)).isDirectory(), true)
   await assert.rejects(lstat(paths.runRoot), { code: 'ENOENT' })
+})
+
+test('isolates development trust without changing the formal trust ledger', () => {
+  const paths = new PlatformPaths('/data/platform', '/run/dsh-platform')
+  assert.equal(trustStateRootForAuthority(paths, 'development'), paths.developmentTrustStateRoot)
+  assert.equal(trustStateRootForAuthority(paths, 'stable'), paths.trustStateRoot)
 })
 
 test('rejects legacy platform volumes without changing DSH user data', async () => {

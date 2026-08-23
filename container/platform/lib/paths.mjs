@@ -19,6 +19,7 @@ export class PlatformPaths {
     this.cacheRoot = join(this.dataRoot, 'cache')
     this.logsRoot = join(this.dataRoot, 'logs')
     this.trustStateRoot = join(this.stateRoot, 'trust')
+    this.developmentTrustStateRoot = join(this.trustStateRoot, 'development')
     this.bootstrapStateRoot = join(this.stateRoot, 'bootstrap')
     this.deploymentStateRoot = join(this.stateRoot, 'deployments')
     this.deploymentStatusPath = join(this.deploymentStateRoot, 'status.json')
@@ -52,6 +53,10 @@ export class PlatformPaths {
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
     this.recoverySocket = join(this.runRoot, 'recovery.sock')
   }
+}
+
+export function trustStateRootForAuthority(paths, authority) {
+  return authority === 'development' ? paths.developmentTrustStateRoot : paths.trustStateRoot
 }
 
 export async function rejectLegacyLayout(paths) {
