@@ -772,7 +772,7 @@ function LifecycleGuard({ connection }) {
   return null
 }
 
-function SystemPluginManager({ plugins, draft, applying, operation, busy, error, onAction, onCancel, onApply, t }) {
+function SystemPluginManager({ plugins, draft, applyingDraft, operation, busy, error, onAction, onCancel, onApply, t }) {
   const operationBusy = operation?.status === 'running'
   const [query, setQuery] = useState('')
   const filteredPlugins = plugins.filter(plugin => matchesResourceSearch(query, [plugin.id, plugin.description?.zh, plugin.description?.en]))
@@ -804,9 +804,7 @@ function SystemPluginManager({ plugins, draft, applying, operation, busy, error,
               : action === 'enable' ? { ...plugin, enabled: true }
                 : action === 'disable' ? { ...plugin, enabled: false } : plugin
             const isActive = operationBusy && operation.pluginId === plugin.id
-            const applyingAction = isActive
-              ? operation.action
-              : applying?.pluginId === plugin.id ? applying.action : undefined
+            const applyingAction = applyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
             const description = plugin.description?.[t('localeCode')] ?? plugin.id
             const stateKey = applyingAction !== undefined
               ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[applyingAction]
@@ -897,7 +895,7 @@ function PlatformManagement({ t }) {
   const [status, setStatus] = useState(null)
   const [plugins, setPlugins] = useState([])
   const [systemPluginDraft, setSystemPluginDraft] = useState(() => new Map())
-  const [systemPluginApplying, setSystemPluginApplying] = useState(null)
+  const [systemPluginApplyingDraft, setSystemPluginApplyingDraft] = useState(() => new Map())
   const [skills, setSkills] = useState([])
   const [error, setError] = useState('')
   const [connection, setConnection] = useState('connecting')
@@ -1046,20 +1044,19 @@ function PlatformManagement({ t }) {
       return
     }
     setActing(true)
+    setSystemPluginApplyingDraft(new Map(systemPluginDraft))
     setError('')
     let changed = false
     try {
       for (const [id, action] of systemPluginDraft) {
         const plugin = plugins.find(item => item.id === id)
         if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
-        setSystemPluginApplying({ pluginId: id, action })
         const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
         const task = await request(path, { method: 'POST', body: { id, action } })
         changed = true
         window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
         const operation = await waitForSystemPluginTask(task.taskId)
         if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
-        setSystemPluginApplying(null)
       }
       setSystemPluginDraft(new Map())
       await request('restart-dsh', { method: 'POST' })
@@ -1070,8 +1067,8 @@ function PlatformManagement({ t }) {
       window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
-      setSystemPluginApplying(null)
       await refreshInventory('plugins')
+      setSystemPluginApplyingDraft(new Map())
       setActing(false)
     }
   }, [plugins, refresh, refreshInventory, restartDsh, systemPluginDraft, waitForSystemPluginTask])
@@ -1353,7 +1350,7 @@ function PlatformManagement({ t }) {
     }, h(SystemPluginManager, {
       plugins,
       draft: systemPluginDraft,
-      applying: systemPluginApplying,
+      applyingDraft: systemPluginApplyingDraft,
       operation: pluginOperation,
       busy,
       error,

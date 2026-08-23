@@ -237,7 +237,7 @@ let acting = false
 let discardingPluginDraft = false
 let userPluginSubmitting = false
 let systemPluginSubmitting = false
-let systemPluginApplyingAction
+const systemPluginApplyingDraft = new Map()
 let userPluginFeedback = null
 const visibleOperationTasks = new Set()
 let eventSource
@@ -630,9 +630,7 @@ function renderBundledPlugins(values, busy) {
     const action = systemPluginDraft.get(plugin.id)
     const projected = projectedSystemPlugin(plugin)
     const isActive = operation.status === 'running' && operation.pluginId === plugin.id
-    const applyingAction = isActive
-      ? operation.action
-      : systemPluginApplyingAction?.pluginId === plugin.id ? systemPluginApplyingAction.action : undefined
+    const applyingAction = systemPluginApplyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -1254,6 +1252,8 @@ async function applySystemPluginDraft() {
     return
   }
   systemPluginSubmitting = true
+  systemPluginApplyingDraft.clear()
+  for (const [id, action] of systemPluginDraft) systemPluginApplyingDraft.set(id, action)
   acting = true
   clearError()
   if (status !== undefined) render(status)
@@ -1262,8 +1262,6 @@ async function applySystemPluginDraft() {
     for (const [id, action] of systemPluginDraft) {
       const plugin = plugins.find(item => item.id === id)
       if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
-      systemPluginApplyingAction = { pluginId: id, action }
-      if (status !== undefined) render(status)
       const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
       const task = await api(path, { method: 'POST', body: { id, action } })
       changed = true
@@ -1271,7 +1269,6 @@ async function applySystemPluginDraft() {
       visibleOperationTasks.add(task.taskId)
       const operation = await waitForManagementTask(task.taskId, 'systemPluginOperation')
       if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
-      systemPluginApplyingAction = undefined
     }
     systemPluginDraft.clear()
     const restart = await api('restart-dsh', { method: 'POST' })
@@ -1283,8 +1280,8 @@ async function applySystemPluginDraft() {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     showError(error)
   } finally {
-    systemPluginApplyingAction = undefined
     await refreshInventory('plugins')
+    systemPluginApplyingDraft.clear()
     systemPluginSubmitting = false
     acting = false
     if (status !== undefined) render(status)
