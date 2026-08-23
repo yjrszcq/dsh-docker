@@ -931,7 +931,9 @@ test('keeps the official npm version visible when it is not newer', async () => 
       targetSequence: 1,
     } }) },
     npm: { discover: async () => ({ version: '0.1.0-rc.7' }) },
-    activator: { currentDeployment: async () => ({ dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' }) },
+    activator: { currentDeployment: async () => ({
+      authority: 'stable', targetSequence: 1, dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a',
+    }) },
     state: new UpdateStateStore(join(root, 'state', 'update.json')),
     channelState,
   })
@@ -1033,4 +1035,28 @@ test('persists a planner failure started through the selected channel', async ()
   await assert.rejects(coordinator.startReconcile().completion, /metadata unavailable/)
   assert.equal((await state.read()).status, 'failed')
   assert.match((await state.read()).error, /metadata unavailable/)
+})
+
+test('continues from Stable convergence into Experimental activation in one task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-reconcile-stable-then-experimental-'))
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, activator: {},
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+  })
+  const actions = []
+  let planned = false
+  coordinator.desiredState = async () => {
+    if (!planned) {
+      planned = true
+      return { action: 'stable' }
+    }
+    return { action: 'experimental' }
+  }
+  coordinator.run = async (taskId, options) => { actions.push(['stable', taskId, options]) }
+  coordinator.runExperimental = async taskId => { actions.push(['experimental', taskId]) }
+  await coordinator.runReconcile('task-a')
+  assert.deepEqual(actions, [
+    ['stable', 'task-a', { complete: false }],
+    ['experimental', 'task-a'],
+  ])
 })

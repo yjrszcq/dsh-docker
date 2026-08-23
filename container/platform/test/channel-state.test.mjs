@@ -33,6 +33,18 @@ test('plans Stable convergence before Experimental and freezes Ahead-of-Stable c
     upstream: { version: '0.1.0-rc.9' },
   }).action, 'frozen')
   assert.equal(planDesiredState({ local, current, supported, upstream: { version: '0.1.0-rc.8' } }).action, 'experimental')
+  assert.equal(planDesiredState({
+    local,
+    current: { ...current, authority: 'development', targetSequence: 0 },
+    supported, stableTargetSequence: 11,
+    upstream: { version: '0.1.0-rc.8' },
+  }).action, 'stable')
+  assert.equal(planDesiredState({
+    local,
+    current: { ...current, authority: 'stable', targetSequence: 11 },
+    supported, stableTargetSequence: 11,
+    upstream: { version: '0.1.0-rc.8' },
+  }).action, 'experimental')
 })
 
 test('suppresses only the held Experimental candidate and Environment combination', () => {

@@ -125,6 +125,8 @@ export class PlatformActivator {
       return null
     }
     return Object.freeze({
+      authority: record.authority,
+      targetSequence: record.targetSequence,
       dsh: record.dshVersion,
       runtime: record.id,
       environment: record.environmentVersion,

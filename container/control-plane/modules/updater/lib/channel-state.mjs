@@ -135,8 +135,14 @@ function held(local, dshVersion, environmentVersion) {
   ))
 }
 
-export function planDesiredState({ local, current, supported, upstream = null }) {
+export function planDesiredState({ local, current, supported, stableTargetSequence, upstream = null }) {
   const aheadOfStable = compareDshVersions(current.dsh, supported.dsh) > 0
+  const stableIdentityMismatch = Number.isSafeInteger(stableTargetSequence) && (
+    current.targetSequence !== stableTargetSequence
+    || (local.updateChannel === 'stable'
+      ? current.authority !== 'stable'
+      : !['stable', 'experimental'].includes(current.authority))
+  )
   const base = {
     updateChannel: local.updateChannel,
     current,
@@ -147,7 +153,7 @@ export function planDesiredState({ local, current, supported, upstream = null })
     holds: local.holds,
   }
   if (aheadOfStable) return Object.freeze({ ...base, action: 'frozen', reason: 'Stable has not caught up with the current DSH' })
-  if (compareDshVersions(current.dsh, supported.dsh) < 0 || current.environment !== supported.environment) {
+  if (compareDshVersions(current.dsh, supported.dsh) < 0 || current.environment !== supported.environment || stableIdentityMismatch) {
     return Object.freeze({ ...base, action: 'stable', reason: 'converge the signed Stable target before Experimental DSH' })
   }
   if (local.updateChannel === 'stable' || upstream === null) {

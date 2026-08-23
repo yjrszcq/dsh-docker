@@ -318,7 +318,7 @@ export class UpdateCoordinator extends EventEmitter {
       upstreamCandidate = compareDshVersions(upstream.version, supported.dsh) > 0 ? upstream : null
     }
     return Object.freeze({
-      ...planDesiredState({ local, current, supported, upstream: upstreamCandidate }),
+      ...planDesiredState({ local, current, supported, stableTargetSequence: stable.targetSequence, upstream: upstreamCandidate }),
       upstream,
       target: stable,
     })
@@ -364,7 +364,12 @@ export class UpdateCoordinator extends EventEmitter {
   async runReconcile(taskId) {
     try {
       const plan = await this.desiredState()
-      if (plan.action === 'stable') return this.run(taskId)
+      if (plan.action === 'stable') {
+        await this.run(taskId, { complete: false })
+        const next = await this.desiredState()
+        if (next.action === 'experimental') return this.runExperimental(taskId)
+        return this.transition('success', { taskId, progress: 100, error: null, outcome: next.action })
+      }
       if (plan.action === 'experimental') return this.runExperimental(taskId)
       return this.transition('success', {
         taskId, progress: 100, error: null,
@@ -380,7 +385,7 @@ export class UpdateCoordinator extends EventEmitter {
     }
   }
 
-  async run(taskId) {
+  async run(taskId, { complete = true } = {}) {
     try {
       await this.transition('planning', {
         taskId, progress: 0, operation: 'update', rollbackPhase: null, rollbackIncludesSnapshot: null,
@@ -428,9 +433,9 @@ export class UpdateCoordinator extends EventEmitter {
         },
         onSwitching: () => this.transition('switching', { taskId, progress: 90 }),
       })
-      await this.reportHealth('switching', { taskId, progress: 95 })
+      const health = await this.reportHealth('switching', { taskId, progress: 95 })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
-      return this.transition('success', { taskId, progress: 100, error: null })
+      return complete ? this.transition('success', { taskId, progress: 100, error: null }) : health
     } catch (error) {
       await this.record('update.stable.failed', { error, taskId })
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update failed' })
