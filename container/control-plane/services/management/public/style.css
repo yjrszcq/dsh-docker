@@ -133,6 +133,10 @@ main {
   content: "";
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .tabs { scroll-snap-type: none; }
+}
+
 .tab-panel {
   min-width: 0;
   min-height: 0;

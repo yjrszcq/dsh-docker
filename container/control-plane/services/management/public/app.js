@@ -336,9 +336,32 @@ function makeHorizontalTabStripScrollable(tablist) {
   let pointerId
   let pointerStartX = 0
   let scrollStart = 0
+  let wheelTarget = tablist.scrollLeft
+  let wheelFrame
+  let wheelFrameTime
   let dragged = false
   let dragTarget
   let suppressClickTarget
+
+  const stopWheelAnimation = () => {
+    if (wheelFrame !== undefined) window.cancelAnimationFrame(wheelFrame)
+    wheelFrame = undefined
+    wheelFrameTime = undefined
+    wheelTarget = tablist.scrollLeft
+  }
+  const animateWheel = timestamp => {
+    const elapsed = wheelFrameTime === undefined ? 16 : Math.min(timestamp - wheelFrameTime, 32)
+    const remaining = wheelTarget - tablist.scrollLeft
+    if (Math.abs(remaining) < 0.5) {
+      tablist.scrollLeft = wheelTarget
+      wheelFrame = undefined
+      wheelFrameTime = undefined
+      return
+    }
+    tablist.scrollLeft += remaining * (1 - Math.exp(-elapsed / 45))
+    wheelFrameTime = timestamp
+    wheelFrame = window.requestAnimationFrame(animateWheel)
+  }
 
   const finishDrag = event => {
     if (pointerId === undefined || (event.pointerId !== undefined && event.pointerId !== pointerId)) return
@@ -352,13 +375,21 @@ function makeHorizontalTabStripScrollable(tablist) {
 
   tablist.addEventListener('wheel', event => {
     if (tablist.scrollWidth <= tablist.clientWidth) return
-    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (event.deltaX !== 0) return
+    let delta = event.deltaY
     if (delta === 0) return
-    tablist.scrollLeft += delta
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16
+    else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= tablist.clientWidth
+    if (wheelFrame === undefined) wheelTarget = tablist.scrollLeft
+    const nextTarget = Math.max(0, Math.min(tablist.scrollWidth - tablist.clientWidth, wheelTarget + delta))
+    if (nextTarget === wheelTarget) return
+    wheelTarget = nextTarget
+    if (wheelFrame === undefined) wheelFrame = window.requestAnimationFrame(animateWheel)
     event.preventDefault()
   }, { passive: false })
   tablist.addEventListener('pointerdown', event => {
     if (event.button !== 0 || event.pointerType === 'touch' || tablist.scrollWidth <= tablist.clientWidth) return
+    stopWheelAnimation()
     pointerId = event.pointerId
     pointerStartX = event.clientX
     scrollStart = tablist.scrollLeft

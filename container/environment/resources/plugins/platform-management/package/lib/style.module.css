@@ -145,6 +145,10 @@
   color: var(--dsw-alias-label-primary);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .tabs { scroll-snap-type: none; }
+}
+
 .tabPanel {
   display: flex;
   flex-direction: column;
