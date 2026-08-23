@@ -20,7 +20,7 @@ After submitting an update, use the public `dsh-platform status` result and task
 
 Use `dsh-platform channel` to inspect the current channel and `dsh-platform channel stable|experimental` only when the user requests a channel change.
 
-Stable targets update the signed supported DSH and Environment. Experimental mode may use a newer upstream DSH while retaining the supported Environment. Do not download npm/GitHub artifacts yourself, submit an expected hash, or call the Trust API; Stage-0 alone authorizes and imports release objects.
+Stable targets update the signed supported DSH and Environment. Before activating a newer upstream DSH, Experimental mode first converges the complete Deployment to the signed Stable target sequence, even if the displayed DSH and Environment versions already match. Do not download npm/GitHub artifacts yourself, submit an expected hash, or call the Trust API; Stage-0 alone authorizes and imports release objects.
 
 ## Rollback and return to stable
 
