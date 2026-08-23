@@ -504,6 +504,8 @@ test('samples high-frequency Runtime copy metrics without losing final totals', 
     preparer,
     activator: {
       activate: async (_prepared, { onProgress, onSwitching }) => {
+        await onProgress(82)
+        await onProgress(80)
         for (let item = 1; item <= 1_000; item += 1) {
           await onProgress({
             processedBytes: item,
@@ -523,7 +525,11 @@ test('samples high-frequency Runtime copy metrics without losing final totals', 
   await coordinator.start().completion
   const buildReports = reports.filter(entry => entry.message === 'update.phase.changed'
     && entry.fields.status === 'building-candidate')
-  assert.ok(buildReports.length <= 16)
+  assert.ok(buildReports.length <= 18)
+  assert.deepEqual(
+    buildReports.map(entry => entry.fields.progress),
+    buildReports.map(entry => entry.fields.progress).toSorted((left, right) => left - right),
+  )
   assert.equal(buildReports.at(-1).fields.processedBytes, 1_000)
   assert.equal(buildReports.at(-1).fields.processedItems, 1_000)
 })

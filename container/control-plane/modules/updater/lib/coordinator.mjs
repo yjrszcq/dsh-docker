@@ -458,9 +458,17 @@ export class UpdateCoordinator extends EventEmitter {
       let buildComplete = false
       await this.activator.activate(prepared, {
         onProgress: progress => {
-          if (typeof progress === 'number') return this.transition('building-candidate', { taskId, progress })
+          if (typeof progress === 'number') {
+            const stageProgress = Math.max(previousBuildProgress, progress)
+            if (stageProgress === previousBuildProgress) return undefined
+            previousBuildProgress = stageProgress
+            return this.transition('building-candidate', { taskId, progress: stageProgress })
+          }
           const ratio = progress.totalBytes > 0 ? progress.processedBytes / progress.totalBytes : 0
-          const stageProgress = 75 + Math.round(Math.max(0, Math.min(1, ratio)) * 14)
+          const stageProgress = Math.max(
+            previousBuildProgress,
+            75 + Math.round(Math.max(0, Math.min(1, ratio)) * 14),
+          )
           const complete = progress.processedBytes === progress.totalBytes
             && progress.processedItems === progress.totalItems
           if (stageProgress === previousBuildProgress && (!complete || buildComplete)) return undefined
