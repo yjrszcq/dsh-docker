@@ -598,6 +598,7 @@ function projectedSystemPlugin(plugin) {
 }
 
 function setSystemPluginDraft(plugin, action) {
+  systemPluginApplyingDraft.clear()
   if (
     (action === 'install' && plugin.installed)
     || (action === 'uninstall' && !plugin.installed)
@@ -621,6 +622,7 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
 
 function renderBundledPlugins(values, busy) {
   const filtered = filteredResources('plugins', values)
+  const restartRequired = systemPluginDraft.size > 0 || values.some(plugin => plugin.pendingRestart)
   elements['bundled-plugins'].replaceChildren()
   elements['empty-plugins'].hidden = filtered.length !== 0
   elements['empty-plugins'].textContent = values.length === 0 ? t('noSystemPlugins') : t('noMatchingResources')
@@ -630,7 +632,9 @@ function renderBundledPlugins(values, busy) {
     const action = systemPluginDraft.get(plugin.id)
     const projected = projectedSystemPlugin(plugin)
     const isActive = operation.status === 'running' && operation.pluginId === plugin.id
-    const applyingAction = systemPluginApplyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
+    const applyingAction = restartRequired
+      ? systemPluginApplyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
+      : isActive ? operation.action : undefined
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -1236,6 +1240,7 @@ async function waitForManagementTask(taskId, operationKey) {
 
 async function cancelSystemPluginDraft() {
   if (systemPluginSubmitting) return
+  systemPluginApplyingDraft.clear()
   systemPluginDraft.clear()
   if (plugins.some(plugin => plugin.pendingRestart)) {
     await act('bundled-plugins/discard', { method: 'POST' })
@@ -1281,7 +1286,6 @@ async function applySystemPluginDraft() {
     showError(error)
   } finally {
     await refreshInventory('plugins')
-    systemPluginApplyingDraft.clear()
     systemPluginSubmitting = false
     acting = false
     if (status !== undefined) render(status)

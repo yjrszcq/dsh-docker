@@ -1376,7 +1376,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
   assert.match(script, /const systemPluginDraft = new Map\(\)/)
   assert.match(script, /function setSystemPluginDraft\(plugin, action\)[\s\S]*systemPluginDraft\.set\(plugin\.id, action\)/)
-  assert.match(script, /const applyingAction = systemPluginApplyingDraft\.get\(plugin\.id\) \?\? \(isActive \? operation\.action : undefined\)/)
+  assert.match(script, /const restartRequired = systemPluginDraft\.size > 0 \|\| values\.some\(plugin => plugin\.pendingRestart\)[\s\S]*const applyingAction = restartRequired[\s\S]*systemPluginApplyingDraft\.get\(plugin\.id\)/)
   assert.match(script, /userPluginBadge\(t\(stateKey[\s\S]*applyingAction !== undefined \? 'pending' : plugin\.enabled \? 'enabled'/)
   const systemPluginRenderer = script.slice(script.indexOf('function renderBundledPlugins('), script.indexOf('function renderSystemSkills('))
   assert.doesNotMatch(systemPluginRenderer, /pluginPendingRestart|pendingInstall|pendingEnable|pendingDisable/)

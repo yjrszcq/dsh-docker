@@ -815,7 +815,9 @@ function SystemPluginManager({ plugins, draft, applyingDraft, operation, busy, e
               : action === 'enable' ? { ...plugin, enabled: true }
                 : action === 'disable' ? { ...plugin, enabled: false } : plugin
             const isActive = operationBusy && operation.pluginId === plugin.id
-            const applyingAction = applyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
+            const applyingAction = restartRequired
+              ? applyingDraft.get(plugin.id) ?? (isActive ? operation.action : undefined)
+              : isActive ? operation.action : undefined
             const description = plugin.description?.[t('localeCode')] ?? plugin.id
             const stateKey = applyingAction !== undefined
               ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[applyingAction]
@@ -1021,6 +1023,7 @@ function PlatformManagement({ t }) {
   }, [refresh])
 
   const manageSystemPlugin = useCallback((plugin, action) => {
+    setSystemPluginApplyingDraft(new Map())
     setSystemPluginDraft(current => {
       const next = new Map(current)
       if ((action === 'install' && plugin.installed)
@@ -1041,6 +1044,7 @@ function PlatformManagement({ t }) {
   }, [])
 
   const cancelSystemPluginChanges = useCallback(async () => {
+    setSystemPluginApplyingDraft(new Map())
     setSystemPluginDraft(new Map())
     if (plugins.some(plugin => plugin.pendingRestart)) {
       await act('bundled-plugins/discard', { method: 'POST' })
@@ -1079,7 +1083,6 @@ function PlatformManagement({ t }) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
       await refreshInventory('plugins')
-      setSystemPluginApplyingDraft(new Map())
       setActing(false)
     }
   }, [plugins, refresh, refreshInventory, restartDsh, systemPluginDraft, waitForSystemPluginTask])
