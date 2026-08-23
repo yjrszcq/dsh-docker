@@ -21,6 +21,25 @@ test('writes source-separated JSONL and queries bounded chronological entries', 
   await assert.rejects(logs.query({ limit: 5_001 }), /log query limit is invalid/)
 })
 
+test('filters transaction logs by task, operation, and phase', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-transaction-'))
+  const logs = new JsonlLogManager({ root })
+  await logs.append('updater', 'platform', 'download', { taskId: 'task-a', operation: 'update', phase: 'downloading' })
+  await logs.append('updater', 'platform', 'health', { taskId: 'task-a', operation: 'update', phase: 'switching' })
+  await logs.append('updater', 'platform', 'other', { taskId: 'task-b', operation: 'rollback', phase: 'switching' })
+  const entries = await logs.query({ taskId: 'task-a', operation: 'update', phase: 'downloading' })
+  assert.deepEqual(entries.map(entry => entry.message), ['download'])
+  const received = []
+  const follower = await logs.follow({ taskId: 'task-a', operation: 'update', phase: 'switching' }, entry => received.push(entry), { intervalMs: 50 })
+  try {
+    await logs.append('updater', 'platform', 'switching-now', { taskId: 'task-a', operation: 'update', phase: 'switching' })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.deepEqual(received.map(entry => entry.message), ['switching-now'])
+  } finally {
+    follower.close()
+  }
+})
+
 test('follows entries appended by another process without replaying existing logs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-log-follow-'))
   const logs = new JsonlLogManager({ root })

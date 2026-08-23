@@ -40,6 +40,20 @@ function validateSource(source) {
   return source
 }
 
+function validateFilter(value, label) {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0 || value.length > 128 || /[\0\r\n]/u.test(value)) {
+    throw new Error(`${label} filter is invalid`)
+  }
+  return value
+}
+
+function matches(entry, filters) {
+  return (filters.taskId === undefined || entry.taskId === filters.taskId)
+    && (filters.operation === undefined || entry.operation === filters.operation)
+    && (filters.phase === undefined || entry.phase === filters.phase)
+}
+
 function parseLine(line) {
   try { return JSON.parse(line) } catch { return undefined }
 }
@@ -215,10 +229,15 @@ export class JsonlLogManager extends EventEmitter {
     return this.serialized(() => this.pruneUnlocked())
   }
 
-  async query({ sources, since, limit = 200 } = {}) {
+  async query({ sources, since, taskId, operation, phase, limit = 200 } = {}) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5_000) throw new Error('log query limit is invalid')
     const selected = sources === undefined ? undefined : new Set(sources.map(validateSource))
     const threshold = since === undefined ? undefined : new Date(since).toISOString()
+    const filters = {
+      taskId: validateFilter(taskId, 'taskId'),
+      operation: validateFilter(operation, 'operation'),
+      phase: validateFilter(phase, 'phase'),
+    }
     const entries = []
     for (const file of await this.files()) {
       const lines = (await readFile(file.path, 'utf8')).split('\n')
@@ -229,6 +248,7 @@ export class JsonlLogManager extends EventEmitter {
           entry !== undefined
           && (selected === undefined || selected.has(entry.source))
           && (threshold === undefined || entry.timestamp >= threshold)
+          && matches(entry, filters)
         ) entries.push(entry)
       }
     }
@@ -236,11 +256,16 @@ export class JsonlLogManager extends EventEmitter {
     return Object.freeze(entries.slice(-limit).map(Object.freeze))
   }
 
-  async follow({ sources, since } = {}, listener, { intervalMs = 250, onError = () => {} } = {}) {
+  async follow({ sources, since, taskId, operation, phase } = {}, listener, { intervalMs = 250, onError = () => {} } = {}) {
     if (typeof listener !== 'function') throw new Error('log follow listener is required')
     if (!Number.isSafeInteger(intervalMs) || intervalMs < 50) throw new Error('log follow interval is invalid')
     const selected = sources === undefined ? undefined : new Set(sources.map(validateSource))
     const threshold = since === undefined ? undefined : new Date(since).toISOString()
+    const filters = {
+      taskId: validateFilter(taskId, 'taskId'),
+      operation: validateFilter(operation, 'operation'),
+      phase: validateFilter(phase, 'phase'),
+    }
     await mkdir(this.root, { recursive: true })
     let states = new Map()
     for (const file of await this.files()) {
@@ -280,7 +305,8 @@ export class JsonlLogManager extends EventEmitter {
               const entry = parseLine(line)
               if (entry !== undefined
                 && (selected === undefined || selected.has(entry.source))
-                && (threshold === undefined || entry.timestamp >= threshold)) entries.push(entry)
+                && (threshold === undefined || entry.timestamp >= threshold)
+                && matches(entry, filters)) entries.push(entry)
             }
             state = { ...state, identity, offset: file.details.size, pending: content.subarray(lineStart) }
           }

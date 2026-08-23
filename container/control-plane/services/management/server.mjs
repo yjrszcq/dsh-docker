@@ -79,10 +79,16 @@ function event(response, type, value) {
 function logOptions(url) {
   const sources = url.searchParams.getAll('source')
   const since = url.searchParams.get('since') ?? undefined
+  const taskId = url.searchParams.get('taskId') ?? undefined
+  const operation = url.searchParams.get('operation') ?? undefined
+  const phase = url.searchParams.get('phase') ?? undefined
   const limitValue = url.searchParams.get('limit')
   return {
     sources: sources.length === 0 ? undefined : sources,
     since,
+    taskId,
+    operation,
+    phase,
     limit: limitValue === null ? 200 : Number(limitValue),
   }
 }
