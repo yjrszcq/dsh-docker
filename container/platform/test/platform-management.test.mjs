@@ -68,6 +68,9 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /className: css\.checkSpinner/)
   assert.match(source, /function updateProgressModel\(update, t\)/)
   assert.match(source, /ROLLBACK_PROGRESS_STAGE/)
+  assert.match(source, /const ROLLBACK_STAGE_ITEMS = Object\.freeze\([\s\S]*itemValidateRollback[\s\S]*itemRestoreSnapshot/)
+  assert.match(source, /stage\.key\.startsWith\('rollback'\) \? ROLLBACK_STAGE_ITEMS : UPDATE_STAGE_ITEMS/)
+  assert.match(source, /recoveryProgress \? progressModel\.title/)
   assert.match(source, /function isRecoveryOperation\(operation\)[\s\S]*operation === 'return-stable'/)
   assert.match(source, /returnStableProgress: '返回稳定通道'/)
   assert.match(source, /const groupPrefix = isRecoveryOperation\(update\?\.operation\) \? 'rollback' : 'update'/)
@@ -77,7 +80,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /function LogViewer\(\{ active, focusTaskId, t \}\)/)
   assert.match(source, /if \(focusTaskId\) setQuery\(String\(focusTaskId\)\)/)
   assert.doesNotMatch(source, /progressVisible \? h\('div', \{ className: css\.statusLine \}/)
-  assert.match(source, /!progressVisible && \(update\.error \|\| update\.outcome\)/)
+  assert.match(source, /const failedDismissed = update\.status === 'failed'[\s\S]*dismissedProgressTaskId/)
+  assert.match(source, /!progressVisible && !failedDismissed && \(update\.error \|\| update\.outcome\)/)
   assert.doesNotMatch(source, /onClick: \(\) => \{ void act\('rollback'/)
   assert.doesNotMatch(source, /className: css\.progressSteps/)
   assert.match(source, /className: `\$\{css\.progressStageMarker\} \$\{css\[`progressStageMarker/)
@@ -85,6 +89,10 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /className: css\.progressStageItemMarker, 'aria-hidden': 'true'/)
   assert.match(source, /className: css\.progressLogChevron, 'aria-hidden': 'true'/)
   assert.match(source, /metricBytesCopied: '已复制 \{processed\} \/ \{total\}'/)
+  assert.match(source, /metricBytesRestored: '已恢复 \{processed\} \/ \{total\}'/)
+  assert.match(source, /metricProbationRemaining: '剩余观察 \{seconds\} 秒'/)
+  assert.match(source, /function probationRemainingSeconds\(update\)/)
+  assert.match(source, /setDismissedProgressTaskId\(String\(update\.taskId \?\? ''\)\)/)
   assert.match(source, /t\(isExpanded \? 'collapseStage' : 'expandStage'\)\.replace\('\{count\}', String\(group\.entries\.length\)\)/)
   assert.match(source, /progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 \{until\}。'/)
   const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
@@ -267,9 +275,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /不再提醒此版本/)
   assert.match(source, /Do not remind for this version/)
   assert.match(source, /source = 'manual'/)
-  for (const phase of ['checking', 'planning', 'downloading', 'validating', 'switching', 'probation']) {
-    assert.match(source, new RegExp(`${phase.replace('-', '\\-')}: ['"]progressDetail`))
-  }
+  assert.doesNotMatch(source, /detail: t\(detailKey\)/)
 })
 
 test('Platform Management compacts multiline JSON only in the log presentation', async () => {

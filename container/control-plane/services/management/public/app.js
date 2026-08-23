@@ -18,13 +18,13 @@ const COPY = Object.freeze({
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
     updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
     updateProgress: '更新进度', rollbackProgress: '回滚进度', returnStableProgress: '返回稳定通道', updateToTarget: '更新到 {target}', rollbackToTarget: '回滚到 {target}', returnStableToTarget: '返回稳定通道·{target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查',
-    stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', copyStageLogs: '复制当前日志', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
+    stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', copyStageLogs: '复制当前日志', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志', dismissProgress: '关闭',
     stageCompleted: '阶段已完成。', stageWaiting: '等待前一阶段完成。', stageProgress: '阶段进度 {progress}%', stageItemsCompleted: '已完成 {completed}/{total} 项', expandStage: '展开 · 日志 {count} 条', collapseStage: '收起 · 日志 {count} 条', stageItemCompleted: '已完成：{item}', stageItemActive: '正在执行：{item}', stageItemPending: '待执行：{item}', stageItemFailed: '执行失败：{item}',
     itemVerifyMetadata: '验证 metadata', itemVerifyKeyring: '验证 keyring', itemVerifyTarget: '验证目标清单', itemDownloadArtifacts: '下载 Artifact', itemVerifyArtifacts: '验证 Artifact 签名、引用、大小和 Hash', itemImportObjects: '导入可信对象库', itemMaterializePristine: '物化 Pristine DSH', itemPrepareEnvironment: '准备 Environment', itemBuildRuntime: '构建 Runtime 并应用完整 Patch Set', itemPreparePlugins: '准备 System Plugin Set', itemSwitchDeployment: '原子切换 Deployment', itemCheckHealth: '检查服务健康状态', itemObserveProbation: '观察候选 Runtime', itemValidateRollback: '验证回滚计划和上一完整 Deployment', itemPauseRuntime: '暂停当前 DSH Runtime', itemSwitchPrevious: '切换上一完整 Deployment', itemVerifySnapshot: '验证数据快照', itemRestoreSnapshot: '恢复数据快照', itemStartRuntime: '启动上一 DSH Runtime',
     metadataVerified: 'metadata 已验证。', keyringVerified: 'keyring 已验证。', targetManifestVerified: '目标清单已验证。', artifactDownloadCompleted: 'Artifact 下载已完成。', artifactVerificationCompleted: 'Artifact 签名、引用和 Hash 已验证。', runtimeMaterialized: 'Pristine DSH 已物化。', patchSetApplied: '完整 Patch Set 已应用。', systemPluginsPrepared: 'System Plugin Set 已准备。', deploymentSwitched: 'Deployment 已原子切换。', healthChecksPassed: '服务健康检查已通过。',
     rollbackPrepareCompleted: 'Snapshot 与回滚计划已验证。', rollbackSwitchCompleted: 'Previous Runtime 已激活。', rollbackDataCompleted: '用户数据已恢复。', rollbackVerifyCompleted: '系统健康检查已通过。',
     metricBytesRead: '已读取 {processed} / {total}', metricBytesCopied: '已复制 {processed} / {total}', metricBytesRestored: '已恢复 {processed} / {total}', metricBytesProcessed: '已处理 {processed} / {total}',
-    metricArtifacts: '已验证 {processed} / {total} 个 Artifact', metricFiles: '已完成 {processed} / {total} 个文件', metricItems: '已完成 {processed} / {total} 项', metricServices: '已就绪 {ready} / {total} 个服务',
+    metricArtifacts: '已验证 {processed} / {total} 个 Artifact', metricFiles: '已完成 {processed} / {total} 个文件', metricItems: '已完成 {processed} / {total} 项', metricServices: '已就绪 {ready} / {total} 个服务', metricProbationRemaining: '剩余观察 {seconds} 秒',
     rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
     progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。',
     progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。',
@@ -108,13 +108,13 @@ const COPY = Object.freeze({
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
     updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
     updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', returnStableProgress: 'Return to Stable', updateToTarget: 'Update to {target}', rollbackToTarget: 'Roll back to {target}', returnStableToTarget: 'Return to Stable · {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check',
-    stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', copyStageLogs: 'Copy current logs', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
+    stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', copyStageLogs: 'Copy current logs', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet', dismissProgress: 'Close',
     stageCompleted: 'Stage completed.', stageWaiting: 'Waiting for the previous stage.', stageProgress: 'Stage progress {progress}%', stageItemsCompleted: '{completed}/{total} items completed', expandStage: 'Expand · {count} log entries', collapseStage: 'Collapse · {count} log entries', stageItemCompleted: 'Completed: {item}', stageItemActive: 'In progress: {item}', stageItemPending: 'Pending: {item}', stageItemFailed: 'Failed: {item}',
     itemVerifyMetadata: 'Verify metadata', itemVerifyKeyring: 'Verify keyring', itemVerifyTarget: 'Verify target manifest', itemDownloadArtifacts: 'Download Artifacts', itemVerifyArtifacts: 'Verify Artifact signatures, references, sizes, and hashes', itemImportObjects: 'Import trusted objects', itemMaterializePristine: 'Materialize Pristine DSH', itemPrepareEnvironment: 'Prepare Environment', itemBuildRuntime: 'Build Runtime and apply the complete Patch Set', itemPreparePlugins: 'Prepare System Plugin Set', itemSwitchDeployment: 'Switch Deployment atomically', itemCheckHealth: 'Check service health', itemObserveProbation: 'Observe candidate Runtime', itemValidateRollback: 'Validate rollback plan and previous complete Deployment', itemPauseRuntime: 'Pause current DSH Runtime', itemSwitchPrevious: 'Switch previous complete Deployment', itemVerifySnapshot: 'Verify data snapshot', itemRestoreSnapshot: 'Restore data snapshot', itemStartRuntime: 'Start previous DSH Runtime',
     metadataVerified: 'Metadata verified.', keyringVerified: 'Keyring verified.', targetManifestVerified: 'Target manifest verified.', artifactDownloadCompleted: 'Artifact download completed.', artifactVerificationCompleted: 'Artifact signatures, references, and hashes verified.', runtimeMaterialized: 'Pristine DSH materialized.', patchSetApplied: 'Complete Patch Set applied.', systemPluginsPrepared: 'System Plugin Set prepared.', deploymentSwitched: 'Deployment switched atomically.', healthChecksPassed: 'Service health checks passed.',
     rollbackPrepareCompleted: 'Snapshot and rollback plan verified.', rollbackSwitchCompleted: 'Previous Runtime activated.', rollbackDataCompleted: 'User data restored.', rollbackVerifyCompleted: 'System health checks passed.',
     metricBytesRead: 'Read {processed} / {total}', metricBytesCopied: 'Copied {processed} / {total}', metricBytesRestored: 'Restored {processed} / {total}', metricBytesProcessed: 'Processed {processed} / {total}',
-    metricArtifacts: 'Verified {processed} / {total} Artifacts', metricFiles: 'Completed {processed} / {total} files', metricItems: 'Completed {processed} / {total} items', metricServices: '{ready} / {total} services ready',
+    metricArtifacts: 'Verified {processed} / {total} Artifacts', metricFiles: 'Completed {processed} / {total} files', metricItems: 'Completed {processed} / {total} items', metricServices: '{ready} / {total} services ready', metricProbationRemaining: '{seconds} seconds of observation remaining',
     rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
     progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.',
     progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.',
@@ -267,6 +267,7 @@ const progressLogStageTouched = new Set()
 let progressLogAutoScroll = true
 let progressSuccessTimer
 let progressSuccessTimerKey
+let dismissedProgressTaskId
 let logLastActivity = 0
 let logWatchdogTimer
 let logRenderFrame
@@ -467,29 +468,11 @@ function isRecoveryOperation(operation) {
   return operation === 'rollback' || operation === 'return-stable'
 }
 
-function progressDetail(update) {
-  if (isRecoveryOperation(update.operation)) {
-    return t({
-      preparing: 'rollbackDetailPreparing',
-      stopping: 'rollbackDetailStopping',
-      switching: 'rollbackDetailSwitching',
-      'restoring-data': 'rollbackDetailData',
-      verifying: 'rollbackDetailVerifying',
-    }[update.phase ?? update.rollbackPhase] ?? 'rollbackDetailPreparing')
-  }
-  const phase = update.phase ?? update.status
-  const key = {
-    checking: 'progressDetailChecking',
-    planning: 'progressDetailPlanning',
-    'checking-upstream': 'progressDetailUpstream',
-    downloading: 'progressDetailDownloading',
-    validating: 'progressDetailValidating',
-    'building-candidate': 'progressDetailBuilding',
-    'snapshotting-data': 'progressDetailSnapshot',
-    switching: 'progressDetailSwitching',
-    probation: 'progressDetailProbation',
-  }[phase] ?? 'progressDetailPlanning'
-  return t(key, { until: localTime(update.probationUntil) })
+function probationRemainingSeconds(update) {
+  const detail = String(update?.detail ?? '').match(/^probation:(\d+)$/u)
+  if (detail !== null) return Number(detail[1])
+  const deadline = Date.parse(update?.probationUntil ?? '')
+  return Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - Date.now()) / 1_000)) : undefined
 }
 
 function progressLogPhase(update) {
@@ -604,6 +587,10 @@ function stageMetricLines(value, stage, state) {
   }
   if (Number.isFinite(ready) && Number.isFinite(totalServices) && totalServices > 0) {
     lines.push(t('metricServices', { ready: String(ready), total: String(totalServices) }))
+  }
+  if (stage.labelKey === 'progressActivate' && progressLogPhase(value) === 'probation') {
+    const seconds = probationRemainingSeconds(value)
+    if (seconds !== undefined) lines.push(t('metricProbationRemaining', { seconds: String(seconds) }))
   }
   return lines
 }
@@ -1511,7 +1498,8 @@ function render(next) {
     ? Date.parse(update.updatedAt ?? '') + 3_000
     : 0
   const successVisible = Number.isFinite(successDeadline) && successDeadline > Date.now()
-  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId)) || successVisible
+  const failedDismissed = update.status === 'failed' && String(update.taskId ?? '') === dismissedProgressTaskId
+  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId) && !failedDismissed) || successVisible
   const successTimerKey = successVisible ? `${String(update.taskId)}:${String(update.updatedAt)}` : undefined
   if (successTimerKey !== progressSuccessTimerKey) {
     if (progressSuccessTimer !== undefined) window.clearTimeout(progressSuccessTimer)
@@ -1561,6 +1549,7 @@ function render(next) {
   elements['progress-value'].textContent = `${String(progress)}%`
   elements.progress.setAttribute('aria-valuenow', String(progress))
   elements['progress-bar'].style.width = `${String(progress)}%`
+  elements['progress-dismiss'].hidden = update.status !== 'failed' || !progressVisible
   if (progressVisible) {
     const recovery = isRecoveryOperation(update.operation)
     const returningStable = update.operation === 'return-stable'
@@ -1575,7 +1564,7 @@ function render(next) {
   } else {
     closeProgressLogs()
   }
-  const result = progressVisible ? '' : update.error ? localizedError(update.error) : update.outcome ? updateOutcome(update.outcome) : ''
+  const result = progressVisible || failedDismissed ? '' : update.error ? localizedError(update.error) : update.outcome ? updateOutcome(update.outcome) : ''
   elements['update-result'].textContent = result
   elements['update-result'].hidden = result === ''
   elements['metadata-notice'].hidden = !update.metadataUnavailable
@@ -3662,6 +3651,10 @@ elements['progress-full-log'].addEventListener('click', () => {
   if (progressLogUpdate?.taskId) elements['log-search'].value = String(progressLogUpdate.taskId)
   renderLogs()
   void selectTab('maintenance')
+})
+elements['progress-dismiss'].addEventListener('click', () => {
+  dismissedProgressTaskId = String(status?.update?.taskId ?? '')
+  if (status !== undefined) render(status)
 })
 elements['log-limit'].value = String(logDisplayLimit)
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {

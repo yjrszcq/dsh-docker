@@ -382,6 +382,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .progress-heading strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .progress-heading output { color: var(--text); font: 600 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progress-heading-actions { display: flex; align-items: center; gap: 8px; }
 .progress { height: 8px; overflow: hidden; border-radius: 4px; background: var(--border); }
 .progress span { display: block; height: 100%; width: 0; background: var(--success); transition: width .2s ease; }
 .progress-stage-log { display: grid; gap: 10px; min-width: 0; padding-top: 2px; }

@@ -400,6 +400,7 @@ a.secondaryButton { text-decoration: none; }
 .progressHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .progressHeading strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .progressHeading output { color: var(--dsw-alias-label-primary); font: 600 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progressHeadingActions { display: flex; align-items: center; gap: 8px; }
 .progressStageLog { display: grid; gap: 8px; min-width: 0; }
 .progressLogActions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 7px; }
 .progressAutoScroll { display: inline-flex; align-items: center; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 10px; }
