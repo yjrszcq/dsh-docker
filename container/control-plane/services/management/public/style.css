@@ -368,7 +368,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.5s; } }
 
-.update-state { display: flex; flex-direction: column; gap: 6px; }
+.update-state { display: flex; flex-direction: column; gap: 8px; }
 .status-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .status-line output, .update-state > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 .status-label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; line-height: 20px; }
@@ -378,7 +378,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .status-label.failed { color: var(--danger); }
 .status-label.failed > span { background: var(--danger); }
 .status-label strong { font-weight: 400; }
-.progress { height: 6px; overflow: hidden; border-radius: 3px; background: var(--border); }
+.update-progress { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
+.progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.progress-heading strong { font-size: 13px; line-height: 20px; font-weight: 500; }
+.progress-heading output { color: var(--text); font: 600 13px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progress-detail { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.progress-steps { display: grid; grid-template-columns: repeat(var(--step-count, 4), minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.progress-steps li { position: relative; min-width: 0; padding-top: 14px; color: var(--faint); font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
+.progress-steps li::before { position: absolute; top: 2px; left: 0; width: 8px; height: 8px; border: 2px solid var(--border); border-radius: 50%; background: var(--surface-raised); content: ''; }
+.progress-steps li::after { position: absolute; top: 6px; right: 0; left: 12px; height: 2px; background: var(--border); content: ''; }
+.progress-steps li:last-child::after { display: none; }
+.progress-steps li.completed, .progress-steps li.active { color: var(--text); }
+.progress-steps li.completed::before { border-color: var(--success); background: var(--success); }
+.progress-steps li.completed::after { background: var(--success); }
+.progress-steps li.active::before { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.progress { height: 8px; overflow: hidden; border-radius: 4px; background: var(--border); }
 .progress span { display: block; height: 100%; width: 0; background: var(--success); transition: width .2s ease; }
 .holds { border-top: 1px solid var(--border); }
 .hold { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }

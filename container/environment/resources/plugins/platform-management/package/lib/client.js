@@ -18,6 +18,20 @@ const STATUS_LABELS = Object.freeze({
   success: 'statusSuccess',
   failed: 'statusFailed',
 })
+const UPDATE_PROGRESS_STEPS = Object.freeze(['progressPrepare', 'progressAcquire', 'progressBuild', 'progressActivate'])
+const UPDATE_PROGRESS_STAGE = Object.freeze({
+  checking: 0,
+  planning: 0,
+  'checking-upstream': 0,
+  downloading: 1,
+  validating: 1,
+  'building-candidate': 2,
+  'snapshotting-data': 3,
+  switching: 3,
+  probation: 3,
+})
+const ROLLBACK_PROGRESS_STEPS = Object.freeze(['rollbackPrepare', 'rollbackSwitch', 'rollbackData', 'rollbackVerify'])
+const ROLLBACK_PROGRESS_STAGE = Object.freeze({ preparing: 0, stopping: 0, switching: 1, 'restoring-data': 2, verifying: 3 })
 const h = React.createElement
 const LOCALE_COOKIE = 'dsh_locale'
 const NOTICE_OWNER_KEY = 'dsh-platform:update-notice-owner'
@@ -164,6 +178,42 @@ function localTime(value, locale) {
   return Number.isNaN(date.valueOf())
     ? String(value)
     : date.toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')
+}
+
+function updateProgressModel(update, t) {
+  const rollback = update.operation === 'rollback'
+  const labels = rollback
+    ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
+    : UPDATE_PROGRESS_STEPS
+  const rawStage = rollback
+    ? ROLLBACK_PROGRESS_STAGE[update.rollbackPhase] ?? 0
+    : UPDATE_PROGRESS_STAGE[update.status] ?? 0
+  const stage = rollback && update.rollbackIncludesSnapshot === false && rawStage > 2 ? rawStage - 1 : rawStage
+  const detailKey = rollback
+    ? ({
+        preparing: 'rollbackDetailPreparing',
+        stopping: 'rollbackDetailStopping',
+        switching: 'rollbackDetailSwitching',
+        'restoring-data': 'rollbackDetailData',
+        verifying: 'rollbackDetailVerifying',
+      }[update.rollbackPhase] ?? 'rollbackDetailPreparing')
+    : ({
+        checking: 'progressDetailChecking',
+        planning: 'progressDetailPlanning',
+        'checking-upstream': 'progressDetailUpstream',
+        downloading: 'progressDetailDownloading',
+        validating: 'progressDetailValidating',
+        'building-candidate': 'progressDetailBuilding',
+        'snapshotting-data': 'progressDetailSnapshot',
+        switching: 'progressDetailSwitching',
+        probation: 'progressDetailProbation',
+      }[update.status] ?? 'progressDetailPlanning')
+  return {
+    title: t(rollback ? 'rollbackProgress' : 'updateProgress'),
+    detail: t(detailKey).replace('{until}', localTime(update.probationUntil, t('localeCode'))),
+    labels,
+    stage,
+  }
 }
 
 function updateOutcome(value, t) {
@@ -1219,13 +1269,16 @@ function PlatformManagement({ t }) {
     || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
   const updateActive = !TERMINAL.has(update.status ?? 'idle')
   const hasSupportedTarget = status?.supported !== null && status?.supported !== undefined
-  const updateStatus = STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
+  const updateStatus = update.operation === 'rollback' && updateActive
+    ? 'statusRollingBack'
+    : STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
   const updateStatusClass = update.status === 'failed'
     ? css.statusFailed
     : update.status === 'success'
       ? css.statusSuccess
       : updateActive ? css.statusActive : ''
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
+  const progressModel = updateProgressModel(update, t)
   const holds = [...new Map([
     ...(status?.holds ?? []),
     ...(status?.experimentalBlocked ? [status.experimentalBlocked] : []),
@@ -1319,11 +1372,20 @@ function PlatformManagement({ t }) {
         h('div', { className: css.statusLine },
           h('span', { className: `${css.statusLabel} ${updateStatusClass}` },
             h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
-            t(updateStatus)),
-          updateActive ? h('output', null, `${String(progress)}%`) : null),
+            t(updateStatus))),
         update.error || update.outcome ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
-        updateActive ? h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
-          h('span', { style: { width: `${String(progress)}%` } })) : null),
+        updateActive ? h('div', { className: css.updateProgress },
+          h('div', { className: css.progressHeading },
+            h('strong', null, progressModel.title),
+            h('output', null, `${String(progress)}%`)),
+          h('p', { className: css.progressDetail }, progressModel.detail),
+          h('ol', { className: css.progressSteps, style: { '--step-count': progressModel.labels.length } },
+            progressModel.labels.map((label, index) => h('li', {
+              key: label,
+              className: index < progressModel.stage ? css.progressCompleted : index === progressModel.stage ? css.progressActive : '',
+            }, t(label)))),
+          h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
+            h('span', { style: { width: `${String(progress)}%` } }))) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
@@ -1453,7 +1515,10 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-      statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
+      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
+      progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。', progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。', progressDetailSnapshot: 'DSH 已暂停，正在为实验更新创建完整数据快照。', progressDetailSwitching: '正在原子切换完整 Deployment，并检查 DSH 是否就绪。', progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 {until}。',
+      rollbackDetailPreparing: '正在验证回滚计划与上一完整 Deployment。', rollbackDetailStopping: '正在暂停 DSH，准备恢复上一完整状态。', rollbackDetailSwitching: '正在切换上一 Runtime、Environment 和系统插件集合。', rollbackDetailData: '正在校验并恢复更新前的数据快照。', rollbackDetailVerifying: '正在启动 DSH 并执行健康检查。',
+      statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
       outcomeNone: '当前已是最新版本', outcomeFrozen: '等待正式支持版本追上当前版本', outcomeHeld: '此版本已暂停更新', outcomeBlocked: '当前版本组合不可用', outcomeStable: '已切换到稳定版本', outcomeExperimental: '已切换到实验版本',
       requestError: '请求失败', operationError: '操作失败，请查看容器日志。', holdVersion: '此版本更新失败，已暂停自动重试。', holdCombination: '此版本与正式环境组合不可用，已暂停自动重试。',
       metadataUnavailable: '正式更新信息暂未发布，请稍后再试。',
@@ -1475,7 +1540,10 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
+      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
+      progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.', progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.', progressDetailSnapshot: 'DSH is paused while a complete data snapshot is created for the Experimental update.', progressDetailSwitching: 'Atomically switching the complete Deployment and checking DSH readiness.', progressDetailProbation: 'The candidate Runtime remains under health observation until {until}.',
+      rollbackDetailPreparing: 'Validating the rollback plan and previous complete Deployment.', rollbackDetailStopping: 'Pausing DSH before restoring the previous complete state.', rollbackDetailSwitching: 'Switching the previous Runtime, Environment, and System Plugin set.', rollbackDetailData: 'Verifying and restoring the pre-update data snapshot.', rollbackDetailVerifying: 'Starting DSH and running health checks.',
+      statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
       outcomeNone: 'Already up to date', outcomeFrozen: 'Waiting for the supported release to catch up', outcomeHeld: 'This version is on hold', outcomeBlocked: 'This version combination is unavailable', outcomeStable: 'Switched to the Stable release', outcomeExperimental: 'Switched to the Experimental release',
       requestError: 'Request failed', operationError: 'The operation failed. Check the container logs.', holdVersion: 'This version failed and automatic retries are on hold.', holdCombination: 'This version is incompatible with the production Environment and automatic retries are on hold.',
       metadataUnavailable: 'Signed update metadata has not been published yet. Try again later.',

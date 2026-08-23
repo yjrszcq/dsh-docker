@@ -103,7 +103,11 @@ export class CompleteStateRecovery {
     })
   }
 
-  async restore(planId, { confirmDataLoss = false, requireConfirmation = false } = {}) {
+  async restore(planId, {
+    confirmDataLoss = false,
+    requireConfirmation = false,
+    onProgress = async () => {},
+  } = {}) {
     if (requireConfirmation && confirmDataLoss !== true) {
       throw new TrustError('return to Stable requires explicit data-loss confirmation')
     }
@@ -113,14 +117,20 @@ export class CompleteStateRecovery {
       throw new TrustError('return to Stable requires a verified data snapshot')
     }
     if (plan.snapshot === null) {
+      await onProgress('switching', 35)
       await this.activator.rollback(plan.previous.runtime)
+      await onProgress('verifying', 90)
       return Object.freeze({ status: 'rolled-back', transactionId: null })
     }
     let transaction = await this.journal.transition('restoring-data', { error: 'manual complete-state rollback' })
+    await onProgress('stopping', 15)
     await this.activator.suspendDsh()
     try {
+      await onProgress('switching', 35)
       await this.activator.restoreDeployment({ ...transaction.from, runtime: plan.previous.runtime }, { resume: false })
+      await onProgress('restoring-data', 65)
       await this.snapshots.restore(transaction.snapshotId)
+      await onProgress('verifying', 85)
       await this.activator.resumeDsh()
       transaction = await this.journal.transition('rolled-back', { error: 'manual complete-state rollback completed' })
       return Object.freeze({ status: 'rolled-back', transactionId: transaction.transactionId })

@@ -65,10 +65,16 @@ test('binds a complete rollback plan to current Runtime, receipts, and verified 
 test('restores the previous complete state only with the current plan ID', async () => {
   const value = await fixture()
   const plan = await value.recovery.plan()
+  const progress = []
   await assert.rejects(value.recovery.restore('stale'), /stale/)
   await assert.rejects(value.recovery.restore(plan.planId, { requireConfirmation: true }), /confirmation/)
-  const result = await value.recovery.restore(plan.planId, { requireConfirmation: true, confirmDataLoss: true })
+  const result = await value.recovery.restore(plan.planId, {
+    requireConfirmation: true,
+    confirmDataLoss: true,
+    onProgress: async (phase, percent) => progress.push([phase, percent]),
+  })
   assert.equal(result.status, 'rolled-back')
+  assert.deepEqual(progress, [['stopping', 15], ['switching', 35], ['restoring-data', 65], ['verifying', 85]])
   assert.deepEqual(value.calls, ['suspend', 'restore:runtime-a-materialized:false', 'data:snapshot-a', 'resume'])
   assert.equal((await value.journal.read()).phase, 'rolled-back')
   assert.equal((await value.recovery.plan()).snapshot, null)
@@ -83,6 +89,7 @@ test('rejects a valid snapshot archive bound to a different deployment', async (
 
 test('binds Stable rollback to the exact Bootstrap previous slot without a data snapshot', async () => {
   const calls = []
+  const progress = []
   const references = {
     environment: { sha256: 'a'.repeat(64) },
     pristine: { sha256: 'b'.repeat(64) },
@@ -114,8 +121,11 @@ test('binds Stable rollback to the exact Bootstrap previous slot without a data 
     confirmDataLoss: true,
   }), /snapshot/)
   assert.deepEqual(calls, [])
-  assert.deepEqual(await recovery.restore(plan.planId), { status: 'rolled-back', transactionId: null })
+  assert.deepEqual(await recovery.restore(plan.planId, {
+    onProgress: async (phase, percent) => progress.push([phase, percent]),
+  }), { status: 'rolled-back', transactionId: null })
   assert.deepEqual(calls, [previous.id])
+  assert.deepEqual(progress, [['switching', 35], ['verifying', 90]])
 })
 
 test('does not expose a rollback between Image and Managed Records with identical content', async () => {

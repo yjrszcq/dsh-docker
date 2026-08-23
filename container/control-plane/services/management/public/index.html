@@ -75,9 +75,14 @@
           </div>
         </div>
         <div class="update-state" aria-live="polite">
-          <div class="status-line"><span id="update-status" class="status-label"><span aria-hidden="true"></span><strong data-i18n="statusIdle">Ready</strong></span><output id="progress-value" hidden>0%</output></div>
+          <div class="status-line"><span id="update-status" class="status-label"><span aria-hidden="true"></span><strong data-i18n="statusIdle">Ready</strong></span></div>
           <p id="update-result" hidden></p>
-          <div id="progress" class="progress" role="progressbar" aria-label="Update progress" data-i18n-aria-label="progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span id="progress-bar"></span></div>
+          <div id="update-progress" class="update-progress" hidden>
+            <div class="progress-heading"><strong id="progress-title"></strong><output id="progress-value">0%</output></div>
+            <p id="progress-detail" class="progress-detail"></p>
+            <ol id="progress-steps" class="progress-steps"></ol>
+            <div id="progress" class="progress" role="progressbar" aria-label="Update progress" data-i18n-aria-label="progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-bar"></span></div>
+          </div>
         </div>
         <p id="metadata-notice" class="message notice" data-i18n="metadataUnavailable" hidden>Signed update metadata has not been published yet. Try again later.</p>
         <div id="holds" class="holds" hidden></div>

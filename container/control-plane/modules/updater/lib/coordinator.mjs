@@ -41,6 +41,8 @@ export class UpdateCoordinator extends EventEmitter {
     this.emit('state', value)
     await this.record('update.phase.changed', {
       status,
+      operation: value.operation ?? null,
+      rollbackPhase: value.rollbackPhase ?? null,
       taskId: value.taskId ?? null,
       progress: value.progress ?? null,
       targetSequence: value.targetSequence ?? value.available?.targetSequence ?? null,
@@ -80,7 +82,9 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async runCheck(source) {
-    await this.transition('checking', { checkSource: source, error: null })
+    await this.transition('checking', {
+      checkSource: source, taskId: null, progress: 0, operation: 'check', rollbackPhase: null, error: null,
+    })
     try {
       if (this.allowUnavailableMetadata) return await this.recordUnavailableMetadata(source)
       if (this.channelState !== undefined) {
@@ -208,7 +212,15 @@ export class UpdateCoordinator extends EventEmitter {
 
   async runCompleteRollback(taskId, planId, options) {
     try {
-      await this.transition('restoring-data', { taskId, progress: 20, error: null })
+      const rollbackPlan = await this.completeRecovery.plan()
+      await this.transition('restoring-data', {
+        taskId,
+        progress: 5,
+        operation: 'rollback',
+        rollbackPhase: 'preparing',
+        rollbackIncludesSnapshot: rollbackPlan?.snapshot !== null && rollbackPlan?.snapshot !== undefined,
+        error: null,
+      })
       if (options.requireConfirmation) {
         const [plan, target] = await Promise.all([this.completeRecovery.plan(), this.metadata.check()])
         if (
@@ -217,7 +229,12 @@ export class UpdateCoordinator extends EventEmitter {
           || compareDshVersions(plan.previous.dsh, target.value.desired.dsh.version) > 0
         ) throw new Error('no verified pre-Experimental Stable recovery point is available')
       }
-      const result = await this.completeRecovery.restore(planId, options)
+      const result = await this.completeRecovery.restore(planId, {
+        ...options,
+        onProgress: (rollbackPhase, progress) => this.transition('restoring-data', {
+          taskId, progress, operation: 'rollback', rollbackPhase,
+        }),
+      })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
@@ -308,7 +325,9 @@ export class UpdateCoordinator extends EventEmitter {
 
   async run(taskId) {
     try {
-      await this.transition('planning', { taskId, progress: 0, error: null })
+      await this.transition('planning', {
+        taskId, progress: 0, operation: 'update', rollbackPhase: null, rollbackIncludesSnapshot: null, error: null,
+      })
       const target = await this.metadata.check()
       await this.transition('downloading', { taskId, progress: 10, targetSequence: target.value.targetSequence })
       const prepared = await this.preparer.prepare(target.value)
@@ -337,7 +356,9 @@ export class UpdateCoordinator extends EventEmitter {
     let failureClass = 'check'
     let obsoleteSnapshotId = null
     try {
-      await this.transition('checking-upstream', { taskId, progress: 0, error: null })
+      await this.transition('checking-upstream', {
+        taskId, progress: 0, operation: 'update', rollbackPhase: null, rollbackIncludesSnapshot: null, error: null,
+      })
       const stable = (await this.metadata.check()).value
       candidate = await this.npm.latest(stable)
       if (candidate === null) return this.transition('success', { taskId, progress: 100, error: null })
