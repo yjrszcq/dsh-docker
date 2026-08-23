@@ -162,57 +162,66 @@ docker compose up -d
 ```text
 Docker Image
 │
-├── System Runtime
-├── Image Inventory 与 Seed
-│   ├── Bootstrap Record
-│   └── Deployment Record
-├── tini
-└── Stage-0
-      │
-      ├── Trust 与 receipt 校验
-      ├── Image / Store Reference 解析
-      │
-      ▼
+├── System Runtime + tini
+├── 固定 Recovery Root 公钥
+└── 已签名 Image Seed
+    ├── Image Inventory
+    ├── Bootstrap Record
+    └── Deployment Record
+             │
+             ▼
+Stage-0（信任与特权根）
+│
+├── Trust API
+│   ├── Recovery-signed keyring
+│   ├── Release metadata / receipt 校验
+│   └── 可信 Object Store 导入
+├── Image / Store Reference 解析
+├── Bootstrap current / previous 选择与回滚
+├── Maintenance Broker（root 文件与终端操作）
+└── 信号转发
+             │
+             ▼
 Bootstrap Runtime（current / previous）
 │
+├── DSH Lifecycle Broker（单一受监督 Web 实例）
 ├── Control Plane（常驻）
-│   ├── Services
-│   │   ├── gateway                      0.0.0.0:3080
-│   │   └── management + DSH 管理中心     Unix socket
-│   ├── Managers
-│   │   ├── updater
-│   │   ├── patch-manager
-│   │   ├── plugin-manager
-│   │   ├── skill-manager
-│   │   ├── log-manager
-│   │   └── file-manager
-│   └── Recovery hooks
+│   ├── gateway                          0.0.0.0:3080
+│   ├── management + DSH 管理中心         Unix socket
+│   │   └── 进程内模块
+│   │       ├── updater / patch-manager
+│   │       ├── plugin-manager / skill-manager
+│   │       └── log-manager / file-manager
+│   └── platform-recovery               oneshot hook
 │
 └── Container Environment（可重载）
-    ├── Components
-    │   └── dsh-runtime                  127.0.0.1:3079
-    └── Resources
+    ├── dsh-runtime                      127.0.0.1:3079
+    └── Environment Resources
         ├── Patches
-        └── System Plugins
+        ├── System Plugins
+        └── System Skills ──发布映射──▶ Bootstrap Skill view
 
-已验证的 Pristine DSH
-          +
-完整 Environment
-├── Component Manifest
-├── 完整 Patch Set
-└── 完整 System Plugin Set
-          │
-          ▼
-完整 Deployment
-├── Runtime DSH
-├── Environment view
-└── System Plugin overlay
-          │
-          ▼
-原子 current / previous slots
+已验证的 Pristine DSH + 完整 Patch Set
+                   │
+                   ▼
+          不可变 Runtime DSH
+                   +
+Environment view + System Plugin overlay
+                   +
+       receipts / snapshot references
+                   │
+                   ▼
+      内容寻址的 Deployment Record
+                   │
+           candidate 健康检查
+                   │
+                   ▼
+       原子 current / previous slots
 ```
 
-Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败回滚和信号转发。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment。因此，替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
+Stage-0 是唯一的信任状态写入者，也持有 Bootstrap A/B 选择与回滚，以及独立于普通 `node` 进程的 root Maintenance Broker。Bootstrap 负责 DSH Lifecycle Broker、组件监督、健康检查和 Environment 失败恢复；Management 只是常驻 Control Plane 服务，各类 manager 是其进程内模块，不是拥有独立版本或监听端口的组件。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment，因此替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
+
+System Skills 的源码属于 Environment，但发布时会被映射进已签名 Bootstrap Artifact，并由 Bootstrap 生成 `/run/dsh-platform/views/skills`。它们不属于 Deployment Record；Runtime、Environment 和 System Plugin overlay 才作为完整 Deployment 原子切换。
 
 源码目录使用同一边界：
 
@@ -222,6 +231,7 @@ Stage-0 负责信任验证、首次种入、Bootstrap A/B 选择、启动失败�
 - `container/control-plane/modules/`：更新、日志、补丁、System Plugin 和 System Skill 逻辑。
 - `container/environment/resources/skills/`：由 Environment 归属的 System Skill 清单与指引树，发布时映射进已签名 Bootstrap 包，由其执行可信运行管理。
 - `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,plugins,skills}`。
+- `scripts/`：仓库维护命令，例如 Environment 版本同步；不进入容器运行时。
 
 ### 平台数据与 Runtime 解析
 

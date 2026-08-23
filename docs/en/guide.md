@@ -162,57 +162,66 @@ The image implements this with an exact-match compiled-output patch. The patch m
 ```text
 Docker Image
 │
-├── System Runtime
-├── Image Inventory and Seed
-│   ├── Bootstrap Record
-│   └── Deployment Record
-├── tini
-└── Stage-0
-      │
-      ├── Trust and receipt verification
-      ├── Image / Store Reference resolution
-      │
-      ▼
+├── System Runtime + tini
+├── Pinned Recovery Root public key
+└── Signed Image Seed
+    ├── Image Inventory
+    ├── Bootstrap Record
+    └── Deployment Record
+             │
+             ▼
+Stage-0 (trust and privilege root)
+│
+├── Trust API
+│   ├── Recovery-signed keyring
+│   ├── Release metadata / receipt verification
+│   └── trusted Object Store import
+├── Image / Store Reference resolution
+├── Bootstrap current / previous selection and rollback
+├── Maintenance Broker (root file and terminal operations)
+└── signal forwarding
+             │
+             ▼
 Bootstrap Runtime (current / previous)
 │
+├── DSH Lifecycle Broker (one supervised Web instance)
 ├── Control Plane (persistent)
-│   ├── Services
-│   │   ├── gateway                              0.0.0.0:3080
-│   │   └── management + DSH Management Console  Unix socket
-│   ├── Managers
-│   │   ├── updater
-│   │   ├── patch-manager
-│   │   ├── plugin-manager
-│   │   ├── skill-manager
-│   │   ├── log-manager
-│   │   └── file-manager
-│   └── Recovery hooks
+│   ├── gateway                                  0.0.0.0:3080
+│   ├── management + DSH Management Console      Unix socket
+│   │   └── in-process modules
+│   │       ├── updater / patch-manager
+│   │       ├── plugin-manager / skill-manager
+│   │       └── log-manager / file-manager
+│   └── platform-recovery                       oneshot hook
 │
 └── Container Environment (reloadable)
-    ├── Components
-    │   └── dsh-runtime                          127.0.0.1:3079
-    └── Resources
+    ├── dsh-runtime                              127.0.0.1:3079
+    └── Environment Resources
         ├── Patches
-        └── System Plugins
+        ├── System Plugins
+        └── System Skills ──release mapping──▶ Bootstrap Skill view
 
-Verified Pristine DSH
-          +
-Complete Environment
-├── Component Manifest
-├── Complete Patch Set
-└── Complete System Plugin Set
-          │
-          ▼
-Complete Deployment
-├── Runtime DSH
-├── Environment view
-└── System Plugin overlay
-          │
-          ▼
-Atomic current / previous slots
+Verified Pristine DSH + Complete Patch Set
+                    │
+                    ▼
+           Immutable Runtime DSH
+                    +
+ Environment view + System Plugin overlay
+                    +
+        receipts / snapshot references
+                    │
+                    ▼
+       Content-addressed Deployment Record
+                    │
+            candidate health check
+                    │
+                    ▼
+        Atomic current / previous slots
 ```
 
-Stage-0 owns trust verification, initial seeding, Bootstrap A/B selection, failure rollback, and signal forwarding. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment. Replacing, suspending, or restarting DSH therefore does not stop Gateway, Management, or DSH Management Console.
+Stage-0 is the only writer of trust state and owns Bootstrap A/B selection and rollback together with the root Maintenance Broker, independently of ordinary `node` processes. Bootstrap owns the DSH Lifecycle Broker, component supervision, health checks, and Environment failure recovery. Management is a persistent Control Plane service; its managers are in-process modules, not independently versioned components or listeners. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment, so replacing, suspending, or restarting DSH does not stop Gateway, Management, or DSH Management Console.
+
+System Skill sources belong to the Environment, but release packaging maps them into the signed Bootstrap Artifact and Bootstrap publishes `/run/dsh-platform/views/skills`. They are not part of a Deployment Record; Runtime, Environment, and the System Plugin overlay are switched as one complete Deployment.
 
 The source tree follows the same boundary:
 
@@ -222,6 +231,7 @@ The source tree follows the same boundary:
 - `container/control-plane/modules/`: updater, logging, patch, System Plugin, and System Skill logic.
 - `container/environment/resources/skills/`: Environment-owned System Skill catalogs and instruction trees, mapped into the signed Bootstrap package for trusted runtime management.
 - `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,plugins,skills}`.
+- `scripts/`: repository maintenance commands such as Environment version synchronization; not included in the container runtime.
 
 ### Platform Data and Runtime Resolution
 
