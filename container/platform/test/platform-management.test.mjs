@@ -356,6 +356,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /\.listPagination \{[^}]*position: sticky;[^}]*bottom: 0;[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) auto auto auto;/)
   assert.match(style, /\.listPagination \{[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
   assert.match(style, /\.pageArrow::before \{[^}]*border-top: 1\.5px solid currentColor;[^}]*border-right: 1\.5px solid currentColor;/)
+  assert.doesNotMatch(source, /className: `\$\{css\.smallButton\} \$\{css\.pageArrow\}`[^\n]*[‹›]/)
   assert.match(style, /\.statusEnabled \{[^}]*color: var\(--dsw-alias-state-success-primary\);[^}]*color-mix/)
   assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.listPagination \{ grid-template-columns: minmax\(0, 1fr\) auto;/)
   assert.match(style, /\.tabs \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto/)

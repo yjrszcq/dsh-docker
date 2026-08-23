@@ -145,9 +145,9 @@ function ListPagination({ pagination, total, t }) {
       }, LIST_PAGE_SIZES.map(value => h('option', { key: value, value }, String(value)))),
       h('span', null, t('itemsPerPageSuffix'))),
     h('div', { className: css.pageNavigation },
-      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('previousPage'), disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }, '‹'),
+      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('previousPage'), disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }),
       h('strong', null, String(pagination.page + 1)),
-      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('nextPage'), disabled: pagination.page === pagination.lastPage, onClick: () => pagination.setPage(pagination.page + 1) }, '›')),
+      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('nextPage'), disabled: pagination.page === pagination.lastPage, onClick: () => pagination.setPage(pagination.page + 1) })),
     h('label', { className: css.pageJump },
       h('span', null, t('goToPage')),
       h('input', {

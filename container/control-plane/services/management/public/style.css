@@ -487,7 +487,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-badge.danger { color: var(--danger); }
 .user-plugin-main dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 14px; margin: 9px 0 0; }
 .user-plugin-main dl > div { min-width: 0; }
-.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 17px; }
+.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow: hidden; font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .user-plugin-main dt { color: var(--faint); }
 .user-plugin-main dd { color: var(--muted); }
 .user-plugin-error { margin: 7px 0 0; color: var(--danger); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
@@ -642,7 +642,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .list-pagination { justify-content: space-between; flex-wrap: wrap; }
   .user-plugin-row { grid-template-columns: 1fr; align-items: stretch; }
   .user-plugin-controls { justify-content: space-between; align-self: stretch; }
-  .user-plugin-main dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .terminal-heading { align-items: stretch; }
   .terminal-actions { width: 100%; }
   .terminal-actions button { flex: 1; }
@@ -692,5 +691,4 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .actions > button { flex-basis: 100%; }
   .setting-row { flex-direction: column; }
   .setting-row select { width: 100%; }
-  .user-plugin-main dl { grid-template-columns: 1fr; }
 }
