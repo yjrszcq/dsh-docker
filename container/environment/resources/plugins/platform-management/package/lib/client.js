@@ -956,9 +956,7 @@ function PlatformManagement({ t }) {
 
   const waitForSystemPluginTask = useCallback(async taskId => {
     for (let attempt = 0; attempt < 2_400; attempt += 1) {
-      const next = await request('status')
-      setStatus(next)
-      const operation = next.systemPluginOperation
+      const operation = await request(`bundled-plugins/task/${taskId}`)
       if (operation?.taskId === taskId && operation.status !== 'running') return operation
       await new Promise(resolve => window.setTimeout(resolve, 250))
     }

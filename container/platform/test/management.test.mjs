@@ -850,6 +850,11 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     }
     assert.deepEqual(calls, [['diagnostics', 'disable']])
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/status')).systemPluginOperation.status, 'running')
+    assert.equal((await client.request('GET', `/_dsh_platform/api/v1/bundled-plugins/task/${task.taskId}`)).status, 'running')
+    await assert.rejects(
+      client.request('GET', '/_dsh_platform/api/v1/bundled-plugins/task/123e4567-e89b-42d3-a456-426614174000'),
+      error => error.statusCode === 404,
+    )
     for (const [method, path, body] of [
       ['POST', '/_dsh_platform/api/v1/bundled-plugins/action', { id: 'diagnostics', action: 'uninstall' }],
       ['POST', '/_dsh_platform/api/v1/restart-dsh'],
@@ -863,6 +868,7 @@ test('management changes a bundled plugin as an audited task and excludes runtim
     const changed = await client.request('GET', '/_dsh_platform/api/v1/status')
     assert.equal(changed.systemPluginOperation.status, 'success')
     assert.equal(changed.systemPluginOperation.restartRequired, true)
+    assert.equal((await client.request('GET', `/_dsh_platform/api/v1/bundled-plugins/task/${task.taskId}`)).status, 'success')
     assert.deepEqual(
       (await logs.query({ sources: ['audit'] })).map(entry => entry.message),
       ['system-plugin.disable.started', 'system-plugin.disable.completed'],
@@ -1354,6 +1360,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function setSystemPluginDraft\(plugin, action\)[\s\S]*systemPluginDraft\.set\(plugin\.id, action\)/)
   assert.match(script, /function pluginButton\([\s\S]*setSystemPluginDraft\(plugin, action\)/)
   assert.match(script, /async function applySystemPluginDraft\(\)[\s\S]*for \(const \[id, action\] of systemPluginDraft\)[\s\S]*waitForManagementTask\(task\.taskId, 'systemPluginOperation'\)[\s\S]*api\('restart-dsh'/)
+  assert.match(script, /operationKey === 'systemPluginOperation'[\s\S]*api\(`bundled-plugins\/task\/\$\{taskId\}`\)/)
   assert.match(script, /async function cancelSystemPluginDraft\(\)[\s\S]*systemPluginDraft\.clear\(\)[\s\S]*bundled-plugins\/discard/)
   assert.match(script, /function hasTaskId\(operation\)[\s\S]*typeof operation\?\.taskId === 'string'[\s\S]*operation\.taskId\.length > 0/)
   assert.match(script, /restart\.state === 'running' && hasTaskId\(restart\)[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
@@ -1371,6 +1378,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /cursorInactiveStyle: 'outline'/)
   assert.match(style, /#terminal-screen \.xterm-viewport \{ position: static;/)
   assert.match(script, /const badge = action[\s\S]*plugin\.pendingRestart[\s\S]*plugin\.reservedNameConflict[\s\S]*plugin\.damaged[\s\S]*plugin\.enabled/)
+  assert.match(script, /const applying = operation\.status === 'running'[\s\S]*hidden = count === 0 && !restartRequired && !applying/)
   assert.doesNotMatch(style, /user-plugin-badges/)
   assert.match(script, /user-plugin-draft-actions'\]\.hidden = count === 0 && !restartRequired/)
   assert.match(script, /userPluginDraft\.size === 0[\s\S]*userPluginInventory\.restartRequired === true[\s\S]*act\('restart-dsh', \{ method: 'POST' \}\)/)

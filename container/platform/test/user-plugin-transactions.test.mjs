@@ -103,8 +103,15 @@ test('snapshots and restores the complete Web Profile with hidden files, modes, 
   assert.equal((await lstat(join(value.profileRoot, '.hidden'))).mode & 0o777, 0o640)
   assert.equal(await readlink(join(value.profileRoot, 'manifest-link')), 'package.json')
   assert.match(await readFile(join(value.profileRoot, 'package.json'), 'utf8'), /dsh-profile-web/)
-  await writeFile(join(value.snapshots.path('snapshot-one'), 'profile.tar.gz'), 'corrupt')
+  await writeFile(join(value.snapshots.path('snapshot-one'), 'profile.tar'), 'corrupt')
   await assert.rejects(value.snapshots.inspect('snapshot-one'), /does not match/)
+})
+
+test('creates full Profile snapshots without compression overhead', async () => {
+  const value = await fixture()
+  await value.snapshots.create('snapshot-uncompressed')
+  assert.equal((await lstat(join(value.snapshots.path('snapshot-uncompressed'), 'profile.tar'))).isFile(), true)
+  await assert.rejects(lstat(join(value.snapshots.path('snapshot-uncompressed'), 'profile.tar.gz')), { code: 'ENOENT' })
 })
 
 test('atomically applies ordered enable and disable actions around one DSH pause', async () => {

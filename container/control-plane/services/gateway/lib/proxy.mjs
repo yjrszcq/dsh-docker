@@ -627,6 +627,7 @@ function proxyHttp(request, response, options) {
 function isExternalManagementRoute(method, pathname) {
   if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
   const route = pathname.slice(MANAGEMENT_PREFIX.length)
+  if (method === 'GET' && /^bundled-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) return true
   if (method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) return true
   if (['GET', 'DELETE'].includes(method ?? 'GET') && TERMINAL_SESSION_ROUTE.test(route)) return true
   if (['GET', 'DELETE'].includes(method ?? 'GET') && FILE_TASK_ROUTE.test(route)) return true
@@ -636,6 +637,9 @@ function isExternalManagementRoute(method, pathname) {
 function pluginManagementUpstreamPath(method, url) {
   if (!url.pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) return undefined
   const route = url.pathname.slice(MANAGEMENT_PLUGIN_PREFIX.length)
+  if (method === 'GET' && /^bundled-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) {
+    return `${MANAGEMENT_PREFIX}${route}${url.search}`
+  }
   if (!(PLUGIN_MANAGEMENT_ROUTES.get(method ?? 'GET')?.has(route) ?? false)) return null
   return `${MANAGEMENT_PREFIX}${route}${url.search}`
 }

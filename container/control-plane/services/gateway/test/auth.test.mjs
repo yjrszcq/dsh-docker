@@ -242,6 +242,12 @@ test('DSH Platform Management uses only its restricted API without a console ses
     assert.equal(plugin.body, 'management')
     assert.deepEqual(received, ['GET /_dsh_platform/api/v1/status?source=plugin'])
 
+    const pluginTask = await request(port, {
+      path: '/_dsh_platform/plugin-api/v1/bundled-plugins/task/123e4567-e89b-42d3-a456-426614174000',
+      headers: { host: '127.0.0.1' },
+    })
+    assert.equal(pluginTask.status, 200)
+
     const document = await request(port, {
       path: '/_dsh_platform/plugin-api/v1/settings-document',
       headers: { host: '127.0.0.1' },
@@ -256,6 +262,7 @@ test('DSH Platform Management uses only its restricted API without a console ses
     assert.equal(saved.status, 200)
     assert.deepEqual(received, [
       'GET /_dsh_platform/api/v1/status?source=plugin',
+      'GET /_dsh_platform/api/v1/bundled-plugins/task/123e4567-e89b-42d3-a456-426614174000',
       'GET /_dsh_platform/api/v1/settings-document',
       'PUT /_dsh_platform/api/v1/settings-document',
     ])
@@ -265,14 +272,14 @@ test('DSH Platform Management uses only its restricted API without a console ses
       headers: { host: '127.0.0.1' },
     })
     assert.equal(privileged.status, 404)
-    assert.equal(received.length, 3)
+    assert.equal(received.length, 4)
 
     const userSkills = await request(port, {
       path: '/_dsh_platform/plugin-api/v1/user-skills',
       headers: { host: '127.0.0.1' },
     })
     assert.equal(userSkills.status, 404)
-    assert.equal(received.length, 3)
+    assert.equal(received.length, 4)
 
     for (const action of ['start', 'stop']) {
       const lifecycle = await request(port, {
@@ -282,7 +289,7 @@ test('DSH Platform Management uses only its restricted API without a console ses
       })
       assert.equal(lifecycle.status, 404)
     }
-    assert.equal(received.length, 3)
+    assert.equal(received.length, 4)
 
     const consoleApi = await request(port, {
       path: '/_dsh_platform/api/v1/status',

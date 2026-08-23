@@ -865,10 +865,17 @@ function renderUserPlugins(busy) {
     row.append(identity, controls)
     elements['user-plugin-list'].append(row)
   }
+  const phaseKey = {
+    validated: 'userPluginPhaseValidated', paused: 'userPluginPhasePaused', snapshotted: 'userPluginPhaseSnapshotted',
+    mutating: 'userPluginPhaseMutating', committed: 'userPluginPhaseCommitted', restarting: 'userPluginPhaseRestarting', restoring: 'userPluginPhaseRestoring',
+  }[operation.phase]
   const count = userPluginDraft.size
   const restartRequired = userPluginInventory.restartRequired === true
-  elements['user-plugin-draft-actions'].hidden = count === 0 && !restartRequired
-  elements['user-plugin-draft-summary'].textContent = count === 0 ? t('userPluginRestartRequiredDetail') : t('pendingUserPluginChanges', { count })
+  const applying = operation.status === 'running'
+  elements['user-plugin-draft-actions'].hidden = count === 0 && !restartRequired && !applying
+  elements['user-plugin-draft-summary'].textContent = applying
+    ? t(phaseKey ?? 'userPluginApplying')
+    : count === 0 ? t('userPluginRestartRequiredDetail') : t('pendingUserPluginChanges', { count })
   elements['cancel-user-plugin-changes'].disabled = locked || count === 0
   elements['apply-user-plugin-changes'].disabled = locked || (count === 0 && !restartRequired)
   elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
@@ -877,10 +884,6 @@ function renderUserPlugins(busy) {
     : typeof status?.recoveryMode === 'string'
       ? status.recoveryMode
       : status?.recoveryMode?.reason ?? status?.recoveryMode?.message ?? t('userPluginRecoveryDetail')
-  const phaseKey = {
-    validated: 'userPluginPhaseValidated', paused: 'userPluginPhasePaused', snapshotted: 'userPluginPhaseSnapshotted',
-    mutating: 'userPluginPhaseMutating', committed: 'userPluginPhaseCommitted', restarting: 'userPluginPhaseRestarting', restoring: 'userPluginPhaseRestoring',
-  }[operation.phase]
   const operationVisible = operationResultVisible(operation, 'running')
   const feedback = operation.status === 'running' ? t(phaseKey ?? 'userPluginApplying')
     : operationVisible && operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
@@ -1131,10 +1134,10 @@ async function waitForManagementTask(taskId, operationKey) {
   let lastError
   for (let attempt = 0; attempt < 2_400; attempt += 1) {
     try {
-      const next = await api('status')
-      render(next)
+      const operation = operationKey === 'systemPluginOperation'
+        ? await api(`bundled-plugins/task/${taskId}`)
+        : (await api('status'))?.[operationKey]
       setConnection('online')
-      const operation = next?.[operationKey]
       if (operation?.taskId === taskId && operation.status !== 'running') return operation
       lastError = undefined
     } catch (error) {

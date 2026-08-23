@@ -154,6 +154,7 @@ export function createManagementServer({
         updatedAt: initialUserPluginTransaction.updatedAt,
       })
   const userPluginTasks = new Map()
+  const pluginTasks = new Map()
   if (userPluginState.taskId !== null) userPluginTasks.set(userPluginState.taskId, userPluginState)
   let server
   const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
@@ -187,6 +188,10 @@ export function createManagementServer({
 
   const publishPlugin = value => {
     pluginState = Object.freeze({ ...pluginState, ...value, updatedAt: new Date().toISOString() })
+    if (pluginState.taskId !== null) {
+      pluginTasks.set(pluginState.taskId, pluginState)
+      while (pluginTasks.size > 32) pluginTasks.delete(pluginTasks.keys().next().value)
+    }
     server.emit('management-state', pluginState)
   }
 
@@ -438,6 +443,15 @@ export function createManagementServer({
         })
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
+      } else if (request.method === 'GET' && /^bundled-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) {
+        const taskId = route.slice('bundled-plugins/task/'.length)
+        const task = pluginTasks.get(taskId)
+        if (task === undefined) {
+          const error = new Error('System Plugin task was not found')
+          error.statusCode = 404
+          throw error
+        }
+        send(response, 200, task)
       } else if (request.method === 'GET' && route === 'system-skills') {
         send(response, 200, { skills: await listSystemSkills() })
       } else if (request.method === 'GET' && route === 'user-skills') {

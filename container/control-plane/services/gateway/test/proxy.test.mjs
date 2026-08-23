@@ -552,6 +552,7 @@ test('bounded management and Console requests use the protected local socket ins
     for (const [method, path] of [
       ['GET', '/_dsh_platform/api/v1/rollback-plan'],
       ['GET', '/_dsh_platform/api/v1/bundled-plugins'],
+      ['GET', '/_dsh_platform/api/v1/bundled-plugins/task/123e4567-e89b-42d3-a456-426614174000'],
       ['GET', '/_dsh_platform/api/v1/system-skills'],
       ['GET', '/_dsh_platform/api/v1/user-skills'],
       ['GET', '/_dsh_platform/api/v1/settings-document'],
@@ -598,6 +599,7 @@ test('bounded management and Console requests use the protected local socket ins
     }
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/trust/reset', { host: 'dsh.example' }, 'POST')).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/user-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
+    assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/bundled-plugins/task/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/terminal/sessions/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/api/v1/files/tasks/not-a-uuid', { host: 'dsh.example' })).status, 404)
     assert.equal((await request(gatewayPort, '/_dsh_platform/console/app.js', { host: 'dsh.example' }, 'POST')).status, 404)

@@ -81,9 +81,9 @@ export class UserPluginSnapshots {
     )
     const staging = join(this.root, `.${id}.${randomUUID()}.tmp`)
     await mkdir(staging)
-    const archive = join(staging, 'profile.tar.gz')
+    const archive = join(staging, 'profile.tar')
     try {
-      await this.run('tar', ['-czpf', archive, '-C', this.profileRoot, '.'])
+      await this.run('tar', ['-cpf', archive, '-C', this.profileRoot, '.'])
       const measured = await measure(archive)
       const manifest = parseManifest({
         schema: 1,
@@ -107,12 +107,15 @@ export class UserPluginSnapshots {
     const root = this.path(id)
     const manifest = parseManifest(JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')))
     if (manifest.id !== id) throw new Error('User Plugin snapshot ID does not match its directory')
-    const archive = join(root, 'profile.tar.gz')
+    const archive = await lstat(join(root, 'profile.tar')).then(
+      () => join(root, 'profile.tar'),
+      error => error?.code === 'ENOENT' ? join(root, 'profile.tar.gz') : Promise.reject(error),
+    )
     const measured = await measure(archive)
     if (measured.sha256 !== manifest.archiveSha256 || measured.size !== manifest.archiveSize) {
       throw new Error('User Plugin snapshot archive does not match its manifest')
     }
-    const entries = (await this.run('tar', ['-tzf', archive])).split('\n').filter(Boolean)
+    const entries = (await this.run('tar', [archive.endsWith('.gz') ? '-tzf' : '-tf', archive])).split('\n').filter(Boolean)
     if (entries.length === 0 || entries.some(entry => entry.startsWith('/') || entry.split('/').includes('..'))) {
       throw new Error('User Plugin snapshot archive contains unsafe paths')
     }
@@ -125,7 +128,7 @@ export class UserPluginSnapshots {
     for (const entry of await readdir(this.profileRoot)) {
       await rm(join(this.profileRoot, entry), { recursive: true, force: true })
     }
-    await this.run('tar', ['-xzpf', snapshot.archive, '--no-same-owner', '-C', this.profileRoot])
+    await this.run('tar', [snapshot.archive.endsWith('.gz') ? '-xzpf' : '-xpf', snapshot.archive, '--no-same-owner', '-C', this.profileRoot])
     await syncDirectory(this.profileRoot)
     return snapshot
   }

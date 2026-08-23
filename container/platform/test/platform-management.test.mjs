@@ -184,6 +184,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /const \[systemPluginDraft, setSystemPluginDraft\] = useState\(\(\) => new Map\(\)\)/)
   assert.match(source, /const manageSystemPlugin = useCallback\([\s\S]*setSystemPluginDraft[\s\S]*next\.set\(plugin\.id, action\)/)
   assert.match(source, /const applySystemPluginChanges = useCallback\([\s\S]*for \(const \[id, action\] of systemPluginDraft\)[\s\S]*waitForSystemPluginTask\(task\.taskId\)[\s\S]*request\('restart-dsh'/)
+  assert.match(source, /waitForSystemPluginTask[\s\S]*request\(`bundled-plugins\/task\/\$\{taskId\}`\)/)
   assert.match(source, /const cancelSystemPluginChanges = useCallback\([\s\S]*setSystemPluginDraft\(new Map\(\)\)/)
   assert.match(source, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)/)
   assert.match(source, /bundled-plugins\/discard[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
