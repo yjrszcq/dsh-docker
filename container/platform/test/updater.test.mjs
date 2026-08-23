@@ -159,6 +159,9 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
   assert.equal(progress.at(-1).processedBytes, progress.at(-1).totalBytes)
   assert.equal(progress.at(-1).processedItems, progress.at(-1).totalItems)
+  for (let index = 1; index < progress.length; index += 1) {
+    assert.ok(progress[index].processedBytes >= progress[index - 1].processedBytes)
+  }
 })
 
 test('constructs Pristine DSH only from a receipt-backed archive', async () => {
