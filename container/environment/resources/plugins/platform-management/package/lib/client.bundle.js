@@ -747,8 +747,10 @@ function PlatformManagement({ t }) {
   const [dataLossAccepted, setDataLossAccepted] = useState(false)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
-  const inventoryLoad = useRef()
-  const inventoryLoadRevision = useRef(0)
+  const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
+  const inventoryLoadRevisions = useRef({ plugins: 0, skills: 0 })
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
 
   const refresh = useCallback(() => {
     statusLoadRevision.current += 1
@@ -776,23 +778,24 @@ function PlatformManagement({ t }) {
     return statusLoad.current
   }, [])
 
-  const refreshInventories = useCallback(() => {
-    inventoryLoadRevision.current += 1
-    if (inventoryLoad.current !== undefined) return inventoryLoad.current
-    inventoryLoad.current = (async () => {
+  const refreshInventory = useCallback(key => {
+    inventoryLoadRevisions.current[key] += 1
+    if (inventoryLoads.current[key] !== undefined) return inventoryLoads.current[key]
+    const loader = key === 'plugins'
+      ? { path: 'bundled-plugins', apply: value => setPlugins(value.plugins ?? []) }
+      : { path: 'system-skills', apply: value => setSkills(value.skills ?? []) }
+    inventoryLoads.current[key] = (async () => {
       let loadedRevision
       do {
-        loadedRevision = inventoryLoadRevision.current
+        loadedRevision = inventoryLoadRevisions.current[key]
         try {
-          const [bundled, systemSkills] = await Promise.all([request('bundled-plugins'), request('system-skills')])
-          setPlugins(bundled.plugins ?? [])
-          setSkills(systemSkills.skills ?? [])
+          loader.apply(await request(loader.path))
         } catch (nextError) {
           setError(nextError instanceof Error ? nextError.message : String(nextError))
         }
-      } while (loadedRevision !== inventoryLoadRevision.current)
-    })().finally(() => { inventoryLoad.current = undefined })
-    return inventoryLoad.current
+      } while (loadedRevision !== inventoryLoadRevisions.current[key])
+    })().finally(() => { inventoryLoads.current[key] = undefined })
+    return inventoryLoads.current[key]
   }, [])
 
   const act = useCallback(async (path, options) => {
@@ -850,17 +853,21 @@ function PlatformManagement({ t }) {
       : 'bundled-plugins/toggle'
     window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
     if (await act(path, { method: 'POST', body: { id: plugin.id, action } })) {
-      await refreshInventories()
+      await refreshInventory('plugins')
     } else {
       window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     }
-  }, [act, refreshInventories])
+  }, [act, refreshInventory])
 
   const manageSystemSkill = useCallback(async (skill, action) => {
     if (await act('system-skills/action', { method: 'POST', body: { skillId: skill.id, action } })) {
-      await refreshInventories()
+      await refreshInventory('skills')
     }
-  }, [act, refreshInventories])
+  }, [act, refreshInventory])
+
+  useEffect(() => {
+    if (activeTab === 'plugins' || activeTab === 'skills') void refreshInventory(activeTab)
+  }, [activeTab, refreshInventory])
 
   useEffect(() => {
     let stateEvents
@@ -872,7 +879,8 @@ function PlatformManagement({ t }) {
       stateEvents = events
       events.addEventListener('state', () => {
         void refresh()
-        void refreshInventories()
+        const inventoryKey = activeTabRef.current
+        if (inventoryKey === 'plugins' || inventoryKey === 'skills') void refreshInventory(inventoryKey)
       })
       events.onopen = () => setConnection('online')
       events.onerror = () => {
@@ -908,7 +916,6 @@ function PlatformManagement({ t }) {
           }
         }
       }
-      void refreshInventories()
       await refreshAndConnect()
     })()
 
@@ -921,7 +928,7 @@ function PlatformManagement({ t }) {
       window.removeEventListener('focus', focus)
       stateEvents?.close()
     }
-  }, [checkUpdates, refresh, refreshInventories])
+  }, [checkUpdates, refresh, refreshInventory])
 
   const update = status?.update ?? {}
   const restart = status?.dshLifecycle ?? {}

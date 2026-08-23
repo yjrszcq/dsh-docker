@@ -206,13 +206,14 @@ let plugins = []
 let systemSkills = []
 let userSkillInventory = { revision: null, skills: [] }
 let userPluginInventory = { revision: null, plugins: [] }
-let inventoriesLoaded = false
+const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
+const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
 const userPluginDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
 let rollbackPlan
 let statusLoad
 let statusLoadRevision = 0
-let inventoryLoad
+const inventoryLoads = { plugins: undefined, systemSkills: undefined, userSkills: undefined, userPlugins: undefined }
 let checking = false
 let acting = false
 let discardingPluginDraft = false
@@ -451,6 +452,7 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
     window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
     void act(path, { method: 'POST', body: { id: plugin.id, action } }).then(changed => {
       if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+      else void refreshInventory('plugins')
     })
   })
   return button
@@ -493,6 +495,7 @@ function renderBundledPlugins(values, busy) {
         window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
         void act(path, { method: 'POST', body: { id: plugin.id, action: event.target.checked ? 'enable' : 'disable' } }).then(changed => {
           if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+          else void refreshInventory('plugins')
         })
       })
       const track = document.createElement('span')
@@ -905,30 +908,46 @@ function render(next) {
     : userSkillOperation.status === 'failed'
       ? `${t('userSkillActionFailed')}: ${localizedError(userSkillOperation.error ?? '')}`
       : t('userSkillActionComplete')
-  if (inventoriesLoaded) {
-    renderBundledPlugins(plugins, pluginBusy)
-    renderSystemSkills(systemSkills, busy)
-    renderUserSkills(busy)
-    renderUserPlugins(busy)
-  }
+  if (inventoriesLoaded.plugins) renderBundledPlugins(plugins, pluginBusy)
+  if (inventoriesLoaded.systemSkills) renderSystemSkills(systemSkills, busy)
+  if (inventoriesLoaded.userSkills) renderUserSkills(busy)
+  if (inventoriesLoaded.userPlugins) renderUserPlugins(busy)
 }
 
-function loadInventories() {
-  if (inventoryLoad !== undefined) return inventoryLoad
-  inventoryLoad = (async () => {
-    try {
-      const [bundled, skills, userSkills, users] = await Promise.all([api('bundled-plugins'), api('system-skills'), api('user-skills'), api('user-plugins')])
-      plugins = bundled.plugins ?? []
-      systemSkills = skills.skills ?? []
-      userSkillInventory = userSkills
-      userPluginInventory = users
-      inventoriesLoaded = true
-      if (status !== undefined) render(status)
-    } catch {
-      // Bootstrap-backed inventories can lag the Management service during startup.
-    }
-  })().finally(() => { inventoryLoad = undefined })
-  return inventoryLoad
+const INVENTORY_LOADERS = Object.freeze({
+  plugins: Object.freeze({ path: 'bundled-plugins', apply: value => { plugins = value.plugins ?? [] } }),
+  systemSkills: Object.freeze({ path: 'system-skills', apply: value => { systemSkills = value.skills ?? [] } }),
+  userSkills: Object.freeze({ path: 'user-skills', apply: value => { userSkillInventory = value } }),
+  userPlugins: Object.freeze({ path: 'user-plugins', apply: value => { userPluginInventory = value } }),
+})
+
+function loadInventory(key) {
+  inventoryLoadRevisions[key] += 1
+  if (inventoryLoads[key] !== undefined) return inventoryLoads[key]
+  const loader = INVENTORY_LOADERS[key]
+  inventoryLoads[key] = (async () => {
+    let loadedRevision
+    do {
+      loadedRevision = inventoryLoadRevisions[key]
+      try {
+        loader.apply(await api(loader.path))
+        inventoriesLoaded[key] = true
+        if (status !== undefined) render(status)
+      } catch {
+        // Bootstrap-backed inventories can lag the Management service during startup.
+      }
+    } while (loadedRevision !== inventoryLoadRevisions[key])
+  })().finally(() => { inventoryLoads[key] = undefined })
+  return inventoryLoads[key]
+}
+
+async function refreshInventory(key) {
+  if (inventoryLoads[key] !== undefined) await inventoryLoads[key]
+  await loadInventory(key)
+}
+
+function inventoryKeyForTab(tab = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tab) {
+  return { plugins: 'plugins', skills: 'systemSkills', 'user-skills': 'userSkills', 'user-plugins': 'userPlugins' }[tab]
 }
 
 function loadStatus() {
@@ -944,7 +963,6 @@ function loadStatus() {
         render(next)
         clearError()
         setConnection('online')
-        void loadInventories()
       } catch (error) {
         showError(error)
         setConnection('offline')
@@ -965,7 +983,7 @@ async function discardSystemPluginDraft() {
       try {
         await api('bundled-plugins/discard', { method: 'POST' })
         window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-        await Promise.all([loadStatus(), loadInventories()])
+        await Promise.all([loadStatus(), refreshInventory('plugins')])
         return
       } catch {
         await new Promise(resolve => window.setTimeout(resolve, 100))
@@ -992,11 +1010,6 @@ async function act(path, options) {
     acting = false
     if (status !== undefined) render(status)
   }
-}
-
-async function refreshInventories() {
-  if (inventoryLoad !== undefined) await inventoryLoad
-  await loadInventories()
 }
 
 async function waitForManagementTask(taskId, operationKey) {
@@ -1032,7 +1045,7 @@ async function runSkillTask(path, body, operationKey) {
     showError(error)
     return false
   } finally {
-    await refreshInventories()
+    await refreshInventory(operationKey === 'systemSkillOperation' ? 'systemSkills' : 'userSkills')
     await loadStatus()
     acting = false
     if (status !== undefined) render(status)
@@ -1087,6 +1100,7 @@ async function applyUserPluginDraft() {
       showError(error)
     }
   } finally {
+    await refreshInventory('userPlugins')
     userPluginSubmitting = false
     renderUserPlugins(runtimeBusy())
   }
@@ -2416,7 +2430,8 @@ async function selectTab(tab) {
     fitTerminal()
     window.requestAnimationFrame(() => terminalEmulator?.focus())
   }
-  if (tab === 'user-plugins' || tab === 'skills' || tab === 'user-skills') void loadInventories()
+  const inventoryKey = inventoryKeyForTab(tab)
+  if (inventoryKey !== undefined) void loadInventory(inventoryKey)
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
   return true
@@ -2434,6 +2449,8 @@ function connectEvents() {
       }
     } catch {}
     void loadStatus()
+    const inventoryKey = inventoryKeyForTab()
+    if (inventoryKey !== undefined) void loadInventory(inventoryKey)
   })
   eventSource.onopen = () => setConnection('online')
   eventSource.onerror = () => setConnection('connecting')
