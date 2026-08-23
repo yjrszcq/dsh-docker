@@ -72,6 +72,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /logs\/stream\?\$\{params\.toString\(\)\}/)
   assert.match(source, /function LogViewer\(\{ active, focusTaskId, t \}\)/)
   assert.match(source, /if \(focusTaskId\) setQuery\(String\(focusTaskId\)\)/)
+  assert.match(source, /progressVisible \? h\('div', \{ className: css\.statusLine \}/)
+  assert.match(source, /update\.error \|\| \(progressVisible && update\.outcome\)/)
   assert.doesNotMatch(source, /onClick: \(\) => \{ void act\('rollback'/)
   assert.match(source, /className: css\.progressSteps/)
   assert.match(source, /progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 \{until\}。'/)

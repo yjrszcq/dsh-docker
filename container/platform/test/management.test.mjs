@@ -1383,6 +1383,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /progressLogStageExpansion\.set\(previousActiveStage, false\)/)
   assert.match(script, /progressLogAutoScroll = event\.target\.checked/)
   assert.match(script, /elements\['log-search'\]\.value = String\(progressLogUpdate\.taskId\)/)
+  assert.match(script, /progressVisible && update\.outcome \? updateOutcome\(update\.outcome\) : ''/)
   assert.match(style, /\.progress-log-group-list/)
   assert.match(script, /rollbackDetailData: '正在校验并恢复更新前的数据快照。'/)
   assert.match(style, /\.progress-steps[\s\S]*\.progress-steps li\.active/)

@@ -1397,7 +1397,7 @@ function render(next) {
   } else {
     closeProgressLogs()
   }
-  const result = update.error ? localizedError(update.error) : update.outcome ? updateOutcome(update.outcome) : ''
+  const result = update.error ? localizedError(update.error) : progressVisible && update.outcome ? updateOutcome(update.outcome) : ''
   elements['update-result'].textContent = result
   elements['update-result'].hidden = result === ''
   elements['metadata-notice'].hidden = !update.metadataUnavailable
