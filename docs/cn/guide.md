@@ -32,7 +32,7 @@
 
 普通部署应使用标准版；标准版已包含 DSH 原生插件依赖所需的最小编译工具链。开发工具版额外提供更完整的诊断、编辑和开发工具，但使用相同的持久化数据布局。
 
-Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`1.0.4`、`1.0`、`1`，并提供 DSH 定位标签 `dsh-0.1.1-rc.2`；GHCR 不发布任何 Devtools 标签。
+Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.io/yjrszcq/dsh-docker` 使用 Environment 标签 `latest`、`x.x.x`、`x.x`、`x`，并提供 DSH 定位标签 `dsh-x.x.x-rc.x`；GHCR 不发布任何 Devtools 标签。
 
 ### 使用前须知
 

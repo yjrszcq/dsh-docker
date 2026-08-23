@@ -32,7 +32,7 @@ This guide expands the root [README](../../README.md) into a complete deployment
 
 Use the Standard image for ordinary deployments. It includes the minimal compiler toolchain needed by native DSH plugin dependencies. The Devtools image adds broader diagnostics, editors, and other development utilities while using the same persistent data layout.
 
-Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `1.0.4`, `1.0`, and `1`, plus the DSH lookup tag `dsh-0.1.1-rc.2`; it never publishes Devtools tags.
+Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.io/yjrszcq/dsh-docker` uses the Environment tags `latest`, `x.x.x`, `x.x`, and `x`, plus the DSH lookup tag `dsh-x.x.x-rc.x`; it never publishes Devtools tags.
 
 ### Before You Start
 
