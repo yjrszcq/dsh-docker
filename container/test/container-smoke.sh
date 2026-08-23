@@ -644,8 +644,10 @@ until docker exec "$container" dsh-platform status \
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
+docker exec "$container" chown root:root /data/platform/cache/npm
 docker restart "$container" >/dev/null
 startup_three="$(wait_platform_ready)"
+docker exec "$container" sh -c '[ "$(stat -c %u:%g /data/platform/cache/npm)" = 1000:1000 ]'
 docker exec "$container" sh -c '[ "$(cat /data/platform/state/updater/smoke)" = platform ] && [ "$(cat /data/dsh/smoke)" = home ]'
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \

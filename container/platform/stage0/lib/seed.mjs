@@ -74,7 +74,7 @@ export async function provisionPlatformSeed(seedRoot, dataRoot) {
       paths.environmentsRoot, join(paths.environmentsRoot, 'versions'),
       paths.pristineRoot, paths.runtimesRoot, join(paths.runtimesRoot, 'versions'), paths.systemPluginsRoot,
       join(paths.systemPluginsRoot, 'versions'), paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
-      paths.cacheRoot, paths.downloadsRoot, paths.logsRoot,
+      paths.cacheRoot, paths.downloadsRoot, paths.npmCacheRoot, paths.logsRoot,
     ]
     await Promise.all(writableRoots.map(path => lchown(path, 1000, 1000)))
   }
