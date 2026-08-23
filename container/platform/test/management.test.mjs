@@ -1247,7 +1247,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function renderUserSkills\(busy\)[\s\S]*row\.className = 'user-plugin-row'/)
   assert.match(script, /expandedUserSkillDescriptions\.has\(skill\.entryId\)[\s\S]*description\.className = `user-plugin-description/)
   assert.match(script, /description\.scrollWidth > description\.clientWidth[\s\S]*description\.classList\.add\('expandable'\)/)
-  assert.match(script, /heading\.append\(userPluginBadge\([\s\S]*identity\.append\(heading, metadata\)/)
+  assert.match(script, /heading\.append\(userPluginBadge\([\s\S]*identity\.append\(heading, description, metadata\)/)
   assert.match(script, /requestConfirmation\(\{[\s\S]*deleteUserSkillTitle[\s\S]*deleteUserSkillDetail/)
   assert.match(script, /runSkillTask\('user-skills\/action', \{[\s\S]*entryId: skill\.entryId, revision: userSkillInventory\.revision, action/)
   assert.match(script, /function waitForManagementTask\(taskId, operationKey\)[\s\S]*operation\?\.taskId === taskId[\s\S]*operation\.status !== 'running'/)
@@ -1272,7 +1272,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /identity\.append\(\s*heading,\s*expandableResourceDescription\(skill\.description/)
   assert.match(style, /\.plugin-identity > \.resource-description \{[^}]*display: block;[^}]*margin-top: 2px;/)
   assert.match(style, /\.user-plugin-main dl \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/)
-  assert.match(style, /\.user-plugin-main dt, \.user-plugin-main dd \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/)
+  assert.match(style, /\.user-plugin-main > \.user-plugin-description \{[^}]*display: block;[^}]*width: 100%;[^}]*margin-top: 2px;/)
+  assert.match(style, /\.user-plugin-main dt, \.user-plugin-main dd \{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/)
   assert.equal((style.match(/\.user-plugin-main dl \{/g) ?? []).length, 1)
   for (const prefix of ['plugins', 'system-skills', 'user-skills', 'user-plugins']) {
     assert.match(html, new RegExp(`id="${prefix}-search"`))

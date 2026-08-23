@@ -481,13 +481,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-description.expandable::after { position: absolute; top: 6px; right: 2px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); content: ''; }
 .user-plugin-description.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
 .user-plugin-description.expanded::after { top: 9px; transform: rotate(225deg); }
+.user-plugin-main > .user-plugin-description { display: block; width: 100%; margin-top: 2px; }
 .user-plugin-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
 .user-plugin-badge.enabled { color: var(--success); }
 .user-plugin-badge.warning, .user-plugin-badge.pending { color: var(--warning); }
 .user-plugin-badge.danger { color: var(--danger); }
 .user-plugin-main dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 14px; margin: 9px 0 0; }
 .user-plugin-main dl > div { min-width: 0; }
-.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow: hidden; font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 17px; white-space: normal; }
 .user-plugin-main dt { color: var(--faint); }
 .user-plugin-main dd { color: var(--muted); }
 .user-plugin-error { margin: 7px 0 0; color: var(--danger); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }

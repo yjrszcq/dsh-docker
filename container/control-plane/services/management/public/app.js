@@ -705,7 +705,7 @@ function renderUserSkills(busy) {
       else expandedUserSkillDescriptions.add(skill.entryId)
       renderUserSkills(runtimeBusy())
     })
-    heading.append(name, description)
+    heading.append(name)
     if (!descriptionExpanded) window.requestAnimationFrame(() => {
       if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
     })
@@ -719,7 +719,7 @@ function renderUserSkills(busy) {
       field.append(term, detail)
       metadata.append(field)
     }
-    identity.append(heading, metadata)
+    identity.append(heading, description, metadata)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     const toggle = document.createElement('label')
@@ -797,6 +797,7 @@ function renderUserPlugins(busy) {
             ? userPluginBadge(t('userPluginDamaged'), 'warning')
             : userPluginBadge(plugin.enabled ? t('userPluginEnabled') : t('userPluginDisabled'), plugin.enabled ? 'enabled' : '')
     heading.append(badge, name)
+    identity.append(heading)
     if (plugin.description) {
       const description = document.createElement('button')
       const descriptionExpanded = expandedUserPluginDescriptions.has(plugin.name)
@@ -811,7 +812,7 @@ function renderUserPlugins(busy) {
         else expandedUserPluginDescriptions.add(plugin.name)
         renderUserPlugins(runtimeBusy())
       })
-      heading.append(description)
+      identity.append(description)
       if (!descriptionExpanded) window.requestAnimationFrame(() => {
         if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
       })
@@ -828,7 +829,7 @@ function renderUserPlugins(busy) {
       field.append(term, description)
       metadata.append(field)
     }
-    identity.append(heading, metadata)
+    identity.append(metadata)
     if (plugin.metadataError) {
       const detail = document.createElement('p')
       detail.className = 'user-plugin-error'
