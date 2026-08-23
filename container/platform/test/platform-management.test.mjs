@@ -356,7 +356,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(source, /className: css\.platformHeader[\s\S]*className: css\.heading[\s\S]*className: css\.tabs/)
   assert.match(source, /SystemPluginManager\(\{ plugins, draft, applying,[\s\S]*stateKey = applying && action !== undefined[\s\S]*statusEnabling[\s\S]*statusDisabling/)
   assert.match(style, /\.root \{[^}]*height: min\(720px, calc\(100dvh - 152px\)\);[^}]*overflow: hidden;/)
-  assert.match(style, /\.platformHeader \{[^}]*flex: none;[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
+  assert.match(style, /\.platformHeader \{[^}]*width: 100%;[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*flex: none;[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
   assert.match(style, /\.tabPanel \{[^}]*min-height: 0;[^}]*flex: 1;[^}]*overflow-y: auto;[^}]*scrollbar-gutter: stable;/)
   assert.match(style, /\.pluginList \{[^}]*max-height:[^}]*overflow-y: auto;/)
   assert.match(style, /\.listPagination \{[^}]*position: sticky;[^}]*bottom: 0;[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) auto auto auto;/)
