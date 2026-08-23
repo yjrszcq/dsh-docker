@@ -66,6 +66,9 @@ test('name pagination resolves detailed metadata only for the requested page', a
   assert.equal(page.entries.length, 5)
   assert.equal(page.total, 20)
   assert.equal(resolutions, 5)
+  const thirdPage = await inventory.list(root, { limit: 5, offset: 10 })
+  assert.deepEqual(thirdPage.entries.map(entry => entry.name), ['10.txt', '11.txt', '12.txt', '13.txt', '14.txt'])
+  assert.equal(resolutions, 10)
 })
 
 test('reads only bounded UTF-8 regular files and detects binary content', async () => {
@@ -131,6 +134,12 @@ test('rejects invalid list, search, and task parameters', async () => {
   const inventory = new FileInventory()
   await assert.rejects(inventory.list(root, { limit: 1001 }), FileManagerError)
   await assert.rejects(inventory.list(root, { sort: 'owner' }), /sort/)
+  await assert.rejects(inventory.list(root, { offset: -1 }), /offset/)
+  await assert.rejects(inventory.list(root, { offset: 1.5 }), /offset/)
+  await writeFile(join(root, 'one'), '1')
+  await writeFile(join(root, 'two'), '2')
+  const first = await inventory.list(root, { limit: 1 })
+  await assert.rejects(inventory.list(root, { cursor: first.nextCursor, offset: 0 }), /cannot be combined/)
   const manager = new FileSearchManager()
   assert.throws(() => manager.start({ path: root, query: '' }), /query/)
   assert.throws(() => manager.get('missing'), error => error.statusCode === 404)

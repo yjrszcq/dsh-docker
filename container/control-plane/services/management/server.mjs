@@ -480,6 +480,7 @@ export function createManagementServer({
         if (fileInventory === undefined) throw new Error('file management is not configured')
         const result = await fileInventory.list(url.searchParams.get('path'), {
           cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit'),
+          offset: url.searchParams.get('offset'),
           sort: url.searchParams.get('sort') ?? 'name', order: url.searchParams.get('order') ?? 'asc',
         })
         await recordAudit('files.list.completed', { path: result.path, entries: result.entries.length })

@@ -248,6 +248,13 @@ function parseLimit(value, fallback = DEFAULT_LIST_LIMIT) {
   return limit
 }
 
+function parseOffset(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const offset = Number(value)
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new FileManagerError('offset must be a non-negative integer')
+  return offset
+}
+
 export class FileInventory {
   constructor({ isManaged = isManagedPath, identity = new UnixIdentityResolver() } = {}) {
     this.isManaged = isManaged
@@ -264,7 +271,7 @@ export class FileInventory {
     }
   }
 
-  async list(value, { cursor, limit, sort = 'name', order = 'asc' } = {}) {
+  async list(value, { cursor, offset: requestedOffset, limit, sort = 'name', order = 'asc' } = {}) {
     const path = normalizeAbsolutePath(value)
     if (!SORTS.has(sort)) throw new FileManagerError('sort is invalid')
     if (!ORDERS.has(order)) throw new FileManagerError('order is invalid')
@@ -272,6 +279,8 @@ export class FileInventory {
       const root = await lstat(path, { bigint: true })
       if (!root.isDirectory()) throw new FileManagerError('path is not a directory', 415, 'FILE_TYPE_UNSUPPORTED')
       const pageSize = parseLimit(limit)
+      const directOffset = parseOffset(requestedOffset)
+      if (directOffset !== undefined && cursor !== undefined && cursor !== null && cursor !== '') throw new FileManagerError('cursor and offset cannot be combined')
       const names = await readdir(path, { withFileTypes: true })
       let entries
       let revision
@@ -280,7 +289,7 @@ export class FileInventory {
         const summary = names.map(entry => ({ name: entry.name, type: directoryEntryType(entry) }))
         summary.sort((left, right) => compareNames(left, right, order))
         revision = listRevision(path, root, summary)
-        offset = decodeCursor(cursor, revision)
+        offset = directOffset ?? decodeCursor(cursor, revision)
         entries = await Promise.all(summary.slice(offset, offset + pageSize).map(entry => (
           describe(resolve(path, entry.name), undefined, this.isManaged, this.identity)
         )))
@@ -288,7 +297,7 @@ export class FileInventory {
         entries = await Promise.all(names.map(entry => describe(resolve(path, entry.name), undefined, this.isManaged, this.identity)))
         entries.sort((left, right) => compareEntries(left, right, sort, order))
         revision = listRevision(path, root, entries)
-        offset = decodeCursor(cursor, revision)
+        offset = directOffset ?? decodeCursor(cursor, revision)
       }
       const page = sort === 'name' ? entries : entries.slice(offset, offset + pageSize)
       const nextOffset = offset + page.length

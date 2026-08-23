@@ -106,28 +106,68 @@ function usePaginatedItems(key, items) {
     setPage(0)
     writeStorage(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`, String(value))
   }
+  const goToPage = value => setPage(Math.min(lastPage, Math.max(0, value)))
   return {
     items: items.slice(start, start + pageSize), page: currentPage, pageSize, lastPage, start,
-    setPage, setPageSize: changePageSize,
+    setPage: goToPage, setPageSize: changePageSize,
   }
 }
 
 function ListPagination({ pagination, total, t }) {
+  const [jumpValue, setJumpValue] = useState(String(pagination.page + 1))
+  useEffect(() => { setJumpValue(String(pagination.page + 1)) }, [pagination.page])
+  const commitJump = () => {
+    const value = Number(jumpValue)
+    const page = Number.isSafeInteger(value)
+      ? Math.min(pagination.lastPage, Math.max(0, value - 1))
+      : pagination.page
+    pagination.setPage(page)
+    setJumpValue(String(page + 1))
+  }
   return h('div', { className: css.listPagination },
+    h('span', null, t('totalItems').replace('{total}', String(total))),
     h('label', null,
-      h('span', null, t('itemsPerPage')),
       h('select', {
+        'aria-label': t('itemsPerPage'),
         value: pagination.pageSize,
         onChange: event => pagination.setPageSize(Number(event.target.value)),
-      }, LIST_PAGE_SIZES.map(value => h('option', { key: value, value }, String(value))))),
-    h('span', null, t('pageStatus')
-      .replace('{page}', String(pagination.page + 1))
-      .replace('{start}', String(total === 0 ? 0 : pagination.start + 1))
-      .replace('{end}', String(Math.min(pagination.start + pagination.pageSize, total)))
-      .replace('{total}', String(total))),
-    h('div', null,
-      h('button', { type: 'button', className: css.smallButton, disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }, t('previousPage')),
-      h('button', { type: 'button', className: css.smallButton, disabled: pagination.page === pagination.lastPage, onClick: () => pagination.setPage(pagination.page + 1) }, t('nextPage'))))
+      }, LIST_PAGE_SIZES.map(value => h('option', { key: value, value }, String(value)))),
+      h('span', null, t('itemsPerPageSuffix'))),
+    h('div', { className: css.pageNavigation },
+      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('previousPage'), disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }, '‹'),
+      h('strong', null, String(pagination.page + 1)),
+      h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('nextPage'), disabled: pagination.page === pagination.lastPage, onClick: () => pagination.setPage(pagination.page + 1) }, '›')),
+    h('label', { className: css.pageJump },
+      h('span', null, t('goToPage')),
+      h('input', {
+        type: 'number', min: 1, max: pagination.lastPage + 1, value: jumpValue,
+        onChange: event => setJumpValue(event.target.value), onBlur: commitJump,
+        onKeyDown: event => { if (event.key === 'Enter') { event.preventDefault(); commitJump() } },
+      }),
+      h('span', null, t('pageUnit'))))
+}
+
+function ExpandableDescription({ text, identity }) {
+  const element = useRef(null)
+  const [expanded, setExpanded] = useState(false)
+  const [expandable, setExpandable] = useState(false)
+  useEffect(() => {
+    const node = element.current
+    if (node !== null && !expanded) setExpandable(node.scrollWidth > node.clientWidth)
+  }, [expanded, identity, text])
+  return h('button', {
+    ref: element,
+    type: 'button',
+    className: `${css.resourceDescription}${expandable ? ` ${css.expandable}` : ''}${expanded ? ` ${css.expanded}` : ''}`,
+    title: text,
+    'aria-expanded': expanded,
+    onClick: () => { if (expandable) setExpanded(value => !value) },
+  }, text)
+}
+
+function matchesResourceSearch(query, values) {
+  const normalized = query.trim().toLocaleLowerCase()
+  return normalized === '' || values.some(value => String(value ?? '').toLocaleLowerCase().includes(normalized))
 }
 
 function persistLocale(locale) {
@@ -663,7 +703,9 @@ function LifecycleGuard({ connection }) {
 
 function SystemPluginManager({ plugins, draft, operation, busy, error, onAction, onCancel, onApply, t }) {
   const operationBusy = operation?.status === 'running'
-  const pagination = usePaginatedItems('system-plugins', plugins)
+  const [query, setQuery] = useState('')
+  const filteredPlugins = plugins.filter(plugin => matchesResourceSearch(query, [plugin.id, plugin.description?.zh, plugin.description?.en]))
+  const pagination = usePaginatedItems('system-plugins', filteredPlugins)
   const visiblePlugins = pagination.items
   const restartRequired = draft.size > 0 || plugins.some(plugin => plugin.pendingRestart)
   const operationLabel = {
@@ -684,9 +726,13 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
       h('div', { className: css.pluginDraftActions },
         h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: onCancel }, t('cancelChanges')),
         h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: onApply }, t('applyPluginChanges')))) : null,
+    h('input', {
+      type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemPlugins'), 'aria-label': t('searchSystemPlugins'),
+      onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
+    }),
     h('div', { className: css.pluginList },
       visiblePlugins.length === 0
-        ? h('p', { className: css.emptyPlugins }, t('noSystemPlugins'))
+        ? h('p', { className: css.emptyPlugins }, plugins.length === 0 ? t('noSystemPlugins') : t('noMatchingResources'))
         : visiblePlugins.map(plugin => {
             const action = draft.get(plugin.id)
             const projected = action === 'install' ? { ...plugin, installed: true, enabled: true }
@@ -696,8 +742,9 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
             const description = plugin.description?.[t('localeCode')] ?? plugin.id
             return h('article', { className: css.pluginRow, key: plugin.id },
               h('div', { className: css.pluginIdentity },
-                h('strong', null, `@dsh-docker/${plugin.id}`),
-                h('span', null, description),
+                h('div', { className: css.resourceHeading },
+                  h('strong', null, `@dsh-docker/${plugin.id}`),
+                  h(ExpandableDescription, { text: description, identity: plugin.id })),
                 action !== undefined || plugin.pendingRestart ? h('span', { className: css.pendingBadge }, t('pluginPendingRestart')) : null),
               !projected.installed
                 ? h('div', { className: css.pluginActions },
@@ -721,7 +768,7 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
                       h('b', null, projected.enabled ? t('enabled') : t('disabled')))),
               isActive ? h('p', { className: css.pluginOperation, 'aria-live': 'polite' }, t(operationLabel)) : null)
           })),
-    h(ListPagination, { pagination, total: plugins.length, t }),
+    h(ListPagination, { pagination, total: filteredPlugins.length, t }),
     operation?.status === 'failed'
       ? h('p', { className: css.error, role: 'alert' }, localizedError(operation.error, t))
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t))
@@ -730,21 +777,28 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
 
 function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
   const operationBusy = operation?.status === 'running'
-  const pagination = usePaginatedItems('system-skills', skills)
+  const [query, setQuery] = useState('')
+  const filteredSkills = skills.filter(skill => matchesResourceSearch(query, [skill.id, skill.description?.zh, skill.description?.en]))
+  const pagination = usePaginatedItems('system-skills', filteredSkills)
   return h('section', { className: `${css.section} ${css.pluginSection}`, 'aria-labelledby': 'system-skills-title' },
     h('div', { className: css.sectionHeading },
       h('div', null,
         h('h3', { id: 'system-skills-title' }, t('systemSkills')),
         h('p', null, t('systemSkillsDetail')))),
+    h('input', {
+      type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemSkills'), 'aria-label': t('searchSystemSkills'),
+      onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
+    }),
     h('div', { className: css.pluginList },
-      skills.length === 0
-        ? h('p', { className: css.emptyPlugins }, t('noSystemSkills'))
+      filteredSkills.length === 0
+        ? h('p', { className: css.emptyPlugins }, skills.length === 0 ? t('noSystemSkills') : t('noMatchingResources'))
         : pagination.items.map(skill => {
             const isActive = operationBusy && operation.skillId === skill.id
             return h('article', { className: css.pluginRow, key: skill.id },
               h('div', { className: css.pluginIdentity },
-                h('strong', null, skill.id),
-                h('span', null, skill.description?.[t('localeCode')] ?? skill.id)),
+                h('div', { className: css.resourceHeading },
+                  h('strong', null, skill.id),
+                  h(ExpandableDescription, { text: skill.description?.[t('localeCode')] ?? skill.id, identity: skill.id }))),
               !skill.installed
                 ? h('div', { className: css.pluginActions },
                     h('button', {
@@ -763,7 +817,7 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
                 install: 'pluginActionInstall', enable: 'pluginActionEnable', disable: 'pluginActionDisable',
               }[operation.action] ?? 'skillActionWorking')) : null)
           })),
-    h(ListPagination, { pagination, total: skills.length, t }),
+    h(ListPagination, { pagination, total: filteredSkills.length, t }),
     operation?.status === 'failed'
       ? h('p', { className: css.error, role: 'alert' }, localizedError(operation.error, t))
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
@@ -1269,8 +1323,8 @@ export function apply(ctx) {
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       standaloneManagement: 'DSH 管理中心', standaloneManagementDetail: 'DSH 不可用时仍可进行更新、插件恢复、日志查看和终端操作。', openPlatformManagement: '打开 DSH 管理中心', restartDshSection: '重启 DSH', restartDshDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH', cancelRestartDsh: '取消重启 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '更新提醒', updateNotificationsDetail: '自动检查发现新版本时，弹窗提醒更新。',
-      systemPlugins: '系统插件', systemPluginsDetail: '管理 DSH Docker 提供的系统插件。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginPendingRestart: '待应用', pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', cancelChanges: '取消修改', applyPluginChanges: '应用并重新启动 DSH',
-      systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', itemsPerPage: '每页', previousPage: '上一页', nextPage: '下一页', pageStatus: '第 {page} 页 · {start}-{end} / {total}',
+      systemPlugins: '系统插件', systemPluginsDetail: '管理 DSH Docker 提供的系统插件。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginPendingRestart: '待应用', pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', cancelChanges: '取消修改', applyPluginChanges: '应用并重新启动 DSH', searchSystemPlugins: '搜索系统插件',
+      systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', searchSystemSkills: '搜索系统技能', noMatchingResources: '没有符合搜索条件的项目。', itemsPerPage: '每页数量', itemsPerPageSuffix: '条/页', previousPage: '上一页', nextPage: '下一页', totalItems: '共 {total} 条', goToPage: '前往', pageUnit: '页',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -1291,8 +1345,8 @@ export function apply(ctx) {
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       standaloneManagement: 'DSH Management Console', standaloneManagementDetail: 'Updates, plugin recovery, logs, and terminal tools remain available when DSH is unavailable.', openPlatformManagement: 'Open DSH Management Console', restartDshSection: 'Restart DSH', restartDshDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH', cancelRestartDsh: 'Cancel DSH restart', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Update notifications', updateNotificationsDetail: 'Show an update notification popup when an automatic check finds a new version.',
-      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage the System Plugins provided by DSH Docker.', noSystemPlugins: 'No System Plugins are provided by the current Environment.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginPendingRestart: 'Pending', pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', cancelChanges: 'Cancel changes', applyPluginChanges: 'Apply and restart DSH',
-      systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', itemsPerPage: 'Per page', previousPage: 'Previous', nextPage: 'Next', pageStatus: 'Page {page} · {start}-{end} / {total}',
+      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage the System Plugins provided by DSH Docker.', noSystemPlugins: 'No System Plugins are provided by the current Environment.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginPendingRestart: 'Pending', pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', cancelChanges: 'Cancel changes', applyPluginChanges: 'Apply and restart DSH', searchSystemPlugins: 'Search System Plugins',
+      systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', searchSystemSkills: 'Search System Skills', noMatchingResources: 'No items match this search.', itemsPerPage: 'Items per page', itemsPerPageSuffix: '/ page', previousPage: 'Previous', nextPage: 'Next', totalItems: '{total} total', goToPage: 'Go to', pageUnit: 'page',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',

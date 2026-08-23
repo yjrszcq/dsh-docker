@@ -86,7 +86,8 @@ const COPY = Object.freeze({
     files: '文件管理', filesDetail: '使用管理员权限查看和管理容器文件。', newItem: '新建', upload: '上传', uploadFiles: '上传文件', uploadDirectory: '上传文件夹', dropToUpload: '拖放到此处上传', dropUploadDestination: '文件和文件夹将上传到当前目录。', download: '下载', refresh: '刷新', back: '返回', forward: '前进', parentDirectory: '上级目录', path: '路径',
     itemType: '新建类型', itemName: '名称', createItem: '创建', createLocation: '创建位置：{path}', invalidFileName: '名称不能为空，不能是 . 或 ..，不能包含 / 或控制字符，且不能超过 255 字节。',
     filterFiles: '筛选当前目录', searchDirectory: '搜索此目录', showHidden: '显示隐藏文件', managedPathWarning: '此路径由平台管理，修改可能在重启、更新或运行时重建时被覆盖，也可能损坏当前部署。',
-    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多', itemsPerPage: '每页', previousPage: '上一页', nextPage: '下一页', pageStatus: '第 {page} 页 · {start}-{end} / {total}',
+    locations: '快捷位置', selectAll: '全选', fileName: '名称', fileSize: '大小', fileOwner: '用户:用户组', fileModified: '修改时间', fileMode: '权限', calculateSize: '计算', calculatingSize: '计算中', sizeCalculationFailed: '计算失败', emptyDirectory: '此目录为空。', loadMore: '加载更多', itemsPerPage: '每页数量', itemsPerPageSuffix: '条/页', previousPage: '上一页', nextPage: '下一页', totalItems: '共 {total} 条', goToPage: '前往', pageUnit: '页',
+    searchSystemPlugins: '搜索系统插件', searchSystemSkills: '搜索系统技能', searchUserPlugins: '搜索用户插件', searchUserSkills: '搜索用户技能', noMatchingResources: '没有符合搜索条件的项目。',
     noFilesSelected: '未选择文件', filesSelected: '已选择 {count} 项', copy: '复制', cut: '剪切', paste: '粘贴', compress: '压缩', extract: '解压', rename: '重命名', deletePermanently: '永久删除',
     compressItems: '压缩所选项目', extractArchive: '解压归档', archiveFormat: '归档格式', archiveName: '归档名称', invalidArchiveName: '请输入有效的归档名称。', unsupportedArchive: '请选择 ZIP、7z 或 tar.gz 文件。',
     editPermissions: '编辑权限', permissions: '权限', permissionRead: '读取', permissionWrite: '写入', permissionExecute: '可执行', permissionOwner: '所有者', permissionGroup: '用户组', permissionOthers: '其他用户',
@@ -161,7 +162,8 @@ const COPY = Object.freeze({
     files: 'File management', filesDetail: 'View and manage container files with administrator privileges.', newItem: 'New', upload: 'Upload', uploadFiles: 'Upload files', uploadDirectory: 'Upload folder', dropToUpload: 'Drop to upload here', dropUploadDestination: 'Files and folders will be uploaded to the current directory.', download: 'Download', refresh: 'Refresh', back: 'Back', forward: 'Forward', parentDirectory: 'Parent directory', path: 'Path',
     itemType: 'Item type', itemName: 'Name', createItem: 'Create', createLocation: 'Create in: {path}', invalidFileName: 'The name cannot be empty, . or .., contain / or control characters, or exceed 255 bytes.',
     filterFiles: 'Filter this directory', searchDirectory: 'Search this directory', showHidden: 'Show hidden files', managedPathWarning: 'This path is platform-managed. Changes may be replaced by restart, update, or runtime rebuild and can damage the current deployment.',
-    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more', itemsPerPage: 'Per page', previousPage: 'Previous', nextPage: 'Next', pageStatus: 'Page {page} · {start}-{end} / {total}',
+    locations: 'Locations', selectAll: 'Select all', fileName: 'Name', fileSize: 'Size', fileOwner: 'User:group', fileModified: 'Modified', fileMode: 'Mode', calculateSize: 'Calculate', calculatingSize: 'Calculating', sizeCalculationFailed: 'Failed', emptyDirectory: 'This directory is empty.', loadMore: 'Load more', itemsPerPage: 'Items per page', itemsPerPageSuffix: '/ page', previousPage: 'Previous', nextPage: 'Next', totalItems: '{total} total', goToPage: 'Go to', pageUnit: 'page',
+    searchSystemPlugins: 'Search System Plugins', searchSystemSkills: 'Search System Skills', searchUserPlugins: 'Search User Plugins', searchUserSkills: 'Search User Skills', noMatchingResources: 'No items match this search.',
     noFilesSelected: 'No files selected', filesSelected: '{count} selected', copy: 'Copy', cut: 'Cut', paste: 'Paste', compress: 'Compress', extract: 'Extract', rename: 'Rename', deletePermanently: 'Delete permanently',
     compressItems: 'Compress selected items', extractArchive: 'Extract archive', archiveFormat: 'Archive format', archiveName: 'Archive name', invalidArchiveName: 'Enter a valid archive name.', unsupportedArchive: 'Select a ZIP, 7z, or tar.gz file.',
     editPermissions: 'Edit permissions', permissions: 'Permissions', permissionRead: 'Read', permissionWrite: 'Write', permissionExecute: 'Execute', permissionOwner: 'Owner', permissionGroup: 'Group', permissionOthers: 'Others',
@@ -211,6 +213,7 @@ const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, use
 const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
 const LIST_PAGE_SIZE_KEY_PREFIX = 'dsh-platform:console-page-size:'
 const listPages = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
+const listQueries = { plugins: '', systemSkills: '', userSkills: '', userPlugins: '' }
 const listPageSizes = Object.fromEntries(Object.keys(listPages).map(key => {
   const value = Number(storageValue(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`))
   return [key, LIST_PAGE_SIZES.includes(value) ? value : 10]
@@ -219,6 +222,8 @@ const userPluginDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
 const systemPluginDraft = new Map()
 const expandedUserSkillDescriptions = new Set()
+const expandedSystemPluginDescriptions = new Set()
+const expandedSystemSkillDescriptions = new Set()
 let rollbackPlan
 let statusLoad
 let statusLoadRevision = 0
@@ -262,7 +267,6 @@ let fileSort = 'name'
 let fileOrder = 'asc'
 let filePageSize = 100
 let filePageIndex = 0
-let filePageCursors = [null]
 let fileHistory = []
 let fileFuture = []
 let fileCreateExpanded = false
@@ -451,6 +455,39 @@ function pluginDescription(plugin) {
   return plugin.description?.[locale] ?? plugin.id
 }
 
+function resourceSearchValues(key, value) {
+  if (key === 'plugins' || key === 'systemSkills') return [value.id, value.description?.zh, value.description?.en]
+  if (key === 'userSkills') return [value.name, value.entryName, value.description, value.source]
+  return [value.name, value.version, value.spec, value.description, value.source]
+}
+
+function filteredResources(key, values) {
+  const query = listQueries[key].trim().toLocaleLowerCase(locale)
+  if (query === '') return values
+  return values.filter(value => resourceSearchValues(key, value)
+    .some(part => String(part ?? '').toLocaleLowerCase(locale).includes(query)))
+}
+
+function expandableResourceDescription(text, identity, expanded, rerender) {
+  const description = document.createElement('button')
+  const isExpanded = expanded.has(identity)
+  description.type = 'button'
+  description.className = `resource-description${isExpanded ? ' expanded expandable' : ''}`
+  description.textContent = text
+  description.title = text
+  description.setAttribute('aria-expanded', String(isExpanded))
+  description.addEventListener('click', () => {
+    if (!description.classList.contains('expandable')) return
+    if (expanded.has(identity)) expanded.delete(identity)
+    else expanded.add(identity)
+    rerender()
+  })
+  if (!isExpanded) window.requestAnimationFrame(() => {
+    if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
+  })
+  return description
+}
+
 function paginated(key, values) {
   const pageSize = listPageSizes[key]
   const lastPage = Math.max(0, Math.ceil(values.length / pageSize) - 1)
@@ -459,10 +496,10 @@ function paginated(key, values) {
   const prefix = { plugins: 'plugins', systemSkills: 'system-skills', userSkills: 'user-skills', userPlugins: 'user-plugins' }[key]
   elements[`${prefix}-pagination`].hidden = false
   elements[`${prefix}-page-size`].value = String(pageSize)
-  elements[`${prefix}-page-status`].textContent = t('pageStatus', {
-    page: listPages[key] + 1, start: values.length === 0 ? 0 : start + 1,
-    end: Math.min(start + pageSize, values.length), total: values.length,
-  })
+  elements[`${prefix}-page-status`].textContent = t('totalItems', { total: values.length })
+  elements[`${prefix}-page-current`].textContent = String(listPages[key] + 1)
+  elements[`${prefix}-page-jump`].max = String(lastPage + 1)
+  if (document.activeElement !== elements[`${prefix}-page-jump`]) elements[`${prefix}-page-jump`].value = String(listPages[key] + 1)
   elements[`${prefix}-page-previous`].disabled = listPages[key] === 0
   elements[`${prefix}-page-next`].disabled = listPages[key] === lastPage
   return values.slice(start, start + pageSize)
@@ -500,11 +537,13 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
 }
 
 function renderBundledPlugins(values, busy) {
+  const filtered = filteredResources('plugins', values)
   elements['bundled-plugins'].replaceChildren()
-  elements['empty-plugins'].hidden = values.length !== 0
-  elements['bundled-plugins'].hidden = values.length === 0
+  elements['empty-plugins'].hidden = filtered.length !== 0
+  elements['empty-plugins'].textContent = values.length === 0 ? t('noSystemPlugins') : t('noMatchingResources')
+  elements['bundled-plugins'].hidden = filtered.length === 0
   const operation = status?.systemPluginOperation ?? {}
-  for (const plugin of paginated('plugins', values)) {
+  for (const plugin of paginated('plugins', filtered)) {
     const action = systemPluginDraft.get(plugin.id)
     const projected = projectedSystemPlugin(plugin)
     const row = document.createElement('article')
@@ -513,9 +552,10 @@ function renderBundledPlugins(values, busy) {
     identity.className = 'plugin-identity'
     const name = document.createElement('strong')
     name.textContent = `@dsh-docker/${plugin.id}`
-    const state = document.createElement('span')
-    state.textContent = pluginDescription(plugin)
-    identity.append(name, state)
+    const heading = document.createElement('div')
+    heading.className = 'resource-heading'
+    heading.append(name, expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions, () => renderBundledPlugins(values, busy)))
+    identity.append(heading)
     if (action !== undefined || plugin.pendingRestart) {
       const badge = document.createElement('span')
       badge.className = 'plugin-pending'
@@ -556,20 +596,23 @@ function renderBundledPlugins(values, busy) {
 }
 
 function renderSystemSkills(values, busy) {
+  const filtered = filteredResources('systemSkills', values)
   elements['system-skills'].replaceChildren()
-  elements['empty-skills'].hidden = values.length !== 0
-  elements['system-skills'].hidden = values.length === 0
+  elements['empty-skills'].hidden = filtered.length !== 0
+  elements['empty-skills'].textContent = values.length === 0 ? t('noSystemSkills') : t('noMatchingResources')
+  elements['system-skills'].hidden = filtered.length === 0
   const operation = status?.systemSkillOperation ?? {}
-  for (const skill of paginated('systemSkills', values)) {
+  for (const skill of paginated('systemSkills', filtered)) {
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
     identity.className = 'plugin-identity'
     const name = document.createElement('strong')
     name.textContent = skill.id
-    const detail = document.createElement('span')
-    detail.textContent = skill.description?.[locale] ?? skill.id
-    identity.append(name, detail)
+    const heading = document.createElement('div')
+    heading.className = 'resource-heading'
+    heading.append(name, expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions, () => renderSystemSkills(values, busy)))
+    identity.append(heading)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     const actionButton = (label, action, className = 'secondary') => {
@@ -634,12 +677,14 @@ async function runUserSkillAction(skill, action) {
 
 function renderUserSkills(busy) {
   const values = userSkillInventory.skills ?? []
+  const filtered = filteredResources('userSkills', values)
   const operation = status?.userSkillOperation ?? {}
   const locked = busy || operation.status === 'running'
   elements['user-skills'].replaceChildren()
-  elements['empty-user-skills'].hidden = values.length !== 0
-  elements['user-skills'].hidden = values.length === 0
-  for (const skill of paginated('userSkills', values)) {
+  elements['empty-user-skills'].hidden = filtered.length !== 0
+  elements['empty-user-skills'].textContent = values.length === 0 ? t('noUserSkills') : t('noMatchingResources')
+  elements['user-skills'].hidden = filtered.length === 0
+  for (const skill of paginated('userSkills', filtered)) {
     const row = document.createElement('article')
     row.className = 'user-plugin-row'
     const identity = document.createElement('div')
@@ -727,12 +772,14 @@ function userPluginBadge(label, className = '') {
 
 function renderUserPlugins(busy) {
   const values = userPluginInventory.plugins ?? []
+  const filtered = filteredResources('userPlugins', values)
   const operation = status?.userPluginOperation ?? {}
   const locked = busy || userPluginSubmitting || operation.status === 'running'
   elements['user-plugin-list'].replaceChildren()
-  elements['user-plugin-list'].hidden = values.length === 0
-  elements['empty-user-plugins'].hidden = values.length !== 0
-  for (const plugin of paginated('userPlugins', values)) {
+  elements['user-plugin-list'].hidden = filtered.length === 0
+  elements['empty-user-plugins'].hidden = filtered.length !== 0
+  elements['empty-user-plugins'].textContent = values.length === 0 ? t('noUserPlugins') : t('noMatchingResources')
+  for (const plugin of paginated('userPlugins', filtered)) {
     const action = userPluginDraft.get(plugin.name)
     const row = document.createElement('article')
     row.className = `user-plugin-row${action ? ' pending' : ''}`
@@ -820,9 +867,11 @@ function renderUserPlugins(busy) {
     elements['user-plugin-list'].append(row)
   }
   const count = userPluginDraft.size
-  elements['user-plugin-draft-summary'].textContent = count === 0 ? t('noPendingUserPluginChanges') : t('pendingUserPluginChanges', { count })
+  const restartRequired = userPluginInventory.restartRequired === true
+  elements['user-plugin-draft-actions'].hidden = count === 0 && !restartRequired
+  elements['user-plugin-draft-summary'].textContent = count === 0 ? t('userPluginRestartRequiredDetail') : t('pendingUserPluginChanges', { count })
   elements['cancel-user-plugin-changes'].disabled = locked || count === 0
-  elements['apply-user-plugin-changes'].disabled = locked || (count === 0 && userPluginInventory.restartRequired !== true)
+  elements['apply-user-plugin-changes'].disabled = locked || (count === 0 && !restartRequired)
   elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
   elements['user-plugin-recovery-detail'].textContent = locale === 'zh'
     ? t('userPluginRecoveryDetail')
@@ -2024,9 +2073,14 @@ function renderFiles() {
   elements['file-empty'].hidden = values.length !== 0 || fileLoading
   const start = fileListing.total === 0 ? 0 : filePageIndex * filePageSize + 1
   const end = Math.min(fileListing.total, start + fileListing.entries.length - 1)
-  elements['file-page-status'].textContent = t('pageStatus', { page: filePageIndex + 1, start, end, total: fileListing.total })
+  const lastPage = Math.max(0, Math.ceil(fileListing.total / filePageSize) - 1)
+  elements['file-page-status'].textContent = t('totalItems', { total: fileListing.total })
+  elements['file-page-current'].textContent = String(filePageIndex + 1)
+  elements['file-page-jump'].max = String(lastPage + 1)
+  if (document.activeElement !== elements['file-page-jump']) elements['file-page-jump'].value = String(filePageIndex + 1)
   elements['file-page-previous'].disabled = fileLoading || filePageIndex === 0
-  elements['file-page-next'].disabled = fileLoading || fileListing.nextCursor === null
+  elements['file-page-next'].disabled = fileLoading || filePageIndex === lastPage
+  elements['file-page-jump'].disabled = fileLoading
   elements['file-managed-warning'].hidden = !fileListing.managed
   for (const entry of values) {
     const row = document.createElement('tr')
@@ -2128,14 +2182,14 @@ async function createFileEntry() {
   if (task !== undefined) setFileCreateExpanded(false)
 }
 
-async function navigateFiles(path, { history = true, cursor = null, pageIndex = 0 } = {}) {
+async function navigateFiles(path, { history = true, offset = null, pageIndex = 0 } = {}) {
   if (fileLoading) return false
   fileLoading = true
   renderFileNavigation()
   clearError()
   try {
     const query = new URLSearchParams({ path, limit: String(filePageSize), sort: fileSort, order: fileOrder })
-    if (cursor !== null) query.set('cursor', cursor)
+    if (offset !== null) query.set('offset', String(offset))
     const next = await api(`files/list?${query}`)
     if (history && filePath !== next.path) {
       fileHistory.push(filePath)
@@ -2145,8 +2199,6 @@ async function navigateFiles(path, { history = true, cursor = null, pageIndex = 
     elements['file-path'].value = filePath
     fileSelected.clear()
     filePageIndex = pageIndex
-    if (pageIndex === 0) filePageCursors = [null]
-    if (next.nextCursor !== null) filePageCursors[pageIndex + 1] = next.nextCursor
     fileListing = next
     filesLoaded = true
     renderFiles()
@@ -2634,6 +2686,20 @@ for (const button of tabButtons) {
     void selectTab(target.dataset.tab).then(changed => { if (changed) target.focus() })
   })
 }
+
+function commitListPageJump(key, prefix) {
+  const input = elements[`${prefix}-page-jump`]
+  const value = Number(input.value)
+  const values = key === 'plugins' ? plugins
+    : key === 'systemSkills' ? systemSkills
+      : key === 'userSkills' ? userSkillInventory.skills ?? [] : userPluginInventory.plugins ?? []
+  const total = filteredResources(key, values).length
+  const lastPage = Math.max(0, Math.ceil(total / listPageSizes[key]) - 1)
+  listPages[key] = Number.isSafeInteger(value) ? Math.min(lastPage, Math.max(0, value - 1)) : listPages[key]
+  renderInventory(key)
+  input.value = String(listPages[key] + 1)
+}
+
 for (const [key, prefix] of Object.entries({ plugins: 'plugins', systemSkills: 'system-skills', userSkills: 'user-skills', userPlugins: 'user-plugins' })) {
   elements[`${prefix}-page-previous`].addEventListener('click', () => {
     listPages[key] = Math.max(0, listPages[key] - 1)
@@ -2649,6 +2715,17 @@ for (const [key, prefix] of Object.entries({ plugins: 'plugins', systemSkills: '
     listPageSizes[key] = value
     listPages[key] = 0
     writeStorage(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`, String(value))
+    renderInventory(key)
+  })
+  elements[`${prefix}-page-jump`].addEventListener('blur', () => commitListPageJump(key, prefix))
+  elements[`${prefix}-page-jump`].addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    commitListPageJump(key, prefix)
+  })
+  elements[`${prefix}-search`].addEventListener('input', event => {
+    listQueries[key] = event.target.value
+    listPages[key] = 0
     renderInventory(key)
   })
 }
@@ -2743,14 +2820,29 @@ elements['file-select-all'].addEventListener('change', event => {
 })
 elements['file-page-previous'].addEventListener('click', () => {
   const page = Math.max(0, filePageIndex - 1)
-  void navigateFiles(filePath, { history: false, cursor: filePageCursors[page] ?? null, pageIndex: page })
+  void navigateFiles(filePath, { history: false, offset: page * filePageSize, pageIndex: page })
 })
 elements['file-page-next'].addEventListener('click', () => {
-  if (fileListing.nextCursor !== null) void navigateFiles(filePath, { history: false, cursor: fileListing.nextCursor, pageIndex: filePageIndex + 1 })
+  const page = filePageIndex + 1
+  if (page * filePageSize < fileListing.total) void navigateFiles(filePath, { history: false, offset: page * filePageSize, pageIndex: page })
 })
 elements['file-page-size'].addEventListener('change', event => {
   filePageSize = Number(event.target.value)
   void navigateFiles(filePath, { history: false })
+})
+function commitFilePageJump() {
+  const input = elements['file-page-jump']
+  const requested = Number(input.value)
+  const lastPage = Math.max(0, Math.ceil(fileListing.total / filePageSize) - 1)
+  const page = Number.isSafeInteger(requested) ? Math.min(lastPage, Math.max(0, requested - 1)) : filePageIndex
+  input.value = String(page + 1)
+  void navigateFiles(filePath, { history: false, offset: page * filePageSize, pageIndex: page })
+}
+elements['file-page-jump'].addEventListener('blur', commitFilePageJump)
+elements['file-page-jump'].addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return
+  event.preventDefault()
+  commitFilePageJump()
 })
 elements['file-new'].addEventListener('click', () => setFileCreateExpanded(!fileCreateExpanded))
 for (const button of document.querySelectorAll('[data-file-create-kind]')) {

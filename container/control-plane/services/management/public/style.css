@@ -416,15 +416,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .plugin-restart-notice p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .plugin-draft-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .plugin-draft-actions button { flex: none; }
-.plugin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 18px; min-height: 68px; padding: 10px 12px; }
+.resource-search { width: min(320px, 100%); }
+.plugin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; min-height: 52px; padding: 7px 12px; }
 .plugin-row + .plugin-row { border-top: 1px solid var(--border); }
 .list-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 42px; color: var(--muted); font-size: 12px; }
 .list-pagination label, .list-pagination > div { display: flex; align-items: center; gap: 7px; }
 .list-pagination select { min-width: 64px; min-height: 30px; padding: 3px 22px 3px 7px; }
+.list-pagination > span, .file-pagination > span { margin-right: auto; }
+.page-navigation strong { min-width: 16px; color: var(--accent); text-align: center; font-weight: 600; }
+.page-arrow { width: 28px; min-width: 28px; padding: 0; font-size: 18px; line-height: 1; }
+.page-jump input { width: 50px; min-height: 30px; padding: 3px 6px; text-align: center; }
 .plugin-identity { min-width: 0; }
-.plugin-identity strong, .plugin-identity span { display: block; overflow-wrap: anywhere; }
+.plugin-identity strong, .plugin-identity span { overflow-wrap: anywhere; }
 .plugin-identity strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .plugin-identity span { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.resource-heading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.resource-heading > strong { flex: 0 1 auto; max-width: 55%; }
+.resource-description { position: relative; flex: 1 1 120px; min-width: 0; padding: 0 15px 0 0; overflow: hidden; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.resource-description.expandable { cursor: pointer; }
+.resource-description.expandable::after { position: absolute; top: 6px; right: 2px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); content: ''; }
+.resource-description.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
+.resource-description.expanded::after { top: 9px; transform: rotate(225deg); }
 .plugin-identity .user-skill-metadata { display: block; margin-top: 4px; color: var(--faint); font: 11px/17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .plugin-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .plugin-action-state { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
@@ -470,9 +482,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-error { margin: 7px 0 0; color: var(--danger); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
 .user-plugin-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; align-self: center; }
 .user-plugin-controls .toggle { width: auto; }
-.draft-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 2px; }
-.draft-actions > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
-.draft-actions > div { display: flex; justify-content: flex-end; gap: 8px; }
 
 .terminal-section { gap: 14px; }
 .terminal-heading { align-items: center; }
@@ -621,9 +630,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .user-plugin-row { grid-template-columns: 1fr; align-items: stretch; }
   .user-plugin-controls { justify-content: space-between; align-self: stretch; }
   .user-plugin-main dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .draft-actions { align-items: stretch; flex-direction: column; }
-  .draft-actions > div { justify-content: stretch; }
-  .draft-actions button { flex: 1; }
   .terminal-heading { align-items: stretch; }
   .terminal-actions { width: 100%; }
   .terminal-actions button { flex: 1; }
@@ -674,5 +680,4 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .setting-row { flex-direction: column; }
   .setting-row select { width: 100%; }
   .user-plugin-main dl { grid-template-columns: 1fr; }
-  .draft-actions > div { flex-direction: column; }
 }
