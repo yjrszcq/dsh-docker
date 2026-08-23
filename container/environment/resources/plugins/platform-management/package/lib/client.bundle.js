@@ -216,12 +216,13 @@ function localTime(value, locale) {
 
 function updateProgressModel(update, t) {
   const rollback = update.operation === 'rollback'
+  const phase = update.phase ?? (rollback ? update.rollbackPhase : update.status)
   const labels = rollback
     ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
     : UPDATE_PROGRESS_STEPS
   const rawStage = rollback
-    ? ROLLBACK_PROGRESS_STAGE[update.rollbackPhase] ?? 0
-    : UPDATE_PROGRESS_STAGE[update.status] ?? 0
+    ? ROLLBACK_PROGRESS_STAGE[phase] ?? 0
+    : UPDATE_PROGRESS_STAGE[phase] ?? 0
   const stage = rollback && update.rollbackIncludesSnapshot === false && rawStage > 2 ? rawStage - 1 : rawStage
   const detailKey = rollback
     ? ({
@@ -230,7 +231,7 @@ function updateProgressModel(update, t) {
         switching: 'rollbackDetailSwitching',
         'restoring-data': 'rollbackDetailData',
         verifying: 'rollbackDetailVerifying',
-      }[update.rollbackPhase] ?? 'rollbackDetailPreparing')
+      }[phase] ?? 'rollbackDetailPreparing')
     : ({
         checking: 'progressDetailChecking',
         planning: 'progressDetailPlanning',
@@ -241,7 +242,7 @@ function updateProgressModel(update, t) {
         'snapshotting-data': 'progressDetailSnapshot',
         switching: 'progressDetailSwitching',
         probation: 'progressDetailProbation',
-      }[update.status] ?? 'progressDetailPlanning')
+      }[phase] ?? 'progressDetailPlanning')
   return {
     title: t(rollback ? 'rollbackProgress' : 'updateProgress'),
     detail: t(detailKey).replace('{until}', localTime(update.probationUntil, t('localeCode'))),
@@ -492,7 +493,7 @@ function downloadLogJsonl(entries) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
-function LogViewer({ active, t }) {
+function LogViewer({ active, focusTaskId, t }) {
   const [entries, setEntries] = useState([])
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
@@ -507,6 +508,10 @@ function LogViewer({ active, t }) {
   const logIdentities = useRef(new Set())
   const pendingEntries = useRef([])
   const renderFrame = useRef()
+
+  useEffect(() => {
+    if (focusTaskId) setQuery(String(focusTaskId))
+  }, [focusTaskId])
 
   useEffect(() => {
     if (!active) return undefined
@@ -1036,7 +1041,7 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
 }
 
-function TransactionStageLogs({ update, t, onViewFullLog }) {
+function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   const [entries, setEntries] = useState([])
   const [expanded, setExpanded] = useState({})
   const [autoScroll, setAutoScroll] = useState(true)
@@ -1045,11 +1050,10 @@ function TransactionStageLogs({ update, t, onViewFullLog }) {
   const identities = useRef(new Set())
   const previousStage = useRef()
   const activeList = useRef(null)
-  const updateActive = !TERMINAL.has(update?.status ?? 'idle') || (update?.status === 'failed' && Boolean(update?.taskId))
   const phase = update?.phase ?? (update?.operation === 'rollback' ? update.rollbackPhase : update?.status)
   const currentStage = transactionLogStage(phase, update, t)
   useEffect(() => {
-    if (!updateActive || !update?.taskId || !phase) {
+    if (!visible || !update?.taskId || !phase) {
       setEntries([])
       return undefined
     }
@@ -1070,7 +1074,7 @@ function TransactionStageLogs({ update, t, onViewFullLog }) {
       } catch {}
     })
     return () => stream.close()
-  }, [update?.taskId, updateActive])
+  }, [update?.taskId, visible])
   useEffect(() => {
     const prior = previousStage.current
     setExpanded(value => {
@@ -1085,7 +1089,7 @@ function TransactionStageLogs({ update, t, onViewFullLog }) {
     if (!autoScroll || !expanded[currentStage.key]) return
     activeList.current?.scrollTo({ top: activeList.current.scrollHeight })
   }, [autoScroll, currentStage.key, entries, expanded])
-  if (!updateActive || !update?.taskId || !phase) return null
+  if (!visible || !update?.taskId || !phase) return null
   const groups = new Map()
   for (const entry of entries) {
     const stage = transactionLogStage(entry.phase, update, t)
@@ -1144,6 +1148,7 @@ function PlatformManagement({ t }) {
   const [checking, setChecking] = useState(false)
   const [showSuccessfulProgress, setShowSuccessfulProgress] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
+  const [focusedLogTaskId, setFocusedLogTaskId] = useState(null)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
   const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
@@ -1530,7 +1535,15 @@ function PlatformManagement({ t }) {
             }, t(label)))),
           h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
             h('span', { style: { width: `${String(progress)}%` } })),
-          h(TransactionStageLogs, { update, t, onViewFullLog: () => setActiveTab('maintenance') })) : null),
+          h(TransactionStageLogs, {
+            update,
+            visible: progressVisible,
+            t,
+            onViewFullLog: () => {
+              setFocusedLogTaskId(update.taskId ?? null)
+              setActiveTab('maintenance')
+            },
+          })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
@@ -1602,7 +1615,7 @@ function PlatformManagement({ t }) {
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => setConfirmRestart(false) }, t('cancel')),
           h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null),
-    h(LogViewer, { active: activeTab === 'maintenance', t })),
+    h(LogViewer, { active: activeTab === 'maintenance', focusTaskId: focusedLogTaskId, t })),
 
     h('div', {
       id: 'platform-tab-plugins',

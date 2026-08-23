@@ -3488,6 +3488,10 @@ elements['progress-log-toggle'].addEventListener('click', () => {
   progressLogStageTouched.add(stage.key)
   renderProgressLogs()
 })
+elements['progress-log-auto-scroll'].addEventListener('change', event => {
+  progressLogAutoScroll = event.target.checked
+  if (progressLogAutoScroll) renderProgressLogs()
+})
 elements['progress-log-copy'].addEventListener('click', async () => {
   if (progressLogUpdate === undefined) return
   const stage = progressLogStage(progressLogPhase(progressLogUpdate))
@@ -3499,7 +3503,11 @@ elements['progress-log-copy'].addEventListener('click', async () => {
     window.setTimeout(() => { elements['progress-log-copy'].textContent = t('copyStageLogs') }, 1_500)
   } catch {}
 })
-elements['progress-full-log'].addEventListener('click', () => { void selectTab('maintenance') })
+elements['progress-full-log'].addEventListener('click', () => {
+  if (progressLogUpdate?.taskId) elements['log-search'].value = String(progressLogUpdate.taskId)
+  renderLogs()
+  void selectTab('maintenance')
+})
 elements['log-limit'].value = String(logDisplayLimit)
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {
   element.addEventListener(element.tagName === 'INPUT' ? 'input' : 'change', renderLogs)

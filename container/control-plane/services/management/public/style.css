@@ -398,8 +398,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-stage-log { display: grid; gap: 8px; min-width: 0; padding-top: 2px; }
 .progress-log-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .progress-log-heading strong { font-size: 12px; font-weight: 500; }
-.progress-log-actions { display: flex; gap: 6px; }
+.progress-log-actions { display: flex; align-items: center; gap: 6px; }
 .progress-log-actions button { min-height: 28px; padding: 4px 9px; font-size: 11px; }
+.progress-auto-scroll { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; cursor: pointer; }
 .progress-log-list { display: grid; gap: 6px; }
 .progress-log-group { overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
 .progress-log-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; }

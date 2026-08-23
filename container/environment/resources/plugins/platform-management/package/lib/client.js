@@ -482,7 +482,7 @@ function downloadLogJsonl(entries) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
-function LogViewer({ active, t }) {
+function LogViewer({ active, focusTaskId, t }) {
   const [entries, setEntries] = useState([])
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
@@ -497,6 +497,10 @@ function LogViewer({ active, t }) {
   const logIdentities = useRef(new Set())
   const pendingEntries = useRef([])
   const renderFrame = useRef()
+
+  useEffect(() => {
+    if (focusTaskId) setQuery(String(focusTaskId))
+  }, [focusTaskId])
 
   useEffect(() => {
     if (!active) return undefined
@@ -1133,6 +1137,7 @@ function PlatformManagement({ t }) {
   const [checking, setChecking] = useState(false)
   const [showSuccessfulProgress, setShowSuccessfulProgress] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
+  const [focusedLogTaskId, setFocusedLogTaskId] = useState(null)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
   const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
@@ -1519,7 +1524,15 @@ function PlatformManagement({ t }) {
             }, t(label)))),
           h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
             h('span', { style: { width: `${String(progress)}%` } })),
-          h(TransactionStageLogs, { update, visible: progressVisible, t, onViewFullLog: () => setActiveTab('maintenance') })) : null),
+          h(TransactionStageLogs, {
+            update,
+            visible: progressVisible,
+            t,
+            onViewFullLog: () => {
+              setFocusedLogTaskId(update.taskId ?? null)
+              setActiveTab('maintenance')
+            },
+          })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
@@ -1591,7 +1604,7 @@ function PlatformManagement({ t }) {
         h('div', { className: css.confirmActions },
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => setConfirmRestart(false) }, t('cancel')),
           h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void restartDsh() } }, t('confirmRestart')))) : null),
-    h(LogViewer, { active: activeTab === 'maintenance', t })),
+    h(LogViewer, { active: activeTab === 'maintenance', focusTaskId: focusedLogTaskId, t })),
 
     h('div', {
       id: 'platform-tab-plugins',
