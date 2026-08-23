@@ -1293,6 +1293,12 @@ test('standalone console keeps localized feature parity on the shared Management
     assert.match(html, new RegExp(`id="${prefix}-page-current"`))
     assert.match(html, new RegExp(`id="${prefix}-page-jump"`))
   }
+  for (const [emptyId, paginationId] of [
+    ['empty-plugins', 'plugins-pagination'],
+    ['empty-user-plugins', 'user-plugins-pagination'],
+    ['empty-skills', 'system-skills-pagination'],
+    ['empty-user-skills', 'user-skills-pagination'],
+  ]) assert.equal(html.indexOf(`id="${emptyId}"`) < html.indexOf(`id="${paginationId}"`), true)
   assert.match(html, /class="management-navigation"/)
   assert.equal((html.match(/class="tab-panel resource-panel"/g) ?? []).length, 4)
   assert.match(style, /\.management-navigation \{[^}]*position: sticky;[^}]*top: 64px;/)
@@ -1356,7 +1362,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /userPluginRestartRequired: '需要重新启动 DSH'/)
   assert.match(script, /userPluginRestartRequired: 'Restart DSH required'/)
   assert.doesNotMatch(html, /id="user-plugin-restart-required"/)
-  assert.match(script, /const badge = action[\s\S]*plugin\.pendingRestart[\s\S]*pluginPendingRestart/)
+  assert.match(script, /const badge = applyingAction[\s\S]*plugin\.pendingRestart[\s\S]*pluginPendingRestart/)
+  assert.match(script, /const userPluginApplyingDraft = new Map\(\)/)
+  assert.match(script, /const applyingAction = userPluginApplyingDraft\.get\(plugin\.name\)[\s\S]*statusEnabling[\s\S]*statusDisabling[\s\S]*statusUninstalling/)
+  assert.match(script, /for \(const \[name, action\] of userPluginDraft\) userPluginApplyingDraft\.set\(name, action\)[\s\S]*await refreshInventory\('userPlugins'\)[\s\S]*userPluginApplyingDraft\.clear\(\)/)
   assert.match(script, /plugin\.description\?\.\[locale\]/)
   assert.match(script, /pluginPendingRestart: '待应用'/)
   assert.match(script, /PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'/)
@@ -1381,7 +1390,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /cursorStyle: 'block'/)
   assert.match(script, /cursorInactiveStyle: 'outline'/)
   assert.match(style, /#terminal-screen \.xterm-viewport \{ position: static;/)
-  assert.match(script, /const badge = action[\s\S]*plugin\.pendingRestart[\s\S]*plugin\.reservedNameConflict[\s\S]*plugin\.damaged[\s\S]*plugin\.enabled/)
+  assert.match(script, /const badge = applyingAction[\s\S]*plugin\.pendingRestart[\s\S]*plugin\.reservedNameConflict[\s\S]*plugin\.damaged[\s\S]*plugin\.enabled/)
   assert.match(script, /const applying = operation\.status === 'running'[\s\S]*hidden = count === 0 && !restartRequired && !applying/)
   assert.doesNotMatch(style, /user-plugin-badges/)
   assert.match(script, /user-plugin-draft-actions'\]\.hidden = count === 0 && !restartRequired/)

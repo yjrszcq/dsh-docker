@@ -219,6 +219,7 @@ const listPageSizes = Object.fromEntries(Object.keys(listPages).map(key => {
   return [key, LIST_PAGE_SIZES.includes(value) ? value : 10]
 }))
 const userPluginDraft = new Map()
+const userPluginApplyingDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
 const expandedUserPluginMetadata = new Set()
 const systemPluginDraft = new Map()
@@ -808,6 +809,7 @@ function renderUserPlugins(busy) {
   elements['empty-user-plugins'].textContent = values.length === 0 ? t('noUserPlugins') : t('noMatchingResources')
   for (const plugin of paginated('userPlugins', filtered)) {
     const action = userPluginDraft.get(plugin.name)
+    const applyingAction = userPluginApplyingDraft.get(plugin.name)
     const row = document.createElement('article')
     row.className = `user-plugin-row${action ? ' pending' : ''}`
     const identity = document.createElement('div')
@@ -816,8 +818,10 @@ function renderUserPlugins(busy) {
     heading.className = 'user-plugin-heading'
     const name = document.createElement('strong')
     name.textContent = plugin.name
-    const badge = action
-      ? userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending')
+    const badge = applyingAction
+      ? userPluginBadge(t({ enable: 'statusEnabling', disable: 'statusDisabling', uninstall: 'statusUninstalling' }[applyingAction]), 'pending')
+      : action
+        ? userPluginBadge(t({ enable: 'pendingEnable', disable: 'pendingDisable', uninstall: 'pendingUninstall' }[action]), 'pending')
       : plugin.pendingRestart
         ? userPluginBadge(t('pluginPendingRestart'), 'pending')
         : plugin.reservedNameConflict
@@ -1273,6 +1277,8 @@ async function applyUserPluginDraft() {
     return
   }
   userPluginSubmitting = true
+  userPluginApplyingDraft.clear()
+  for (const [name, action] of userPluginDraft) userPluginApplyingDraft.set(name, action)
   userPluginFeedback = null
   clearError()
   renderUserPlugins(runtimeBusy())
@@ -1300,6 +1306,7 @@ async function applyUserPluginDraft() {
     }
   } finally {
     await refreshInventory('userPlugins')
+    userPluginApplyingDraft.clear()
     userPluginSubmitting = false
     renderUserPlugins(runtimeBusy())
   }

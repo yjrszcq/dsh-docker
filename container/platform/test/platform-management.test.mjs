@@ -177,6 +177,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.doesNotMatch(systemSkillManager, /h\('b', null, skill\.enabled/)
   assert.doesNotMatch(systemPluginManager, /isActive \? h\('p', \{ className: css\.pluginOperation/)
   assert.doesNotMatch(systemSkillManager, /isActive \? h\('p', \{ className: css\.pluginOperation/)
+  assert.equal(systemPluginManager.indexOf('className: css.emptyPlugins') < systemPluginManager.indexOf('h(ListPagination'), true)
+  assert.equal(systemSkillManager.indexOf('className: css.emptyPlugins') < systemSkillManager.indexOf('h(ListPagination'), true)
   assert.match(source, /pluginChangesPending: '有待应用的修改'/)
   assert.match(source, /pluginChangesPending: 'Changes pending'/)
   assert.match(source, /plugin\.description\?\.\[t\('localeCode'\)\]/)
