@@ -475,6 +475,9 @@ a.secondaryButton { text-decoration: none; }
 .pluginIdentity span { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .resourceHeading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .resourceHeading > strong { flex: 0 1 auto; max-width: 55%; }
+.statusBadge { flex: 0 0 auto; margin-top: 1px; padding: 1px 6px; border-radius: 4px; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; line-height: 16px; white-space: nowrap; }
+.statusEnabled { color: var(--dsw-alias-state-success-primary); }
+.statusPending { color: var(--dsw-alias-state-warn-label); }
 .resourceDescription { position: relative; flex: 1 1 120px; min-width: 0; padding: 0 15px 0 0; overflow: hidden; border: 0; color: var(--dsw-alias-label-tertiary); background: transparent; font: inherit; font-size: 12px; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 .resourceDescription.expandable { cursor: pointer; }
 .resourceDescription.expandable::after { position: absolute; top: 6px; right: 2px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); content: ''; }

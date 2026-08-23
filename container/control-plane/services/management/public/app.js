@@ -70,7 +70,7 @@ const COPY = Object.freeze({
     userPluginVersion: '版本', userPluginSpec: '依赖规格', userPluginSource: '来源', userPluginSourceRegistry: '软件包源',
     userPluginSourceFile: '本地文件', userPluginSourceGit: 'Git', userPluginSourceUrl: 'URL', userPluginSourceOther: '其他',
     userPluginEnabled: '已启用', userPluginDisabled: '已禁用', userPluginDamaged: '元数据损坏', userPluginReserved: '与系统插件重名',
-    pendingEnable: '待启用', pendingDisable: '待禁用', pendingUninstall: '待卸载', uninstallUserPlugin: '卸载', cancelUninstall: '取消卸载',
+    pendingInstall: '待安装', pendingEnable: '待启用', pendingDisable: '待禁用', pendingUninstall: '待卸载', statusInstalling: '安装中', statusEnabling: '启用中', statusDisabling: '禁用中', statusUninstalling: '卸载中', resourceEnabled: '已启用', resourceDisabled: '已禁用', uninstallUserPlugin: '卸载', cancelUninstall: '取消卸载',
     noPendingUserPluginChanges: '没有待应用的修改', pendingUserPluginChanges: '有 {count} 项修改待应用', cancelChanges: '取消修改',
     applyUserPluginChanges: '应用并重新启动 DSH', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
     userPluginApplyFailed: '用户插件恢复失败', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
@@ -146,7 +146,7 @@ const COPY = Object.freeze({
     userPluginVersion: 'Version', userPluginSpec: 'Dependency spec', userPluginSource: 'Source', userPluginSourceRegistry: 'Registry',
     userPluginSourceFile: 'Local file', userPluginSourceGit: 'Git', userPluginSourceUrl: 'URL', userPluginSourceOther: 'Other',
     userPluginEnabled: 'Enabled', userPluginDisabled: 'Disabled', userPluginDamaged: 'Damaged metadata', userPluginReserved: 'Conflicts with a System Plugin',
-    pendingEnable: 'Pending enable', pendingDisable: 'Pending disable', pendingUninstall: 'Pending uninstall', uninstallUserPlugin: 'Uninstall', cancelUninstall: 'Cancel uninstall',
+    pendingInstall: 'Pending install', pendingEnable: 'Pending enable', pendingDisable: 'Pending disable', pendingUninstall: 'Pending uninstall', statusInstalling: 'Installing', statusEnabling: 'Enabling', statusDisabling: 'Disabling', statusUninstalling: 'Uninstalling', resourceEnabled: 'Enabled', resourceDisabled: 'Disabled', uninstallUserPlugin: 'Uninstall', cancelUninstall: 'Cancel uninstall',
     noPendingUserPluginChanges: 'No pending changes', pendingUserPluginChanges: '{count} changes pending', cancelChanges: 'Cancel changes',
     applyUserPluginChanges: 'Apply and restart DSH', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
     userPluginApplyFailed: 'User plugin recovery failed', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
@@ -546,6 +546,7 @@ function renderBundledPlugins(values, busy) {
   for (const plugin of paginated('plugins', filtered)) {
     const action = systemPluginDraft.get(plugin.id)
     const projected = projectedSystemPlugin(plugin)
+    const isActive = operation.status === 'running' && operation.pluginId === plugin.id
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -554,14 +555,18 @@ function renderBundledPlugins(values, busy) {
     name.textContent = `@dsh-docker/${plugin.id}`
     const heading = document.createElement('div')
     heading.className = 'resource-heading'
-    heading.append(name, expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions, () => renderBundledPlugins(values, busy)))
+    const stateKey = isActive
+      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
+      : action !== undefined
+        ? { install: 'pendingInstall', uninstall: 'pendingUninstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
+        : plugin.pendingRestart ? 'pluginPendingRestart'
+          : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+    heading.append(
+      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), isActive || action !== undefined || plugin.pendingRestart ? 'pending' : projected.enabled ? 'enabled' : ''),
+      name,
+      expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions, () => renderBundledPlugins(values, busy)),
+    )
     identity.append(heading)
-    if (action !== undefined || plugin.pendingRestart) {
-      const badge = document.createElement('span')
-      badge.className = 'plugin-pending'
-      badge.textContent = t('pluginPendingRestart')
-      identity.append(badge)
-    }
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     if (!projected.installed) {
@@ -576,21 +581,10 @@ function renderBundledPlugins(values, busy) {
       checkbox.addEventListener('change', event => setSystemPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
-      const label = document.createElement('strong')
-      label.textContent = projected.enabled ? t('enabled') : t('disabled')
-      toggle.append(checkbox, track, label)
+      toggle.append(checkbox, track)
       controls.append(toggle, pluginButton(t(action === 'install' ? 'cancelChanges' : 'uninstallPlugin'), plugin, 'uninstall', busy, 'danger-text'))
     }
     row.append(identity, controls)
-    if (operation.status === 'running' && operation.pluginId === plugin.id) {
-      const state = document.createElement('p')
-      state.className = 'plugin-action-state'
-      state.textContent = t({
-        install: 'pluginActionInstall', uninstall: 'pluginActionUninstall',
-        enable: 'pluginActionEnable', disable: 'pluginActionDisable',
-      }[operation.action] ?? 'pluginActionWorking')
-      row.append(state)
-    }
     elements['bundled-plugins'].append(row)
   }
 }
@@ -603,6 +597,7 @@ function renderSystemSkills(values, busy) {
   elements['system-skills'].hidden = filtered.length === 0
   const operation = status?.systemSkillOperation ?? {}
   for (const skill of paginated('systemSkills', filtered)) {
+    const isActive = operation.status === 'running' && operation.skillId === skill.id
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -611,7 +606,14 @@ function renderSystemSkills(values, busy) {
     name.textContent = skill.id
     const heading = document.createElement('div')
     heading.className = 'resource-heading'
-    heading.append(name, expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions, () => renderSystemSkills(values, busy)))
+    const stateKey = isActive
+      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
+      : skill.installed ? (skill.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+    heading.append(
+      userPluginBadge(t(stateKey ?? 'skillActionWorking'), isActive ? 'pending' : skill.enabled ? 'enabled' : ''),
+      name,
+      expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions, () => renderSystemSkills(values, busy)),
+    )
     identity.append(heading)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
@@ -640,18 +642,10 @@ function renderSystemSkills(values, busy) {
       })
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
-      const label = document.createElement('strong')
-      label.textContent = skill.enabled ? t('enabled') : t('disabled')
-      toggle.append(checkbox, track, label)
+      toggle.append(checkbox, track)
       controls.append(toggle, actionButton(t('uninstallPlugin'), 'uninstall', 'danger-text'))
     }
     row.append(identity, controls)
-    if (operation.status === 'running' && operation.skillId === skill.id) {
-      const state = document.createElement('p')
-      state.className = 'plugin-action-state'
-      state.textContent = t({ install: 'pluginActionInstall', uninstall: 'pluginActionUninstall', enable: 'pluginActionEnable', disable: 'pluginActionDisable' }[operation.action] ?? 'skillActionWorking')
-      row.append(state)
-    }
     elements['system-skills'].append(row)
   }
 }
@@ -1000,17 +994,15 @@ function render(next) {
     : runtimeReset.status === 'failed'
       ? `${t('runtimeResetFailed')}: ${localizedError(runtimeReset.error ?? '')}`
       : ''
-  elements['plugin-operation'].hidden = !pluginOperationVisible
-  elements['plugin-operation'].textContent = pluginOperation.status === 'running'
-    ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
+  elements['plugin-operation'].hidden = !pluginOperationVisible || pluginOperation.status !== 'failed'
+  elements['plugin-operation'].textContent = pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
   elements['plugin-restart-required'].hidden = systemPluginDraft.size === 0 && !plugins.some(plugin => plugin.pendingRestart)
   const pluginBusy = busy || discardingPluginDraft
   elements['cancel-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
   elements['apply-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
   const skillOperationVisible = operationResultVisible(skillOperation, 'running')
-  elements['skill-operation'].hidden = !skillOperationVisible
-  elements['skill-operation'].textContent = skillOperation.status === 'running'
-    ? t('skillActionWorking') : skillOperation.status === 'failed' ? localizedError(skillOperation.error ?? '') : t('skillActionComplete')
+  elements['skill-operation'].hidden = !skillOperationVisible || skillOperation.status !== 'failed'
+  elements['skill-operation'].textContent = skillOperation.status === 'failed' ? localizedError(skillOperation.error ?? '') : ''
   const userSkillOperationVisible = operationResultVisible(userSkillOperation, 'running')
   elements['user-skill-operation'].hidden = !userSkillOperationVisible
   elements['user-skill-operation'].textContent = userSkillOperation.status === 'running'
