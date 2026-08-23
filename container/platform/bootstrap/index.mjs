@@ -193,14 +193,16 @@ runtime = new BootstrapRuntime({
 })
 const systemPlugins = {
   list: async () => {
-    const resolved = await deployments.selected()
-    if (resolved === null) return []
+    const deploymentRoot = await realpath(paths.deploymentView).catch(error => (
+      error?.code === 'ENOENT' ? undefined : Promise.reject(error)
+    ))
+    if (deploymentRoot === undefined) return []
     const activeRoot = await realpath(join(paths.systemPluginViewsRoot, 'current')).catch(error => (
       error?.code === 'ENOENT' ? undefined : Promise.reject(error)
     ))
     return listManagedSystemPlugins({
-      environmentRoot: resolved.paths.environment,
-      sourceRoot: resolved.paths['system-plugins'],
+      environmentRoot: join(deploymentRoot, 'environment'),
+      sourceRoot: join(deploymentRoot, 'system-plugins'),
       selectionStore: systemPluginSelections,
       activeRoot,
     })

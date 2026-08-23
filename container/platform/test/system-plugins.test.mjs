@@ -17,6 +17,15 @@ import {
 import { createHash } from 'node:crypto'
 import { hashTree } from '../lib/tree-hash.mjs'
 
+test('Bootstrap lists System Plugins from the selected runtime view without rehashing the Deployment', async () => {
+  const source = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
+  const list = source.slice(source.indexOf('const systemPlugins = {'), source.indexOf('  mutate:', source.indexOf('const systemPlugins = {')))
+  assert.match(list, /realpath\(paths\.deploymentView\)/)
+  assert.match(list, /environmentRoot: join\(deploymentRoot, 'environment'\)/)
+  assert.match(list, /sourceRoot: join\(deploymentRoot, 'system-plugins'\)/)
+  assert.doesNotMatch(list, /deployments\.selected\(\)/)
+})
+
 async function archive(root, id, patch) {
   const source = join(root, `source-${id}`, 'package')
   await mkdir(source, { recursive: true })
