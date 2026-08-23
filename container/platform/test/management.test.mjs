@@ -1268,6 +1268,9 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /const userPluginDraft = new Map\(\)[\s\S]*for \(const plugin of paginated\('userPlugins', filtered\)\)/)
   assert.match(script, /function filteredResources\(key, values\)[\s\S]*listQueries\[key\]/)
   assert.match(script, /function expandableResourceDescription[\s\S]*scrollWidth > description\.clientWidth/)
+  assert.match(script, /identity\.append\(\s*heading,\s*expandableResourceDescription\(pluginDescription\(plugin\)/)
+  assert.match(script, /identity\.append\(\s*heading,\s*expandableResourceDescription\(skill\.description/)
+  assert.match(style, /\.plugin-identity > \.resource-description \{[^}]*display: block;[^}]*margin-top: 2px;/)
   for (const prefix of ['plugins', 'system-skills', 'user-skills', 'user-plugins']) {
     assert.match(html, new RegExp(`id="${prefix}-search"`))
     assert.match(html, new RegExp(`id="${prefix}-page-size"`))

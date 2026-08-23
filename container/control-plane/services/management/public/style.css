@@ -447,6 +447,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .resource-description.expandable::after { position: absolute; top: 6px; right: 2px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); content: ''; }
 .resource-description.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
 .resource-description.expanded::after { top: 9px; transform: rotate(225deg); }
+.plugin-identity > .resource-description { display: block; width: 100%; margin-top: 2px; }
 .plugin-identity .user-skill-metadata { display: block; margin-top: 4px; color: var(--faint); font: 11px/17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .plugin-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .plugin-action-state { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }

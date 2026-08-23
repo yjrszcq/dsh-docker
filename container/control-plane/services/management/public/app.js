@@ -564,9 +564,11 @@ function renderBundledPlugins(values, busy) {
     heading.append(
       userPluginBadge(t(stateKey ?? 'pluginActionWorking'), isActive || action !== undefined || plugin.pendingRestart ? 'pending' : projected.enabled ? 'enabled' : ''),
       name,
+    )
+    identity.append(
+      heading,
       expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions, () => renderBundledPlugins(values, busy)),
     )
-    identity.append(heading)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     if (!projected.installed) {
@@ -612,9 +614,11 @@ function renderSystemSkills(values, busy) {
     heading.append(
       userPluginBadge(t(stateKey ?? 'skillActionWorking'), isActive ? 'pending' : skill.enabled ? 'enabled' : ''),
       name,
+    )
+    identity.append(
+      heading,
       expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions, () => renderSystemSkills(values, busy)),
     )
-    identity.append(heading)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     const actionButton = (label, action, className = 'secondary') => {

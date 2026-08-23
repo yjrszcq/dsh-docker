@@ -751,8 +751,8 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
               h('div', { className: css.pluginIdentity },
                 h('div', { className: css.resourceHeading },
                   h(ResourceStatusBadge, { label: t(stateKey ?? 'pluginActionWorking'), enabled: !isActive && action === undefined && !plugin.pendingRestart && projected.enabled, pending: isActive || action !== undefined || plugin.pendingRestart }),
-                  h('strong', null, `@dsh-docker/${plugin.id}`),
-                  h(ExpandableDescription, { text: description, identity: plugin.id }))),
+                  h('strong', null, `@dsh-docker/${plugin.id}`)),
+                h(ExpandableDescription, { text: description, identity: plugin.id })),
               !projected.installed
                 ? h('div', { className: css.pluginActions },
                     h('button', {
@@ -806,8 +806,8 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
               h('div', { className: css.pluginIdentity },
                 h('div', { className: css.resourceHeading },
                   h(ResourceStatusBadge, { label: t(stateKey ?? 'skillActionWorking'), enabled: !isActive && skill.enabled, pending: isActive }),
-                  h('strong', null, skill.id),
-                  h(ExpandableDescription, { text: skill.description?.[t('localeCode')] ?? skill.id, identity: skill.id }))),
+                  h('strong', null, skill.id)),
+                h(ExpandableDescription, { text: skill.description?.[t('localeCode')] ?? skill.id, identity: skill.id })),
               !skill.installed
                 ? h('div', { className: css.pluginActions },
                     h('button', {

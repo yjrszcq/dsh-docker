@@ -506,6 +506,7 @@ a.secondaryButton { text-decoration: none; }
 .resourceDescription.expandable::after { position: absolute; top: 6px; right: 2px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); content: ''; }
 .resourceDescription.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
 .resourceDescription.expanded::after { top: 9px; transform: rotate(225deg); }
+.pluginIdentity > .resourceDescription { display: block; width: 100%; margin-top: 2px; }
 .pluginIdentity .pendingBadge {
   display: inline-block;
   width: fit-content;
