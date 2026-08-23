@@ -34,10 +34,6 @@ function sameDeployment(left, right) {
     })
 }
 
-function isImageDeployment(record) {
-  return KINDS.every(kind => record[kind === 'system-plugins' ? 'systemPlugins' : kind].storage === 'image')
-}
-
 function validateCandidate(from, candidate, experimental) {
   if (experimental) {
     if (candidate.authority !== 'experimental') throw new TrustError('probation candidate must use Experimental authority')
@@ -269,9 +265,8 @@ export class DeploymentManager {
       if (
         image.authority === 'development'
         && image.targetSequence === 0
-        && isImageDeployment(current)
-        && isImageDeployment(image)
-        && current.runtime.imageBuildId !== image.runtime.imageBuildId
+        && current.id !== image.id
+        && compareDshVersions(image.dshVersion, current.dshVersion) >= 0
       ) {
         target = image.id
         action = 'development-refresh'

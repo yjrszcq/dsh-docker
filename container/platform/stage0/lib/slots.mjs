@@ -98,19 +98,11 @@ export class BootstrapManager {
       if (
         this.inventory.authority === 'development'
         && image.targetSequence === 0
-        && current.artifact.storage === 'image'
-        && image.artifact.storage === 'image'
-        && current.artifact.imageBuildId !== image.artifact.imageBuildId
-      ) return this.commit(image.id, null)
-      if (current.targetSequence > image.targetSequence) return state
-      if (current.targetSequence < image.targetSequence) return this.commit(image.id, state.current)
-      if (
-        this.inventory.authority === 'development'
-        && image.targetSequence === 0
-        && current.artifact.storage === 'image'
         && image.artifact.storage === 'image'
         && current.id !== image.id
       ) return this.commit(image.id, null)
+      if (current.targetSequence > image.targetSequence) return state
+      if (current.targetSequence < image.targetSequence) return this.commit(image.id, state.current)
       if (current.version !== image.version || current.artifact.sha256 !== image.artifact.sha256) {
         throw new TrustError('Bootstrap image conflicts with current content at the same targetSequence')
       }

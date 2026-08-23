@@ -515,6 +515,36 @@ test('replaces stale formal Image Deployment slots when starting a development i
   assert.equal(await readFile(join(development.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:local-rebuild')
 })
 
+test('replaces stale Managed Deployment assets when starting a compatible development image', async () => {
+  const formal = await fixture({ authority: 'stable', targetSequence: 11, marker: 'formal-eleven' })
+  await formal.manager.initialize(formal.image)
+  const managed = await formal.manager.writeRecord(await managedRecord(
+    formal,
+    'managed-eleven',
+    11,
+    'stable',
+    '0.1.0-rc.1',
+  ))
+  await formal.manager.activate(managed.id, async () => {})
+  const development = await fixture({
+    root: formal.root,
+    paths: formal.paths,
+    authority: 'development',
+    targetSequence: 0,
+    marker: 'local-managed-refresh',
+  })
+  const plan = await development.manager.prepareImage(development.image)
+  assert.equal(plan.action, 'development-refresh')
+  assert.equal(plan.fallback, null)
+  const state = await development.manager.acceptImage(plan)
+  assert.equal(state.current, development.image.id)
+  assert.equal(state.previous, null)
+  assert.equal(
+    await readFile(join(development.paths.viewsRoot, 'system-plugins', 'sentinel'), 'utf8'),
+    'system-plugins:local-managed-refresh',
+  )
+})
+
 test('preserves Experimental DSH until a Stable image catches up', async () => {
   const context = await fixture()
   await context.manager.initialize(context.image)
