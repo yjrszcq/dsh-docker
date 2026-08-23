@@ -15,6 +15,8 @@ test('upstream workflow discovers candidates without production credentials', as
   assert.match(workflow, /workflow_dispatch:/)
   assert.match(workflow, /contents: write/)
   assert.match(workflow, /pull-requests: write/)
+  assert.match(workflow, /BASE_BRANCH: dev/)
+  assert.match(workflow, /ref: \$\{\{ env\.BASE_BRANCH \}\}/)
   assert.match(workflow, /supported-target\.mjs" advance/)
   assert.match(workflow, /trusted-platform/)
   assert.match(workflow, /node "\$trusted_platform\/tools\/supported-target\.mjs"/)
@@ -23,6 +25,9 @@ test('upstream workflow discovers candidates without production credentials', as
   assert.match(workflow, /git push --force-with-lease="refs\/heads\/\$CANDIDATE_BRANCH:\$candidate_remote_sha"/)
   assert.match(workflow, /git push origin/)
   assert.match(workflow, /chore\(dsh\): validate/)
+  assert.match(workflow, /gh pr create[\s\S]*--base "\$BASE_BRANCH"/)
+  assert.match(workflow, /gh pr edit "\$pr_number"[\s\S]*--base "\$BASE_BRANCH"/)
+  assert.doesNotMatch(workflow, /github\.event\.repository\.default_branch/)
   assert.doesNotMatch(workflow, /DSH_RELEASE_PRIVATE_KEY|DSH_RECOVERY|DOCKER_TOKEN/)
 })
 

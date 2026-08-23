@@ -490,7 +490,7 @@ Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH
 
 ## 发布自动化
 
-`DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并创建或更新用于晋升 Latest Supported 的候选 PR。发现新上游版本并创建候选 PR 后会通知一次；完整兼容性验证结束后再通知最终通过或失败结果。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；Merge 始终是发布闸门。自动候选分支只由 `DSH Upstream Update` 内部复用的 job 验证一次，其他 PR 则自动运行独立候选验证。维护者也可以手动运行 `DSH Candidate Validation`，对已经合并的 branch、tag 或 commit 做发布前验证。独立 PR 与手动验证结果由一个不检出、不执行候选代码的 `workflow_run` 发送 Gotify 通知，避免向候选代码暴露 Secret；没有新版本时不通知。
+`DSH Upstream Update` 每 6 小时整点及手动运行。它比较 npm `latest` 与 [`release/supported-target.json`](../../release/supported-target.json)，保持当前 Environment，并以 `dev` 为基线创建或更新目标同为 `dev` 的候选 PR。发现新上游版本并创建候选 PR 后会通知一次；完整兼容性验证结束后再通知最终通过或失败结果。候选 CI 验证 npm integrity、应用当前 Environment、运行两套项目测试，并执行标准版和 devtools 容器 smoke。相关 job 不拥有 Release 或 Recovery 凭据；候选先合并到 `dev`，之后将 `dev` 晋升到 `main` 才进入正式发布流程。自动候选分支只由 `DSH Upstream Update` 内部复用的 job 验证一次，其他 PR 则自动运行独立候选验证。维护者也可以手动运行 `DSH Candidate Validation`，对已经合并的 branch、tag 或 commit 做发布前验证。独立 PR 与手动验证结果由一个不检出、不执行候选代码的 `workflow_run` 发送 Gotify 通知，避免向候选代码暴露 Secret；没有新版本时不通知。
 
 `Publish Supported Platform Target` 会在 `main` 的 Supported Target、Environment definition 或官方 DSH Registry policy 变化后运行，也支持经过审批的手动触发。创建仅允许 `main` 的受保护 `production-release` GitHub Environment，并配置：
 
