@@ -454,6 +454,10 @@ docker exec -it deepseek-harness dsh-platform return-stable
 
 An Agent running inside the current DSH session must start activation asynchronously with `dsh-platform update` and report the returned task ID. `update --wait` is reserved for `docker exec`, the standalone console terminal, and external automation because activation may switch DSH and interrupt the current tool transport.
 
+During an update, the standalone Management Console and DSH Platform Management show the overall transaction, stage subitems, and current-stage logs across preparation, download and verification, Runtime construction, and switching and health checks. Downloads, copies, Artifact verification, file processing, and health checks report only measurable bytes, items, files, or services; a phase without a trustworthy total does not invent a precise percentage. Completed stages collapse by default while the current or failed stage remains open. After a refresh or short disconnection, the interfaces reconstruct the progress and stage history from persistent transaction state and task-correlated JSONL logs.
+
+Ordinary rollback and **Return to Stable** are available only in the standalone DSH Management Console. The in-DSH Platform Management surface retains checking, updating, channel selection, runtime status, and restart controls, avoiding low-frequency data-recovery actions inside DSH itself. **Return to Stable** appears only while an Experimental Deployment is active, a verified Stable recovery point exists, and no mutually exclusive transaction is running.
+
 Changing channels modifies only local desired state. Stable converges to the signed supported DSH and Environment. Experimental first converges the official Environment, then offers the newest verified upstream DSH. When current DSH is ahead of Latest Supported, the complete combination is frozen until Stable catches up.
 
 Candidate build failures create a version Hold; incompatible Runtime/Environment combinations create a combination Hold. `retry` clears the one active Hold or Blocked combination.

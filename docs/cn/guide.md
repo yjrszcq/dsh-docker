@@ -454,6 +454,10 @@ docker exec -it deepseek-harness dsh-platform return-stable
 
 Agent 在当前 DSH 会话内执行激活时，必须使用异步的 `dsh-platform update`，并报告返回的任务 ID。`update --wait` 只用于 `docker exec`、独立管理中心终端和外部自动化，因为激活过程可能切换 DSH 并中断当前工具传输。
 
+更新进行时，独立管理中心和 DSH 内“平台管理”会按“准备、下载与验证、构建 Runtime、切换与健康检查”展示事务总进度、阶段子项和当前阶段日志。下载、复制、Artifact 验证、文件处理和健康检查只显示实际可测量的字节数、项目数、文件数或服务数；无法可靠测量的阶段不会伪造精确百分比。已完成阶段默认收起，当前或失败阶段默认展开；刷新或短暂断线后，界面会从持久化事务状态和带任务 ID 的 JSONL 日志恢复进度与阶段轨迹。
+
+普通回滚和“返回稳定通道”只在独立 DSH 管理中心提供。DSH 内“平台管理”只负责检查、更新、通道选择、运行状态和重启，避免在 DSH 页面内暴露低频且可能涉及数据恢复的操作。“返回稳定通道”仅在当前确实运行 Experimental、存在已验证的 Stable 恢复点且没有互斥事务时显示。
+
 切换通道只修改本地 desired state。Stable 收敛到已签名的受支持 DSH 和 Environment；Experimental 先收敛正式 Environment，再提供经过验证的最新上游 DSH。当前 DSH 领先 Latest Supported 时，完整组合会冻结，直到 Stable 追上。
 
 候选构建失败会创建版本 Hold；不兼容的 Runtime/Environment 组合会创建组合 Hold。`retry` 清除当前唯一的 Hold 或 Blocked 组合。
