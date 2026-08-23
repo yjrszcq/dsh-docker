@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, symlink } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TrustError } from '../../../platform/lib/validation.mjs'
@@ -84,7 +84,7 @@ async function measureTree(path) {
 async function copyTree(source, destination, onProgress = async () => {}) {
   const details = await lstat(source)
   if (details.isSymbolicLink()) {
-    await symlink(await import('node:fs/promises').then(({ readlink }) => readlink(source)), destination)
+    await symlink(await readlink(source), destination)
     await onProgress({ processedBytes: 0, processedItems: 1 })
     return
   }

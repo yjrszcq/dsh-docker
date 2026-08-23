@@ -70,7 +70,11 @@ test('builds a complete content-addressed Managed Deployment from verified input
   const builder = new ManagedDeploymentBuilder({ paths })
   const progress = []
   const first = await builder.buildStable(prepared, { onProgress: async value => progress.push(value) })
-  assert.deepEqual(progress, [80, 82, 87, 89])
+  assert.deepEqual(progress.filter(value => typeof value === 'number'), [80, 82, 87, 89])
+  const runtimeProgress = progress.filter(value => typeof value === 'object')
+  assert.ok(runtimeProgress.length > 0)
+  assert.equal(runtimeProgress.at(-1).processedBytes, runtimeProgress.at(-1).totalBytes)
+  assert.equal(runtimeProgress.at(-1).processedItems, runtimeProgress.at(-1).totalItems)
   assert.equal(first.assets.pristine.id, `pristine-npm-${objectSha256}`)
   assert.equal(first.record.authority, 'stable')
   assert.equal(first.record.targetSequence, 2)
