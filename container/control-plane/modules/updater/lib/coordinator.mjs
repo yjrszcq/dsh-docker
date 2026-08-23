@@ -41,6 +41,7 @@ export class UpdateCoordinator extends EventEmitter {
     this.emit('state', value)
     await this.record('update.phase.changed', {
       status,
+      phase: status,
       operation: value.operation ?? null,
       rollbackPhase: value.rollbackPhase ?? null,
       taskId: value.taskId ?? null,
@@ -52,8 +53,16 @@ export class UpdateCoordinator extends EventEmitter {
     return value
   }
 
-  record(message, fields = {}) {
-    return Promise.resolve().then(() => this.report(message, fields)).catch(() => {})
+  async record(message, fields = {}) {
+    try {
+      const current = await this.state.read()
+      const context = {
+        ...(current.taskId === null || current.taskId === undefined ? {} : { taskId: current.taskId }),
+        ...(current.operation === null || current.operation === undefined ? {} : { operation: current.operation }),
+        ...(current.status === null || current.status === undefined ? {} : { phase: current.status }),
+      }
+      return await this.report(message, { ...context, ...fields })
+    } catch {}
   }
 
   async bestEffort(message, operation, fallback, fields = {}, cooldownMs = 0) {
