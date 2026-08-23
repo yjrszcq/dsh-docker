@@ -205,12 +205,13 @@ function localTime(value, locale) {
 
 function updateProgressModel(update, t) {
   const rollback = update.operation === 'rollback'
+  const phase = update.phase ?? (rollback ? update.rollbackPhase : update.status)
   const labels = rollback
     ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
     : UPDATE_PROGRESS_STEPS
   const rawStage = rollback
-    ? ROLLBACK_PROGRESS_STAGE[update.rollbackPhase] ?? 0
-    : UPDATE_PROGRESS_STAGE[update.status] ?? 0
+    ? ROLLBACK_PROGRESS_STAGE[phase] ?? 0
+    : UPDATE_PROGRESS_STAGE[phase] ?? 0
   const stage = rollback && update.rollbackIncludesSnapshot === false && rawStage > 2 ? rawStage - 1 : rawStage
   const detailKey = rollback
     ? ({
@@ -219,7 +220,7 @@ function updateProgressModel(update, t) {
         switching: 'rollbackDetailSwitching',
         'restoring-data': 'rollbackDetailData',
         verifying: 'rollbackDetailVerifying',
-      }[update.rollbackPhase] ?? 'rollbackDetailPreparing')
+      }[phase] ?? 'rollbackDetailPreparing')
     : ({
         checking: 'progressDetailChecking',
         planning: 'progressDetailPlanning',
@@ -230,13 +231,26 @@ function updateProgressModel(update, t) {
         'snapshotting-data': 'progressDetailSnapshot',
         switching: 'progressDetailSwitching',
         probation: 'progressDetailProbation',
-      }[update.status] ?? 'progressDetailPlanning')
+      }[phase] ?? 'progressDetailPlanning')
   return {
     title: t(rollback ? 'rollbackProgress' : 'updateProgress'),
     detail: t(detailKey).replace('{until}', localTime(update.probationUntil, t('localeCode'))),
     labels,
     stage,
   }
+}
+
+function transactionLogStage(phase, update, t) {
+  const rollback = update?.operation === 'rollback'
+  const stageMap = rollback ? ROLLBACK_PROGRESS_STAGE : UPDATE_PROGRESS_STAGE
+  const labels = rollback ? ROLLBACK_PROGRESS_STEPS : UPDATE_PROGRESS_STEPS
+  let index = stageMap[phase]
+  if (index === undefined) return { key: `phase:${String(phase ?? 'unknown')}`, label: String(phase ?? t('stageLogs')), index: labels.length }
+  if (rollback && update?.rollbackIncludesSnapshot === false && index > 2) index -= 1
+  const visibleLabels = rollback && update?.rollbackIncludesSnapshot === false
+    ? labels.filter(key => key !== 'rollbackData')
+    : labels
+  return { key: `${rollback ? 'rollback' : 'update'}:${String(index)}`, label: t(visibleLabels[index] ?? 'stageLogs'), index }
 }
 
 function updateOutcome(value, t) {
@@ -1012,33 +1026,97 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
 }
 
-function TransactionStageLogs({ update, t }) {
+function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   const [entries, setEntries] = useState([])
-  const [expanded, setExpanded] = useState(true)
-  const updateActive = !TERMINAL.has(update?.status ?? 'idle') || (update?.status === 'failed' && Boolean(update?.taskId))
-  const phase = update?.operation === 'rollback' ? (update.rollbackPhase ?? update.phase) : (update?.status ?? update?.phase)
+  const [expanded, setExpanded] = useState({})
+  const [autoScroll, setAutoScroll] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const touched = useRef(new Set())
+  const identities = useRef(new Set())
+  const previousStage = useRef()
+  const activeList = useRef(null)
+  const phase = update?.phase ?? (update?.operation === 'rollback' ? update.rollbackPhase : update?.status)
+  const currentStage = transactionLogStage(phase, update, t)
   useEffect(() => {
-    if (!updateActive || !update?.taskId || !phase) {
+    if (!visible || !update?.taskId || !phase) {
       setEntries([])
       return undefined
     }
-    const params = new URLSearchParams({ taskId: String(update.taskId), phase: String(phase), limit: '200' })
+    setEntries([])
+    setExpanded({ [currentStage.key]: true })
+    touched.current.clear()
+    identities.current.clear()
+    previousStage.current = currentStage.key
+    const params = new URLSearchParams({ taskId: String(update.taskId), limit: '1000' })
     const stream = new EventSource(`${API}/logs/stream?${params.toString()}`)
     stream.addEventListener('log', event => {
-      try { setEntries(previous => [...previous, JSON.parse(event.data)].slice(-200)) } catch {}
+      try {
+        const entry = JSON.parse(event.data)
+        const identity = JSON.stringify(entry)
+        if (identities.current.has(identity)) return
+        identities.current.add(identity)
+        setEntries(previous => [...previous, entry].slice(-1000))
+      } catch {}
     })
     return () => stream.close()
-  }, [phase, update?.taskId, updateActive])
-  if (!updateActive || !update?.taskId || !phase) return null
+  }, [update?.taskId, visible])
+  useEffect(() => {
+    const prior = previousStage.current
+    setExpanded(value => {
+      const next = { ...value }
+      if (prior !== undefined && prior !== currentStage.key && !touched.current.has(prior)) next[prior] = false
+      if (!touched.current.has(currentStage.key)) next[currentStage.key] = true
+      return next
+    })
+    previousStage.current = currentStage.key
+  }, [currentStage.key])
+  useEffect(() => {
+    if (!autoScroll || !expanded[currentStage.key]) return
+    activeList.current?.scrollTo({ top: activeList.current.scrollHeight })
+  }, [autoScroll, currentStage.key, entries, expanded])
+  if (!visible || !update?.taskId || !phase) return null
+  const groups = new Map()
+  for (const entry of entries) {
+    const stage = transactionLogStage(entry.phase, update, t)
+    const group = groups.get(stage.key) ?? { ...stage, entries: [] }
+    group.entries.push(entry)
+    groups.set(stage.key, group)
+  }
+  if (!groups.has(currentStage.key)) groups.set(currentStage.key, { ...currentStage, entries: [] })
+  const orderedGroups = [...groups.values()].sort((left, right) => left.index - right.index)
+  const currentEntries = groups.get(currentStage.key)?.entries ?? []
+  const toggleStage = key => {
+    touched.current.add(key)
+    setExpanded(value => ({ ...value, [key]: !(value[key] ?? key === currentStage.key) }))
+  }
+  const copyCurrent = async () => {
+    if (currentEntries.length === 0) return
+    try {
+      await navigator.clipboard.writeText(currentEntries.map(entry => JSON.stringify(entry)).join('\n'))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1_500)
+    } catch {}
+  }
   return h('div', { className: css.progressStageLog },
     h('div', { className: css.progressLogHeading },
       h('strong', null, t('stageLogs')),
-      h('button', { type: 'button', className: css.smallButton, onClick: () => setExpanded(value => !value) }, t(expanded ? 'hideStageLogs' : 'showStageLogs'))),
-    expanded ? h('div', { className: css.progressLogList, role: 'log' }, entries.length === 0
-      ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
-      : entries.map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
-        h('summary', null, h('span', null, String(entry.message ?? '-').replace(/\s+/gu, ' ')), h('time', null, localTime(entry.timestamp, t('localeCode')))),
-        h('pre', null, JSON.stringify(entry, null, 2))))) : null)
+      h('div', { className: css.progressLogActions },
+        h('label', { className: css.progressAutoScroll },
+          h('input', { type: 'checkbox', checked: autoScroll, onChange: event => setAutoScroll(event.target.checked) }),
+          h('span', null, t('autoScroll'))),
+        h('button', { type: 'button', className: css.smallButton, disabled: currentEntries.length === 0, onClick: copyCurrent }, t(copied ? 'logsCopied' : 'copyStageLogs')))),
+    h('div', { className: css.progressLogList, role: 'log' }, orderedGroups.map(group => {
+      const isExpanded = expanded[group.key] ?? group.key === currentStage.key
+      return h('section', { className: css.progressLogGroup, key: group.key },
+        h('button', { type: 'button', className: css.progressLogGroupHeading, 'aria-expanded': isExpanded, onClick: () => toggleStage(group.key) },
+          h('strong', null, group.label), h('span', null, String(group.entries.length))),
+        isExpanded ? h('div', { className: css.progressLogGroupList, ref: group.key === currentStage.key ? activeList : undefined }, group.entries.length === 0
+          ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
+          : group.entries.slice(-200).map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
+            h('summary', null, h('span', null, String(entry.message ?? '-').replace(/\s+/gu, ' ')), h('time', null, localTime(entry.timestamp, t('localeCode')))),
+            h('pre', null, JSON.stringify(entry, null, 2))))) : null)
+    })),
+    h('button', { type: 'button', className: css.progressFullLog, onClick: onViewFullLog }, t('viewFullTransactionLog')))
 }
 
 function PlatformManagement({ t }) {
@@ -1053,6 +1131,7 @@ function PlatformManagement({ t }) {
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [showSuccessfulProgress, setShowSuccessfulProgress] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
@@ -1317,6 +1396,21 @@ function PlatformManagement({ t }) {
   const busy = (acting && !checking) || restartBusy || pluginOperation.status === 'running' || skillOperation.status === 'running'
     || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
   const updateActive = !TERMINAL.has(update.status ?? 'idle')
+  useEffect(() => {
+    if (update.status !== 'success' || !update.taskId) {
+      setShowSuccessfulProgress(false)
+      return undefined
+    }
+    const remaining = Date.parse(update.updatedAt ?? '') + 3_000 - Date.now()
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      setShowSuccessfulProgress(false)
+      return undefined
+    }
+    setShowSuccessfulProgress(true)
+    const timer = window.setTimeout(() => setShowSuccessfulProgress(false), remaining)
+    return () => window.clearTimeout(timer)
+  }, [update.status, update.taskId, update.updatedAt])
+  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId)) || showSuccessfulProgress
   const hasSupportedTarget = status?.supported !== null && status?.supported !== undefined
   const updateStatus = update.operation === 'rollback' && updateActive
     ? 'statusRollingBack'
@@ -1412,7 +1506,7 @@ function PlatformManagement({ t }) {
             h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
             t(updateStatus))),
         update.error || update.outcome ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
-        updateActive ? h('div', { className: css.updateProgress },
+        progressVisible ? h('div', { className: css.updateProgress },
           h('div', { className: css.progressHeading },
             h('strong', null, progressModel.title),
             h('output', null, `${String(progress)}%`)),
@@ -1425,7 +1519,7 @@ function PlatformManagement({ t }) {
             }, t(label)))),
           h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
             h('span', { style: { width: `${String(progress)}%` } })),
-          h(TransactionStageLogs, { update, t })) : null),
+          h(TransactionStageLogs, { update, visible: progressVisible, t, onViewFullLog: () => setActiveTab('maintenance') })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
@@ -1547,7 +1641,7 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
+      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', copyStageLogs: '复制当前日志', logsCopied: '已复制', viewFullTransactionLog: '查看完整事务日志', metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
       progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。', progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。', progressDetailSnapshot: 'DSH 已暂停，正在为实验更新创建完整数据快照。', progressDetailSwitching: '正在原子切换完整 Deployment，并检查 DSH 是否就绪。', progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 {until}。',
       rollbackDetailPreparing: '正在验证回滚计划与上一完整 Deployment。', rollbackDetailStopping: '正在暂停 DSH，准备恢复上一完整状态。', rollbackDetailSwitching: '正在切换上一 Runtime、Environment 和系统插件集合。', rollbackDetailData: '正在校验并恢复更新前的数据快照。', rollbackDetailVerifying: '正在启动 DSH 并执行健康检查。',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
@@ -1572,7 +1666,7 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
+      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', copyStageLogs: 'Copy current logs', logsCopied: 'Copied', viewFullTransactionLog: 'View full transaction log', metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
       progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.', progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.', progressDetailSnapshot: 'DSH is paused while a complete data snapshot is created for the Experimental update.', progressDetailSwitching: 'Atomically switching the complete Deployment and checking DSH readiness.', progressDetailProbation: 'The candidate Runtime remains under health observation until {until}.',
       rollbackDetailPreparing: 'Validating the rollback plan and previous complete Deployment.', rollbackDetailStopping: 'Pausing DSH before restoring the previous complete state.', rollbackDetailSwitching: 'Switching the previous Runtime, Environment, and System Plugin set.', rollbackDetailData: 'Verifying and restoring the pre-update data snapshot.', rollbackDetailVerifying: 'Starting DSH and running health checks.',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',

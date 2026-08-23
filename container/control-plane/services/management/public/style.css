@@ -400,7 +400,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-log-heading strong { font-size: 12px; font-weight: 500; }
 .progress-log-actions { display: flex; gap: 6px; }
 .progress-log-actions button { min-height: 28px; padding: 4px 9px; font-size: 11px; }
-.progress-log-list { display: grid; gap: 4px; max-height: 190px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.progress-log-list { display: grid; gap: 6px; }
+.progress-log-group { overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.progress-log-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; }
+.progress-log-group > summary strong { font-weight: 500; }
+.progress-log-group > summary span { color: var(--muted); font: 10px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progress-log-group-list { display: grid; gap: 4px; max-height: 190px; overflow: auto; padding: 6px; border-top: 1px solid var(--border); }
 .progress-log-entry { min-width: 0; border-bottom: 1px solid var(--border); padding: 3px 2px; }
 .progress-log-entry:last-child { border-bottom: 0; }
 .progress-log-entry summary { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; list-style-position: inside; }

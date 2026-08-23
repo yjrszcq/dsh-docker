@@ -471,12 +471,17 @@ test('serializes one update task and persists success progress', async () => {
   const coordinator = new UpdateCoordinator({
     metadata,
     preparer,
-    activator: { activate: async (prepared, { onSwitching }) => {
-      activationStates.push((await state.read()).status)
-      await onSwitching()
-      activationStates.push((await state.read()).status)
-      activated = prepared.stable.targetSequence
-    } },
+    activator: {
+      activate: async (prepared, { onSwitching }) => {
+        activationStates.push((await state.read()).status)
+        await onSwitching()
+        activationStates.push((await state.read()).status)
+        activated = prepared.stable.targetSequence
+      },
+      health: async () => ({ healthy: true, components: [
+        { id: 'gateway', healthy: true }, { id: 'dsh-runtime', healthy: true },
+      ] }),
+    },
     state,
   })
   const task = coordinator.start()
@@ -487,6 +492,8 @@ test('serializes one update task and persists success progress', async () => {
   assert.equal(activated, 1)
   assert.deepEqual(activationStates, ['building-candidate', 'switching'])
   assert.equal((await state.read()).progress, 100)
+  assert.equal((await state.read()).readyServices, 2)
+  assert.equal((await state.read()).totalServices, 2)
 })
 
 test('persists a failed update without activating receipts and permits a later retry', async () => {
@@ -503,12 +510,14 @@ test('persists a failed update without activating receipts and permits a later r
   })
   await assert.rejects(coordinator.start().completion, /activation failed/)
   assert.equal((await state.read()).status, 'failed')
+  assert.equal((await state.read()).phase, 'building-candidate')
   assert.equal((await objects.allReceipts()).every(receipt => receipt.status === 'staged'), true)
   assert.equal(reports.some(entry => entry.message === 'update.stable.failed'
     && entry.fields.error instanceof Error
     && entry.fields.taskId !== undefined), true)
   assert.equal(reports.some(entry => entry.message === 'update.phase.changed'
     && entry.fields.status === 'failed'
+    && entry.fields.phase === 'building-candidate'
     && entry.fields.level === 'error'), true)
   fail = false
   await coordinator.start().completion
@@ -576,7 +585,9 @@ function experimentalSystem(root, overrides = {}) {
     resumeDsh: async () => { calls.push('resume') },
     switchExperimental: async id => { calls.push(`switch:${id}`) },
     commitExperimental: async id => { calls.push(`commit:${id}`) },
-    health: async () => ({ healthy: true }),
+    health: async () => ({ healthy: true, components: [
+      { id: 'gateway', healthy: true }, { id: 'dsh-runtime', healthy: true },
+    ] }),
     experimentalActivationTokens: async tokens => ['stable-receipt', ...tokens],
     restoreDeployment: async (from, options) => { calls.push(`restore-runtime:${from.runtime}:${String(options?.resume)}`) },
     ...overrides.activator,
@@ -607,7 +618,9 @@ function experimentalSystem(root, overrides = {}) {
 test('runs a user-started Experimental candidate through snapshot and probation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-success-'))
   const { calls, coordinator } = experimentalSystem(root)
-  await coordinator.startExperimental().completion
+  const result = await coordinator.startExperimental().completion
+  assert.equal(result.readyServices, 2)
+  assert.equal(result.totalServices, 2)
   assert.equal((await coordinator.journal.read()).phase, 'committed')
   assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
     'suspend', 'snapshot:task', 'switch:runtime-b', 'commit:runtime-b',

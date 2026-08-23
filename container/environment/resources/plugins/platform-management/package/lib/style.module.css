@@ -410,7 +410,14 @@ a.secondaryButton { text-decoration: none; }
 .progressStageLog { display: grid; gap: 8px; min-width: 0; }
 .progressLogHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .progressLogHeading strong { font-size: 12px; font-weight: 500; }
-.progressLogList { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-module-platform); }
+.progressLogActions { display: flex; align-items: center; gap: 6px; }
+.progressAutoScroll { display: inline-flex; align-items: center; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 10px; }
+.progressLogList { display: grid; gap: 6px; }
+.progressLogGroup { overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-module-platform); }
+.progressLogGroupHeading { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border: 0; color: var(--dsw-alias-label-primary); background: transparent; cursor: pointer; font-size: 11px; line-height: 18px; text-align: left; }
+.progressLogGroupHeading strong { font-weight: 500; }
+.progressLogGroupHeading span { color: var(--dsw-alias-label-tertiary); font: 10px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progressLogGroupList { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border-top: 1px solid var(--dsw-alias-border-l2); }
 .progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 3px 2px; }
 .progressLogEntry:last-child { border-bottom: 0; }
 .progressLogEntry summary { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 11px; line-height: 18px; }
@@ -418,6 +425,7 @@ a.secondaryButton { text-decoration: none; }
 .progressLogEntry summary time { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 .progressLogEntry pre { max-height: 160px; overflow: auto; margin: 5px 0 2px; color: var(--dsw-alias-label-secondary); white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .progressLogEmpty { margin: 0 !important; color: var(--dsw-alias-label-secondary) !important; font-size: 11px; }
+.progressFullLog { justify-self: start; padding: 0; border: 0; color: var(--dsw-alias-state-business-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .progressCompleted, .progressActive { color: var(--dsw-alias-label-primary) !important; }
 .progressCompleted::before { border-color: var(--dsw-alias-state-success-primary) !important; background: var(--dsw-alias-state-success-primary) !important; }
 .progressCompleted::after { background: var(--dsw-alias-state-success-primary) !important; }

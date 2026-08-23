@@ -265,8 +265,13 @@ let logSource
 let progressLogSource
 let progressLogKey
 let progressLogEntries = []
-let progressLogExpanded = true
+const progressLogIdentities = new Set()
+let progressLogUpdate
+const progressLogStageExpansion = new Map()
+const progressLogStageTouched = new Set()
 let progressLogAutoScroll = true
+let progressSuccessTimer
+let progressSuccessTimerKey
 let logLastActivity = 0
 let logWatchdogTimer
 let logRenderFrame
@@ -471,8 +476,9 @@ function progressDetail(update) {
       switching: 'rollbackDetailSwitching',
       'restoring-data': 'rollbackDetailData',
       verifying: 'rollbackDetailVerifying',
-    }[update.rollbackPhase] ?? 'rollbackDetailPreparing')
+    }[update.phase ?? update.rollbackPhase] ?? 'rollbackDetailPreparing')
   }
+  const phase = update.phase ?? update.status
   const key = {
     checking: 'progressDetailChecking',
     planning: 'progressDetailPlanning',
@@ -483,7 +489,7 @@ function progressDetail(update) {
     'snapshotting-data': 'progressDetailSnapshot',
     switching: 'progressDetailSwitching',
     probation: 'progressDetailProbation',
-  }[update.status] ?? 'progressDetailPlanning'
+  }[phase] ?? 'progressDetailPlanning'
   return t(key, { until: localTime(update.probationUntil) })
 }
 
@@ -493,8 +499,8 @@ function renderProgressSteps(update) {
     ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
     : UPDATE_PROGRESS_STEPS
   const rawStage = rollback
-    ? ROLLBACK_PROGRESS_STAGE[update.rollbackPhase] ?? 0
-    : UPDATE_PROGRESS_STAGE[update.status] ?? 0
+    ? ROLLBACK_PROGRESS_STAGE[update.phase ?? update.rollbackPhase] ?? 0
+    : UPDATE_PROGRESS_STAGE[update.phase ?? update.status] ?? 0
   const stage = rollback && update.rollbackIncludesSnapshot === false && rawStage > 2 ? rawStage - 1 : rawStage
   elements['progress-steps'].style.setProperty('--step-count', String(labels.length))
   elements['progress-steps'].replaceChildren(...labels.map((key, index) => {
@@ -507,7 +513,20 @@ function renderProgressSteps(update) {
 }
 
 function progressLogPhase(update) {
-  return update.operation === 'rollback' ? (update.rollbackPhase ?? update.phase) : (update.status ?? update.phase)
+  return update.phase ?? (update.operation === 'rollback' ? update.rollbackPhase : update.status)
+}
+
+function progressLogStage(phase, update = progressLogUpdate) {
+  const rollback = update?.operation === 'rollback'
+  const stageMap = rollback ? ROLLBACK_PROGRESS_STAGE : UPDATE_PROGRESS_STAGE
+  const labels = rollback ? ROLLBACK_PROGRESS_STEPS : UPDATE_PROGRESS_STEPS
+  let index = stageMap[phase]
+  if (index === undefined) return { key: `phase:${String(phase ?? 'unknown')}`, label: String(phase ?? t('stageLogs')), index: labels.length }
+  if (rollback && update?.rollbackIncludesSnapshot === false && index > 2) index -= 1
+  const visibleLabels = rollback && update?.rollbackIncludesSnapshot === false
+    ? labels.filter(key => key !== 'rollbackData')
+    : labels
+  return { key: `${rollback ? 'rollback' : 'update'}:${String(index)}`, label: t(visibleLabels[index] ?? 'stageLogs'), index }
 }
 
 function progressLogText(entry) {
@@ -520,35 +539,67 @@ function renderProgressLogs() {
   if (!panel) return
   panel.hidden = progressLogKey === undefined
   if (panel.hidden) return
-  elements['progress-log-toggle'].textContent = progressLogExpanded ? t('hideStageLogs') : t('showStageLogs')
-  elements['progress-log-list'].hidden = !progressLogExpanded
+  const activeStage = progressLogStage(progressLogPhase(progressLogUpdate))
+  const activeExpanded = progressLogStageExpansion.get(activeStage.key) ?? true
+  elements['progress-log-toggle'].textContent = activeExpanded ? t('hideStageLogs') : t('showStageLogs')
   elements['progress-log-list'].replaceChildren()
-  if (progressLogEntries.length === 0) {
-    const empty = document.createElement('p')
-    empty.className = 'progress-log-empty'
-    empty.textContent = t('noStageLogs')
-    elements['progress-log-list'].append(empty)
-    return
+  const groups = new Map()
+  for (const entry of progressLogEntries) {
+    const stage = progressLogStage(entry.phase)
+    const group = groups.get(stage.key) ?? { ...stage, entries: [] }
+    group.entries.push(entry)
+    groups.set(stage.key, group)
   }
-  for (const entry of progressLogEntries.slice(-200)) {
-    const details = document.createElement('details')
-    details.className = 'progress-log-entry'
-    details.open = false
-    const summary = document.createElement('summary')
-    const message = document.createElement('span')
-    message.className = 'progress-log-message'
-    message.textContent = progressLogText(entry)
-    const meta = document.createElement('time')
-    meta.textContent = localTime(entry.timestamp)
-    summary.append(message, meta)
-    const body = document.createElement('pre')
-    body.textContent = JSON.stringify(entry, null, 2)
-    details.append(summary, body)
-    elements['progress-log-list'].append(details)
+  if (!groups.has(activeStage.key)) groups.set(activeStage.key, { ...activeStage, entries: [] })
+  const orderedGroups = [...groups.values()].sort((left, right) => left.index - right.index)
+  for (const group of orderedGroups) {
+    const stageDetails = document.createElement('details')
+    stageDetails.className = 'progress-log-group'
+    stageDetails.dataset.stageKey = group.key
+    const defaultExpanded = group.key === activeStage.key
+    stageDetails.open = progressLogStageExpansion.get(group.key) ?? defaultExpanded
+    const stageSummary = document.createElement('summary')
+    const stageName = document.createElement('strong')
+    stageName.textContent = group.label
+    const count = document.createElement('span')
+    count.textContent = String(group.entries.length)
+    stageSummary.append(stageName, count)
+    const entries = document.createElement('div')
+    entries.className = 'progress-log-group-list'
+    if (group.entries.length === 0) {
+      const empty = document.createElement('p')
+      empty.className = 'progress-log-empty'
+      empty.textContent = t('noStageLogs')
+      entries.append(empty)
+    }
+    for (const entry of group.entries.slice(-200)) {
+      const details = document.createElement('details')
+      details.className = 'progress-log-entry'
+      const summary = document.createElement('summary')
+      const message = document.createElement('span')
+      message.className = 'progress-log-message'
+      message.textContent = progressLogText(entry)
+      const meta = document.createElement('time')
+      meta.textContent = localTime(entry.timestamp)
+      summary.append(message, meta)
+      const body = document.createElement('pre')
+      body.textContent = JSON.stringify(entry, null, 2)
+      details.append(summary, body)
+      entries.append(details)
+    }
+    stageDetails.append(stageSummary, entries)
+    stageDetails.addEventListener('toggle', () => {
+      progressLogStageExpansion.set(group.key, stageDetails.open)
+      progressLogStageTouched.add(group.key)
+    })
+    elements['progress-log-list'].append(stageDetails)
   }
-  if (progressLogAutoScroll && progressLogExpanded) {
+  if (progressLogAutoScroll && activeExpanded) {
     window.requestAnimationFrame(() => {
-      elements['progress-log-list'].scrollTop = elements['progress-log-list'].scrollHeight
+      const activeGroup = [...elements['progress-log-list'].querySelectorAll('.progress-log-group')]
+        .find(group => group.dataset.stageKey === activeStage.key)
+      const list = activeGroup?.querySelector('.progress-log-group-list')
+      if (list) list.scrollTop = list.scrollHeight
     })
   }
 }
@@ -558,6 +609,10 @@ function closeProgressLogs() {
   progressLogSource = undefined
   progressLogKey = undefined
   progressLogEntries = []
+  progressLogIdentities.clear()
+  progressLogUpdate = undefined
+  progressLogStageExpansion.clear()
+  progressLogStageTouched.clear()
   renderProgressLogs()
 }
 
@@ -568,16 +623,33 @@ function connectProgressLogs(update) {
     closeProgressLogs()
     return
   }
-  const key = `${taskId}:${phase}`
-  if (progressLogKey === key && progressLogSource !== undefined) return
+  const key = String(taskId)
+  const previousActiveStage = progressLogUpdate === undefined ? undefined : progressLogStage(progressLogPhase(progressLogUpdate)).key
+  progressLogUpdate = update
+  const activeStage = progressLogStage(phase)
+  if (!progressLogStageTouched.has(activeStage.key)) progressLogStageExpansion.set(activeStage.key, true)
+  if (previousActiveStage !== undefined && previousActiveStage !== activeStage.key && !progressLogStageTouched.has(previousActiveStage)) {
+    progressLogStageExpansion.set(previousActiveStage, false)
+  }
+  if (progressLogKey === key && progressLogSource !== undefined) {
+    renderProgressLogs()
+    return
+  }
   progressLogSource?.close()
   progressLogEntries = []
+  progressLogIdentities.clear()
+  progressLogStageExpansion.clear()
+  progressLogStageTouched.clear()
+  progressLogStageExpansion.set(activeStage.key, true)
   progressLogKey = key
-  const params = new URLSearchParams({ taskId: String(taskId), phase: String(phase), limit: '200' })
+  const params = new URLSearchParams({ taskId: String(taskId), limit: '1000' })
   progressLogSource = new EventSource(`${API}/logs/stream?${params.toString()}`)
   progressLogSource.addEventListener('log', event => {
     try {
       const entry = JSON.parse(event.data)
+      const identity = JSON.stringify(entry)
+      if (progressLogIdentities.has(identity)) return
+      progressLogIdentities.add(identity)
       progressLogEntries.push(entry)
       renderProgressLogs()
     } catch {}
@@ -1254,7 +1326,24 @@ function render(next) {
   const pluginOperationVisible = operationResultVisible(pluginOperation, 'running')
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
-  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId))
+  const successDeadline = update.status === 'success' && update.taskId
+    ? Date.parse(update.updatedAt ?? '') + 3_000
+    : 0
+  const successVisible = Number.isFinite(successDeadline) && successDeadline > Date.now()
+  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId)) || successVisible
+  const successTimerKey = successVisible ? `${String(update.taskId)}:${String(update.updatedAt)}` : undefined
+  if (successTimerKey !== progressSuccessTimerKey) {
+    if (progressSuccessTimer !== undefined) window.clearTimeout(progressSuccessTimer)
+    progressSuccessTimer = undefined
+    progressSuccessTimerKey = successTimerKey
+    if (successVisible) {
+      progressSuccessTimer = window.setTimeout(() => {
+        progressSuccessTimer = undefined
+        progressSuccessTimerKey = undefined
+        if (status !== undefined) render(status)
+      }, Math.max(0, successDeadline - Date.now()))
+    }
+  }
   const checkingUpdates = checking || update.status === 'checking'
   if (restart.state === 'running' && hasTaskId(restart) && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
@@ -3392,13 +3481,20 @@ elements['confirm-stop'].addEventListener('click', async () => {
   await act('stop-dsh', { method: 'POST' })
 })
 elements['progress-log-toggle'].addEventListener('click', () => {
-  progressLogExpanded = !progressLogExpanded
+  if (progressLogUpdate === undefined) return
+  const stage = progressLogStage(progressLogPhase(progressLogUpdate))
+  const expanded = progressLogStageExpansion.get(stage.key) ?? true
+  progressLogStageExpansion.set(stage.key, !expanded)
+  progressLogStageTouched.add(stage.key)
   renderProgressLogs()
 })
 elements['progress-log-copy'].addEventListener('click', async () => {
-  if (progressLogEntries.length === 0) return
+  if (progressLogUpdate === undefined) return
+  const stage = progressLogStage(progressLogPhase(progressLogUpdate))
+  const entries = progressLogEntries.filter(entry => progressLogStage(entry.phase).key === stage.key)
+  if (entries.length === 0) return
   try {
-    await navigator.clipboard.writeText(progressLogEntries.map(entry => JSON.stringify(entry)).join('\n'))
+    await navigator.clipboard.writeText(entries.map(entry => JSON.stringify(entry)).join('\n'))
     elements['progress-log-copy'].textContent = t('logsCopied')
     window.setTimeout(() => { elements['progress-log-copy'].textContent = t('copyStageLogs') }, 1_500)
   } catch {}

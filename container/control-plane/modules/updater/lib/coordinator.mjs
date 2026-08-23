@@ -6,6 +6,14 @@ import { compareDshVersions } from '../../../../platform/lib/supported-target.mj
 
 export class UpdateConflictError extends Error {}
 
+function healthMetrics(health) {
+  const components = Array.isArray(health?.components) ? health.components : []
+  return {
+    readyServices: components.filter(component => component?.healthy === true).length,
+    totalServices: components.length,
+  }
+}
+
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
@@ -37,15 +45,32 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async transition(status, fields = {}) {
-    const value = await this.state.write(status, fields)
+    const previous = await this.state.read()
+    const phase = fields.phase ?? (
+      status === 'idle'
+        ? null
+        : fields.rollbackPhase ?? (
+            ['success', 'failed'].includes(status)
+              ? previous.phase ?? previous.rollbackPhase ?? (['idle', 'success', 'failed'].includes(previous.status) ? null : previous.status)
+              : status
+          )
+    )
+    const value = await this.state.write(status, { ...fields, phase })
     this.emit('state', value)
     await this.record('update.phase.changed', {
       status,
-      phase: status,
+      phase,
       operation: value.operation ?? null,
       rollbackPhase: value.rollbackPhase ?? null,
       taskId: value.taskId ?? null,
       progress: value.progress ?? null,
+      processedBytes: value.processedBytes ?? null,
+      totalBytes: value.totalBytes ?? null,
+      processedItems: value.processedItems ?? null,
+      totalItems: value.totalItems ?? null,
+      readyServices: value.readyServices ?? null,
+      totalServices: value.totalServices ?? null,
+      detail: value.detail ?? null,
       targetSequence: value.targetSequence ?? value.available?.targetSequence ?? null,
       outcome: value.outcome ?? null,
       ...(value.error === null || value.error === undefined ? {} : { error: value.error, level: 'error' }),
@@ -59,7 +84,9 @@ export class UpdateCoordinator extends EventEmitter {
       const context = {
         ...(current.taskId === null || current.taskId === undefined ? {} : { taskId: current.taskId }),
         ...(current.operation === null || current.operation === undefined ? {} : { operation: current.operation }),
-        ...(current.status === null || current.status === undefined ? {} : { phase: current.status }),
+        ...(current.phase === null || current.phase === undefined
+          ? (current.status === null || current.status === undefined ? {} : { phase: current.status })
+          : { phase: current.phase }),
       }
       return await this.report(message, { ...context, ...fields })
     } catch {}
@@ -77,6 +104,13 @@ export class UpdateCoordinator extends EventEmitter {
       }
       return fallback
     }
+  }
+
+  async reportHealth(status, fields) {
+    if (this.activator.health === undefined) return undefined
+    const health = await this.activator.health()
+    await this.transition(status, { ...fields, ...healthMetrics(health) })
+    return health
   }
 
   hasActiveTask() {
@@ -251,6 +285,12 @@ export class UpdateCoordinator extends EventEmitter {
           totalItems: metrics.totalItems ?? null,
         }),
       })
+      await this.reportHealth('restoring-data', {
+        taskId,
+        progress: 95,
+        operation: 'rollback',
+        rollbackPhase: 'verifying',
+      })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
@@ -387,6 +427,7 @@ export class UpdateCoordinator extends EventEmitter {
         },
         onSwitching: () => this.transition('switching', { taskId, progress: 90 }),
       })
+      await this.reportHealth('switching', { taskId, progress: 95 })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
@@ -471,6 +512,17 @@ export class UpdateCoordinator extends EventEmitter {
       await this.transition('probation', { taskId, progress: 85, probationUntil })
       do {
         const health = await this.activator.health()
+        const remainingMs = Math.max(0, new Date(probationUntil).valueOf() - this.now().valueOf())
+        const elapsedRatio = this.probationSeconds <= 0
+          ? 1
+          : Math.max(0, Math.min(1, 1 - remainingMs / (this.probationSeconds * 1000)))
+        await this.transition('probation', {
+          taskId,
+          progress: 85 + Math.round(elapsedRatio * 14),
+          probationUntil,
+          detail: `probation:${String(Math.ceil(remainingMs / 1000))}`,
+          ...healthMetrics(health),
+        })
         if (!health.healthy) throw new Error('Experimental Runtime failed probation health checks')
         if (this.now().valueOf() >= new Date(probationUntil).valueOf()) break
         await this.sleep(Math.min(1_000, Math.max(0, new Date(probationUntil).valueOf() - this.now().valueOf())))
