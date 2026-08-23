@@ -62,7 +62,8 @@ const COPY = Object.freeze({
     installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
-    pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。',
+    pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', pendingSystemPluginChanges: '有 {count} 项修改待应用',
+    systemPluginApplyingItem: '{action} @dsh-docker/{id}（{current}/{total}）', systemPluginRestarting: '插件修改已应用，正在重新启动 DSH',
     systemSkills: '系统技能', systemSkillsConsoleDetail: '管理当前 Bootstrap 提供的已签名 Agent 操作指引。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillEnabled: '已安装并启用', skillDisabled: '已安装但已禁用', skillActionWorking: '正在应用技能设置', skillActionComplete: '技能设置已应用',
     userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSource: '来源', userSkillEntry: '目录项', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
     userPlugins: '用户插件', userPluginsDetail: '无需启动 DSH，即可恢复 Web Profile 中由用户安装的插件。',
@@ -138,7 +139,8 @@ const COPY = Object.freeze({
     installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
-    pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.',
+    pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', pendingSystemPluginChanges: '{count} pending changes',
+    systemPluginApplyingItem: '{action} @dsh-docker/{id} ({current}/{total})', systemPluginRestarting: 'Plugin changes applied; restarting DSH',
     systemSkills: 'System skills', systemSkillsConsoleDetail: 'Manage signed Agent guidance supplied by the current Bootstrap.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillEnabled: 'Installed and enabled', skillDisabled: 'Installed but disabled', skillActionWorking: 'Applying skill settings', skillActionComplete: 'Skill settings applied',
     userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSource: 'Source', userSkillEntry: 'Entry', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
     userPlugins: 'User plugins', userPluginsDetail: 'Recover user-installed Web Profile plugins without starting DSH.',
@@ -237,6 +239,7 @@ let acting = false
 let discardingPluginDraft = false
 let userPluginSubmitting = false
 let systemPluginSubmitting = false
+let systemPluginProgress
 const systemPluginApplyingDraft = new Map()
 let userPluginFeedback = null
 const visibleOperationTasks = new Set()
@@ -629,6 +632,7 @@ function projectedSystemPlugin(plugin) {
 }
 
 function setSystemPluginDraft(plugin, action) {
+  systemPluginProgress = undefined
   systemPluginApplyingDraft.clear()
   if (
     (action === 'install' && plugin.installed)
@@ -639,6 +643,31 @@ function setSystemPluginDraft(plugin, action) {
   else systemPluginDraft.set(plugin.id, action)
   if (status !== undefined) render(status)
   else renderBundledPlugins(plugins, runtimeBusy())
+}
+
+function systemPluginSummary() {
+  if (systemPluginProgress?.phase === 'restarting') return t('systemPluginRestarting')
+  if (systemPluginProgress?.phase === 'applying') {
+    const actionKey = {
+      install: 'pluginActionInstall', uninstall: 'pluginActionUninstall', enable: 'pluginActionEnable', disable: 'pluginActionDisable',
+    }[systemPluginProgress.action]
+    return t('systemPluginApplyingItem', {
+      action: t(actionKey ?? 'pluginActionWorking'),
+      id: systemPluginProgress.id,
+      current: systemPluginProgress.current,
+      total: systemPluginProgress.total,
+    })
+  }
+  return systemPluginDraft.size > 0
+    ? t('pendingSystemPluginChanges', { count: systemPluginDraft.size })
+    : t('pluginChangesPendingDetail')
+}
+
+function reconcileSystemPluginProgress(next) {
+  if (systemPluginProgress?.phase !== 'restarting' || systemPluginProgress.taskId === undefined) return
+  const lifecycle = next?.dshLifecycle
+  if (lifecycle?.taskId !== systemPluginProgress.taskId) return
+  if (['running', 'failed', 'stopped'].includes(lifecycle.state)) systemPluginProgress = undefined
 }
 
 function pluginButton(label, plugin, action, busy, className = 'secondary') {
@@ -1016,6 +1045,7 @@ function renderUserPlugins(busy) {
 }
 
 function render(next) {
+  reconcileSystemPluginProgress(next)
   status = next
   rollbackPlan = next.rollbackPlan
   const update = next.update ?? {}
@@ -1127,7 +1157,13 @@ function render(next) {
       : ''
   elements['plugin-operation'].hidden = !pluginOperationVisible || pluginOperation.status !== 'failed'
   elements['plugin-operation'].textContent = pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
-  elements['plugin-restart-required'].hidden = systemPluginDraft.size === 0 && !plugins.some(plugin => plugin.pendingRestart)
+  const systemPluginRestartRequired = systemPluginDraft.size > 0
+    || plugins.some(plugin => plugin.pendingRestart)
+    || systemPluginSubmitting
+    || systemPluginProgress !== undefined
+  elements['plugin-restart-required'].hidden = !systemPluginRestartRequired
+  elements['system-plugin-draft-summary'].textContent = systemPluginSummary()
+  if (!systemPluginRestartRequired) systemPluginProgress = undefined
   const pluginBusy = busy || discardingPluginDraft
   elements['cancel-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
   elements['apply-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
@@ -1273,6 +1309,7 @@ async function waitForManagementTask(taskId, operationKey) {
 
 async function cancelSystemPluginDraft() {
   if (systemPluginSubmitting) return
+  systemPluginProgress = undefined
   systemPluginApplyingDraft.clear()
   systemPluginDraft.clear()
   if (plugins.some(plugin => plugin.pendingRestart)) {
@@ -1297,7 +1334,10 @@ async function applySystemPluginDraft() {
   if (status !== undefined) render(status)
   let changed = false
   try {
-    for (const [id, action] of systemPluginDraft) {
+    const changes = [...systemPluginDraft]
+    for (const [index, [id, action]] of changes.entries()) {
+      systemPluginProgress = { phase: 'applying', id, action, current: index + 1, total: changes.length }
+      if (status !== undefined) render(status)
       const plugin = plugins.find(item => item.id === id)
       if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
       const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
@@ -1310,10 +1350,13 @@ async function applySystemPluginDraft() {
     }
     systemPluginDraft.clear()
     const restart = await api('restart-dsh', { method: 'POST' })
+    systemPluginProgress = { phase: 'restarting', total: changes.length, taskId: restart.taskId }
+    if (status !== undefined) render(status)
     visibleOperationTasks.add(restart.taskId)
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     await loadStatus()
   } catch (error) {
+    systemPluginProgress = undefined
     if (changed) await api('bundled-plugins/discard', { method: 'POST' }).catch(() => {})
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     showError(error)
