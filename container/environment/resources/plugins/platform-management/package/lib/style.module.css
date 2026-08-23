@@ -267,7 +267,7 @@
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-module-platform);
 }
-.pageNavigation strong { min-width: 16px; color: var(--dsw-alias-brand-primary); text-align: center; font-weight: 600; }
+.pageNavigation strong { min-width: 16px; color: var(--dsw-alias-label-primary); text-align: center; font-weight: 600; }
 .pageArrow { width: 28px; min-width: 28px; height: 28px; padding: 0; border-radius: 6px; font-size: 18px; line-height: 1; }
 .pageJump input {
   box-sizing: border-box;
