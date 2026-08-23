@@ -366,6 +366,46 @@ test('advances to a newer image only after startup acceptance', async () => {
   assert.equal(state.previous, context.image.id)
 })
 
+test('does not advertise a rollback to assets owned by another Docker image', async () => {
+  const first = await fixture({ targetSequence: 1, marker: 'rollback-first' })
+  await first.manager.initialize(first.image)
+  const second = await fixture({
+    root: first.root,
+    paths: first.paths,
+    targetSequence: 2,
+    marker: 'rollback-second',
+  })
+  const plan = await second.manager.prepareImage(second.image)
+  await second.manager.acceptImage(plan)
+
+  const rollback = await second.manager.rollbackPlan()
+  assert.equal(rollback.current.id, second.image.id)
+  assert.equal(rollback.previous, null)
+})
+
+test('selects the prior Deployment directly after an explicit Docker image rollback', async () => {
+  const first = await fixture({ targetSequence: 1, marker: 'docker-rollback-first' })
+  await first.manager.initialize(first.image)
+  const second = await fixture({
+    root: first.root,
+    paths: first.paths,
+    targetSequence: 2,
+    marker: 'docker-rollback-second',
+  })
+  await second.manager.acceptImage(await second.manager.prepareImage(second.image))
+
+  const rolledBack = new DeploymentManager({
+    paths: first.paths,
+    seedRoot: first.seedRoot,
+    inventory: first.inventory,
+  })
+  const rollback = await rolledBack.prepareImage(first.image)
+  assert.equal(rollback.action, 'image-rollback')
+  assert.equal(rollback.target, first.image.id)
+  await rolledBack.acceptImage(rollback)
+  assert.equal((await rolledBack.state()).current, first.image.id)
+})
+
 test('rejects an unresolvable newer image candidate and keeps the valid current Deployment', async () => {
   const current = await fixture({ targetSequence: 1, marker: 'current' })
   await current.manager.initialize(current.image)

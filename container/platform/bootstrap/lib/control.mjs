@@ -67,11 +67,7 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         })
         send(response, 200, { slots })
       } else if (request.method === 'GET' && pathname === '/v1/deployments/rollback-plan' && deployments !== undefined) {
-        const state = await deployments.state()
-        send(response, 200, {
-          current: state.current === null ? null : await deployments.record(state.current),
-          previous: state.previous === null ? null : await deployments.record(state.previous),
-        })
+        send(response, 200, await deployments.rollbackPlan())
       } else if (request.method === 'POST' && pathname === '/v1/deployments/candidate' && deployments !== undefined) {
         const body = await jsonBody(request)
         const record = await deployments.stageCandidate(body.record, () => runner.reload())

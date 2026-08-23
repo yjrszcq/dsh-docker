@@ -183,6 +183,20 @@ test('advances to a newer image without reinterpreting an old Image Reference', 
   await assert.rejects(upgraded.resolveRecord(first.record.id), /different image/)
 })
 
+test('uses an older image Bootstrap after an explicit Docker image rollback', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-rollback-'))
+  const first = await imageBootstrap(root, '1.0.0', 1)
+  await bootstrapManager(root, first).reconcileImage(first.record)
+  const second = await imageBootstrap(root, '1.0.0', 2, 'new-seed')
+  await bootstrapManager(root, second).reconcileImage(second.record)
+
+  const rolledBack = bootstrapManager(root, first)
+  const state = await rolledBack.reconcileImage(first.record)
+  assert.equal(state.current, first.record.id)
+  assert.equal(state.previous, second.record.id)
+  assert.equal((await rolledBack.current()).record.id, first.record.id)
+})
+
 test('rejects same-sequence Bootstrap content conflicts', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-conflict-'))
   const first = await imageBootstrap(root, '1.0.0', 1, 'one', 'revision-one')

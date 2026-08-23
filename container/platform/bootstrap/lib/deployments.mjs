@@ -142,6 +142,28 @@ export class DeploymentManager {
     return parseSlots(bytes, 'deployment-record', 'Deployment slots')
   }
 
+  availableInCurrentImage(record) {
+    return KINDS.every(kind => {
+      const reference = record[kind === 'system-plugins' ? 'systemPlugins' : kind]
+      return reference.storage !== 'image' || reference.imageBuildId === this.inventory.imageBuildId
+    })
+  }
+
+  imageRecordFromAnotherImage(record) {
+    return KINDS.every(kind => {
+      const reference = record[kind === 'system-plugins' ? 'systemPlugins' : kind]
+      return reference.storage === 'image' && reference.imageBuildId !== this.inventory.imageBuildId
+    })
+  }
+
+  async rollbackPlan() {
+    const state = await this.state()
+    const current = state.current === null ? null : await this.record(state.current)
+    let previous = state.previous === null ? null : await this.record(state.previous)
+    if (previous !== null && !this.availableInCurrentImage(previous)) previous = null
+    return Object.freeze({ current, previous })
+  }
+
   async commit(current, previous) {
     const state = await this.state()
     if (current === previous) previous = null
@@ -270,6 +292,13 @@ export class DeploymentManager {
       ) {
         target = image.id
         action = 'development-refresh'
+      } else if (
+        image.targetSequence < current.targetSequence
+        && current.receiptTokens.length === 0
+        && this.imageRecordFromAnotherImage(current)
+      ) {
+        target = image.id
+        action = 'image-rollback'
       } else if (current.authority === 'experimental') {
         const dshCaughtUp = compareDshVersions(image.dshVersion, current.dshVersion) >= 0
         if (image.targetSequence >= current.targetSequence && dshCaughtUp) {
