@@ -58,7 +58,7 @@ const COPY = Object.freeze({
     refreshLogs: '刷新日志', exportLogs: '导出日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
-    notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待应用',
+    notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
     installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
@@ -134,7 +134,7 @@ const COPY = Object.freeze({
     refreshLogs: 'Refresh logs', exportLogs: 'Export logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
-    notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending',
+    notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Restart required',
     installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
@@ -237,6 +237,7 @@ let acting = false
 let discardingPluginDraft = false
 let userPluginSubmitting = false
 let systemPluginSubmitting = false
+let systemPluginApplyingAction
 let userPluginFeedback = null
 const visibleOperationTasks = new Set()
 let eventSource
@@ -629,6 +630,9 @@ function renderBundledPlugins(values, busy) {
     const action = systemPluginDraft.get(plugin.id)
     const projected = projectedSystemPlugin(plugin)
     const isActive = operation.status === 'running' && operation.pluginId === plugin.id
+    const applyingAction = isActive
+      ? operation.action
+      : systemPluginApplyingAction?.pluginId === plugin.id ? systemPluginApplyingAction.action : undefined
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -637,16 +641,11 @@ function renderBundledPlugins(values, busy) {
     name.textContent = `@dsh-docker/${plugin.id}`
     const heading = document.createElement('div')
     heading.className = 'resource-heading'
-    const stateKey = systemPluginSubmitting && action !== undefined
-      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[action]
-      : isActive
-        ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
-        : action !== undefined
-          ? { install: 'pendingInstall', uninstall: 'pendingUninstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
-          : plugin.pendingRestart ? 'pluginPendingRestart'
-            : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+    const stateKey = applyingAction !== undefined
+      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[applyingAction]
+      : plugin.installed ? (plugin.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
     heading.append(
-      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), systemPluginSubmitting || isActive || action !== undefined || plugin.pendingRestart ? 'pending' : projected.enabled ? 'enabled' : ''),
+      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), applyingAction !== undefined ? 'pending' : plugin.enabled ? 'enabled' : ''),
       name,
     )
     identity.append(
@@ -1263,6 +1262,8 @@ async function applySystemPluginDraft() {
     for (const [id, action] of systemPluginDraft) {
       const plugin = plugins.find(item => item.id === id)
       if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
+      systemPluginApplyingAction = { pluginId: id, action }
+      if (status !== undefined) render(status)
       const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
       const task = await api(path, { method: 'POST', body: { id, action } })
       changed = true
@@ -1270,6 +1271,7 @@ async function applySystemPluginDraft() {
       visibleOperationTasks.add(task.taskId)
       const operation = await waitForManagementTask(task.taskId, 'systemPluginOperation')
       if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
+      systemPluginApplyingAction = undefined
     }
     systemPluginDraft.clear()
     const restart = await api('restart-dsh', { method: 'POST' })
@@ -1281,6 +1283,7 @@ async function applySystemPluginDraft() {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
     showError(error)
   } finally {
+    systemPluginApplyingAction = undefined
     await refreshInventory('plugins')
     systemPluginSubmitting = false
     acting = false

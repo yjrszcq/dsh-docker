@@ -815,19 +815,17 @@ function SystemPluginManager({ plugins, draft, applying, operation, busy, error,
               : action === 'enable' ? { ...plugin, enabled: true }
                 : action === 'disable' ? { ...plugin, enabled: false } : plugin
             const isActive = operationBusy && operation.pluginId === plugin.id
+            const applyingAction = isActive
+              ? operation.action
+              : applying?.pluginId === plugin.id ? applying.action : undefined
             const description = plugin.description?.[t('localeCode')] ?? plugin.id
-            const stateKey = applying && action !== undefined
-              ? { install: 'statusInstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[action]
-              : isActive
-                ? { install: 'statusInstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
-                : action !== undefined
-                  ? { install: 'pendingInstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
-                  : plugin.pendingRestart ? 'pluginPendingRestart'
-                    : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+            const stateKey = applyingAction !== undefined
+              ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[applyingAction]
+              : plugin.installed ? (plugin.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
             return h('article', { className: css.pluginRow, key: plugin.id },
               h('div', { className: css.pluginIdentity },
                 h('div', { className: css.resourceHeading },
-                  h(ResourceStatusBadge, { label: t(stateKey ?? 'pluginActionWorking'), enabled: !isActive && action === undefined && !plugin.pendingRestart && projected.enabled, pending: isActive || action !== undefined || plugin.pendingRestart }),
+                  h(ResourceStatusBadge, { label: t(stateKey ?? 'pluginActionWorking'), enabled: applyingAction === undefined && plugin.enabled, pending: applyingAction !== undefined }),
                   h('strong', null, `@dsh-docker/${plugin.id}`)),
                 h(ExpandableDescription, { text: description, identity: plugin.id })),
               !projected.installed
@@ -910,6 +908,7 @@ function PlatformManagement({ t }) {
   const [status, setStatus] = useState(null)
   const [plugins, setPlugins] = useState([])
   const [systemPluginDraft, setSystemPluginDraft] = useState(() => new Map())
+  const [systemPluginApplying, setSystemPluginApplying] = useState(null)
   const [skills, setSkills] = useState([])
   const [error, setError] = useState('')
   const [connection, setConnection] = useState('connecting')
@@ -1064,12 +1063,14 @@ function PlatformManagement({ t }) {
       for (const [id, action] of systemPluginDraft) {
         const plugin = plugins.find(item => item.id === id)
         if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
+        setSystemPluginApplying({ pluginId: id, action })
         const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
         const task = await request(path, { method: 'POST', body: { id, action } })
         changed = true
         window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
         const operation = await waitForSystemPluginTask(task.taskId)
         if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
+        setSystemPluginApplying(null)
       }
       setSystemPluginDraft(new Map())
       await request('restart-dsh', { method: 'POST' })
@@ -1080,6 +1081,7 @@ function PlatformManagement({ t }) {
       window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
+      setSystemPluginApplying(null)
       await refreshInventory('plugins')
       setActing(false)
     }
@@ -1362,7 +1364,7 @@ function PlatformManagement({ t }) {
     }, h(SystemPluginManager, {
       plugins,
       draft: systemPluginDraft,
-      applying: acting && systemPluginDraft.size > 0,
+      applying: systemPluginApplying,
       operation: pluginOperation,
       busy,
       error,
@@ -1408,7 +1410,7 @@ function apply(ctx) {
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       standaloneManagement: 'DSH 管理中心', standaloneManagementDetail: 'DSH 不可用时仍可进行更新、插件恢复、日志查看和终端操作。', openPlatformManagement: '打开 DSH 管理中心', restartDshSection: '重启 DSH', restartDshDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH', cancelRestartDsh: '取消重启 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '更新提醒', updateNotificationsDetail: '自动检查发现新版本时，弹窗提醒更新。',
-      systemPlugins: '系统插件', systemPluginsDetail: '管理 DSH Docker 提供的系统插件。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', resourceEnabled: '已启用', resourceDisabled: '已禁用', pendingInstall: '待安装', pendingEnable: '待启用', pendingDisable: '待禁用', statusInstalling: '安装中', statusEnabling: '启用中', statusDisabling: '禁用中', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginPendingRestart: '待应用', pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', cancelChanges: '取消修改', applyPluginChanges: '应用并重新启动 DSH', searchSystemPlugins: '搜索系统插件',
+      systemPlugins: '系统插件', systemPluginsDetail: '管理 DSH Docker 提供的系统插件。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', resourceEnabled: '已启用', resourceDisabled: '已禁用', statusInstalling: '安装中', statusUninstalling: '卸载中', statusEnabling: '启用中', statusDisabling: '禁用中', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', cancelChanges: '取消修改', applyPluginChanges: '应用并重新启动 DSH', searchSystemPlugins: '搜索系统插件',
       systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', searchSystemSkills: '搜索系统技能', noMatchingResources: '没有符合搜索条件的项目。', itemsPerPage: '每页数量', itemsPerPageSuffix: '条/页', previousPage: '上一页', nextPage: '下一页', totalItems: '共 {total} 条', goToPage: '前往', pageUnit: '页',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
@@ -1430,7 +1432,7 @@ function apply(ctx) {
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       standaloneManagement: 'DSH Management Console', standaloneManagementDetail: 'Updates, plugin recovery, logs, and terminal tools remain available when DSH is unavailable.', openPlatformManagement: 'Open DSH Management Console', restartDshSection: 'Restart DSH', restartDshDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH', cancelRestartDsh: 'Cancel DSH restart', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Update notifications', updateNotificationsDetail: 'Show an update notification popup when an automatic check finds a new version.',
-      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage the System Plugins provided by DSH Docker.', noSystemPlugins: 'No System Plugins are provided by the current Environment.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', resourceEnabled: 'Enabled', resourceDisabled: 'Disabled', pendingInstall: 'Pending install', pendingEnable: 'Pending enable', pendingDisable: 'Pending disable', statusInstalling: 'Installing', statusEnabling: 'Enabling', statusDisabling: 'Disabling', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginPendingRestart: 'Pending', pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', cancelChanges: 'Cancel changes', applyPluginChanges: 'Apply and restart DSH', searchSystemPlugins: 'Search System Plugins',
+      systemPlugins: 'System plugins', systemPluginsDetail: 'Manage the System Plugins provided by DSH Docker.', noSystemPlugins: 'No System Plugins are provided by the current Environment.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', resourceEnabled: 'Enabled', resourceDisabled: 'Disabled', statusInstalling: 'Installing', statusUninstalling: 'Uninstalling', statusEnabling: 'Enabling', statusDisabling: 'Disabling', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', cancelChanges: 'Cancel changes', applyPluginChanges: 'Apply and restart DSH', searchSystemPlugins: 'Search System Plugins',
       systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', searchSystemSkills: 'Search System Skills', noMatchingResources: 'No items match this search.', itemsPerPage: 'Items per page', itemsPerPageSuffix: '/ page', previousPage: 'Previous', nextPage: 'Next', totalItems: '{total} total', goToPage: 'Go to', pageUnit: 'page',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
