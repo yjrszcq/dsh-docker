@@ -19,8 +19,8 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { min-width: 320px; background: var(--bg); color: var(--text); }
-body { min-height: 100dvh; margin: 0; }
+html { min-width: 320px; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+body { height: 100dvh; margin: 0; overflow: hidden; }
 button, input, select { font: inherit; }
 button { letter-spacing: 0; }
 
@@ -82,11 +82,14 @@ button { letter-spacing: 0; }
 .connection strong, .log-connection strong { font-weight: 400; }
 
 main {
+  display: flex;
+  flex-direction: column;
   width: min(780px, calc(100% - 40px));
+  height: calc(100dvh - 64px);
   margin: 0 auto;
-  padding: 0 0 56px;
+  overflow: hidden;
 }
-.management-navigation { position: sticky; top: 64px; z-index: 20; padding-top: 30px; background: var(--bg); }
+.management-navigation { z-index: 20; flex: none; padding-top: 30px; background: var(--bg); }
 .page-heading { margin-bottom: 16px; }
 .page-heading h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: 0; }
 .page-heading p { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 20px; }
@@ -128,7 +131,15 @@ main {
   content: "";
 }
 
-.tab-panel { min-width: 0; padding-top: 2px; }
+.tab-panel {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  padding: 2px 8px 56px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 section {
   display: flex;
   flex-direction: column;

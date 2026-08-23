@@ -708,7 +708,7 @@ function LifecycleGuard({ connection }) {
   return null
 }
 
-function SystemPluginManager({ plugins, draft, operation, busy, error, onAction, onCancel, onApply, t }) {
+function SystemPluginManager({ plugins, draft, applying, operation, busy, error, onAction, onCancel, onApply, t }) {
   const operationBusy = operation?.status === 'running'
   const [query, setQuery] = useState('')
   const filteredPlugins = plugins.filter(plugin => matchesResourceSearch(query, [plugin.id, plugin.description?.zh, plugin.description?.en]))
@@ -741,12 +741,14 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
                 : action === 'disable' ? { ...plugin, enabled: false } : plugin
             const isActive = operationBusy && operation.pluginId === plugin.id
             const description = plugin.description?.[t('localeCode')] ?? plugin.id
-            const stateKey = isActive
-              ? { install: 'statusInstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
-              : action !== undefined
-                ? { install: 'pendingInstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
-                : plugin.pendingRestart ? 'pluginPendingRestart'
-                  : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+            const stateKey = applying && action !== undefined
+              ? { install: 'statusInstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[action]
+              : isActive
+                ? { install: 'statusInstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
+                : action !== undefined
+                  ? { install: 'pendingInstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
+                  : plugin.pendingRestart ? 'pluginPendingRestart'
+                    : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
             return h('article', { className: css.pluginRow, key: plugin.id },
               h('div', { className: css.pluginIdentity },
                 h('div', { className: css.resourceHeading },
@@ -1282,6 +1284,7 @@ function PlatformManagement({ t }) {
     }, h(SystemPluginManager, {
       plugins,
       draft: systemPluginDraft,
+      applying: acting && systemPluginDraft.size > 0,
       operation: pluginOperation,
       busy,
       error,

@@ -584,14 +584,16 @@ function renderBundledPlugins(values, busy) {
     name.textContent = `@dsh-docker/${plugin.id}`
     const heading = document.createElement('div')
     heading.className = 'resource-heading'
-    const stateKey = isActive
-      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
-      : action !== undefined
-        ? { install: 'pendingInstall', uninstall: 'pendingUninstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
-        : plugin.pendingRestart ? 'pluginPendingRestart'
-          : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
+    const stateKey = systemPluginSubmitting && action !== undefined
+      ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[action]
+      : isActive
+        ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[operation.action]
+        : action !== undefined
+          ? { install: 'pendingInstall', uninstall: 'pendingUninstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
+          : plugin.pendingRestart ? 'pluginPendingRestart'
+            : projected.installed ? (projected.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
     heading.append(
-      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), isActive || action !== undefined || plugin.pendingRestart ? 'pending' : projected.enabled ? 'enabled' : ''),
+      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), systemPluginSubmitting || isActive || action !== undefined || plugin.pendingRestart ? 'pending' : projected.enabled ? 'enabled' : ''),
       name,
     )
     identity.append(

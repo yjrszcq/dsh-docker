@@ -3,15 +3,17 @@
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  height: min(720px, calc(100dvh - 152px));
+  min-height: 0;
   max-width: 760px;
+  overflow: hidden;
   color: var(--dsw-alias-label-primary);
 }
 
 .platformHeader {
-  position: sticky;
-  top: 0;
   z-index: 10;
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 12px;
   background: var(--dsw-alias-bg-layer-2);
@@ -145,7 +147,12 @@
   flex-direction: column;
   gap: 20px;
   min-width: 0;
-  padding-top: 2px;
+  min-height: 0;
+  flex: 1;
+  padding: 2px 8px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .tabPanel[hidden] { display: none; }
