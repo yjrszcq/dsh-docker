@@ -819,6 +819,54 @@ test('restores a staged complete Deployment through Bootstrap candidate cancella
   ])
 })
 
+test('restores the materialized previous Deployment recorded by Bootstrap slots', async () => {
+  const calls = []
+  const previous = {
+    id: 'runtime-a-materialized', dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1',
+    receiptTokens: ['stable-a'],
+  }
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async (method, path, body) => {
+      calls.push({ method, path, body })
+      if (path.endsWith('/cancel')) return { cancelled: true }
+      if (path.endsWith('/current')) return { record: { id: 'runtime-b' } }
+      if (path.endsWith('/rollback-plan')) return { current: { id: 'runtime-b' }, previous }
+      if (path.endsWith('/rollback')) return { slots: {} }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+  await activator.restoreDeployment({
+    runtime: 'runtime-a-image', dsh: '0.1.0-rc.7', environment: 'env-1', receiptTokens: ['stable-a'],
+  }, { resume: false })
+  assert.deepEqual(calls.at(-1), {
+    method: 'POST', path: '/v1/deployments/rollback', body: { recordId: 'runtime-a-materialized' },
+  })
+})
+
+test('rejects a materialized previous Deployment that differs from the recovery journal', async () => {
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async (method, path) => {
+      if (path.endsWith('/cancel')) return { cancelled: true }
+      if (path.endsWith('/current')) return { record: { id: 'runtime-b' } }
+      if (path.endsWith('/rollback-plan')) return {
+        current: { id: 'runtime-b' },
+        previous: {
+          id: 'runtime-a-materialized', dshVersion: '0.1.0-rc.9', environmentVersion: 'env-1',
+          receiptTokens: ['stable-a'],
+        },
+      }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+  await assert.rejects(activator.restoreDeployment({
+    runtime: 'runtime-a-image', dsh: '0.1.0-rc.7', environment: 'env-1', receiptTokens: ['stable-a'],
+  }, { resume: false }), /differs from the recovery journal/)
+})
+
 test('removes the superseded snapshot only after the next Experimental commit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-retention-'))
   const { coordinator } = experimentalSystem(root)

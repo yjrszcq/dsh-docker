@@ -20,6 +20,12 @@ function recordIdentity(record) {
   })
 }
 
+function recordMatchesDeployment(record, deployment) {
+  return record.dshVersion === deployment.dsh
+    && record.environmentVersion === deployment.environment
+    && [...record.receiptTokens].sort().join('\0') === [...deployment.receiptTokens].sort().join('\0')
+}
+
 function sameRecordContent(left, right) {
   return left.authority === right.authority
     && left.targetSequence === right.targetSequence
@@ -54,6 +60,16 @@ export class CompleteStateRecovery {
         && current.environment === transaction.to.environment
         && current.runtime === transaction.to.runtime
       ) {
+        let previous = deploymentIdentity(transaction.from)
+        if (this.activator.rollbackDeployments !== undefined) {
+          const slots = await this.activator.rollbackDeployments()
+          if (
+            slots.current?.id !== current.runtime
+            || slots.previous === null
+            || !recordMatchesDeployment(slots.previous, transaction.from)
+          ) return null
+          previous = recordIdentity(slots.previous)
+        }
         const snapshot = await this.snapshots.inspect(transaction.snapshotId)
         if (
           snapshot.runtimeId !== transaction.from.runtime
@@ -64,7 +80,7 @@ export class CompleteStateRecovery {
           transactionId: transaction.transactionId,
           mode: transaction.mode,
           current: deploymentIdentity(current),
-          previous: deploymentIdentity(transaction.from),
+          previous,
           snapshot: {
             id: snapshot.id,
             createdAt: snapshot.createdAt,
@@ -103,7 +119,7 @@ export class CompleteStateRecovery {
     let transaction = await this.journal.transition('restoring-data', { error: 'manual complete-state rollback' })
     await this.activator.suspendDsh()
     try {
-      await this.activator.restoreDeployment(transaction.from, { resume: false })
+      await this.activator.restoreDeployment({ ...transaction.from, runtime: plan.previous.runtime }, { resume: false })
       await this.snapshots.restore(transaction.snapshotId)
       await this.activator.resumeDsh()
       transaction = await this.journal.transition('rolled-back', { error: 'manual complete-state rollback completed' })

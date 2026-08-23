@@ -185,7 +185,19 @@ export class PlatformActivator {
     await this.bootstrap.request('POST', '/v1/deployments/candidate/cancel')
     const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
     if (record?.id !== deployment.runtime) {
-      await this.bootstrap.request('POST', '/v1/deployments/rollback', { recordId: deployment.runtime })
+      const { previous } = await this.rollbackDeployments()
+      if (previous === null) throw new Error('previous Deployment is unavailable')
+      const sameReceipts = [...previous.receiptTokens].sort().join('\0')
+        === [...deployment.receiptTokens].sort().join('\0')
+      if (
+        previous.id !== deployment.runtime
+        && (
+          previous.dshVersion !== deployment.dsh
+          || previous.environmentVersion !== deployment.environment
+          || !sameReceipts
+        )
+      ) throw new Error('previous Deployment differs from the recovery journal')
+      await this.bootstrap.request('POST', '/v1/deployments/rollback', { recordId: previous.id })
     }
     if (resume) await this.resumeDsh()
   }

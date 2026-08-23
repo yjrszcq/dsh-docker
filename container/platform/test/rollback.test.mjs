@@ -25,6 +25,20 @@ async function fixture() {
   const current = { ...to, dataSnapshot: null, receiptTokens: ['experimental', 'stable-a', 'stable-b'] }
   const activator = {
     currentDeployment: async () => current,
+    rollbackDeployments: async () => ({
+      current: {
+        id: current.runtime,
+        dshVersion: current.dsh,
+        environmentVersion: current.environment,
+        receiptTokens: current.receiptTokens,
+      },
+      previous: {
+        id: 'runtime-a-materialized',
+        dshVersion: from.dsh,
+        environmentVersion: from.environment,
+        receiptTokens: from.receiptTokens,
+      },
+    }),
     suspendDsh: async () => calls.push('suspend'),
     restoreDeployment: async (value, options) => calls.push(`restore:${value.runtime}:${String(options.resume)}`),
     resumeDsh: async () => calls.push('resume'),
@@ -42,10 +56,10 @@ async function fixture() {
 test('binds a complete rollback plan to current Runtime, receipts, and verified snapshot', async () => {
   const value = await fixture()
   const plan = await value.recovery.plan()
-  assert.equal(plan.previous.runtime, 'runtime-a')
+  assert.equal(plan.previous.runtime, 'runtime-a-materialized')
   assert.deepEqual(plan.previous.receiptTokens, ['stable-a', 'stable-b'])
   value.current.runtime = 'different-runtime'
-  assert.equal(await value.recovery.plan(), null)
+  assert.equal((await value.recovery.plan()).snapshot, null)
 })
 
 test('restores the previous complete state only with the current plan ID', async () => {
@@ -55,9 +69,9 @@ test('restores the previous complete state only with the current plan ID', async
   await assert.rejects(value.recovery.restore(plan.planId, { requireConfirmation: true }), /confirmation/)
   const result = await value.recovery.restore(plan.planId, { requireConfirmation: true, confirmDataLoss: true })
   assert.equal(result.status, 'rolled-back')
-  assert.deepEqual(value.calls, ['suspend', 'restore:runtime-a:false', 'data:snapshot-a', 'resume'])
+  assert.deepEqual(value.calls, ['suspend', 'restore:runtime-a-materialized:false', 'data:snapshot-a', 'resume'])
   assert.equal((await value.journal.read()).phase, 'rolled-back')
-  assert.equal(await value.recovery.plan(), null)
+  assert.equal((await value.recovery.plan()).snapshot, null)
 })
 
 test('rejects a valid snapshot archive bound to a different deployment', async () => {
