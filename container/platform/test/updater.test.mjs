@@ -496,6 +496,38 @@ test('serializes one update task and persists success progress', async () => {
   assert.equal((await state.read()).totalServices, 2)
 })
 
+test('samples high-frequency Runtime copy metrics without losing final totals', async () => {
+  const { root, metadata, preparer } = await system()
+  const reports = []
+  const coordinator = new UpdateCoordinator({
+    metadata,
+    preparer,
+    activator: {
+      activate: async (_prepared, { onProgress, onSwitching }) => {
+        for (let item = 1; item <= 1_000; item += 1) {
+          await onProgress({
+            processedBytes: item,
+            totalBytes: 1_000,
+            processedItems: item,
+            totalItems: 1_000,
+          })
+        }
+        await onSwitching()
+      },
+      health: async () => ({ healthy: true, components: [] }),
+    },
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+
+  await coordinator.start().completion
+  const buildReports = reports.filter(entry => entry.message === 'update.phase.changed'
+    && entry.fields.status === 'building-candidate')
+  assert.ok(buildReports.length <= 16)
+  assert.equal(buildReports.at(-1).fields.processedBytes, 1_000)
+  assert.equal(buildReports.at(-1).fields.processedItems, 1_000)
+})
+
 test('persists a failed update without activating receipts and permits a later retry', async () => {
   const { root, metadata, objects, preparer } = await system()
   let fail = true

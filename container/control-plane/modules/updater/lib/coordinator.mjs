@@ -24,6 +24,12 @@ function journalDeployment(deployment) {
   })
 }
 
+function metricPercentage(processed, total) {
+  return typeof processed === 'number' && typeof total === 'number' && total > 0
+    ? Math.floor(Math.max(0, Math.min(1, processed / total)) * 100)
+    : null
+}
+
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
@@ -285,16 +291,29 @@ export class UpdateCoordinator extends EventEmitter {
       }
       const result = await this.completeRecovery.restore(planId, {
         ...options,
-        onProgress: (rollbackPhase, progress, metrics = {}) => this.transition('restoring-data', {
-          taskId,
-          progress,
-          operation,
-          rollbackPhase,
-          processedBytes: metrics.processedBytes ?? null,
-          totalBytes: metrics.totalBytes ?? null,
-          processedItems: metrics.processedItems ?? null,
-          totalItems: metrics.totalItems ?? null,
-        }),
+        onProgress: (() => {
+          let previousKey
+          return (rollbackPhase, progress, metrics = {}) => {
+            const key = [
+              rollbackPhase,
+              progress,
+              metricPercentage(metrics.processedBytes, metrics.totalBytes),
+              metricPercentage(metrics.processedItems, metrics.totalItems),
+            ].join(':')
+            if (key === previousKey) return undefined
+            previousKey = key
+            return this.transition('restoring-data', {
+              taskId,
+              progress,
+              operation,
+              rollbackPhase,
+              processedBytes: metrics.processedBytes ?? null,
+              totalBytes: metrics.totalBytes ?? null,
+              processedItems: metrics.processedItems ?? null,
+              totalItems: metrics.totalItems ?? null,
+            })
+          }
+        })(),
       })
       await this.reportHealth('restoring-data', {
         taskId,
@@ -414,27 +433,42 @@ export class UpdateCoordinator extends EventEmitter {
         totalItems: artifacts.length,
         detail: 'downloading',
       })
+      let previousDownloadKey
       const prepared = await this.preparer.prepare(target.value, {
-        onProgress: metrics => this.transition('downloading', {
-          taskId,
-          progress: artifacts.length === 0 || metrics.totalBytes === 0
+        onProgress: metrics => {
+          const progress = artifacts.length === 0 || metrics.totalBytes === 0
             ? 10
-            : 10 + Math.round((metrics.processedBytes / metrics.totalBytes) * 55),
-          processedBytes: metrics.processedBytes,
-          totalBytes: metrics.totalBytes,
-          processedItems: metrics.processedItems,
-          totalItems: metrics.totalItems,
-        }),
+            : 10 + Math.round((metrics.processedBytes / metrics.totalBytes) * 55)
+          const key = `${progress}:${metrics.processedItems}:${metrics.totalItems}`
+          if (key === previousDownloadKey) return undefined
+          previousDownloadKey = key
+          return this.transition('downloading', {
+            taskId,
+            progress,
+            processedBytes: metrics.processedBytes,
+            totalBytes: metrics.totalBytes,
+            processedItems: metrics.processedItems,
+            totalItems: metrics.totalItems,
+          })
+        },
       })
       await this.transition('validating', { taskId, progress: 70 })
       await this.transition('building-candidate', { taskId, progress: 75 })
+      let previousBuildProgress = 75
+      let buildComplete = false
       await this.activator.activate(prepared, {
         onProgress: progress => {
           if (typeof progress === 'number') return this.transition('building-candidate', { taskId, progress })
           const ratio = progress.totalBytes > 0 ? progress.processedBytes / progress.totalBytes : 0
+          const stageProgress = 75 + Math.round(Math.max(0, Math.min(1, ratio)) * 14)
+          const complete = progress.processedBytes === progress.totalBytes
+            && progress.processedItems === progress.totalItems
+          if (stageProgress === previousBuildProgress && (!complete || buildComplete)) return undefined
+          previousBuildProgress = stageProgress
+          buildComplete = complete
           return this.transition('building-candidate', {
             taskId,
-            progress: 75 + Math.round(Math.max(0, Math.min(1, ratio)) * 14),
+            progress: stageProgress,
             processedBytes: progress.processedBytes,
             totalBytes: progress.totalBytes,
             processedItems: progress.processedItems,
@@ -497,19 +531,26 @@ export class UpdateCoordinator extends EventEmitter {
       failureClass = 'snapshot'
       await this.activator.suspendDsh()
       transaction = await this.journal.transition('suspended')
+      let previousSnapshotProgress
       const snapshot = await this.snapshots.create({
         id: taskId,
         runtimeId: from.runtime,
         environmentVersion: from.environment,
         dshVersion: from.dsh,
-        onProgress: metrics => this.transition('snapshotting-data', {
-          taskId,
-          progress: 55,
-          processedBytes: metrics.processedBytes ?? null,
-          totalBytes: metrics.totalBytes ?? null,
-          processedItems: metrics.processedItems ?? null,
-          totalItems: metrics.totalItems ?? null,
-        }),
+        onProgress: metrics => {
+          const metricProgress = metricPercentage(metrics.processedItems, metrics.totalItems)
+            ?? metricPercentage(metrics.processedBytes, metrics.totalBytes)
+          if (metricProgress === previousSnapshotProgress) return undefined
+          previousSnapshotProgress = metricProgress
+          return this.transition('snapshotting-data', {
+            taskId,
+            progress: 55,
+            processedBytes: metrics.processedBytes ?? null,
+            totalBytes: metrics.totalBytes ?? null,
+            processedItems: metrics.processedItems ?? null,
+            totalItems: metrics.totalItems ?? null,
+          })
+        },
       })
       const candidateRuntimeId = this.activator.bindExperimentalSnapshot === undefined
         ? built.runtimeId
