@@ -488,9 +488,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-badge.danger { color: var(--danger); }
 .user-plugin-main dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 14px; margin: 9px 0 0; }
 .user-plugin-main dl > div { min-width: 0; }
-.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 17px; white-space: normal; }
+.user-plugin-main dt, .user-plugin-main dd { min-width: 0; margin: 0; overflow: hidden; font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .user-plugin-main dt { color: var(--faint); }
 .user-plugin-main dd { color: var(--muted); }
+.user-plugin-metadata.expandable { cursor: pointer; }
+.user-plugin-metadata.expanded dd { overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
+.user-plugin-metadata:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .user-plugin-error { margin: 7px 0 0; color: var(--danger); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
 .user-plugin-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; align-self: center; }
 .user-plugin-controls .toggle { width: auto; }

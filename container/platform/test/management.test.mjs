@@ -1279,7 +1279,11 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(style, /\.plugin-identity > \.resource-description \{[^}]*display: block;[^}]*margin-top: 2px;/)
   assert.match(style, /\.user-plugin-main dl \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/)
   assert.match(style, /\.user-plugin-main > \.user-plugin-description \{[^}]*display: block;[^}]*width: 100%;[^}]*margin-top: 2px;/)
-  assert.match(style, /\.user-plugin-main dt, \.user-plugin-main dd \{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/)
+  assert.match(script, /function expandableUserMetadata\(metadata, identity, expanded, rerender\)[\s\S]*value\.scrollWidth > value\.clientWidth/)
+  assert.match(script, /expandedUserSkillMetadata[\s\S]*expandableUserMetadata\(metadata, skill\.entryId/)
+  assert.match(script, /expandedUserPluginMetadata[\s\S]*expandableUserMetadata\(metadata, plugin\.name/)
+  assert.match(style, /\.user-plugin-main dt, \.user-plugin-main dd \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/)
+  assert.match(style, /\.user-plugin-metadata\.expanded dd \{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/)
   assert.equal((style.match(/\.user-plugin-main dl \{/g) ?? []).length, 1)
   for (const prefix of ['plugins', 'system-skills', 'user-skills', 'user-plugins']) {
     assert.match(html, new RegExp(`id="${prefix}-search"`))

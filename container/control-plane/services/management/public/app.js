@@ -220,8 +220,10 @@ const listPageSizes = Object.fromEntries(Object.keys(listPages).map(key => {
 }))
 const userPluginDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
+const expandedUserPluginMetadata = new Set()
 const systemPluginDraft = new Map()
 const expandedUserSkillDescriptions = new Set()
+const expandedUserSkillMetadata = new Set()
 const expandedSystemPluginDescriptions = new Set()
 const expandedSystemSkillDescriptions = new Set()
 let rollbackPlan
@@ -488,6 +490,32 @@ function expandableResourceDescription(text, identity, expanded, rerender) {
   return description
 }
 
+function expandableUserMetadata(metadata, identity, expanded, rerender) {
+  const isExpanded = expanded.has(identity)
+  metadata.className = `user-plugin-metadata${isExpanded ? ' expanded expandable' : ''}`
+  metadata.setAttribute('aria-expanded', String(isExpanded))
+  const toggle = event => {
+    if (!metadata.classList.contains('expandable')) return
+    if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    if (expanded.has(identity)) expanded.delete(identity)
+    else expanded.add(identity)
+    rerender()
+  }
+  metadata.addEventListener('click', toggle)
+  metadata.addEventListener('keydown', toggle)
+  const enable = () => {
+    metadata.classList.add('expandable')
+    metadata.tabIndex = 0
+    metadata.setAttribute('role', 'button')
+  }
+  if (isExpanded) enable()
+  else window.requestAnimationFrame(() => {
+    if (metadata.isConnected && [...metadata.querySelectorAll('dd')].some(value => value.scrollWidth > value.clientWidth)) enable()
+  })
+  return metadata
+}
+
 function paginated(key, values) {
   const pageSize = listPageSizes[key]
   const lastPage = Math.max(0, Math.ceil(values.length / pageSize) - 1)
@@ -719,6 +747,7 @@ function renderUserSkills(busy) {
       field.append(term, detail)
       metadata.append(field)
     }
+    expandableUserMetadata(metadata, skill.entryId, expandedUserSkillMetadata, () => renderUserSkills(runtimeBusy()))
     identity.append(heading, description, metadata)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
@@ -829,6 +858,7 @@ function renderUserPlugins(busy) {
       field.append(term, description)
       metadata.append(field)
     }
+    expandableUserMetadata(metadata, plugin.name, expandedUserPluginMetadata, () => renderUserPlugins(runtimeBusy()))
     identity.append(metadata)
     if (plugin.metadataError) {
       const detail = document.createElement('p')
