@@ -96,7 +96,7 @@ const COPY = Object.freeze({
     newFile: '新建文件', newDirectory: '新建目录', enterName: '请输入名称', searchRunning: '正在搜索目录', taskRunning: '正在执行 {operation}', uploadProgress: '正在上传 {current} / {total}', fileOperations: '文件任务', queuedOperation: '排队第 {position} 位', processingOperation: '正在处理', cancelOperation: '取消操作',
     operationComplete: '文件操作已完成', operationFailed: '文件操作失败', attributesUnsupported: '当前挂载不支持修改 Unix 用户、用户组或权限。请改用支持 Unix metadata 的 Linux/WSL 路径或 named volume。', confirmDeleteFiles: '永久删除选中的 {count} 项？此操作无法撤销。',
     operationSucceeded: '已完成', operationCancelled: '已取消', operationFailedState: '失败',
-    editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', renameItem: '重命名项目', renameItemDetail: '为所选项目输入新名称。', saveAsTitle: '另存为', saveAsDetail: '输入要保存到的容器绝对路径。', discardChangesTitle: '放弃未保存修改', unsavedFile: '有未保存的文件修改，确定丢弃吗？', discardChanges: '放弃修改', deleteFilesTitle: '永久删除', confirmDelete: '确认删除',
+    editFile: '编辑文件', fileContent: '文件内容', close: '关闭', reload: '重新加载', saveAs: '另存为', save: '保存', renameItem: '重命名项目', renameItemDetail: '为所选项目输入新名称。', saveAsTitle: '另存为', saveAsDetail: '输入要保存到的容器绝对路径。', discardChangesTitle: '放弃未保存修改', unsavedFile: '有未保存的文件修改，确定丢弃吗？', discardChanges: '放弃修改', deleteFilesTitle: '永久删除', confirmDelete: '确认删除', fileEditorUnsaved: '有未保存的修改', fileEditorSaved: '所有修改均已保存', fileEditorSaving: '正在保存',
     fileSaved: '文件已保存', fileRevisionChanged: '文件已被其他程序修改，请重新加载或另存为。', clipboardCopy: '已复制 {count} 项，进入目标目录后点击粘贴。', clipboardMove: '已剪切 {count} 项，进入目标目录后点击粘贴。',
     fileConflictTitle: '目标已存在', fileConflictDetail: '请选择处理方式：', conflictOverwrite: '覆盖', conflictOverwriteDetail: '替换已有项目。', conflictRename: '自动重命名', conflictRenameDetail: '使用新名称保留两个项目。', conflictSkip: '跳过', conflictSkipDetail: '保留已有项目，不执行本项操作。', conflictApplyAll: '应用到之后的所有冲突', confirmChoice: '确认', operationCompleteWithSkipped: '文件操作已完成，已跳过 {count} 个冲突项。',
     online: '已连接', connecting: '正在重连', offline: '连接中断',
@@ -174,7 +174,7 @@ const COPY = Object.freeze({
     operationComplete: 'File operation completed', operationFailed: 'File operation failed', attributesUnsupported: 'This mount does not support changing Unix ownership or permissions. Use a Linux/WSL path or named volume with Unix metadata support.', confirmDeleteFiles: 'Permanently delete {count} selected items? This cannot be undone.',
     operationSucceeded: 'Completed', operationCancelled: 'Cancelled', operationFailedState: 'Failed',
     editFile: 'Edit file', fileContent: 'File content', close: 'Close', reload: 'Reload', saveAs: 'Save as', save: 'Save', renameItem: 'Rename item', renameItemDetail: 'Enter a new name for the selected item.', saveAsTitle: 'Save as', saveAsDetail: 'Enter the absolute container path to save.', discardChangesTitle: 'Discard unsaved changes', unsavedFile: 'Discard unsaved file changes?', discardChanges: 'Discard changes', deleteFilesTitle: 'Delete permanently', confirmDelete: 'Delete',
-    fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.',
+    fileSaved: 'File saved', fileRevisionChanged: 'The file changed in another process. Reload it or save as a new file.', clipboardCopy: '{count} items copied. Open the destination and choose Paste.', clipboardMove: '{count} items cut. Open the destination and choose Paste.', fileEditorUnsaved: 'Unsaved changes', fileEditorSaved: 'All changes saved', fileEditorSaving: 'Saving',
     fileConflictTitle: 'Destination already exists', fileConflictDetail: 'Choose how to handle:', conflictOverwrite: 'Overwrite', conflictOverwriteDetail: 'Replace the existing item.', conflictRename: 'Auto rename', conflictRenameDetail: 'Keep both items with a new name.', conflictSkip: 'Skip', conflictSkipDetail: 'Leave the existing item unchanged.', conflictApplyAll: 'Apply to all remaining conflicts', confirmChoice: 'Confirm', operationCompleteWithSkipped: 'File operation completed; skipped {count} conflicting items.',
     online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
   }),
@@ -243,6 +243,7 @@ let systemPluginProgress
 const systemPluginApplyingDraft = new Map()
 let userPluginFeedback = null
 const visibleOperationTasks = new Set()
+const operationResultTimers = new Map()
 let eventSource
 let logSource
 let logLastActivity = 0
@@ -291,6 +292,8 @@ let fileArchiveMode = null
 let fileEditor = null
 let fileEditorOriginal = ''
 let fileEditorDirty = false
+let fileEditorSaving = false
+let fileOperationTimer
 let fileAttributesEntry = null
 let fileConflictResolve = null
 let textInputResolve
@@ -505,10 +508,23 @@ function setRuntimeResetExpanded(expanded) {
 function operationResultVisible(operation, activeStatus) {
   const operationState = operation?.status ?? operation?.state
   if (operationState === activeStatus) {
-    if (operation.taskId) visibleOperationTasks.add(operation.taskId)
+    if (operation.taskId) {
+      visibleOperationTasks.add(operation.taskId)
+      window.clearTimeout(operationResultTimers.get(operation.taskId))
+      operationResultTimers.delete(operation.taskId)
+    }
     return true
   }
-  return operation?.taskId !== null && operation?.taskId !== undefined && visibleOperationTasks.has(operation.taskId)
+  const taskId = operation?.taskId
+  const visible = taskId !== null && taskId !== undefined && visibleOperationTasks.has(taskId)
+  if (visible && (operationState === 'success' || operation?.state === 'running') && !operationResultTimers.has(taskId)) {
+    operationResultTimers.set(taskId, window.setTimeout(() => {
+      operationResultTimers.delete(taskId)
+      visibleOperationTasks.delete(taskId)
+      if (status !== undefined) render(status)
+    }, 3_000))
+  }
+  return visible
 }
 
 function hasTaskId(operation) {
@@ -1898,9 +1914,14 @@ async function closeTerminalSession() {
 }
 
 function fileOperationMessage(value, failed = false) {
+  window.clearTimeout(fileOperationTimer)
+  fileOperationTimer = undefined
   elements['file-operation'].hidden = value === ''
   elements['file-operation'].textContent = value
   elements['file-operation'].classList.toggle('failed', failed)
+  if (value !== '' && !failed) {
+    fileOperationTimer = window.setTimeout(() => fileOperationMessage(''), 3_000)
+  }
 }
 
 function finishTextInput(value) {
@@ -2400,6 +2421,14 @@ function updateEditorLines() {
   elements['file-editor-lines'].scrollTop = elements['file-editor-content'].scrollTop
 }
 
+function renderFileEditorState() {
+  elements['file-editor-status'].textContent = t(fileEditorSaving ? 'fileEditorSaving' : fileEditorDirty ? 'fileEditorUnsaved' : 'fileEditorSaved')
+  elements['file-editor-status'].classList.toggle('dirty', fileEditorDirty && !fileEditorSaving)
+  elements['file-editor-reload'].disabled = fileEditorSaving
+  elements['file-editor-save-as'].disabled = fileEditorSaving
+  elements['file-editor-save'].disabled = fileEditorSaving || !fileEditorDirty
+}
+
 async function openFileEditor(entry) {
   clearError()
   try {
@@ -2410,6 +2439,7 @@ async function openFileEditor(entry) {
     elements['file-editor-content'].value = fileEditor.content
     elements['file-editor-meta'].textContent = `${fileEditor.encoding} · ${fileSize(fileEditor.size)} · ${fileEditor.newline.toUpperCase()}`
     updateEditorLines()
+    renderFileEditorState()
     elements['file-editor-dialog'].showModal()
     elements['file-editor-content'].focus()
   } catch (error) { showError(error) }
@@ -2430,17 +2460,23 @@ async function saveFileEditor(saveAs = false) {
     revision = null
     create = true
   }
+  fileEditorSaving = true
+  renderFileEditorState()
+  const content = elements['file-editor-content'].value
   try {
-    const saved = await api('files/content', { method: 'PUT', body: { path, content: elements['file-editor-content'].value, revision, create } })
-    fileEditor = { ...fileEditor, ...saved, path, content: elements['file-editor-content'].value }
-    fileEditorOriginal = fileEditor.content
-    fileEditorDirty = false
+    const saved = await api('files/content', { method: 'PUT', body: { path, content, revision, create } })
+    fileEditor = { ...fileEditor, ...saved, path, content }
+    fileEditorOriginal = content
+    fileEditorDirty = elements['file-editor-content'].value !== fileEditorOriginal
     elements['file-editor-path'].textContent = path
     fileOperationMessage(t('fileSaved'))
     await navigateFiles(filePath, { history: false })
   } catch (error) {
     if (error.statusCode === 409) fileOperationMessage(t('fileRevisionChanged'), true)
     else showError(error)
+  } finally {
+    fileEditorSaving = false
+    renderFileEditorState()
   }
 }
 
@@ -2449,6 +2485,7 @@ async function closeFileEditor() {
   elements['file-editor-dialog'].close()
   fileEditor = null
   fileEditorDirty = false
+  fileEditorSaving = false
   return true
 }
 
@@ -3132,6 +3169,7 @@ elements['file-task-cancel'].addEventListener('click', () => { if (fileActiveTas
 elements['file-editor-content'].addEventListener('input', () => {
   fileEditorDirty = elements['file-editor-content'].value !== fileEditorOriginal
   updateEditorLines()
+  renderFileEditorState()
 })
 elements['file-editor-content'].addEventListener('scroll', updateEditorLines)
 elements['file-editor-save'].addEventListener('click', () => { void saveFileEditor(false) })

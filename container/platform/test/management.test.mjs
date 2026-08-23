@@ -1194,6 +1194,13 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(style, /\.file-main\.file-dragging \.file-drop-overlay\s*\{[^}]*display:\s*grid;/)
   assert.match(html, /class="log-summary-row"><p id="log-summary"[\s\S]*id="auto-scroll" type="checkbox" checked/)
   assert.match(style, /\.log-auto-scroll \{[^}]*margin-left: auto;/)
+  assert.match(script, /operationState === 'success' \|\| operation\?\.state === 'running'/)
+  assert.match(script, /visibleOperationTasks\.delete\(taskId\)[\s\S]*3_000/)
+  assert.match(script, /fileOperationTimer = window\.setTimeout\(\(\) => fileOperationMessage\(''\), 3_000\)/)
+  assert.match(html, /id="file-editor-status" role="status" aria-live="polite"/)
+  assert.match(script, /function renderFileEditorState\(\)[\s\S]*fileEditorSaving[\s\S]*fileEditorDirty/)
+  assert.match(script, /const content = elements\['file-editor-content'\]\.value[\s\S]*body: \{ path, content, revision, create \}[\s\S]*fileEditorDirty = elements\['file-editor-content'\]\.value !== fileEditorOriginal/)
+  assert.match(style, /\.file-editor-footer \{[^}]*justify-content: space-between;/)
 })
 
 test('standalone console keeps localized feature parity on the shared Management API', async () => {
