@@ -989,6 +989,35 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
 }
 
+function TransactionStageLogs({ update, t }) {
+  const [entries, setEntries] = useState([])
+  const [expanded, setExpanded] = useState(true)
+  const updateActive = !TERMINAL.has(update?.status ?? 'idle') || (update?.status === 'failed' && Boolean(update?.taskId))
+  const phase = update?.operation === 'rollback' ? (update.rollbackPhase ?? update.phase) : (update?.status ?? update?.phase)
+  useEffect(() => {
+    if (!updateActive || !update?.taskId || !phase) {
+      setEntries([])
+      return undefined
+    }
+    const params = new URLSearchParams({ taskId: String(update.taskId), phase: String(phase), limit: '200' })
+    const stream = new EventSource(`${API}/logs/stream?${params.toString()}`)
+    stream.addEventListener('log', event => {
+      try { setEntries(previous => [...previous, JSON.parse(event.data)].slice(-200)) } catch {}
+    })
+    return () => stream.close()
+  }, [phase, update?.taskId, updateActive])
+  if (!updateActive || !update?.taskId || !phase) return null
+  return h('div', { className: css.progressStageLog },
+    h('div', { className: css.progressLogHeading },
+      h('strong', null, t('stageLogs')),
+      h('button', { type: 'button', className: css.smallButton, onClick: () => setExpanded(value => !value) }, t(expanded ? 'hideStageLogs' : 'showStageLogs'))),
+    expanded ? h('div', { className: css.progressLogList, role: 'log' }, entries.length === 0
+      ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
+      : entries.map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
+        h('summary', null, h('span', null, String(entry.message ?? '-').replace(/\s+/gu, ' ')), h('time', null, localTime(entry.timestamp, t('localeCode')))),
+        h('pre', null, JSON.stringify(entry, null, 2))))) : null)
+}
+
 function PlatformManagement({ t }) {
   const [activeTab, setActiveTab] = useState('maintenance')
   const [status, setStatus] = useState(null)
@@ -1001,9 +1030,7 @@ function PlatformManagement({ t }) {
   const [connection, setConnection] = useState('connecting')
   const [acting, setActing] = useState(false)
   const [checking, setChecking] = useState(false)
-  const [confirmStable, setConfirmStable] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
-  const [dataLossAccepted, setDataLossAccepted] = useState(false)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
   const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
@@ -1263,7 +1290,6 @@ function PlatformManagement({ t }) {
   const pluginOperation = status?.systemPluginOperation ?? {}
   const skillOperation = status?.systemSkillOperation ?? {}
   const checkingUpdates = checking || update.status === 'checking'
-  const rollbackPlan = status?.rollbackPlan
   const restartBusy = restart.state === 'restarting'
   const busy = (acting && !checking) || restartBusy || pluginOperation.status === 'running' || skillOperation.status === 'running'
     || (!TERMINAL.has(update.status ?? 'idle') && update.status !== 'checking')
@@ -1293,16 +1319,6 @@ function PlatformManagement({ t }) {
       method: 'PUT',
       body: { ...automaticCheck, ...change },
     })
-  }
-
-  const returnStable = async () => {
-    const restored = await act('return-stable', {
-      method: 'POST',
-      body: { planId: rollbackPlan?.planId, confirmDataLoss: true },
-    })
-    if (!restored) return
-    setConfirmStable(false)
-    setDataLossAccepted(false)
   }
 
   return h('div', { className: css.root },
@@ -1366,8 +1382,7 @@ function PlatformManagement({ t }) {
             checkingUpdates ? h('span', { className: css.checkSpinner, 'aria-hidden': 'true' }) : null,
             checkingUpdates ? t('checking') : t('check')),
           h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget || update.updateAvailable !== true, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
-          rollbackPlan ? h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: () => { void act('rollback', { method: 'POST', body: { planId: rollbackPlan.planId } }) } }, t('rollback')) : null,
-          rollbackPlan?.returnStableAvailable ? h('button', { type: 'button', className: css.dangerButton, disabled: busy, onClick: () => setConfirmStable(true) }, t('returnStable')) : null)),
+          )),
       h('div', { className: css.updateState, 'aria-live': 'polite' },
         h('div', { className: css.statusLine },
           h('span', { className: `${css.statusLabel} ${updateStatusClass}` },
@@ -1385,7 +1400,8 @@ function PlatformManagement({ t }) {
               className: index < progressModel.stage ? css.progressCompleted : index === progressModel.stage ? css.progressActive : '',
             }, t(label)))),
           h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
-            h('span', { style: { width: `${String(progress)}%` } }))) : null),
+            h('span', { style: { width: `${String(progress)}%` } })),
+          h(TransactionStageLogs, { update, t })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
@@ -1393,15 +1409,7 @@ function PlatformManagement({ t }) {
             h('strong', null, `${display(hold.dshVersion)}${hold.environmentVersion ? ` + ${displayEnvironment(hold.environmentVersion)}` : ''}`),
             h('span', null, localizedHoldReason(hold, t))),
           h('button', { type: 'button', className: css.smallButton, disabled: busy, onClick: () => { void act('holds/retry', { method: 'POST', body: { id: hold.id } }) } }, t('retry'))))) : null,
-      confirmStable ? h('div', { className: css.confirmation, role: 'alertdialog', 'aria-labelledby': 'return-stable-title' },
-        h('h4', { id: 'return-stable-title' }, t('returnStableTitle')),
-        h('p', null, `${t('returnStableWarning')} ${localTime(rollbackPlan?.snapshot?.createdAt, t('localeCode'))}`),
-        h('label', null,
-          h('input', { type: 'checkbox', checked: dataLossAccepted, onChange: event => setDataLossAccepted(event.target.checked) }),
-          h('span', null, t('confirmDataLoss'))),
-        h('div', { className: css.confirmActions },
-          h('button', { type: 'button', className: css.secondaryButton, onClick: () => { setConfirmStable(false); setDataLossAccepted(false) } }, t('cancel')),
-          h('button', { type: 'button', className: css.dangerFilledButton, disabled: !dataLossAccepted || busy, onClick: () => { void returnStable() } }, t('confirm')))) : null),
+      null),
 
     h('section', { className: css.section, 'aria-labelledby': 'automatic-check-title' },
       h('div', { className: css.sectionHeading },
@@ -1515,7 +1523,7 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
+      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
       progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。', progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。', progressDetailSnapshot: 'DSH 已暂停，正在为实验更新创建完整数据快照。', progressDetailSwitching: '正在原子切换完整 Deployment，并检查 DSH 是否就绪。', progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 {until}。',
       rollbackDetailPreparing: '正在验证回滚计划与上一完整 Deployment。', rollbackDetailStopping: '正在暂停 DSH，准备恢复上一完整状态。', rollbackDetailSwitching: '正在切换上一 Runtime、Environment 和系统插件集合。', rollbackDetailData: '正在校验并恢复更新前的数据快照。', rollbackDetailVerifying: '正在启动 DSH 并执行健康检查。',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
@@ -1540,7 +1548,7 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
+      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
       progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.', progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.', progressDetailSnapshot: 'DSH is paused while a complete data snapshot is created for the Experimental update.', progressDetailSwitching: 'Atomically switching the complete Deployment and checking DSH readiness.', progressDetailProbation: 'The candidate Runtime remains under health observation until {until}.',
       rollbackDetailPreparing: 'Validating the rollback plan and previous complete Deployment.', rollbackDetailStopping: 'Pausing DSH before restoring the previous complete state.', rollbackDetailSwitching: 'Switching the previous Runtime, Environment, and System Plugin set.', rollbackDetailData: 'Verifying and restoring the pre-update data snapshot.', rollbackDetailVerifying: 'Starting DSH and running health checks.',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',

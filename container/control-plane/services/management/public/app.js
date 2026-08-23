@@ -33,6 +33,7 @@ const COPY = Object.freeze({
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
     updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
     updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查',
+    stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', copyStageLogs: '复制', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
     rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
     progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。',
     progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。',
@@ -116,6 +117,7 @@ const COPY = Object.freeze({
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
     updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
     updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check',
+    stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', copyStageLogs: 'Copy', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
     rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
     progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.',
     progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.',
@@ -258,6 +260,11 @@ const visibleOperationTasks = new Set()
 const operationResultTimers = new Map()
 let eventSource
 let logSource
+let progressLogSource
+let progressLogKey
+let progressLogEntries = []
+let progressLogExpanded = true
+let progressLogAutoScroll = true
 let logLastActivity = 0
 let logWatchdogTimer
 let logRenderFrame
@@ -495,6 +502,86 @@ function renderProgressSteps(update) {
     else if (index === stage) item.className = 'active'
     return item
   }))
+}
+
+function progressLogPhase(update) {
+  return update.operation === 'rollback' ? (update.rollbackPhase ?? update.phase) : (update.status ?? update.phase)
+}
+
+function progressLogText(entry) {
+  const message = entry?.message ?? entry?.event ?? ''
+  return String(message).replace(/\s+/gu, ' ').trim() || '-'
+}
+
+function renderProgressLogs() {
+  const panel = elements['progress-stage-log']
+  if (!panel) return
+  panel.hidden = progressLogKey === undefined
+  if (panel.hidden) return
+  elements['progress-log-toggle'].textContent = progressLogExpanded ? t('hideStageLogs') : t('showStageLogs')
+  elements['progress-log-list'].hidden = !progressLogExpanded
+  elements['progress-log-list'].replaceChildren()
+  if (progressLogEntries.length === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'progress-log-empty'
+    empty.textContent = t('noStageLogs')
+    elements['progress-log-list'].append(empty)
+    return
+  }
+  for (const entry of progressLogEntries.slice(-200)) {
+    const details = document.createElement('details')
+    details.className = 'progress-log-entry'
+    details.open = false
+    const summary = document.createElement('summary')
+    const message = document.createElement('span')
+    message.className = 'progress-log-message'
+    message.textContent = progressLogText(entry)
+    const meta = document.createElement('time')
+    meta.textContent = localTime(entry.timestamp)
+    summary.append(message, meta)
+    const body = document.createElement('pre')
+    body.textContent = JSON.stringify(entry, null, 2)
+    details.append(summary, body)
+    elements['progress-log-list'].append(details)
+  }
+  if (progressLogAutoScroll && progressLogExpanded) {
+    window.requestAnimationFrame(() => {
+      elements['progress-log-list'].scrollTop = elements['progress-log-list'].scrollHeight
+    })
+  }
+}
+
+function closeProgressLogs() {
+  progressLogSource?.close()
+  progressLogSource = undefined
+  progressLogKey = undefined
+  progressLogEntries = []
+  renderProgressLogs()
+}
+
+function connectProgressLogs(update) {
+  const phase = progressLogPhase(update)
+  const taskId = update.taskId
+  if (!taskId || !phase) {
+    closeProgressLogs()
+    return
+  }
+  const key = `${taskId}:${phase}`
+  if (progressLogKey === key && progressLogSource !== undefined) return
+  progressLogSource?.close()
+  progressLogEntries = []
+  progressLogKey = key
+  const params = new URLSearchParams({ taskId: String(taskId), phase: String(phase), limit: '200' })
+  progressLogSource = new EventSource(`${API}/logs/stream?${params.toString()}`)
+  progressLogSource.addEventListener('log', event => {
+    try {
+      const entry = JSON.parse(event.data)
+      progressLogEntries.push(entry)
+      renderProgressLogs()
+    } catch {}
+  })
+  progressLogSource.onerror = () => {}
+  renderProgressLogs()
 }
 
 function fileSize(value) {
@@ -1145,6 +1232,7 @@ function render(next) {
   const pluginOperationVisible = operationResultVisible(pluginOperation, 'running')
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
+  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId))
   const checkingUpdates = checking || update.status === 'checking'
   if (restart.state === 'running' && hasTaskId(restart) && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
@@ -1181,15 +1269,19 @@ function render(next) {
   elements['update-status'].querySelector('strong').textContent = t(updateStatusKey)
   elements['update-status'].className = `status-label ${update.status === 'failed' ? 'failed' : update.status === 'success' ? 'success' : updateActive ? 'active' : ''}`
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
-  elements['update-progress'].hidden = !updateActive
+  elements['update-progress'].hidden = !progressVisible
+  elements['update-status'].parentElement.hidden = !progressVisible
   elements['progress-value'].value = `${String(progress)}%`
   elements['progress-value'].textContent = `${String(progress)}%`
   elements.progress.setAttribute('aria-valuenow', String(progress))
   elements['progress-bar'].style.width = `${String(progress)}%`
-  if (updateActive) {
+  if (progressVisible) {
     elements['progress-title'].textContent = t(update.operation === 'rollback' ? 'rollbackProgress' : 'updateProgress')
     elements['progress-detail'].textContent = progressDetail(update)
     renderProgressSteps(update)
+    connectProgressLogs(update)
+  } else {
+    closeProgressLogs()
   }
   const result = update.error ? localizedError(update.error) : update.outcome ? updateOutcome(update.outcome) : ''
   elements['update-result'].textContent = result
@@ -3274,6 +3366,19 @@ elements['confirm-stop'].addEventListener('click', async () => {
   elements['stop-dialog'].close()
   await act('stop-dsh', { method: 'POST' })
 })
+elements['progress-log-toggle'].addEventListener('click', () => {
+  progressLogExpanded = !progressLogExpanded
+  renderProgressLogs()
+})
+elements['progress-log-copy'].addEventListener('click', async () => {
+  if (progressLogEntries.length === 0) return
+  try {
+    await navigator.clipboard.writeText(progressLogEntries.map(entry => JSON.stringify(entry)).join('\n'))
+    elements['progress-log-copy'].textContent = t('logsCopied')
+    window.setTimeout(() => { elements['progress-log-copy'].textContent = t('copyStageLogs') }, 1_500)
+  } catch {}
+})
+elements['progress-full-log'].addEventListener('click', () => { void selectTab('maintenance') })
 elements['log-limit'].value = String(logDisplayLimit)
 for (const element of [elements['log-search'], elements['log-source'], elements['log-level']]) {
   element.addEventListener(element.tagName === 'INPUT' ? 'input' : 'change', renderLogs)

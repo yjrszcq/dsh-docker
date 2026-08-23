@@ -406,6 +406,17 @@ a.secondaryButton { text-decoration: none; }
 .progressSteps li::before { position: absolute; top: 2px; left: 0; width: 8px; height: 8px; border: 2px solid var(--dsw-alias-border-l2); border-radius: 50%; background: var(--dsw-alias-bg-module-platform); content: ''; }
 .progressSteps li::after { position: absolute; top: 6px; right: 0; left: 12px; height: 2px; background: var(--dsw-alias-border-l2); content: ''; }
 .progressSteps li:last-child::after { display: none; }
+.progressStageLog { display: grid; gap: 8px; min-width: 0; }
+.progressLogHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.progressLogHeading strong { font-size: 12px; font-weight: 500; }
+.progressLogList { display: grid; gap: 4px; max-height: 180px; overflow: auto; padding: 6px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-module-platform); }
+.progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 3px 2px; }
+.progressLogEntry:last-child { border-bottom: 0; }
+.progressLogEntry summary { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 11px; line-height: 18px; }
+.progressLogEntry summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progressLogEntry summary time { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.progressLogEntry pre { max-height: 160px; overflow: auto; margin: 5px 0 2px; color: var(--dsw-alias-label-secondary); white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progressLogEmpty { margin: 0 !important; color: var(--dsw-alias-label-secondary) !important; font-size: 11px; }
 .progressCompleted, .progressActive { color: var(--dsw-alias-label-primary) !important; }
 .progressCompleted::before { border-color: var(--dsw-alias-state-success-primary) !important; background: var(--dsw-alias-state-success-primary) !important; }
 .progressCompleted::after { background: var(--dsw-alias-state-success-primary) !important; }

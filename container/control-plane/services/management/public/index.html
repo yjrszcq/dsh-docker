@@ -82,6 +82,11 @@
             <p id="progress-detail" class="progress-detail"></p>
             <ol id="progress-steps" class="progress-steps"></ol>
             <div id="progress" class="progress" role="progressbar" aria-label="Update progress" data-i18n-aria-label="progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-bar"></span></div>
+            <div id="progress-stage-log" class="progress-stage-log" hidden>
+              <div class="progress-log-heading"><strong data-i18n="stageLogs">Stage logs</strong><div class="progress-log-actions"><button type="button" id="progress-log-toggle" class="secondary" data-i18n="hideStageLogs">Hide</button><button type="button" id="progress-log-copy" class="secondary" data-i18n="copyStageLogs">Copy</button></div></div>
+              <div id="progress-log-list" class="progress-log-list" role="log" aria-live="polite"></div>
+              <button type="button" id="progress-full-log" class="link-button" data-i18n="viewFullTransactionLog">View full transaction log</button>
+            </div>
           </div>
         </div>
         <p id="metadata-notice" class="message notice" data-i18n="metadataUnavailable" hidden>Signed update metadata has not been published yet. Try again later.</p>

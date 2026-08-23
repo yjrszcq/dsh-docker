@@ -68,6 +68,9 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /className: css\.checkSpinner/)
   assert.match(source, /function updateProgressModel\(update, t\)/)
   assert.match(source, /ROLLBACK_PROGRESS_STAGE/)
+  assert.match(source, /function TransactionStageLogs\(\{ update, t \}\)/)
+  assert.match(source, /logs\/stream\?\$\{params\.toString\(\)\}/)
+  assert.doesNotMatch(source, /onClick: \(\) => \{ void act\('rollback'/)
   assert.match(source, /className: css\.progressSteps/)
   assert.match(source, /progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 \{until\}。'/)
   assert.match(await readFile(new URL('lib/style.module.css', root), 'utf8'), /\.progressSteps[\s\S]*\.progressActive/)
@@ -142,10 +145,10 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(checkUpdates, /await request\('check'/)
   assert.doesNotMatch(checkUpdates, /await act\(/)
   assert.doesNotMatch(source, /运行详情|平台日志/)
-  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins', 'bundled-plugins\\/action', 'bundled-plugins\\/recovery-action', 'bundled-plugins\\/discard', 'system-skills', 'system-skills\\/action']) {
+  for (const route of ['status', 'check', 'update', 'channel', 'automatic-check', 'holds\\/retry', 'restart-dsh', 'bundled-plugins', 'bundled-plugins\\/action', 'bundled-plugins\\/recovery-action', 'bundled-plugins\\/discard', 'system-skills', 'system-skills\\/action']) {
     assert.match(source, new RegExp(`['"]${route}['"]`))
   }
-  assert.match(source, /confirmDataLoss: true/)
+  assert.doesNotMatch(source, /confirmDataLoss: true/)
   assert.match(source, /status\?\.dshLifecycle/)
   assert.match(source, /await request\('restart-dsh'[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.doesNotMatch(source, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)

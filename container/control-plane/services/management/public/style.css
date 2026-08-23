@@ -394,6 +394,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-steps li.active::before { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .progress { height: 8px; overflow: hidden; border-radius: 4px; background: var(--border); }
 .progress span { display: block; height: 100%; width: 0; background: var(--success); transition: width .2s ease; }
+.progress-stage-log { display: grid; gap: 8px; min-width: 0; padding-top: 2px; }
+.progress-log-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.progress-log-heading strong { font-size: 12px; font-weight: 500; }
+.progress-log-actions { display: flex; gap: 6px; }
+.progress-log-actions button { min-height: 28px; padding: 4px 9px; font-size: 11px; }
+.progress-log-list { display: grid; gap: 4px; max-height: 190px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.progress-log-entry { min-width: 0; border-bottom: 1px solid var(--border); padding: 3px 2px; }
+.progress-log-entry:last-child { border-bottom: 0; }
+.progress-log-entry summary { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; list-style-position: inside; }
+.progress-log-entry summary::marker { color: var(--muted); }
+.progress-log-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-log-entry time { flex: none; color: var(--muted); font-size: 10px; }
+.progress-log-entry pre { max-height: 180px; overflow: auto; margin: 5px 0 2px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.progress-log-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 18px; }
+.link-button { justify-self: start; padding: 0; border: 0; color: var(--accent); background: transparent; font-size: 11px; cursor: pointer; }
 .holds { border-top: 1px solid var(--border); }
 .hold { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .hold div { min-width: 0; }
