@@ -266,7 +266,16 @@ export class DeploymentManager {
       let imageBehindCurrent = false
       let requiresExperimentalRebuild = false
 
-      if (current.authority === 'experimental') {
+      if (
+        image.authority === 'development'
+        && image.targetSequence === 0
+        && isImageDeployment(current)
+        && isImageDeployment(image)
+        && current.runtime.imageBuildId !== image.runtime.imageBuildId
+      ) {
+        target = image.id
+        action = 'development-refresh'
+      } else if (current.authority === 'experimental') {
         const dshCaughtUp = compareDshVersions(image.dshVersion, current.dshVersion) >= 0
         if (image.targetSequence >= current.targetSequence && dshCaughtUp) {
           target = image.id
@@ -275,17 +284,6 @@ export class DeploymentManager {
           imageBehindCurrent = image.targetSequence < current.targetSequence
           requiresExperimentalRebuild = image.targetSequence > current.targetSequence && !dshCaughtUp
         }
-      } else if (
-        current.authority === 'development'
-        && image.authority === 'development'
-        && current.targetSequence === 0
-        && image.targetSequence === 0
-        && isImageDeployment(current)
-        && isImageDeployment(image)
-        && current.id !== image.id
-      ) {
-        target = image.id
-        action = 'development-refresh'
       } else if (image.targetSequence > current.targetSequence) {
         target = image.id
         action = 'image-forward'

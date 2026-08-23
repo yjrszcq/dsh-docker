@@ -496,6 +496,25 @@ test('replaces a rebuilt development image without retaining stale image slots',
   assert.equal(state.previous, null)
 })
 
+test('replaces stale formal Image Deployment slots when starting a development image', async () => {
+  const formal = await fixture({ authority: 'stable', targetSequence: 11, marker: 'formal-eleven' })
+  await formal.manager.initialize(formal.image)
+  const development = await fixture({
+    root: formal.root,
+    paths: formal.paths,
+    authority: 'development',
+    targetSequence: 0,
+    marker: 'local-rebuild',
+  })
+  const plan = await development.manager.prepareImage(development.image)
+  assert.equal(plan.action, 'development-refresh')
+  assert.equal(plan.fallback, null)
+  const state = await development.manager.acceptImage(plan)
+  assert.equal(state.current, development.image.id)
+  assert.equal(state.previous, null)
+  assert.equal(await readFile(join(development.paths.viewsRoot, 'runtime', 'sentinel'), 'utf8'), 'runtime:local-rebuild')
+})
+
 test('preserves Experimental DSH until a Stable image catches up', async () => {
   const context = await fixture()
   await context.manager.initialize(context.image)

@@ -203,6 +203,18 @@ test('replaces a rebuilt development Bootstrap without retaining a stale Image R
   assert.equal((await manager.current()).path, join(rebuilt.seedRoot, 'bootstrap', '1.0.0'))
 })
 
+test('replaces a stale formal Image Bootstrap when starting a development image', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-development-after-formal-'))
+  const formal = await imageBootstrap(root, '1.0.0', 11, 'formal', 'formal-eleven', 'stable')
+  await bootstrapManager(root, formal).reconcileImage(formal.record)
+  const development = await imageBootstrap(root, '1.0.0', 0, 'development', 'local-rebuild', 'development')
+  const manager = bootstrapManager(root, development)
+  const state = await manager.reconcileImage(development.record)
+  assert.equal(state.current, development.record.id)
+  assert.equal(state.previous, null)
+  assert.equal((await manager.current()).path, join(development.seedRoot, 'bootstrap', '1.0.0'))
+})
+
 test('preserves a higher Managed Bootstrap when the image is behind', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-image-behind-'))
   const first = await imageBootstrap(root, '1.0.0', 1)
