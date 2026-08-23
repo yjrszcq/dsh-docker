@@ -503,6 +503,14 @@ The workflow starts the first formal `targetSequence` at 1 and appends each late
 
 GitHub Releases describe only the Container Environment. A new Environment publishes `v<environment-version>` (for example `v1.0.0`) and marks it Latest. A DSH-only update advances the signed channel and rebuilds images without creating a GitHub Release. Changes to packaged Environment or Bootstrap content, or to [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json), require an Environment version increase; the Environment fingerprint check rejects reuse of an existing version for different content.
 
+When preparing an Environment release, run this from the repository root:
+
+```bash
+./scripts/bump-environment.sh <new-environment-version>
+```
+
+The script updates only the two authoritative machine-readable versions in `container/environment/definition.json` and `release/supported-target.json`. It rejects invalid SemVer, version rollback, or an existing mismatch. It does not change documentation or the DSH version. Do not run it for a DSH-only update; the upstream workflow advances only the DSH field in the Supported Target.
+
 Each Environment Release uploads only one custom asset, `environment-release.json`, to prevent one version from being rebound to different Environment content. Online updates fetch manifests and artifacts from the immutable `release-channel` and have Stage-0 verify each item; they do not depend on GitHub Release assets at all. With GitHub's two automatically generated source archives, the Release page normally shows three assets.
 
 `Publish Container Images` runs as a separate Actions run after `Publish Supported Platform Target` completes successfully. It is protected by the separate `production-image` Environment, so the Release workflow itself never accesses the image environment. Put `DSH_RECOVERY_ROOT_PUBLIC_KEY` in that Environment and `DOCKER_TOKEN` in repository or organization Actions Secrets. The image job has no Release private key; it resolves the exact matching immutable channel commit from the append-only `release-channel` history using the upstream run's source commit. Grant the workflow `packages: write`; it logs in to GHCR with `GITHUB_TOKEN`.
