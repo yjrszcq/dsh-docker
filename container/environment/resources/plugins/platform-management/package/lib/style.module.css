@@ -486,7 +486,8 @@ a.secondaryButton { text-decoration: none; }
 .pluginRestartNotice div { min-width: 0; }
 .pluginRestartNotice strong { font-size: 13px; line-height: 20px; }
 .pluginRestartNotice p { margin: 2px 0 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
-.pluginRestartNotice button { flex: none; }
+.pluginDraftActions { display: flex; flex: none; align-items: center; gap: 8px; }
+.pluginDraftActions button { flex: none; }
 .emptyPlugins { margin: 0; padding: 24px 12px; color: var(--dsw-alias-label-tertiary); text-align: center; font-size: 13px; }
 
 .logSection { gap: 10px; }
@@ -716,7 +717,8 @@ a.secondaryButton { text-decoration: none; }
   .pluginActions { justify-content: space-between; }
   .pluginActions .toggle { width: auto; }
   .pluginRestartNotice { align-items: stretch; flex-direction: column; }
-  .pluginRestartNotice button { width: 100%; }
+  .pluginDraftActions { width: 100%; }
+  .pluginDraftActions button { flex: 1; }
   .managedBadge { justify-self: start; }
   .listPagination { justify-content: space-between; flex-wrap: wrap; }
   .logFilters { grid-template-columns: 1fr 1fr; }

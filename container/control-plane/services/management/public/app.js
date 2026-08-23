@@ -58,13 +58,13 @@ const COPY = Object.freeze({
     refreshLogs: '刷新日志', exportLogs: '导出日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
     noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
-    notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
+    notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待应用',
     installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
-    pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
+    pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。',
     systemSkills: '系统技能', systemSkillsConsoleDetail: '管理当前 Bootstrap 提供的已签名 Agent 操作指引。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillEnabled: '已安装并启用', skillDisabled: '已安装但已禁用', skillActionWorking: '正在应用技能设置', skillActionComplete: '技能设置已应用',
-    userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
+    userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSource: '来源', userSkillEntry: '目录项', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
     userPlugins: '用户插件', userPluginsDetail: '无需启动 DSH，即可恢复 Web Profile 中由用户安装的插件。',
     noUserPlugins: 'Web Profile 中没有可管理的用户插件。', dshUnavailable: 'DSH 当前不可用',
     userPluginVersion: '版本', userPluginSpec: '依赖规格', userPluginSource: '来源', userPluginSourceRegistry: '软件包源',
@@ -133,13 +133,13 @@ const COPY = Object.freeze({
     refreshLogs: 'Refresh logs', exportLogs: 'Export logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
     noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
-    notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending restart',
+    notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Pending',
     installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
-    pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
+    pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.',
     systemSkills: 'System skills', systemSkillsConsoleDetail: 'Manage signed Agent guidance supplied by the current Bootstrap.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillEnabled: 'Installed and enabled', skillDisabled: 'Installed but disabled', skillActionWorking: 'Applying skill settings', skillActionComplete: 'Skill settings applied',
-    userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
+    userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSource: 'Source', userSkillEntry: 'Entry', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
     userPlugins: 'User plugins', userPluginsDetail: 'Recover user-installed Web Profile plugins without starting DSH.',
     noUserPlugins: 'No managed user plugins were found in the Web Profile.', dshUnavailable: 'DSH is unavailable',
     userPluginVersion: 'Version', userPluginSpec: 'Dependency spec', userPluginSource: 'Source', userPluginSourceRegistry: 'Registry',
@@ -217,6 +217,8 @@ const listPageSizes = Object.fromEntries(Object.keys(listPages).map(key => {
 }))
 const userPluginDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
+const systemPluginDraft = new Map()
+const expandedUserSkillDescriptions = new Set()
 let rollbackPlan
 let statusLoad
 let statusLoadRevision = 0
@@ -225,6 +227,7 @@ let checking = false
 let acting = false
 let discardingPluginDraft = false
 let userPluginSubmitting = false
+let systemPluginSubmitting = false
 let userPluginFeedback = null
 const visibleOperationTasks = new Set()
 let eventSource
@@ -465,20 +468,34 @@ function paginated(key, values) {
   return values.slice(start, start + pageSize)
 }
 
+function projectedSystemPlugin(plugin) {
+  const action = systemPluginDraft.get(plugin.id)
+  if (action === 'install') return { ...plugin, installed: true, enabled: true }
+  if (action === 'uninstall') return { ...plugin, installed: false, enabled: false }
+  if (action === 'enable') return { ...plugin, enabled: true }
+  if (action === 'disable') return { ...plugin, enabled: false }
+  return plugin
+}
+
+function setSystemPluginDraft(plugin, action) {
+  if (
+    (action === 'install' && plugin.installed)
+    || (action === 'uninstall' && !plugin.installed)
+    || (action === 'enable' && plugin.installed && plugin.enabled)
+    || (action === 'disable' && plugin.installed && !plugin.enabled)
+  ) systemPluginDraft.delete(plugin.id)
+  else systemPluginDraft.set(plugin.id, action)
+  if (status !== undefined) render(status)
+  else renderBundledPlugins(plugins, runtimeBusy())
+}
+
 function pluginButton(label, plugin, action, busy, className = 'secondary') {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = className
   button.textContent = label
   button.disabled = busy
-  button.addEventListener('click', () => {
-    const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
-    window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
-    void act(path, { method: 'POST', body: { id: plugin.id, action } }).then(changed => {
-      if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-      else void refreshInventory('plugins')
-    })
-  })
+  button.addEventListener('click', () => setSystemPluginDraft(plugin, action))
   return button
 }
 
@@ -488,6 +505,8 @@ function renderBundledPlugins(values, busy) {
   elements['bundled-plugins'].hidden = values.length === 0
   const operation = status?.systemPluginOperation ?? {}
   for (const plugin of paginated('plugins', values)) {
+    const action = systemPluginDraft.get(plugin.id)
+    const projected = projectedSystemPlugin(plugin)
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -497,7 +516,7 @@ function renderBundledPlugins(values, busy) {
     const state = document.createElement('span')
     state.textContent = pluginDescription(plugin)
     identity.append(name, state)
-    if (plugin.pendingRestart) {
+    if (action !== undefined || plugin.pendingRestart) {
       const badge = document.createElement('span')
       badge.className = 'plugin-pending'
       badge.textContent = t('pluginPendingRestart')
@@ -505,29 +524,22 @@ function renderBundledPlugins(values, busy) {
     }
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
-    if (!plugin.installed) {
-      controls.append(pluginButton(t('installPlugin'), plugin, 'install', busy, 'primary'))
+    if (!projected.installed) {
+      controls.append(pluginButton(t(action === 'uninstall' ? 'cancelChanges' : 'installPlugin'), plugin, 'install', busy, 'primary'))
     } else {
       const toggle = document.createElement('label')
       toggle.className = 'toggle'
       const checkbox = document.createElement('input')
       checkbox.type = 'checkbox'
-      checkbox.checked = plugin.enabled
-      checkbox.disabled = busy
-      checkbox.addEventListener('change', event => {
-        const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
-        window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
-        void act(path, { method: 'POST', body: { id: plugin.id, action: event.target.checked ? 'enable' : 'disable' } }).then(changed => {
-          if (!changed) window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
-          else void refreshInventory('plugins')
-        })
-      })
+      checkbox.checked = projected.enabled
+      checkbox.disabled = busy || action === 'install'
+      checkbox.addEventListener('change', event => setSystemPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
       const label = document.createElement('strong')
-      label.textContent = plugin.enabled ? t('enabled') : t('disabled')
+      label.textContent = projected.enabled ? t('enabled') : t('disabled')
       toggle.append(checkbox, track, label)
-      controls.append(toggle, pluginButton(t('uninstallPlugin'), plugin, 'uninstall', busy, 'danger-text'))
+      controls.append(toggle, pluginButton(t(action === 'install' ? 'cancelChanges' : 'uninstallPlugin'), plugin, 'uninstall', busy, 'danger-text'))
     }
     row.append(identity, controls)
     if (operation.status === 'running' && operation.pluginId === plugin.id) {
@@ -629,17 +641,42 @@ function renderUserSkills(busy) {
   elements['user-skills'].hidden = values.length === 0
   for (const skill of paginated('userSkills', values)) {
     const row = document.createElement('article')
-    row.className = 'plugin-row'
+    row.className = 'user-plugin-row'
     const identity = document.createElement('div')
-    identity.className = 'plugin-identity'
+    identity.className = 'user-plugin-main'
+    const heading = document.createElement('div')
+    heading.className = 'user-plugin-heading'
+    heading.append(userPluginBadge(t(skill.enabled ? 'userSkillEnabled' : 'userSkillDisabled'), skill.enabled ? 'enabled' : ''))
     const name = document.createElement('strong')
     name.textContent = skill.name ?? skill.entryName
-    const description = document.createElement('span')
+    const description = document.createElement('button')
+    const descriptionExpanded = expandedUserSkillDescriptions.has(skill.entryId)
+    description.type = 'button'
+    description.className = `user-plugin-description${descriptionExpanded ? ' expanded expandable' : ''}`
     description.textContent = skill.description ?? localizedError(skill.metadataError ?? t('userSkillDamaged'))
-    const metadata = document.createElement('small')
-    metadata.className = 'user-skill-metadata'
-    metadata.textContent = `${userSkillSource(skill.source)} · ${skill.entryName}`
-    identity.append(name, description, metadata)
+    description.title = description.textContent
+    description.setAttribute('aria-expanded', String(descriptionExpanded))
+    description.addEventListener('click', () => {
+      if (!description.classList.contains('expandable')) return
+      if (expandedUserSkillDescriptions.has(skill.entryId)) expandedUserSkillDescriptions.delete(skill.entryId)
+      else expandedUserSkillDescriptions.add(skill.entryId)
+      renderUserSkills(runtimeBusy())
+    })
+    heading.append(name, description)
+    if (!descriptionExpanded) window.requestAnimationFrame(() => {
+      if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
+    })
+    const metadata = document.createElement('dl')
+    for (const [label, value] of [[t('userSkillSource'), userSkillSource(skill.source)], [t('userSkillEntry'), skill.entryName]]) {
+      const field = document.createElement('div')
+      const term = document.createElement('dt')
+      term.textContent = label
+      const detail = document.createElement('dd')
+      detail.textContent = value
+      field.append(term, detail)
+      metadata.append(field)
+    }
+    identity.append(heading, metadata)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
     const toggle = document.createElement('label')
@@ -917,10 +954,10 @@ function render(next) {
   elements['plugin-operation'].hidden = !pluginOperationVisible
   elements['plugin-operation'].textContent = pluginOperation.status === 'running'
     ? t('pluginActionWorking') : pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
-  elements['plugin-restart-required'].hidden = !plugins.some(plugin => plugin.pendingRestart)
+  elements['plugin-restart-required'].hidden = systemPluginDraft.size === 0 && !plugins.some(plugin => plugin.pendingRestart)
   const pluginBusy = busy || discardingPluginDraft
-  elements['plugin-restart-dsh'].disabled = pluginBusy
-  elements['plugin-restart-dsh'].textContent = restart.state === 'restarting' ? t('restarting') : t('restartDsh')
+  elements['cancel-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
+  elements['apply-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
   const skillOperationVisible = operationResultVisible(skillOperation, 'running')
   elements['skill-operation'].hidden = !skillOperationVisible
   elements['skill-operation'].textContent = skillOperation.status === 'running'
@@ -1060,6 +1097,57 @@ async function waitForManagementTask(taskId, operationKey) {
     await new Promise(resolve => window.setTimeout(resolve, 250))
   }
   throw lastError ?? new Error('Management task timed out')
+}
+
+async function cancelSystemPluginDraft() {
+  if (systemPluginSubmitting) return
+  systemPluginDraft.clear()
+  if (plugins.some(plugin => plugin.pendingRestart)) {
+    await act('bundled-plugins/discard', { method: 'POST' })
+    await refreshInventory('plugins')
+  }
+  window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+  if (status !== undefined) render(status)
+}
+
+async function applySystemPluginDraft() {
+  if (systemPluginSubmitting) return
+  if (systemPluginDraft.size === 0) {
+    if (plugins.some(plugin => plugin.pendingRestart)) await act('restart-dsh', { method: 'POST' })
+    return
+  }
+  systemPluginSubmitting = true
+  acting = true
+  clearError()
+  if (status !== undefined) render(status)
+  let changed = false
+  try {
+    for (const [id, action] of systemPluginDraft) {
+      const plugin = plugins.find(item => item.id === id)
+      if (plugin === undefined) throw new Error(`System Plugin ${id} is no longer available`)
+      const path = plugin.protected ? 'bundled-plugins/recovery-action' : 'bundled-plugins/action'
+      const task = await api(path, { method: 'POST', body: { id, action } })
+      changed = true
+      window.sessionStorage.setItem(PLUGIN_DRAFT_KEY, '1')
+      visibleOperationTasks.add(task.taskId)
+      const operation = await waitForManagementTask(task.taskId, 'systemPluginOperation')
+      if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
+    }
+    systemPluginDraft.clear()
+    const restart = await api('restart-dsh', { method: 'POST' })
+    visibleOperationTasks.add(restart.taskId)
+    window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+    await loadStatus()
+  } catch (error) {
+    if (changed) await api('bundled-plugins/discard', { method: 'POST' }).catch(() => {})
+    window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+    showError(error)
+  } finally {
+    await refreshInventory('plugins')
+    systemPluginSubmitting = false
+    acting = false
+    if (status !== undefined) render(status)
+  }
 }
 
 async function runSkillTask(path, body, operationKey) {
@@ -2599,7 +2687,8 @@ elements['language-switch'].addEventListener('change', event => { void (async ()
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['start-dsh'].addEventListener('click', () => { void act('start-dsh', { method: 'POST' }) })
 elements['stop-dsh'].addEventListener('click', () => elements['stop-dialog'].showModal())
-elements['plugin-restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
+elements['cancel-system-plugin-changes'].addEventListener('click', () => { void cancelSystemPluginDraft() })
+elements['apply-system-plugin-changes'].addEventListener('click', () => { void applySystemPluginDraft() })
 elements['runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(!runtimeResetExpanded))
 elements['cancel-runtime-reset'].addEventListener('click', () => setRuntimeResetExpanded(false))
 elements['confirm-runtime-reset'].addEventListener('click', async () => {
