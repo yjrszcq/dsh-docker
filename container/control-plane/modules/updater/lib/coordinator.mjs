@@ -14,6 +14,16 @@ function healthMetrics(health) {
   }
 }
 
+function journalDeployment(deployment) {
+  return Object.freeze({
+    dsh: deployment.dsh,
+    environment: deployment.environment,
+    runtime: deployment.runtime,
+    dataSnapshot: deployment.dataSnapshot,
+    receiptTokens: deployment.receiptTokens,
+  })
+}
+
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
@@ -478,7 +488,7 @@ export class UpdateCoordinator extends EventEmitter {
       transaction = await this.journal.begin({
         transactionId: taskId,
         mode: 'experimental',
-        from,
+        from: journalDeployment(from),
         to: { dsh: built.dshVersion, environment: built.environmentVersion, runtime: built.runtimeId },
       })
       transaction = await this.journal.transition('candidate-ready', { receiptTokens: prepared.receiptTokens })

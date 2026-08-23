@@ -579,6 +579,7 @@ function experimentalSystem(root, overrides = {}) {
   const activator = {
     bootstrap: { status: async () => ({ bootstrapVersion: '1.0.0' }) },
     currentDeployment: async () => ({
+      authority: 'stable', targetSequence: 11,
       dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a', dataSnapshot: null, receiptTokens: ['stable-receipt'],
     }),
     prepareExperimental: async (_prepared, options) => {
