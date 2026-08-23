@@ -1,20 +1,5 @@
 const API = '/_dsh_platform/api/v1'
 const UPDATE_TERMINAL_STATES = new Set(['idle', 'success', 'failed'])
-const STATUS_LABELS = Object.freeze({
-  idle: 'statusIdle',
-  checking: 'statusChecking',
-  planning: 'statusPlanning',
-  'checking-upstream': 'statusCheckingUpstream',
-  downloading: 'statusDownloading',
-  validating: 'statusValidating',
-  'building-candidate': 'statusBuildingCandidate',
-  'snapshotting-data': 'statusSnapshottingData',
-  switching: 'statusSwitching',
-  probation: 'statusProbation',
-  'restoring-data': 'statusRestoringData',
-  success: 'statusSuccess',
-  failed: 'statusFailed',
-})
 const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
 const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
 const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
@@ -32,9 +17,14 @@ const COPY = Object.freeze({
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
     updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-    updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查',
-    stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', copyStageLogs: '复制', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
-    metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪',
+    updateProgress: '更新进度', rollbackProgress: '回滚进度', updateToTarget: '更新到 {target}', rollbackToTarget: '回滚到 {target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查',
+    stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', copyStageLogs: '复制当前日志', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
+    stageCompleted: '阶段已完成。', stageWaiting: '等待前一阶段完成。', stageProgress: '阶段进度 {progress}%', stageItemsCompleted: '已完成 {completed}/{total} 项', expandStage: '展开 · 日志 {count} 条', collapseStage: '收起 · 日志 {count} 条', stageItemCompleted: '已完成：{item}', stageItemActive: '正在执行：{item}', stageItemPending: '待执行：{item}', stageItemFailed: '执行失败：{item}',
+    itemVerifyMetadata: '验证 metadata', itemVerifyKeyring: '验证 keyring', itemVerifyTarget: '验证目标清单', itemDownloadArtifacts: '下载 Artifact', itemVerifyArtifacts: '验证 Artifact 签名、引用、大小和 Hash', itemImportObjects: '导入可信对象库', itemMaterializePristine: '物化 Pristine DSH', itemPrepareEnvironment: '准备 Environment', itemBuildRuntime: '构建 Runtime 并应用完整 Patch Set', itemPreparePlugins: '准备 System Plugin Set', itemSwitchDeployment: '原子切换 Deployment', itemCheckHealth: '检查服务健康状态', itemObserveProbation: '观察候选 Runtime', itemValidateRollback: '验证回滚计划和上一完整 Deployment', itemPauseRuntime: '暂停当前 DSH Runtime', itemSwitchPrevious: '切换上一完整 Deployment', itemVerifySnapshot: '验证数据快照', itemRestoreSnapshot: '恢复数据快照', itemStartRuntime: '启动上一 DSH Runtime',
+    metadataVerified: 'metadata 已验证。', keyringVerified: 'keyring 已验证。', targetManifestVerified: '目标清单已验证。', artifactDownloadCompleted: 'Artifact 下载已完成。', artifactVerificationCompleted: 'Artifact 签名、引用和 Hash 已验证。', runtimeMaterialized: 'Pristine DSH 已物化。', patchSetApplied: '完整 Patch Set 已应用。', systemPluginsPrepared: 'System Plugin Set 已准备。', deploymentSwitched: 'Deployment 已原子切换。', healthChecksPassed: '服务健康检查已通过。',
+    rollbackPrepareCompleted: 'Snapshot 与回滚计划已验证。', rollbackSwitchCompleted: 'Previous Runtime 已激活。', rollbackDataCompleted: '用户数据已恢复。', rollbackVerifyCompleted: '系统健康检查已通过。',
+    metricBytesRead: '已读取 {processed} / {total}', metricBytesCopied: '已复制 {processed} / {total}', metricBytesRestored: '已恢复 {processed} / {total}', metricBytesProcessed: '已处理 {processed} / {total}',
+    metricArtifacts: '已验证 {processed} / {total} 个 Artifact', metricFiles: '已完成 {processed} / {total} 个文件', metricItems: '已完成 {processed} / {total} 项', metricServices: '已就绪 {ready} / {total} 个服务',
     rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
     progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。',
     progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。',
@@ -117,9 +107,14 @@ const COPY = Object.freeze({
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
     updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-    updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check',
-    stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', copyStageLogs: 'Copy', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
-    metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready',
+    updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', updateToTarget: 'Update to {target}', rollbackToTarget: 'Roll back to {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check',
+    stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', copyStageLogs: 'Copy current logs', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
+    stageCompleted: 'Stage completed.', stageWaiting: 'Waiting for the previous stage.', stageProgress: 'Stage progress {progress}%', stageItemsCompleted: '{completed}/{total} items completed', expandStage: 'Expand · {count} log entries', collapseStage: 'Collapse · {count} log entries', stageItemCompleted: 'Completed: {item}', stageItemActive: 'In progress: {item}', stageItemPending: 'Pending: {item}', stageItemFailed: 'Failed: {item}',
+    itemVerifyMetadata: 'Verify metadata', itemVerifyKeyring: 'Verify keyring', itemVerifyTarget: 'Verify target manifest', itemDownloadArtifacts: 'Download Artifacts', itemVerifyArtifacts: 'Verify Artifact signatures, references, sizes, and hashes', itemImportObjects: 'Import trusted objects', itemMaterializePristine: 'Materialize Pristine DSH', itemPrepareEnvironment: 'Prepare Environment', itemBuildRuntime: 'Build Runtime and apply the complete Patch Set', itemPreparePlugins: 'Prepare System Plugin Set', itemSwitchDeployment: 'Switch Deployment atomically', itemCheckHealth: 'Check service health', itemObserveProbation: 'Observe candidate Runtime', itemValidateRollback: 'Validate rollback plan and previous complete Deployment', itemPauseRuntime: 'Pause current DSH Runtime', itemSwitchPrevious: 'Switch previous complete Deployment', itemVerifySnapshot: 'Verify data snapshot', itemRestoreSnapshot: 'Restore data snapshot', itemStartRuntime: 'Start previous DSH Runtime',
+    metadataVerified: 'Metadata verified.', keyringVerified: 'Keyring verified.', targetManifestVerified: 'Target manifest verified.', artifactDownloadCompleted: 'Artifact download completed.', artifactVerificationCompleted: 'Artifact signatures, references, and hashes verified.', runtimeMaterialized: 'Pristine DSH materialized.', patchSetApplied: 'Complete Patch Set applied.', systemPluginsPrepared: 'System Plugin Set prepared.', deploymentSwitched: 'Deployment switched atomically.', healthChecksPassed: 'Service health checks passed.',
+    rollbackPrepareCompleted: 'Snapshot and rollback plan verified.', rollbackSwitchCompleted: 'Previous Runtime activated.', rollbackDataCompleted: 'User data restored.', rollbackVerifyCompleted: 'System health checks passed.',
+    metricBytesRead: 'Read {processed} / {total}', metricBytesCopied: 'Copied {processed} / {total}', metricBytesRestored: 'Restored {processed} / {total}', metricBytesProcessed: 'Processed {processed} / {total}',
+    metricArtifacts: 'Verified {processed} / {total} Artifacts', metricFiles: 'Completed {processed} / {total} files', metricItems: 'Completed {processed} / {total} items', metricServices: '{ready} / {total} services ready',
     rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
     progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.',
     progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.',
@@ -493,25 +488,6 @@ function progressDetail(update) {
   return t(key, { until: localTime(update.probationUntil) })
 }
 
-function renderProgressSteps(update) {
-  const rollback = update.operation === 'rollback'
-  const labels = rollback
-    ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
-    : UPDATE_PROGRESS_STEPS
-  const rawStage = rollback
-    ? ROLLBACK_PROGRESS_STAGE[update.phase ?? update.rollbackPhase] ?? 0
-    : UPDATE_PROGRESS_STAGE[update.phase ?? update.status] ?? 0
-  const stage = rollback && update.rollbackIncludesSnapshot === false && rawStage > 2 ? rawStage - 1 : rawStage
-  elements['progress-steps'].style.setProperty('--step-count', String(labels.length))
-  elements['progress-steps'].replaceChildren(...labels.map((key, index) => {
-    const item = document.createElement('li')
-    item.textContent = t(key)
-    if (index < stage) item.className = 'completed'
-    else if (index === stage) item.className = 'active'
-    return item
-  }))
-}
-
 function progressLogPhase(update) {
   return update.phase ?? (update.operation === 'rollback' ? update.rollbackPhase : update.status)
 }
@@ -534,14 +510,122 @@ function progressLogText(entry) {
   return String(message).replace(/\s+/gu, ' ').trim() || '-'
 }
 
+function progressStageDefinitions(update) {
+  const rollback = update?.operation === 'rollback'
+  const labels = rollback
+    ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
+    : UPDATE_PROGRESS_STEPS
+  return labels.map((label, index) => ({
+    key: `${rollback ? 'rollback' : 'update'}:${String(index)}`,
+    label: t(label),
+    labelKey: label,
+    index,
+  }))
+}
+
+const UPDATE_STAGE_ITEMS = Object.freeze({
+  progressPrepare: ['itemVerifyMetadata', 'itemVerifyKeyring', 'itemVerifyTarget'],
+  progressAcquire: ['itemDownloadArtifacts', 'itemVerifyArtifacts', 'itemImportObjects'],
+  progressBuild: ['itemMaterializePristine', 'itemPrepareEnvironment', 'itemBuildRuntime', 'itemPreparePlugins'],
+  progressActivate: ['itemSwitchDeployment', 'itemCheckHealth', 'itemObserveProbation'],
+})
+
+const ROLLBACK_STAGE_ITEMS = Object.freeze({
+  rollbackPrepare: ['itemValidateRollback', 'itemPauseRuntime'],
+  rollbackSwitch: ['itemSwitchPrevious'],
+  rollbackData: ['itemVerifySnapshot', 'itemRestoreSnapshot'],
+  rollbackVerify: ['itemStartRuntime', 'itemCheckHealth'],
+})
+
+function activeStageItemIndex(stage, update) {
+  const phase = progressLogPhase(update)
+  if (stage.labelKey === 'progressPrepare') return phase === 'planning' ? 2 : 0
+  if (stage.labelKey === 'progressAcquire') return phase === 'validating' ? 2 : 0
+  if (stage.labelKey === 'progressBuild') {
+    const progress = Number(update?.progress) || 0
+    if (Number(update?.totalBytes) > 0 || Number(update?.totalItems) > 0) return progress >= 87 ? 3 : 2
+    if (progress < 80) return 0
+    if (progress < 82) return 1
+    if (progress < 87) return 2
+    return 3
+  }
+  if (stage.labelKey === 'progressActivate') {
+    if (phase === 'probation') return 2
+    if (Number(update?.totalServices) > 0) return 1
+    return update?.rollbackIncludesSnapshot === true && phase === 'snapshotting-data' ? 0 : 0
+  }
+  if (stage.labelKey === 'rollbackPrepare') return phase === 'stopping' ? 1 : 0
+  if (stage.labelKey === 'rollbackSwitch') return 0
+  if (stage.labelKey === 'rollbackData') return Number(update?.totalItems) > 0 || Number(update?.totalBytes) > 0 ? 1 : 0
+  if (stage.labelKey === 'rollbackVerify') return Number(update?.totalServices) > 0 ? 1 : 0
+  return 0
+}
+
+function stageItems(stage, update, state) {
+  const keys = (stage.key.startsWith('rollback') ? ROLLBACK_STAGE_ITEMS : UPDATE_STAGE_ITEMS)[stage.labelKey] ?? ['stageCompleted']
+  const active = activeStageItemIndex(stage, update)
+  return keys.map((key, index) => ({
+    key,
+    label: t(key),
+    state: state === 'completed' ? 'completed'
+      : state === 'pending' ? 'pending'
+        : index < active ? 'completed'
+          : index === active ? (state === 'failed' ? 'failed' : 'active') : 'pending',
+  }))
+}
+
+function stageMetricLines(value, stage, state) {
+  const lines = []
+  const bytes = Number(value?.processedBytes)
+  const totalBytes = Number(value?.totalBytes)
+  const items = Number(value?.processedItems)
+  const totalItems = Number(value?.totalItems)
+  const ready = Number(value?.readyServices)
+  const totalServices = Number(value?.totalServices)
+  const completeEnough = state !== 'completed' || stageMetricProgress(value) === 100
+  if (stage.index > 0 && completeEnough && Number.isFinite(bytes) && Number.isFinite(totalBytes) && totalBytes > 0) {
+    const key = stage.index === 1 && !stage.key.startsWith('rollback')
+      ? 'metricBytesRead'
+      : stage.index === 2 && !stage.key.startsWith('rollback')
+        ? 'metricBytesCopied'
+        : stage.key.startsWith('rollback') && stage.label === t('rollbackData')
+          ? 'metricBytesRestored'
+          : 'metricBytesProcessed'
+    lines.push(t(key, { processed: fileSize(bytes), total: fileSize(totalBytes) }))
+  }
+  if (stage.index > 0 && completeEnough && Number.isFinite(items) && Number.isFinite(totalItems) && totalItems > 0) {
+    const key = stage.index === 1 && !stage.key.startsWith('rollback') ? 'metricArtifacts'
+      : stage.index >= 2 || stage.key.startsWith('rollback') ? 'metricFiles' : 'metricItems'
+    lines.push(t(key, { processed: String(items), total: String(totalItems) }))
+  }
+  if (Number.isFinite(ready) && Number.isFinite(totalServices) && totalServices > 0) {
+    lines.push(t('metricServices', { ready: String(ready), total: String(totalServices) }))
+  }
+  return lines
+}
+
+function stageMetricProgress(value) {
+  for (const [processedKey, totalKey] of [['processedBytes', 'totalBytes'], ['processedItems', 'totalItems'], ['readyServices', 'totalServices']]) {
+    const processed = Number(value?.[processedKey])
+    const total = Number(value?.[totalKey])
+    if (Number.isFinite(processed) && Number.isFinite(total) && total > 0) {
+      return Math.max(0, Math.min(100, Math.round(processed / total * 100)))
+    }
+  }
+  return undefined
+}
+
+function progressLogTime(value) {
+  const date = new Date(value)
+  return Number.isNaN(date.valueOf()) ? '-' : localTime(value)
+}
+
 function renderProgressLogs() {
   const panel = elements['progress-stage-log']
   if (!panel) return
   panel.hidden = progressLogKey === undefined
   if (panel.hidden) return
   const activeStage = progressLogStage(progressLogPhase(progressLogUpdate))
-  const activeExpanded = progressLogStageExpansion.get(activeStage.key) ?? true
-  elements['progress-log-toggle'].textContent = activeExpanded ? t('hideStageLogs') : t('showStageLogs')
   elements['progress-log-list'].replaceChildren()
   const groups = new Map()
   for (const entry of progressLogEntries) {
@@ -550,20 +634,74 @@ function renderProgressLogs() {
     group.entries.push(entry)
     groups.set(stage.key, group)
   }
-  if (!groups.has(activeStage.key)) groups.set(activeStage.key, { ...activeStage, entries: [] })
-  const orderedGroups = [...groups.values()].sort((left, right) => left.index - right.index)
-  for (const group of orderedGroups) {
+  const failed = progressLogUpdate?.status === 'failed'
+  const definitions = progressStageDefinitions(progressLogUpdate)
+  for (const definition of definitions) {
+    const group = groups.get(definition.key) ?? { ...definition, entries: [] }
+    const state = group.index < activeStage.index ? 'completed'
+      : group.index === activeStage.index ? (failed ? 'failed' : 'active') : 'pending'
+    group.labelKey = definition.labelKey
+    const latest = group.entries.at(-1)
+    const metricSource = state === 'active' || state === 'failed' ? { ...latest, ...progressLogUpdate } : latest
+    const metricLines = stageMetricLines(metricSource, group, state)
+    const items = stageItems(group, progressLogUpdate, state)
+    const completedItems = items.filter(item => item.state === 'completed').length
     const stageDetails = document.createElement('details')
-    stageDetails.className = 'progress-log-group'
+    stageDetails.className = `progress-log-group ${state}`
     stageDetails.dataset.stageKey = group.key
-    const defaultExpanded = group.key === activeStage.key
+    const defaultExpanded = state === 'active' || state === 'failed'
     stageDetails.open = progressLogStageExpansion.get(group.key) ?? defaultExpanded
     const stageSummary = document.createElement('summary')
+    const marker = document.createElement('span')
+    marker.className = `progress-stage-marker ${state}`
+    marker.setAttribute('aria-hidden', 'true')
+    const summaryBody = document.createElement('span')
+    summaryBody.className = 'progress-stage-summary'
     const stageName = document.createElement('strong')
     stageName.textContent = group.label
+    summaryBody.append(stageName)
     const count = document.createElement('span')
-    count.textContent = String(group.entries.length)
-    stageSummary.append(stageName, count)
+    count.className = 'progress-stage-count'
+    count.textContent = t('stageItemsCompleted', { completed: String(completedItems), total: String(items.length) })
+    summaryBody.append(count)
+    const toggle = document.createElement('span')
+    toggle.className = 'progress-stage-toggle'
+    toggle.textContent = t(stageDetails.open ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
+    stageSummary.append(marker, summaryBody, toggle)
+    const checklist = document.createElement('div')
+    checklist.className = 'progress-stage-items'
+    for (const item of items) {
+      const row = document.createElement('div')
+      row.className = `progress-stage-item ${item.state}`
+      const itemMarker = document.createElement('span')
+      itemMarker.className = 'progress-stage-item-marker'
+      itemMarker.textContent = ''
+      const itemBody = document.createElement('span')
+      itemBody.textContent = t({ completed: 'stageItemCompleted', active: 'stageItemActive', failed: 'stageItemFailed', pending: 'stageItemPending' }[item.state], { item: item.label })
+      row.append(itemMarker, itemBody)
+      if (item.state === 'active' || item.state === 'failed') {
+        for (const text of metricLines) {
+          const metric = document.createElement('span')
+          metric.className = 'progress-stage-metric'
+          metric.textContent = text
+          row.append(metric)
+        }
+        const value = item.state === 'active' ? stageMetricProgress(metricSource) : undefined
+        if (value !== undefined) {
+          const metric = document.createElement('span')
+          metric.className = 'progress-stage-percent'
+          metric.textContent = t('stageProgress', { progress: String(value) })
+          row.append(metric)
+        }
+      }
+      checklist.append(row)
+    }
+    if (state === 'failed') {
+      const error = document.createElement('p')
+      error.className = 'progress-stage-error'
+      error.textContent = localizedError(progressLogUpdate?.error ?? latest?.error ?? t('statusFailed'))
+      checklist.append(error)
+    }
     const entries = document.createElement('div')
     entries.className = 'progress-log-group-list'
     if (group.entries.length === 0) {
@@ -576,24 +714,63 @@ function renderProgressLogs() {
       const details = document.createElement('details')
       details.className = 'progress-log-entry'
       const summary = document.createElement('summary')
+      const time = document.createElement('time')
+      time.textContent = progressLogTime(entry.timestamp)
+      const level = document.createElement('span')
+      level.className = `progress-log-level ${String(entry.level ?? 'info').toLowerCase()}`
+      const levelValue = String(entry.level ?? 'info').toLowerCase()
+      level.textContent = t(`level${levelValue[0].toUpperCase()}${levelValue.slice(1)}`)
+      const source = document.createElement('span')
+      source.className = 'progress-log-source'
+      source.textContent = String(entry.source ?? '-')
       const message = document.createElement('span')
       message.className = 'progress-log-message'
       message.textContent = progressLogText(entry)
-      const meta = document.createElement('time')
-      meta.textContent = localTime(entry.timestamp)
-      summary.append(message, meta)
+      const chevron = document.createElement('span')
+      chevron.className = 'progress-log-chevron'
+      chevron.setAttribute('aria-hidden', 'true')
+      summary.append(level, source, time, message, chevron)
       const body = document.createElement('pre')
       body.textContent = JSON.stringify(entry, null, 2)
       details.append(summary, body)
       entries.append(details)
     }
-    stageDetails.append(stageSummary, entries)
+    const actions = document.createElement('div')
+    actions.className = 'progress-log-actions'
+    const autoScroll = document.createElement('label')
+    autoScroll.className = 'progress-auto-scroll'
+    const autoScrollInput = document.createElement('input')
+    autoScrollInput.type = 'checkbox'
+    autoScrollInput.checked = progressLogAutoScroll
+    autoScrollInput.addEventListener('change', event => {
+      progressLogAutoScroll = event.target.checked
+      if (progressLogAutoScroll) renderProgressLogs()
+    })
+    const autoScrollText = document.createElement('span')
+    autoScrollText.textContent = t('autoScroll')
+    autoScroll.append(autoScrollInput, autoScrollText)
+    const copy = document.createElement('button')
+    copy.type = 'button'
+    copy.className = 'secondary'
+    copy.disabled = group.entries.length === 0
+    copy.textContent = t('copyStageLogs')
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(group.entries.map(entry => JSON.stringify(entry)).join('\n'))
+        copy.textContent = t('logsCopied')
+        window.setTimeout(() => { copy.textContent = t('copyStageLogs') }, 1_500)
+      } catch {}
+    })
+    actions.append(autoScroll, copy)
+    stageDetails.append(stageSummary, checklist, entries, actions)
     stageDetails.addEventListener('toggle', () => {
       progressLogStageExpansion.set(group.key, stageDetails.open)
       progressLogStageTouched.add(group.key)
+      toggle.textContent = t(stageDetails.open ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
     })
     elements['progress-log-list'].append(stageDetails)
   }
+  const activeExpanded = progressLogStageExpansion.get(activeStage.key) ?? true
   if (progressLogAutoScroll && activeExpanded) {
     window.requestAnimationFrame(() => {
       const activeGroup = [...elements['progress-log-list'].querySelectorAll('.progress-log-group')]
@@ -642,7 +819,7 @@ function connectProgressLogs(update) {
   progressLogStageTouched.clear()
   progressLogStageExpansion.set(activeStage.key, true)
   progressLogKey = key
-  const params = new URLSearchParams({ taskId: String(taskId), limit: '1000' })
+  const params = new URLSearchParams({ taskId: String(taskId), operation: String(update.operation ?? 'update'), limit: '1000' })
   progressLogSource = new EventSource(`${API}/logs/stream?${params.toString()}`)
   progressLogSource.addEventListener('log', event => {
     try {
@@ -1374,30 +1551,25 @@ function render(next) {
   elements['return-stable'].hidden = !rollbackPlan?.returnStableAvailable
   elements['return-stable'].disabled = busy
 
-  const updateStatusKey = update.operation === 'rollback' && updateActive
-    ? 'statusRollingBack'
-    : STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
-  elements['update-status'].querySelector('strong').textContent = t(updateStatusKey)
-  elements['update-status'].className = `status-label ${update.status === 'failed' ? 'failed' : update.status === 'success' ? 'success' : updateActive ? 'active' : ''}`
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
   elements['update-progress'].hidden = !progressVisible
-  elements['update-status'].parentElement.hidden = !progressVisible
   elements['progress-value'].value = `${String(progress)}%`
   elements['progress-value'].textContent = `${String(progress)}%`
   elements.progress.setAttribute('aria-valuenow', String(progress))
   elements['progress-bar'].style.width = `${String(progress)}%`
-  const metrics = progressMetrics(update)
-  elements['progress-metrics'].textContent = metrics
-  elements['progress-metrics'].hidden = metrics === '' || !progressVisible
   if (progressVisible) {
-    elements['progress-title'].textContent = t(update.operation === 'rollback' ? 'rollbackProgress' : 'updateProgress')
-    elements['progress-detail'].textContent = progressDetail(update)
-    renderProgressSteps(update)
+    const target = update.operation === 'rollback'
+      ? rollbackPlan?.previous?.dsh ?? rollbackPlan?.target?.dsh
+      : experimental ? next.upstream?.version ?? next.supported?.dsh : next.supported?.dsh
+    elements['progress-title'].textContent = target
+      ? t(update.operation === 'rollback' ? 'rollbackToTarget' : 'updateToTarget', { target: String(target) })
+      : t(update.operation === 'rollback' ? 'rollbackProgress' : 'updateProgress')
+    elements['progress-value'].textContent = `${String(progress)}%`
     connectProgressLogs(update)
   } else {
     closeProgressLogs()
   }
-  const result = update.error ? localizedError(update.error) : progressVisible && update.outcome ? updateOutcome(update.outcome) : ''
+  const result = progressVisible ? '' : update.error ? localizedError(update.error) : update.outcome ? updateOutcome(update.outcome) : ''
   elements['update-result'].textContent = result
   elements['update-result'].hidden = result === ''
   elements['metadata-notice'].hidden = !update.metadataUnavailable
@@ -3479,29 +3651,6 @@ elements['confirm-restart'].addEventListener('click', async () => {
 elements['confirm-stop'].addEventListener('click', async () => {
   elements['stop-dialog'].close()
   await act('stop-dsh', { method: 'POST' })
-})
-elements['progress-log-toggle'].addEventListener('click', () => {
-  if (progressLogUpdate === undefined) return
-  const stage = progressLogStage(progressLogPhase(progressLogUpdate))
-  const expanded = progressLogStageExpansion.get(stage.key) ?? true
-  progressLogStageExpansion.set(stage.key, !expanded)
-  progressLogStageTouched.add(stage.key)
-  renderProgressLogs()
-})
-elements['progress-log-auto-scroll'].addEventListener('change', event => {
-  progressLogAutoScroll = event.target.checked
-  if (progressLogAutoScroll) renderProgressLogs()
-})
-elements['progress-log-copy'].addEventListener('click', async () => {
-  if (progressLogUpdate === undefined) return
-  const stage = progressLogStage(progressLogPhase(progressLogUpdate))
-  const entries = progressLogEntries.filter(entry => progressLogStage(entry.phase).key === stage.key)
-  if (entries.length === 0) return
-  try {
-    await navigator.clipboard.writeText(entries.map(entry => JSON.stringify(entry)).join('\n'))
-    elements['progress-log-copy'].textContent = t('logsCopied')
-    window.setTimeout(() => { elements['progress-log-copy'].textContent = t('copyStageLogs') }, 1_500)
-  } catch {}
 })
 elements['progress-full-log'].addEventListener('click', () => {
   if (progressLogUpdate?.taskId) elements['log-search'].value = String(progressLogUpdate.taskId)

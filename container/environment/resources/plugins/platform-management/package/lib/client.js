@@ -3,21 +3,6 @@ import css from './style.module.css'
 
 const API = '/_dsh_platform/plugin-api/v1'
 const TERMINAL = new Set(['idle', 'success', 'failed'])
-const STATUS_LABELS = Object.freeze({
-  idle: 'statusIdle',
-  checking: 'statusChecking',
-  planning: 'statusPlanning',
-  'checking-upstream': 'statusCheckingUpstream',
-  downloading: 'statusDownloading',
-  validating: 'statusValidating',
-  'building-candidate': 'statusBuildingCandidate',
-  'snapshotting-data': 'statusSnapshottingData',
-  switching: 'statusSwitching',
-  probation: 'statusProbation',
-  'restoring-data': 'statusRestoringData',
-  success: 'statusSuccess',
-  failed: 'statusFailed',
-})
 const UPDATE_PROGRESS_STEPS = Object.freeze(['progressPrepare', 'progressAcquire', 'progressBuild', 'progressActivate'])
 const UPDATE_PROGRESS_STAGE = Object.freeze({
   checking: 0,
@@ -85,7 +70,7 @@ function formatBytes(value) {
   return `${(size / 1024 ** 3).toFixed(1)} GiB`
 }
 
-function progressMetrics(update, t) {
+function stageMetricLines(update, stage, state, t) {
   const values = []
   const bytes = Number(update?.processedBytes)
   const totalBytes = Number(update?.totalBytes)
@@ -93,10 +78,67 @@ function progressMetrics(update, t) {
   const totalItems = Number(update?.totalItems)
   const ready = Number(update?.readyServices)
   const totalServices = Number(update?.totalServices)
-  if (Number.isFinite(bytes) && Number.isFinite(totalBytes) && totalBytes > 0) values.push(t('metricBytes').replace('{processed}', formatBytes(bytes)).replace('{total}', formatBytes(totalBytes)))
-  if (Number.isFinite(items) && Number.isFinite(totalItems) && totalItems > 0) values.push(t('metricItems').replace('{processed}', String(items)).replace('{total}', String(totalItems)))
+  const completeEnough = state !== 'completed' || stageMetricProgress(update) === 100
+  if (stage.index > 0 && completeEnough && Number.isFinite(bytes) && Number.isFinite(totalBytes) && totalBytes > 0) {
+    const key = stage.index === 1 ? 'metricBytesRead' : stage.index === 2 ? 'metricBytesCopied' : 'metricBytesProcessed'
+    values.push(t(key).replace('{processed}', formatBytes(bytes)).replace('{total}', formatBytes(totalBytes)))
+  }
+  if (stage.index > 0 && completeEnough && Number.isFinite(items) && Number.isFinite(totalItems) && totalItems > 0) {
+    const key = stage.index === 1 ? 'metricArtifacts' : stage.index >= 2 ? 'metricFiles' : 'metricItems'
+    values.push(t(key).replace('{processed}', String(items)).replace('{total}', String(totalItems)))
+  }
   if (Number.isFinite(ready) && Number.isFinite(totalServices) && totalServices > 0) values.push(t('metricServices').replace('{ready}', String(ready)).replace('{total}', String(totalServices)))
-  return values.join(' · ')
+  return values
+}
+
+function stageMetricProgress(update) {
+  for (const [processedKey, totalKey] of [['processedBytes', 'totalBytes'], ['processedItems', 'totalItems'], ['readyServices', 'totalServices']]) {
+    const processed = Number(update?.[processedKey])
+    const total = Number(update?.[totalKey])
+    if (Number.isFinite(processed) && Number.isFinite(total) && total > 0) {
+      return Math.max(0, Math.min(100, Math.round(processed / total * 100)))
+    }
+  }
+  return undefined
+}
+
+const UPDATE_STAGE_ITEMS = Object.freeze({
+  progressPrepare: ['itemVerifyMetadata', 'itemVerifyKeyring', 'itemVerifyTarget'],
+  progressAcquire: ['itemDownloadArtifacts', 'itemVerifyArtifacts', 'itemImportObjects'],
+  progressBuild: ['itemMaterializePristine', 'itemPrepareEnvironment', 'itemBuildRuntime', 'itemPreparePlugins'],
+  progressActivate: ['itemSwitchDeployment', 'itemCheckHealth', 'itemObserveProbation'],
+})
+
+function activeStageItemIndex(stage, update) {
+  const phase = update?.phase ?? update?.status
+  if (stage.labelKey === 'progressPrepare') return phase === 'planning' ? 2 : 0
+  if (stage.labelKey === 'progressAcquire') return phase === 'validating' ? 2 : 0
+  if (stage.labelKey === 'progressBuild') {
+    const progress = Number(update?.progress) || 0
+    if (Number(update?.totalBytes) > 0 || Number(update?.totalItems) > 0) return progress >= 87 ? 3 : 2
+    if (progress < 80) return 0
+    if (progress < 82) return 1
+    if (progress < 87) return 2
+    return 3
+  }
+  if (stage.labelKey === 'progressActivate') {
+    if (phase === 'probation') return 2
+    if (Number(update?.totalServices) > 0) return 1
+  }
+  return 0
+}
+
+function stageItems(stage, update, state, t) {
+  const keys = UPDATE_STAGE_ITEMS[stage.labelKey] ?? ['stageCompleted']
+  const active = activeStageItemIndex(stage, update)
+  return keys.map((key, index) => ({
+    key,
+    label: t(key),
+    state: state === 'completed' ? 'completed'
+      : state === 'pending' ? 'pending'
+        : index < active ? 'completed'
+          : index === active ? (state === 'failed' ? 'failed' : 'active') : 'pending',
+  }))
 }
 
 function makeHorizontalTabStripScrollable(tablist) {
@@ -1040,6 +1082,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   const previousStage = useRef()
   const activeList = useRef(null)
   const phase = update?.phase ?? (update?.operation === 'rollback' ? update.rollbackPhase : update?.status)
+  const model = updateProgressModel(update ?? {}, t)
   const currentStage = transactionLogStage(phase, update, t)
   useEffect(() => {
     if (!visible || !update?.taskId || !phase) {
@@ -1051,7 +1094,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     touched.current.clear()
     identities.current.clear()
     previousStage.current = currentStage.key
-    const params = new URLSearchParams({ taskId: String(update.taskId), limit: '1000' })
+    const params = new URLSearchParams({ taskId: String(update.taskId), operation: String(update.operation ?? 'update'), limit: '1000' })
     const stream = new EventSource(`${API}/logs/stream?${params.toString()}`)
     stream.addEventListener('log', event => {
       try {
@@ -1079,14 +1122,19 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     activeList.current?.scrollTo({ top: activeList.current.scrollHeight })
   }, [autoScroll, currentStage.key, entries, expanded])
   if (!visible || !update?.taskId || !phase) return null
-  const groups = new Map()
+  const groups = new Map(model.labels.map((label, index) => [`update:${String(index)}`, {
+    key: `update:${String(index)}`,
+    label: t(label),
+    labelKey: label,
+    index,
+    entries: [],
+  }]))
   for (const entry of entries) {
     const stage = transactionLogStage(entry.phase, update, t)
     const group = groups.get(stage.key) ?? { ...stage, entries: [] }
     group.entries.push(entry)
     groups.set(stage.key, group)
   }
-  if (!groups.has(currentStage.key)) groups.set(currentStage.key, { ...currentStage, entries: [] })
   const orderedGroups = [...groups.values()].sort((left, right) => left.index - right.index)
   const currentEntries = groups.get(currentStage.key)?.entries ?? []
   const toggleStage = key => {
@@ -1102,23 +1150,46 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     } catch {}
   }
   return h('div', { className: css.progressStageLog },
-    h('div', { className: css.progressLogHeading },
-      h('strong', null, t('stageLogs')),
-      h('div', { className: css.progressLogActions },
-        h('label', { className: css.progressAutoScroll },
-          h('input', { type: 'checkbox', checked: autoScroll, onChange: event => setAutoScroll(event.target.checked) }),
-          h('span', null, t('autoScroll'))),
-        h('button', { type: 'button', className: css.smallButton, disabled: currentEntries.length === 0, onClick: copyCurrent }, t(copied ? 'logsCopied' : 'copyStageLogs')))),
     h('div', { className: css.progressLogList, role: 'log' }, orderedGroups.map(group => {
-      const isExpanded = expanded[group.key] ?? group.key === currentStage.key
-      return h('section', { className: css.progressLogGroup, key: group.key },
-        h('button', { type: 'button', className: css.progressLogGroupHeading, 'aria-expanded': isExpanded, onClick: () => toggleStage(group.key) },
-          h('strong', null, group.label), h('span', null, String(group.entries.length))),
-        isExpanded ? h('div', { className: css.progressLogGroupList, ref: group.key === currentStage.key ? activeList : undefined }, group.entries.length === 0
-          ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
-          : group.entries.slice(-200).map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
-            h('summary', null, h('span', null, String(entry.message ?? '-').replace(/\s+/gu, ' ')), h('time', null, localTime(entry.timestamp, t('localeCode')))),
-            h('pre', null, JSON.stringify(entry, null, 2))))) : null)
+      const state = group.index < model.stage ? 'completed'
+        : group.index === model.stage ? (update.status === 'failed' ? 'failed' : 'active') : 'pending'
+      const isExpanded = expanded[group.key] ?? (state === 'active' || state === 'failed')
+      const latest = group.entries.at(-1)
+      const metricSource = state === 'active' || state === 'failed' ? { ...latest, ...update } : latest
+      const metricLines = stageMetricLines(metricSource, group, state, t)
+      const metricProgress = state === 'active' ? stageMetricProgress(metricSource) : undefined
+      const items = stageItems(group, update, state, t)
+      const completedItems = items.filter(item => item.state === 'completed').length
+      return h('section', { className: `${css.progressLogGroup} ${css[`progressStage${state[0].toUpperCase()}${state.slice(1)}`]}`, key: group.key },
+        h('span', { className: `${css.progressStageMarker} ${css[`progressStageMarker${state[0].toUpperCase()}${state.slice(1)}`]}`, 'aria-hidden': 'true' }),
+        h('div', { className: css.progressStageHeader },
+          h('div', { className: css.progressStageSummary },
+            h('strong', null, group.label),
+            h('span', { className: css.progressStageCount }, t('stageItemsCompleted').replace('{completed}', String(completedItems)).replace('{total}', String(items.length)))),
+          h('button', { type: 'button', className: css.progressStageToggle, 'aria-expanded': isExpanded, onClick: () => toggleStage(group.key) },
+            t(isExpanded ? 'collapseStage' : 'expandStage').replace('{count}', String(group.entries.length)))),
+        isExpanded ? h(React.Fragment, null,
+          h('div', { className: css.progressStageItems }, items.map(item => h('div', { className: `${css.progressStageItem} ${css[`progressStageItem${item.state[0].toUpperCase()}${item.state.slice(1)}`]}`, key: item.key },
+            h('span', { className: css.progressStageItemMarker, 'aria-hidden': 'true' }),
+            h('span', null, t({ completed: 'stageItemCompleted', active: 'stageItemActive', failed: 'stageItemFailed', pending: 'stageItemPending' }[item.state]).replace('{item}', item.label)),
+            item.state === 'active' || item.state === 'failed' ? metricLines.map(line => h('span', { className: css.progressStageMetric, key: line }, line)) : null,
+            item.state === 'active' && metricProgress !== undefined ? h('span', { className: css.progressStagePercent }, t('stageProgress').replace('{progress}', String(metricProgress))) : null))),
+          state === 'failed' ? h('p', { className: css.progressStageError }, localizedError(update.error ?? latest?.error ?? t('statusFailed'), t)) : null,
+          h('div', { className: css.progressLogGroupList, ref: group.key === currentStage.key ? activeList : undefined }, group.entries.length === 0
+            ? h('p', { className: css.progressLogEmpty }, t('noStageLogs'))
+            : group.entries.slice(-200).map((entry, index) => h('details', { className: css.progressLogEntry, key: `${entry.timestamp ?? ''}-${index}` },
+              h('summary', null,
+                h('span', { className: `${css.progressLogLevel} ${css[String(entry.level ?? 'info').toLowerCase()] ?? ''}` }, (() => { const level = String(entry.level ?? 'info').toLowerCase(); return t(`level${level[0].toUpperCase()}${level.slice(1)}`) })()),
+                h('span', { className: css.progressLogSource }, String(entry.source ?? '-')),
+                h('time', null, localTime(entry.timestamp, t('localeCode'))),
+                h('span', { className: css.progressLogMessage }, String(entry.message ?? '-').replace(/\s+/gu, ' ')),
+                h('span', { className: css.progressLogChevron, 'aria-hidden': 'true' })),
+              h('pre', null, JSON.stringify(entry, null, 2))))),
+          group.key === currentStage.key ? h('div', { className: css.progressLogActions },
+            h('label', { className: css.progressAutoScroll },
+              h('input', { type: 'checkbox', checked: autoScroll, onChange: event => setAutoScroll(event.target.checked) }),
+              h('span', null, t('autoScroll'))),
+            h('button', { type: 'button', className: css.smallButton, disabled: currentEntries.length === 0, onClick: copyCurrent }, t(copied ? 'logsCopied' : 'copyStageLogs'))) : null) : null)
     })),
     h('button', { type: 'button', className: css.progressFullLog, onClick: onViewFullLog }, t('viewFullTransactionLog')))
 }
@@ -1417,16 +1488,9 @@ function PlatformManagement({ t }) {
   }, [update.status, update.taskId, update.updatedAt])
   const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId)) || showSuccessfulProgress
   const hasSupportedTarget = status?.supported !== null && status?.supported !== undefined
-  const updateStatus = update.operation === 'rollback' && updateActive
-    ? 'statusRollingBack'
-    : STATUS_LABELS[update.status ?? 'idle'] ?? 'statusUnknown'
-  const updateStatusClass = update.status === 'failed'
-    ? css.statusFailed
-    : update.status === 'success'
-      ? css.statusSuccess
-      : updateActive ? css.statusActive : ''
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
   const progressModel = updateProgressModel(update, t)
+  const progressTarget = status?.updateChannel === 'experimental' ? status?.upstream?.version : status?.supported?.dsh
   const holds = [...new Map([
     ...(status?.holds ?? []),
     ...(status?.experimentalBlocked ? [status.experimentalBlocked] : []),
@@ -1506,22 +1570,11 @@ function PlatformManagement({ t }) {
           h('button', { type: 'button', className: css.primaryButton, disabled: busy || update.metadataUnavailable || !hasSupportedTarget || update.updateAvailable !== true, onClick: () => { void act('update', { method: 'POST' }) } }, status?.updateChannel === 'experimental' ? t('updateUpstream') : t('updateSupported')),
           )),
       h('div', { className: css.updateState, 'aria-live': 'polite' },
-        progressVisible ? h('div', { className: css.statusLine },
-          h('span', { className: `${css.statusLabel} ${updateStatusClass}` },
-            h('span', { className: css.statusDot, 'aria-hidden': 'true' }),
-            t(updateStatus))) : null,
-        update.error || (progressVisible && update.outcome) ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
+        !progressVisible && (update.error || update.outcome) ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
         progressVisible ? h('div', { className: css.updateProgress },
           h('div', { className: css.progressHeading },
-            h('strong', null, progressModel.title),
+            h('strong', null, progressTarget ? t('updateToTarget').replace('{target}', String(progressTarget)) : progressModel.title),
             h('output', null, `${String(progress)}%`)),
-          h('p', { className: css.progressDetail }, progressModel.detail),
-          progressMetrics(update, t) ? h('p', { className: css.progressMetrics }, progressMetrics(update, t)) : null,
-          h('ol', { className: css.progressSteps, style: { '--step-count': progressModel.labels.length } },
-            progressModel.labels.map((label, index) => h('li', {
-              key: label,
-              className: index < progressModel.stage ? css.progressCompleted : index === progressModel.stage ? css.progressActive : '',
-            }, t(label)))),
           h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
             h('span', { style: { width: `${String(progress)}%` } })),
           h(TransactionStageLogs, {
@@ -1654,7 +1707,7 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', copyStageLogs: '复制当前日志', logsCopied: '已复制', viewFullTransactionLog: '查看完整事务日志', metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
+      updateProgress: '更新进度', rollbackProgress: '回滚进度', updateToTarget: '更新到 {target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查', stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', noStageLogs: '当前阶段暂无日志', copyStageLogs: '复制当前日志', logsCopied: '已复制', viewFullTransactionLog: '查看完整事务日志', stageCompleted: '阶段已完成。', stageWaiting: '等待前一阶段完成。', stageProgress: '阶段进度 {progress}%', stageItemsCompleted: '已完成 {completed}/{total} 项', expandStage: '展开 · 日志 {count} 条', collapseStage: '收起 · 日志 {count} 条', stageItemCompleted: '已完成：{item}', stageItemActive: '正在执行：{item}', stageItemPending: '待执行：{item}', stageItemFailed: '执行失败：{item}', itemVerifyMetadata: '验证 metadata', itemVerifyKeyring: '验证 keyring', itemVerifyTarget: '验证目标清单', itemDownloadArtifacts: '下载 Artifact', itemVerifyArtifacts: '验证 Artifact 签名、引用、大小和 Hash', itemImportObjects: '导入可信对象库', itemMaterializePristine: '物化 Pristine DSH', itemPrepareEnvironment: '准备 Environment', itemBuildRuntime: '构建 Runtime 并应用完整 Patch Set', itemPreparePlugins: '准备 System Plugin Set', itemSwitchDeployment: '原子切换 Deployment', itemCheckHealth: '检查服务健康状态', itemObserveProbation: '观察候选 Runtime', metadataVerified: 'metadata 已验证。', keyringVerified: 'keyring 已验证。', targetManifestVerified: '目标清单已验证。', artifactDownloadCompleted: 'Artifact 下载已完成。', artifactVerificationCompleted: 'Artifact 签名、引用和 Hash 已验证。', runtimeMaterialized: 'Pristine DSH 已物化。', patchSetApplied: '完整 Patch Set 已应用。', systemPluginsPrepared: 'System Plugin Set 已准备。', deploymentSwitched: 'Deployment 已原子切换。', healthChecksPassed: '服务健康检查已通过。', metricBytesRead: '已读取 {processed} / {total}', metricBytesCopied: '已复制 {processed} / {total}', metricBytesProcessed: '已处理 {processed} / {total}', metricArtifacts: '已验证 {processed} / {total} 个 Artifact', metricFiles: '已完成 {processed} / {total} 个文件', metricItems: '已完成 {processed} / {total} 项', metricServices: '已就绪 {ready} / {total} 个服务', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
       progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。', progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。', progressDetailSnapshot: 'DSH 已暂停，正在为实验更新创建完整数据快照。', progressDetailSwitching: '正在原子切换完整 Deployment，并检查 DSH 是否就绪。', progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 {until}。',
       rollbackDetailPreparing: '正在验证回滚计划与上一完整 Deployment。', rollbackDetailStopping: '正在暂停 DSH，准备恢复上一完整状态。', rollbackDetailSwitching: '正在切换上一 Runtime、Environment 和系统插件集合。', rollbackDetailData: '正在校验并恢复更新前的数据快照。', rollbackDetailVerifying: '正在启动 DSH 并执行健康检查。',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
@@ -1679,7 +1732,7 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', copyStageLogs: 'Copy current logs', logsCopied: 'Copied', viewFullTransactionLog: 'View full transaction log', metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
+      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', updateToTarget: 'Update to {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check', stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', noStageLogs: 'No logs for this phase yet', copyStageLogs: 'Copy current logs', logsCopied: 'Copied', viewFullTransactionLog: 'View full transaction log', stageCompleted: 'Stage completed.', stageWaiting: 'Waiting for the previous stage.', stageProgress: 'Stage progress {progress}%', stageItemsCompleted: '{completed}/{total} items completed', expandStage: 'Expand · {count} log entries', collapseStage: 'Collapse · {count} log entries', stageItemCompleted: 'Completed: {item}', stageItemActive: 'In progress: {item}', stageItemPending: 'Pending: {item}', stageItemFailed: 'Failed: {item}', itemVerifyMetadata: 'Verify metadata', itemVerifyKeyring: 'Verify keyring', itemVerifyTarget: 'Verify target manifest', itemDownloadArtifacts: 'Download Artifacts', itemVerifyArtifacts: 'Verify Artifact signatures, references, sizes, and hashes', itemImportObjects: 'Import trusted objects', itemMaterializePristine: 'Materialize Pristine DSH', itemPrepareEnvironment: 'Prepare Environment', itemBuildRuntime: 'Build Runtime and apply the complete Patch Set', itemPreparePlugins: 'Prepare System Plugin Set', itemSwitchDeployment: 'Switch Deployment atomically', itemCheckHealth: 'Check service health', itemObserveProbation: 'Observe candidate Runtime', metadataVerified: 'Metadata verified.', keyringVerified: 'Keyring verified.', targetManifestVerified: 'Target manifest verified.', artifactDownloadCompleted: 'Artifact download completed.', artifactVerificationCompleted: 'Artifact signatures, references, and hashes verified.', runtimeMaterialized: 'Pristine DSH materialized.', patchSetApplied: 'Complete Patch Set applied.', systemPluginsPrepared: 'System Plugin Set prepared.', deploymentSwitched: 'Deployment switched atomically.', healthChecksPassed: 'Service health checks passed.', metricBytesRead: 'Read {processed} / {total}', metricBytesCopied: 'Copied {processed} / {total}', metricBytesProcessed: 'Processed {processed} / {total}', metricArtifacts: 'Verified {processed} / {total} Artifacts', metricFiles: 'Completed {processed} / {total} files', metricItems: 'Completed {processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
       progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.', progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.', progressDetailSnapshot: 'DSH is paused while a complete data snapshot is created for the Experimental update.', progressDetailSwitching: 'Atomically switching the complete Deployment and checking DSH readiness.', progressDetailProbation: 'The candidate Runtime remains under health observation until {until}.',
       rollbackDetailPreparing: 'Validating the rollback plan and previous complete Deployment.', rollbackDetailStopping: 'Pausing DSH before restoring the previous complete state.', rollbackDetailSwitching: 'Switching the previous Runtime, Environment, and System Plugin set.', rollbackDetailData: 'Verifying and restoring the pre-update data snapshot.', rollbackDetailVerifying: 'Starting DSH and running health checks.',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',

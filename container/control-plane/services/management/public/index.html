@@ -75,16 +75,11 @@
           </div>
         </div>
         <div class="update-state" aria-live="polite">
-          <div class="status-line"><span id="update-status" class="status-label"><span aria-hidden="true"></span><strong data-i18n="statusIdle">Ready</strong></span></div>
           <p id="update-result" hidden></p>
           <div id="update-progress" class="update-progress" hidden>
             <div class="progress-heading"><strong id="progress-title"></strong><output id="progress-value">0%</output></div>
-            <p id="progress-detail" class="progress-detail"></p>
-            <p id="progress-metrics" class="progress-metrics" hidden></p>
-            <ol id="progress-steps" class="progress-steps"></ol>
             <div id="progress" class="progress" role="progressbar" aria-label="Update progress" data-i18n-aria-label="progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-bar"></span></div>
             <div id="progress-stage-log" class="progress-stage-log" hidden>
-              <div class="progress-log-heading"><strong data-i18n="stageLogs">Stage logs</strong><div class="progress-log-actions"><label class="progress-auto-scroll"><input id="progress-log-auto-scroll" type="checkbox" checked><span data-i18n="autoScroll">Auto-scroll</span></label><button type="button" id="progress-log-toggle" class="secondary" data-i18n="hideStageLogs">Hide</button><button type="button" id="progress-log-copy" class="secondary" data-i18n="copyStageLogs">Copy</button></div></div>
               <div id="progress-log-list" class="progress-log-list" role="log" aria-live="polite"></div>
               <button type="button" id="progress-full-log" class="link-button" data-i18n="viewFullTransactionLog">View full transaction log</button>
             </div>
