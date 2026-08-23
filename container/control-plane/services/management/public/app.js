@@ -34,6 +34,7 @@ const COPY = Object.freeze({
     updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
     updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查',
     stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', copyStageLogs: '复制', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
+    metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪',
     rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
     progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。',
     progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。',
@@ -118,6 +119,7 @@ const COPY = Object.freeze({
     updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
     updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check',
     stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', copyStageLogs: 'Copy', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
+    metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready',
     rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
     progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.',
     progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.',
@@ -591,6 +593,26 @@ function fileSize(value) {
   if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KiB`
   if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)} MiB`
   return `${(size / 1024 ** 3).toFixed(1)} GiB`
+}
+
+function progressMetrics(update) {
+  const metrics = []
+  const processedBytes = Number(update.processedBytes)
+  const totalBytes = Number(update.totalBytes)
+  const processedItems = Number(update.processedItems)
+  const totalItems = Number(update.totalItems)
+  const readyServices = Number(update.readyServices)
+  const totalServices = Number(update.totalServices)
+  if (Number.isFinite(processedBytes) && Number.isFinite(totalBytes) && totalBytes > 0) {
+    metrics.push(t('metricBytes', { processed: fileSize(processedBytes), total: fileSize(totalBytes) }))
+  }
+  if (Number.isFinite(processedItems) && Number.isFinite(totalItems) && totalItems > 0) {
+    metrics.push(t('metricItems', { processed: String(processedItems), total: String(totalItems) }))
+  }
+  if (Number.isFinite(readyServices) && Number.isFinite(totalServices) && totalServices > 0) {
+    metrics.push(t('metricServices', { ready: String(readyServices), total: String(totalServices) }))
+  }
+  return metrics.join(' · ')
 }
 
 function updateOutcome(value) {
@@ -1275,6 +1297,9 @@ function render(next) {
   elements['progress-value'].textContent = `${String(progress)}%`
   elements.progress.setAttribute('aria-valuenow', String(progress))
   elements['progress-bar'].style.width = `${String(progress)}%`
+  const metrics = progressMetrics(update)
+  elements['progress-metrics'].textContent = metrics
+  elements['progress-metrics'].hidden = metrics === '' || !progressVisible
   if (progressVisible) {
     elements['progress-title'].textContent = t(update.operation === 'rollback' ? 'rollbackProgress' : 'updateProgress')
     elements['progress-detail'].textContent = progressDetail(update)

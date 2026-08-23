@@ -76,6 +76,29 @@ function displayEnvironment(value) {
   return value === undefined || value === null || value === '' ? '-' : `env-${String(value)}`
 }
 
+function formatBytes(value) {
+  const size = Number(value)
+  if (!Number.isFinite(size)) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KiB`
+  if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)} MiB`
+  return `${(size / 1024 ** 3).toFixed(1)} GiB`
+}
+
+function progressMetrics(update, t) {
+  const values = []
+  const bytes = Number(update?.processedBytes)
+  const totalBytes = Number(update?.totalBytes)
+  const items = Number(update?.processedItems)
+  const totalItems = Number(update?.totalItems)
+  const ready = Number(update?.readyServices)
+  const totalServices = Number(update?.totalServices)
+  if (Number.isFinite(bytes) && Number.isFinite(totalBytes) && totalBytes > 0) values.push(t('metricBytes').replace('{processed}', formatBytes(bytes)).replace('{total}', formatBytes(totalBytes)))
+  if (Number.isFinite(items) && Number.isFinite(totalItems) && totalItems > 0) values.push(t('metricItems').replace('{processed}', String(items)).replace('{total}', String(totalItems)))
+  if (Number.isFinite(ready) && Number.isFinite(totalServices) && totalServices > 0) values.push(t('metricServices').replace('{ready}', String(ready)).replace('{total}', String(totalServices)))
+  return values.join(' · ')
+}
+
 function makeHorizontalTabStripScrollable(tablist) {
   let pointerId
   let pointerStartX = 0
@@ -1394,6 +1417,7 @@ function PlatformManagement({ t }) {
             h('strong', null, progressModel.title),
             h('output', null, `${String(progress)}%`)),
           h('p', { className: css.progressDetail }, progressModel.detail),
+          progressMetrics(update, t) ? h('p', { className: css.progressMetrics }, progressMetrics(update, t)) : null,
           h('ol', { className: css.progressSteps, style: { '--step-count': progressModel.labels.length } },
             progressModel.labels.map((label, index) => h('li', {
               key: label,
@@ -1523,7 +1547,7 @@ export function apply(ctx) {
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
+      updateProgress: '更新进度', rollbackProgress: '回滚进度', progressPrepare: '准备', progressAcquire: '下载与验证', progressBuild: '构建运行时', progressActivate: '切换与检查', stageLogs: '阶段日志', hideStageLogs: '收起', showStageLogs: '展开', noStageLogs: '当前阶段暂无日志', metricBytes: '{processed} / {total} 字节', metricItems: '{processed} / {total} 项', metricServices: '{ready} / {total} 服务就绪', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
       progressDetailChecking: '正在获取并验证最新的签名更新信息。', progressDetailPlanning: '正在计算需要收敛的完整目标状态。', progressDetailUpstream: '正在查询 npm 官方源中的最新 DSH。', progressDetailDownloading: '正在下载 Artifact，并通过 Stage-0 导入可信对象库。', progressDetailValidating: '正在验证签名、Artifact 引用、大小和内容 Hash。', progressDetailBuilding: '正在从 Pristine DSH、补丁和系统插件构建不可变 Runtime。', progressDetailSnapshot: 'DSH 已暂停，正在为实验更新创建完整数据快照。', progressDetailSwitching: '正在原子切换完整 Deployment，并检查 DSH 是否就绪。', progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 {until}。',
       rollbackDetailPreparing: '正在验证回滚计划与上一完整 Deployment。', rollbackDetailStopping: '正在暂停 DSH，准备恢复上一完整状态。', rollbackDetailSwitching: '正在切换上一 Runtime、Environment 和系统插件集合。', rollbackDetailData: '正在校验并恢复更新前的数据快照。', rollbackDetailVerifying: '正在启动 DSH 并执行健康检查。',
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
@@ -1548,7 +1572,7 @@ export function apply(ctx) {
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
+      updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', progressPrepare: 'Prepare', progressAcquire: 'Download and verify', progressBuild: 'Build runtime', progressActivate: 'Switch and check', stageLogs: 'Stage logs', hideStageLogs: 'Hide', showStageLogs: 'Show', noStageLogs: 'No logs for this phase yet', metricBytes: '{processed} / {total} bytes', metricItems: '{processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',
       progressDetailChecking: 'Fetching and verifying the latest signed update metadata.', progressDetailPlanning: 'Calculating the complete target state to reconcile.', progressDetailUpstream: 'Checking the official npm registry for the latest DSH.', progressDetailDownloading: 'Downloading Artifacts and importing them through Stage-0 into the trusted object store.', progressDetailValidating: 'Verifying signatures, Artifact references, sizes, and content hashes.', progressDetailBuilding: 'Building an immutable Runtime from Pristine DSH, patches, and System Plugins.', progressDetailSnapshot: 'DSH is paused while a complete data snapshot is created for the Experimental update.', progressDetailSwitching: 'Atomically switching the complete Deployment and checking DSH readiness.', progressDetailProbation: 'The candidate Runtime remains under health observation until {until}.',
       rollbackDetailPreparing: 'Validating the rollback plan and previous complete Deployment.', rollbackDetailStopping: 'Pausing DSH before restoring the previous complete state.', rollbackDetailSwitching: 'Switching the previous Runtime, Environment, and System Plugin set.', rollbackDetailData: 'Verifying and restoring the pre-update data snapshot.', rollbackDetailVerifying: 'Starting DSH and running health checks.',
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',

@@ -383,6 +383,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-heading strong { font-size: 13px; line-height: 20px; font-weight: 500; }
 .progress-heading output { color: var(--text); font: 600 13px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .progress-detail { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.progress-metrics { margin: 0; color: var(--text); font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .progress-steps { display: grid; grid-template-columns: repeat(var(--step-count, 4), minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .progress-steps li { position: relative; min-width: 0; padding-top: 14px; color: var(--faint); font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
 .progress-steps li::before { position: absolute; top: 2px; left: 0; width: 8px; height: 8px; border: 2px solid var(--border); border-radius: 50%; background: var(--surface-raised); content: ''; }
