@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import vm from 'node:vm'
-import { injectRandomUuidPolyfill, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
+import { injectRandomUuidPolyfill, LIFECYCLE_TRANSITION_GUARD, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
 
 async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
   let notifyMutation
@@ -65,12 +65,34 @@ async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
 test('polyfill is inserted immediately after the head tag', () => {
   assert.equal(
     injectRandomUuidPolyfill('<html><head data-x="1"><title>x</title></head></html>'),
-    `<html><head data-x="1">${RANDOM_UUID_POLYFILL}${PLUGIN_RECOVERY_GUARD}<title>x</title></head></html>`,
+    `<html><head data-x="1">${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${PLUGIN_RECOVERY_GUARD}<title>x</title></head></html>`,
   )
 })
 
 test('polyfill falls back to the start when no head exists', () => {
-  assert.equal(injectRandomUuidPolyfill('<main>x</main>'), `${RANDOM_UUID_POLYFILL}${PLUGIN_RECOVERY_GUARD}<main>x</main>`)
+  assert.equal(injectRandomUuidPolyfill('<main>x</main>'), `${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${PLUGIN_RECOVERY_GUARD}<main>x</main>`)
+})
+
+test('gateway lifecycle guard moves an already-open DSH page into the holding flow', async () => {
+  let inspect
+  let replacement
+  const context = {
+    EventSource: class {
+      addEventListener(name, callback) { if (name === 'state') inspect = callback }
+    },
+    URL,
+    fetch: async () => ({ json: async () => ({ dshLifecycle: { state: 'restarting' } }) }),
+    location: {
+      pathname: '/sessions/current', search: '?view=chat', hash: '#latest',
+      replace: value => { replacement = value },
+    },
+  }
+  vm.runInNewContext(LIFECYCLE_TRANSITION_GUARD.slice('<script>'.length, -'</script>'.length), context)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(replacement, '/_dsh_gateway/wait?return=%2Fsessions%2Fcurrent%3Fview%3Dchat%23latest')
+  replacement = undefined
+  await inspect()
+  assert.equal(replacement, undefined)
 })
 
 test('plugin recovery guard runs before DSH modules and permits only one lifecycle recovery', () => {
