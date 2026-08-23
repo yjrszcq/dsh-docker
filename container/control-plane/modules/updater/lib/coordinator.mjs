@@ -254,12 +254,13 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   async runCompleteRollback(taskId, planId, options) {
+    const operation = options.requireConfirmation ? 'return-stable' : 'rollback'
     try {
       const rollbackPlan = await this.completeRecovery.plan()
       await this.transition('restoring-data', {
         taskId,
         progress: 5,
-        operation: 'rollback',
+        operation,
         rollbackPhase: 'preparing',
         rollbackIncludesSnapshot: rollbackPlan?.snapshot !== null && rollbackPlan?.snapshot !== undefined,
         error: null,
@@ -277,7 +278,7 @@ export class UpdateCoordinator extends EventEmitter {
         onProgress: (rollbackPhase, progress, metrics = {}) => this.transition('restoring-data', {
           taskId,
           progress,
-          operation: 'rollback',
+          operation,
           rollbackPhase,
           processedBytes: metrics.processedBytes ?? null,
           totalBytes: metrics.totalBytes ?? null,
@@ -288,14 +289,14 @@ export class UpdateCoordinator extends EventEmitter {
       await this.reportHealth('restoring-data', {
         taskId,
         progress: 95,
-        operation: 'rollback',
+        operation,
         rollbackPhase: 'verifying',
       })
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
       await this.transition('success', { taskId, progress: 100, error: null })
       return result
     } catch (error) {
-      await this.record('update.rollback.failed', { error, taskId })
+      await this.record('update.rollback.failed', { error, taskId, operation })
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'rollback failed' })
       throw error
     }

@@ -1004,7 +1004,7 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
     state: new UpdateStateStore(join(root, 'state', 'update.json')),
   })
   coordinator.on('state', value => {
-    if (value.operation === 'rollback' && value.status === 'restoring-data') phases.push([value.rollbackPhase, value.progress])
+    if (value.operation === 'return-stable' && value.status === 'restoring-data') phases.push([value.rollbackPhase, value.progress])
   })
   await assert.rejects(coordinator.startCompleteRollback('plan-a', {
     requireConfirmation: true, confirmDataLoss: true,
@@ -1015,6 +1015,7 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
   await coordinator.startCompleteRollback('plan-a', { requireConfirmation: true, confirmDataLoss: true }).completion
   assert.equal(restored, true)
   assert.deepEqual(phases, [['preparing', 5], ['switching', 35], ['verifying', 90]])
+  assert.equal((await coordinator.state.read()).operation, 'return-stable')
 })
 
 test('persists a planner failure started through the selected channel', async () => {

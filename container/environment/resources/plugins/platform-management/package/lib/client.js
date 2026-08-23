@@ -17,6 +17,10 @@ const UPDATE_PROGRESS_STAGE = Object.freeze({
 })
 const ROLLBACK_PROGRESS_STEPS = Object.freeze(['rollbackPrepare', 'rollbackSwitch', 'rollbackData', 'rollbackVerify'])
 const ROLLBACK_PROGRESS_STAGE = Object.freeze({ preparing: 0, stopping: 0, switching: 1, 'restoring-data': 2, verifying: 3 })
+
+function isRecoveryOperation(operation) {
+  return operation === 'rollback' || operation === 'return-stable'
+}
 const h = React.createElement
 const LOCALE_COOKIE = 'dsh_locale'
 const NOTICE_OWNER_KEY = 'dsh-platform:update-notice-owner'
@@ -246,7 +250,7 @@ function localTime(value, locale) {
 }
 
 function updateProgressModel(update, t) {
-  const rollback = update.operation === 'rollback'
+  const rollback = isRecoveryOperation(update.operation)
   const phase = update.phase ?? (rollback ? update.rollbackPhase : update.status)
   const labels = rollback
     ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
@@ -275,7 +279,7 @@ function updateProgressModel(update, t) {
         probation: 'progressDetailProbation',
       }[phase] ?? 'progressDetailPlanning')
   return {
-    title: t(rollback ? 'rollbackProgress' : 'updateProgress'),
+    title: t(update.operation === 'return-stable' ? 'returnStableProgress' : rollback ? 'rollbackProgress' : 'updateProgress'),
     detail: t(detailKey).replace('{until}', localTime(update.probationUntil, t('localeCode'))),
     labels,
     stage,
@@ -283,7 +287,7 @@ function updateProgressModel(update, t) {
 }
 
 function transactionLogStage(phase, update, t) {
-  const rollback = update?.operation === 'rollback'
+  const rollback = isRecoveryOperation(update?.operation)
   const stageMap = rollback ? ROLLBACK_PROGRESS_STAGE : UPDATE_PROGRESS_STAGE
   const labels = rollback ? ROLLBACK_PROGRESS_STEPS : UPDATE_PROGRESS_STEPS
   let index = stageMap[phase]
@@ -1081,7 +1085,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   const identities = useRef(new Set())
   const previousStage = useRef()
   const activeList = useRef(null)
-  const phase = update?.phase ?? (update?.operation === 'rollback' ? update.rollbackPhase : update?.status)
+  const phase = update?.phase ?? (isRecoveryOperation(update?.operation) ? update.rollbackPhase : update?.status)
   const model = updateProgressModel(update ?? {}, t)
   const currentStage = transactionLogStage(phase, update, t)
   useEffect(() => {
@@ -1122,8 +1126,9 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     activeList.current?.scrollTo({ top: activeList.current.scrollHeight })
   }, [autoScroll, currentStage.key, entries, expanded])
   if (!visible || !update?.taskId || !phase) return null
-  const groups = new Map(model.labels.map((label, index) => [`update:${String(index)}`, {
-    key: `update:${String(index)}`,
+  const groupPrefix = isRecoveryOperation(update?.operation) ? 'rollback' : 'update'
+  const groups = new Map(model.labels.map((label, index) => [`${groupPrefix}:${String(index)}`, {
+    key: `${groupPrefix}:${String(index)}`,
     label: t(label),
     labelKey: label,
     index,
@@ -1704,7 +1709,7 @@ export function apply(ctx) {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
       managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能',
-      channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
+      channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。', returnStableProgress: '返回稳定通道',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
       updateProgress: '更新进度', rollbackProgress: '回滚进度', updateToTarget: '更新到 {target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查', stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', noStageLogs: '当前阶段暂无日志', copyStageLogs: '复制当前日志', logsCopied: '已复制', viewFullTransactionLog: '查看完整事务日志', stageCompleted: '阶段已完成。', stageWaiting: '等待前一阶段完成。', stageProgress: '阶段进度 {progress}%', stageItemsCompleted: '已完成 {completed}/{total} 项', expandStage: '展开 · 日志 {count} 条', collapseStage: '收起 · 日志 {count} 条', stageItemCompleted: '已完成：{item}', stageItemActive: '正在执行：{item}', stageItemPending: '待执行：{item}', stageItemFailed: '执行失败：{item}', itemVerifyMetadata: '验证 metadata', itemVerifyKeyring: '验证 keyring', itemVerifyTarget: '验证目标清单', itemDownloadArtifacts: '下载 Artifact', itemVerifyArtifacts: '验证 Artifact 签名、引用、大小和 Hash', itemImportObjects: '导入可信对象库', itemMaterializePristine: '物化 Pristine DSH', itemPrepareEnvironment: '准备 Environment', itemBuildRuntime: '构建 Runtime 并应用完整 Patch Set', itemPreparePlugins: '准备 System Plugin Set', itemSwitchDeployment: '原子切换 Deployment', itemCheckHealth: '检查服务健康状态', itemObserveProbation: '观察候选 Runtime', metadataVerified: 'metadata 已验证。', keyringVerified: 'keyring 已验证。', targetManifestVerified: '目标清单已验证。', artifactDownloadCompleted: 'Artifact 下载已完成。', artifactVerificationCompleted: 'Artifact 签名、引用和 Hash 已验证。', runtimeMaterialized: 'Pristine DSH 已物化。', patchSetApplied: '完整 Patch Set 已应用。', systemPluginsPrepared: 'System Plugin Set 已准备。', deploymentSwitched: 'Deployment 已原子切换。', healthChecksPassed: '服务健康检查已通过。', metricBytesRead: '已读取 {processed} / {total}', metricBytesCopied: '已复制 {processed} / {total}', metricBytesProcessed: '已处理 {processed} / {total}', metricArtifacts: '已验证 {processed} / {total} 个 Artifact', metricFiles: '已完成 {processed} / {total} 个文件', metricItems: '已完成 {processed} / {total} 项', metricServices: '已就绪 {ready} / {total} 个服务', rollbackPrepare: '准备回滚', rollbackSwitch: '切换上一版本', rollbackData: '恢复数据', rollbackVerify: '启动与检查',
@@ -1729,7 +1734,7 @@ export function apply(ctx) {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills',
-      channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
+      channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.', returnStableProgress: 'Return to Stable',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
       updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', updateToTarget: 'Update to {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check', stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', noStageLogs: 'No logs for this phase yet', copyStageLogs: 'Copy current logs', logsCopied: 'Copied', viewFullTransactionLog: 'View full transaction log', stageCompleted: 'Stage completed.', stageWaiting: 'Waiting for the previous stage.', stageProgress: 'Stage progress {progress}%', stageItemsCompleted: '{completed}/{total} items completed', expandStage: 'Expand · {count} log entries', collapseStage: 'Collapse · {count} log entries', stageItemCompleted: 'Completed: {item}', stageItemActive: 'In progress: {item}', stageItemPending: 'Pending: {item}', stageItemFailed: 'Failed: {item}', itemVerifyMetadata: 'Verify metadata', itemVerifyKeyring: 'Verify keyring', itemVerifyTarget: 'Verify target manifest', itemDownloadArtifacts: 'Download Artifacts', itemVerifyArtifacts: 'Verify Artifact signatures, references, sizes, and hashes', itemImportObjects: 'Import trusted objects', itemMaterializePristine: 'Materialize Pristine DSH', itemPrepareEnvironment: 'Prepare Environment', itemBuildRuntime: 'Build Runtime and apply the complete Patch Set', itemPreparePlugins: 'Prepare System Plugin Set', itemSwitchDeployment: 'Switch Deployment atomically', itemCheckHealth: 'Check service health', itemObserveProbation: 'Observe candidate Runtime', metadataVerified: 'Metadata verified.', keyringVerified: 'Keyring verified.', targetManifestVerified: 'Target manifest verified.', artifactDownloadCompleted: 'Artifact download completed.', artifactVerificationCompleted: 'Artifact signatures, references, and hashes verified.', runtimeMaterialized: 'Pristine DSH materialized.', patchSetApplied: 'Complete Patch Set applied.', systemPluginsPrepared: 'System Plugin Set prepared.', deploymentSwitched: 'Deployment switched atomically.', healthChecksPassed: 'Service health checks passed.', metricBytesRead: 'Read {processed} / {total}', metricBytesCopied: 'Copied {processed} / {total}', metricBytesProcessed: 'Processed {processed} / {total}', metricArtifacts: 'Verified {processed} / {total} Artifacts', metricFiles: 'Completed {processed} / {total} files', metricItems: 'Completed {processed} / {total} items', metricServices: '{ready} / {total} services ready', rollbackPrepare: 'Prepare rollback', rollbackSwitch: 'Switch previous version', rollbackData: 'Restore data', rollbackVerify: 'Start and check',

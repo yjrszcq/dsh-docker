@@ -17,7 +17,7 @@ const COPY = Object.freeze({
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
     updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
-    updateProgress: '更新进度', rollbackProgress: '回滚进度', updateToTarget: '更新到 {target}', rollbackToTarget: '回滚到 {target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查',
+    updateProgress: '更新进度', rollbackProgress: '回滚进度', returnStableProgress: '返回稳定通道', updateToTarget: '更新到 {target}', rollbackToTarget: '回滚到 {target}', returnStableToTarget: '返回稳定通道·{target}', progressPrepare: '准备更新', progressAcquire: '下载与验证', progressBuild: '构建 Runtime', progressActivate: '切换与健康检查',
     stageLogs: '阶段日志', hideStageLogs: '收起日志 · {count} 条', showStageLogs: '查看日志 · {count} 条', copyStageLogs: '复制当前日志', logsCopied: '日志已复制', viewFullTransactionLog: '查看完整事务日志', noStageLogs: '当前阶段暂无日志',
     stageCompleted: '阶段已完成。', stageWaiting: '等待前一阶段完成。', stageProgress: '阶段进度 {progress}%', stageItemsCompleted: '已完成 {completed}/{total} 项', expandStage: '展开 · 日志 {count} 条', collapseStage: '收起 · 日志 {count} 条', stageItemCompleted: '已完成：{item}', stageItemActive: '正在执行：{item}', stageItemPending: '待执行：{item}', stageItemFailed: '执行失败：{item}',
     itemVerifyMetadata: '验证 metadata', itemVerifyKeyring: '验证 keyring', itemVerifyTarget: '验证目标清单', itemDownloadArtifacts: '下载 Artifact', itemVerifyArtifacts: '验证 Artifact 签名、引用、大小和 Hash', itemImportObjects: '导入可信对象库', itemMaterializePristine: '物化 Pristine DSH', itemPrepareEnvironment: '准备 Environment', itemBuildRuntime: '构建 Runtime 并应用完整 Patch Set', itemPreparePlugins: '准备 System Plugin Set', itemSwitchDeployment: '原子切换 Deployment', itemCheckHealth: '检查服务健康状态', itemObserveProbation: '观察候选 Runtime', itemValidateRollback: '验证回滚计划和上一完整 Deployment', itemPauseRuntime: '暂停当前 DSH Runtime', itemSwitchPrevious: '切换上一完整 Deployment', itemVerifySnapshot: '验证数据快照', itemRestoreSnapshot: '恢复数据快照', itemStartRuntime: '启动上一 DSH Runtime',
@@ -107,7 +107,7 @@ const COPY = Object.freeze({
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
     updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
-    updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', updateToTarget: 'Update to {target}', rollbackToTarget: 'Roll back to {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check',
+    updateProgress: 'Update progress', rollbackProgress: 'Rollback progress', returnStableProgress: 'Return to Stable', updateToTarget: 'Update to {target}', rollbackToTarget: 'Roll back to {target}', returnStableToTarget: 'Return to Stable · {target}', progressPrepare: 'Prepare update', progressAcquire: 'Download and verify', progressBuild: 'Build Runtime', progressActivate: 'Switch and health check',
     stageLogs: 'Stage logs', hideStageLogs: 'Hide logs · {count}', showStageLogs: 'View logs · {count}', copyStageLogs: 'Copy current logs', logsCopied: 'Logs copied', viewFullTransactionLog: 'View full transaction log', noStageLogs: 'No logs for this phase yet',
     stageCompleted: 'Stage completed.', stageWaiting: 'Waiting for the previous stage.', stageProgress: 'Stage progress {progress}%', stageItemsCompleted: '{completed}/{total} items completed', expandStage: 'Expand · {count} log entries', collapseStage: 'Collapse · {count} log entries', stageItemCompleted: 'Completed: {item}', stageItemActive: 'In progress: {item}', stageItemPending: 'Pending: {item}', stageItemFailed: 'Failed: {item}',
     itemVerifyMetadata: 'Verify metadata', itemVerifyKeyring: 'Verify keyring', itemVerifyTarget: 'Verify target manifest', itemDownloadArtifacts: 'Download Artifacts', itemVerifyArtifacts: 'Verify Artifact signatures, references, sizes, and hashes', itemImportObjects: 'Import trusted objects', itemMaterializePristine: 'Materialize Pristine DSH', itemPrepareEnvironment: 'Prepare Environment', itemBuildRuntime: 'Build Runtime and apply the complete Patch Set', itemPreparePlugins: 'Prepare System Plugin Set', itemSwitchDeployment: 'Switch Deployment atomically', itemCheckHealth: 'Check service health', itemObserveProbation: 'Observe candidate Runtime', itemValidateRollback: 'Validate rollback plan and previous complete Deployment', itemPauseRuntime: 'Pause current DSH Runtime', itemSwitchPrevious: 'Switch previous complete Deployment', itemVerifySnapshot: 'Verify data snapshot', itemRestoreSnapshot: 'Restore data snapshot', itemStartRuntime: 'Start previous DSH Runtime',
@@ -463,8 +463,12 @@ const UPDATE_PROGRESS_STAGE = Object.freeze({
 const ROLLBACK_PROGRESS_STEPS = Object.freeze(['rollbackPrepare', 'rollbackSwitch', 'rollbackData', 'rollbackVerify'])
 const ROLLBACK_PROGRESS_STAGE = Object.freeze({ preparing: 0, stopping: 0, switching: 1, 'restoring-data': 2, verifying: 3 })
 
+function isRecoveryOperation(operation) {
+  return operation === 'rollback' || operation === 'return-stable'
+}
+
 function progressDetail(update) {
-  if (update.operation === 'rollback') {
+  if (isRecoveryOperation(update.operation)) {
     return t({
       preparing: 'rollbackDetailPreparing',
       stopping: 'rollbackDetailStopping',
@@ -489,11 +493,11 @@ function progressDetail(update) {
 }
 
 function progressLogPhase(update) {
-  return update.phase ?? (update.operation === 'rollback' ? update.rollbackPhase : update.status)
+  return update.phase ?? (isRecoveryOperation(update.operation) ? update.rollbackPhase : update.status)
 }
 
 function progressLogStage(phase, update = progressLogUpdate) {
-  const rollback = update?.operation === 'rollback'
+  const rollback = isRecoveryOperation(update?.operation)
   const stageMap = rollback ? ROLLBACK_PROGRESS_STAGE : UPDATE_PROGRESS_STAGE
   const labels = rollback ? ROLLBACK_PROGRESS_STEPS : UPDATE_PROGRESS_STEPS
   let index = stageMap[phase]
@@ -511,7 +515,7 @@ function progressLogText(entry) {
 }
 
 function progressStageDefinitions(update) {
-  const rollback = update?.operation === 'rollback'
+  const rollback = isRecoveryOperation(update?.operation)
   const labels = rollback
     ? ROLLBACK_PROGRESS_STEPS.filter(key => update.rollbackIncludesSnapshot !== false || key !== 'rollbackData')
     : UPDATE_PROGRESS_STEPS
@@ -1558,12 +1562,14 @@ function render(next) {
   elements.progress.setAttribute('aria-valuenow', String(progress))
   elements['progress-bar'].style.width = `${String(progress)}%`
   if (progressVisible) {
-    const target = update.operation === 'rollback'
+    const recovery = isRecoveryOperation(update.operation)
+    const returningStable = update.operation === 'return-stable'
+    const target = recovery
       ? rollbackPlan?.previous?.dsh ?? rollbackPlan?.target?.dsh
       : experimental ? next.upstream?.version ?? next.supported?.dsh : next.supported?.dsh
     elements['progress-title'].textContent = target
-      ? t(update.operation === 'rollback' ? 'rollbackToTarget' : 'updateToTarget', { target: String(target) })
-      : t(update.operation === 'rollback' ? 'rollbackProgress' : 'updateProgress')
+      ? t(returningStable ? 'returnStableToTarget' : recovery ? 'rollbackToTarget' : 'updateToTarget', { target: String(target) })
+      : t(returningStable ? 'returnStableProgress' : recovery ? 'rollbackProgress' : 'updateProgress')
     elements['progress-value'].textContent = `${String(progress)}%`
     connectProgressLogs(update)
   } else {
