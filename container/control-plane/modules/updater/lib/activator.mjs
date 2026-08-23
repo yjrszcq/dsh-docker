@@ -133,11 +133,11 @@ export class PlatformActivator {
     })
   }
 
-  async prepareExperimental(prepared) {
+  async prepareExperimental(prepared, { targetSequence }) {
     const { record: current } = await this.bootstrap.request('GET', '/v1/deployments/current')
     if (current === null) throw new Error('current Deployment is required')
     const receiptTokens = await this.experimentalActivationTokens(prepared.receiptTokens)
-    const built = await this.builder.buildExperimental(prepared, current, receiptTokens)
+    const built = await this.builder.buildExperimental(prepared, current, receiptTokens, { targetSequence })
     this.experimentalCandidates.set(built.record.id, built.record)
     return Object.freeze({
       runtimeId: built.record.id,

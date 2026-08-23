@@ -202,7 +202,7 @@ export class ManagedDeploymentBuilder {
     })
   }
 
-  async buildExperimental(prepared, currentValue, receiptTokens) {
+  async buildExperimental(prepared, currentValue, receiptTokens, { targetSequence }) {
     const current = parseDeploymentRecord(currentValue)
     const pristine = await this.pristine(prepared.version, prepared.receipt)
     const environmentRoot = join(this.paths.viewsRoot, 'environment')
@@ -231,7 +231,7 @@ export class ManagedDeploymentBuilder {
     const content = {
       schema: 1,
       authority: 'experimental',
-      targetSequence: current.targetSequence,
+      targetSequence,
       dshVersion: prepared.version,
       environmentVersion: current.environmentVersion,
       environment: current.environment,

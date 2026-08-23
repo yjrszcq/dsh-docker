@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { ManagedDeploymentBuilder } from '../../control-plane/modules/updater/lib/managed-store.mjs'
 import { canonicalJson } from '../lib/canonical-json.mjs'
+import { deriveRecordId } from '../lib/deployment-contracts.mjs'
 import { PlatformPaths, preparePersistentLayout } from '../lib/paths.mjs'
 
 test('builds a complete content-addressed Managed Deployment from verified inputs', async () => {
@@ -121,14 +122,19 @@ test('builds a complete content-addressed Managed Deployment from verified input
   assert.equal(experimentalPacked.status, 0, experimentalPacked.stderr)
   await mkdir(paths.viewsRoot, { recursive: true })
   await symlink(first.assets.environment.path, join(paths.viewsRoot, 'environment'), 'dir')
+  const { id: _stableId, ...developmentContent } = first.record
+  developmentContent.authority = 'development'
+  developmentContent.targetSequence = 0
+  const developmentRecord = { ...developmentContent, id: deriveRecordId('deployment-record', developmentContent) }
   const experimental = await builder.buildExperimental({
     version: '0.1.0-rc.9',
     receipt: {
       path: experimentalArchive,
       objectSha256: createHash('sha256').update(await readFile(experimentalArchive)).digest('hex'),
     },
-  }, first.record, ['stable-receipt', 'experimental-receipt'])
+  }, developmentRecord, ['stable-receipt', 'experimental-receipt'], { targetSequence: 11 })
   assert.equal(experimental.record.authority, 'experimental')
+  assert.equal(experimental.record.targetSequence, 11)
   assert.equal(experimental.record.dshVersion, '0.1.0-rc.9')
   assert.deepEqual(experimental.record.environment, first.record.environment)
   assert.deepEqual(experimental.record.systemPlugins, first.record.systemPlugins)

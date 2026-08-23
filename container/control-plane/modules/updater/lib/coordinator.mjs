@@ -465,7 +465,7 @@ export class UpdateCoordinator extends EventEmitter {
       failureClass = 'candidate'
       const prepared = await this.preparer.prepareExperimental(candidate)
       await this.transition('building-candidate', { taskId, progress: 35 })
-      const built = await this.activator.prepareExperimental(prepared)
+      const built = await this.activator.prepareExperimental(prepared, { targetSequence: stable.targetSequence })
       const previousJournal = await this.journal.read()
       if (previousJournal !== undefined && ['committed', 'rolled-back', 'failed'].includes(previousJournal.phase)) {
         obsoleteSnapshotId = previousJournal.snapshotId

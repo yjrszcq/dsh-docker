@@ -568,6 +568,7 @@ test('treats Bootstrap-owned receipt activation failure as one failed switch', a
 function experimentalSystem(root, overrides = {}) {
   const calls = []
   const stable = {
+    targetSequence: 11,
     desired: {
       bootstrap: { version: '1.0.0' },
       environment: { version: 'env-1' },
@@ -580,7 +581,10 @@ function experimentalSystem(root, overrides = {}) {
     currentDeployment: async () => ({
       dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a', dataSnapshot: null, receiptTokens: ['stable-receipt'],
     }),
-    prepareExperimental: async () => ({ runtimeId: 'runtime-b', environmentVersion: 'env-1', dshVersion: '0.1.0-rc.8' }),
+    prepareExperimental: async (_prepared, options) => {
+      assert.deepEqual(options, { targetSequence: 11 })
+      return { runtimeId: 'runtime-b', environmentVersion: 'env-1', dshVersion: '0.1.0-rc.8' }
+    },
     suspendDsh: async () => { calls.push('suspend') },
     resumeDsh: async () => { calls.push('resume') },
     switchExperimental: async id => { calls.push(`switch:${id}`) },
