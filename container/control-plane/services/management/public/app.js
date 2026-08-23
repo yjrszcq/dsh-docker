@@ -208,6 +208,13 @@ let userSkillInventory = { revision: null, skills: [] }
 let userPluginInventory = { revision: null, plugins: [] }
 const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
 const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
+const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
+const LIST_PAGE_SIZE_KEY_PREFIX = 'dsh-platform:console-page-size:'
+const listPages = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
+const listPageSizes = Object.fromEntries(Object.keys(listPages).map(key => {
+  const value = Number(storageValue(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`))
+  return [key, LIST_PAGE_SIZES.includes(value) ? value : 10]
+}))
 const userPluginDraft = new Map()
 const expandedUserPluginDescriptions = new Set()
 let rollbackPlan
@@ -441,6 +448,23 @@ function pluginDescription(plugin) {
   return plugin.description?.[locale] ?? plugin.id
 }
 
+function paginated(key, values) {
+  const pageSize = listPageSizes[key]
+  const lastPage = Math.max(0, Math.ceil(values.length / pageSize) - 1)
+  listPages[key] = Math.min(listPages[key], lastPage)
+  const start = listPages[key] * pageSize
+  const prefix = { plugins: 'plugins', systemSkills: 'system-skills', userSkills: 'user-skills', userPlugins: 'user-plugins' }[key]
+  elements[`${prefix}-pagination`].hidden = false
+  elements[`${prefix}-page-size`].value = String(pageSize)
+  elements[`${prefix}-page-status`].textContent = t('pageStatus', {
+    page: listPages[key] + 1, start: values.length === 0 ? 0 : start + 1,
+    end: Math.min(start + pageSize, values.length), total: values.length,
+  })
+  elements[`${prefix}-page-previous`].disabled = listPages[key] === 0
+  elements[`${prefix}-page-next`].disabled = listPages[key] === lastPage
+  return values.slice(start, start + pageSize)
+}
+
 function pluginButton(label, plugin, action, busy, className = 'secondary') {
   const button = document.createElement('button')
   button.type = 'button'
@@ -463,7 +487,7 @@ function renderBundledPlugins(values, busy) {
   elements['empty-plugins'].hidden = values.length !== 0
   elements['bundled-plugins'].hidden = values.length === 0
   const operation = status?.systemPluginOperation ?? {}
-  for (const plugin of values) {
+  for (const plugin of paginated('plugins', values)) {
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -524,7 +548,7 @@ function renderSystemSkills(values, busy) {
   elements['empty-skills'].hidden = values.length !== 0
   elements['system-skills'].hidden = values.length === 0
   const operation = status?.systemSkillOperation ?? {}
-  for (const skill of values) {
+  for (const skill of paginated('systemSkills', values)) {
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -603,7 +627,7 @@ function renderUserSkills(busy) {
   elements['user-skills'].replaceChildren()
   elements['empty-user-skills'].hidden = values.length !== 0
   elements['user-skills'].hidden = values.length === 0
-  for (const skill of values) {
+  for (const skill of paginated('userSkills', values)) {
     const row = document.createElement('article')
     row.className = 'plugin-row'
     const identity = document.createElement('div')
@@ -671,7 +695,7 @@ function renderUserPlugins(busy) {
   elements['user-plugin-list'].replaceChildren()
   elements['user-plugin-list'].hidden = values.length === 0
   elements['empty-user-plugins'].hidden = values.length !== 0
-  for (const plugin of values) {
+  for (const plugin of paginated('userPlugins', values)) {
     const action = userPluginDraft.get(plugin.name)
     const row = document.createElement('article')
     row.className = `user-plugin-row${action ? ' pending' : ''}`
@@ -948,6 +972,14 @@ async function refreshInventory(key) {
 
 function inventoryKeyForTab(tab = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tab) {
   return { plugins: 'plugins', skills: 'systemSkills', 'user-skills': 'userSkills', 'user-plugins': 'userPlugins' }[tab]
+}
+
+function renderInventory(key) {
+  const busy = runtimeBusy()
+  if (key === 'plugins') renderBundledPlugins(plugins, busy || discardingPluginDraft)
+  else if (key === 'systemSkills') renderSystemSkills(systemSkills, busy)
+  else if (key === 'userSkills') renderUserSkills(busy)
+  else renderUserPlugins(busy)
 }
 
 function loadStatus() {
@@ -2512,6 +2544,24 @@ for (const button of tabButtons) {
     const offset = event.key === 'ArrowRight' ? 1 : -1
     const target = tabButtons[(tabButtons.indexOf(button) + offset + tabButtons.length) % tabButtons.length]
     void selectTab(target.dataset.tab).then(changed => { if (changed) target.focus() })
+  })
+}
+for (const [key, prefix] of Object.entries({ plugins: 'plugins', systemSkills: 'system-skills', userSkills: 'user-skills', userPlugins: 'user-plugins' })) {
+  elements[`${prefix}-page-previous`].addEventListener('click', () => {
+    listPages[key] = Math.max(0, listPages[key] - 1)
+    renderInventory(key)
+  })
+  elements[`${prefix}-page-next`].addEventListener('click', () => {
+    listPages[key] += 1
+    renderInventory(key)
+  })
+  elements[`${prefix}-page-size`].addEventListener('change', event => {
+    const value = Number(event.target.value)
+    if (!LIST_PAGE_SIZES.includes(value)) return
+    listPageSizes[key] = value
+    listPages[key] = 0
+    writeStorage(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`, String(value))
+    renderInventory(key)
   })
 }
 for (const button of channelButtons) {

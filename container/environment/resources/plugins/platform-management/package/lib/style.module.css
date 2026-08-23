@@ -246,6 +246,27 @@
   cursor: pointer;
 }
 
+.listPagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 42px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+.listPagination label,
+.listPagination > div { display: flex; align-items: center; gap: 7px; }
+.listPagination select {
+  min-width: 64px;
+  min-height: 30px;
+  padding: 3px 22px 3px 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
 .primaryButton {
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
@@ -697,6 +718,7 @@ a.secondaryButton { text-decoration: none; }
   .pluginRestartNotice { align-items: stretch; flex-direction: column; }
   .pluginRestartNotice button { width: 100%; }
   .managedBadge { justify-self: start; }
+  .listPagination { justify-content: space-between; flex-wrap: wrap; }
   .logFilters { grid-template-columns: 1fr 1fr; }
   .logTools { width: 100%; flex-wrap: wrap; }
   .logConnection { margin-right: auto; }

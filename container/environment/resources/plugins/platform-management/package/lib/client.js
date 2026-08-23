@@ -29,6 +29,8 @@ const LOG_DISPLAY_LIMIT_KEY = 'dsh-platform:log-display-limit'
 const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
 const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
+const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
+const LIST_PAGE_SIZE_KEY_PREFIX = 'dsh-platform:plugin-page-size:'
 
 export const inject = ['slots', 'locale', 'connection']
 
@@ -86,6 +88,46 @@ function localizedError(value, t) {
 function localizedHoldReason(hold, t) {
   if (t('localeCode') === 'en') return display(hold.reason)
   return t(hold.type === 'combination' ? 'holdCombination' : 'holdVersion')
+}
+
+function usePaginatedItems(key, items) {
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(() => {
+    const value = Number(storageValue(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`))
+    return LIST_PAGE_SIZES.includes(value) ? value : 10
+  })
+  const lastPage = Math.max(0, Math.ceil(items.length / pageSize) - 1)
+  const currentPage = Math.min(page, lastPage)
+  useEffect(() => { if (page !== currentPage) setPage(currentPage) }, [currentPage, page])
+  const start = currentPage * pageSize
+  const changePageSize = value => {
+    if (!LIST_PAGE_SIZES.includes(value)) return
+    setPageSize(value)
+    setPage(0)
+    writeStorage(`${LIST_PAGE_SIZE_KEY_PREFIX}${key}`, String(value))
+  }
+  return {
+    items: items.slice(start, start + pageSize), page: currentPage, pageSize, lastPage, start,
+    setPage, setPageSize: changePageSize,
+  }
+}
+
+function ListPagination({ pagination, total, t }) {
+  return h('div', { className: css.listPagination },
+    h('label', null,
+      h('span', null, t('itemsPerPage')),
+      h('select', {
+        value: pagination.pageSize,
+        onChange: event => pagination.setPageSize(Number(event.target.value)),
+      }, LIST_PAGE_SIZES.map(value => h('option', { key: value, value }, String(value))))),
+    h('span', null, t('pageStatus')
+      .replace('{page}', String(pagination.page + 1))
+      .replace('{start}', String(total === 0 ? 0 : pagination.start + 1))
+      .replace('{end}', String(Math.min(pagination.start + pagination.pageSize, total)))
+      .replace('{total}', String(total))),
+    h('div', null,
+      h('button', { type: 'button', className: css.smallButton, disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }, t('previousPage')),
+      h('button', { type: 'button', className: css.smallButton, disabled: pagination.page === pagination.lastPage, onClick: () => pagination.setPage(pagination.page + 1) }, t('nextPage'))))
 }
 
 function persistLocale(locale) {
@@ -621,7 +663,8 @@ function LifecycleGuard({ connection }) {
 
 function SystemPluginManager({ plugins, operation, busy, error, onAction, onRestart, restartBusy, t }) {
   const operationBusy = operation?.status === 'running'
-  const visiblePlugins = plugins
+  const pagination = usePaginatedItems('system-plugins', plugins)
+  const visiblePlugins = pagination.items
   const restartRequired = plugins.some(plugin => plugin.pendingRestart)
   const operationLabel = {
     install: 'pluginActionInstall',
@@ -677,6 +720,7 @@ function SystemPluginManager({ plugins, operation, busy, error, onAction, onRest
                       h('b', null, plugin.enabled ? t('enabled') : t('disabled')))),
               isActive ? h('p', { className: css.pluginOperation, 'aria-live': 'polite' }, t(operationLabel)) : null)
           })),
+    h(ListPagination, { pagination, total: plugins.length, t }),
     operation?.status === 'failed'
       ? h('p', { className: css.error, role: 'alert' }, localizedError(operation.error, t))
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t))
@@ -685,6 +729,7 @@ function SystemPluginManager({ plugins, operation, busy, error, onAction, onRest
 
 function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
   const operationBusy = operation?.status === 'running'
+  const pagination = usePaginatedItems('system-skills', skills)
   return h('section', { className: `${css.section} ${css.pluginSection}`, 'aria-labelledby': 'system-skills-title' },
     h('div', { className: css.sectionHeading },
       h('div', null,
@@ -693,7 +738,7 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
     h('div', { className: css.pluginList },
       skills.length === 0
         ? h('p', { className: css.emptyPlugins }, t('noSystemSkills'))
-        : skills.map(skill => {
+        : pagination.items.map(skill => {
             const isActive = operationBusy && operation.skillId === skill.id
             return h('article', { className: css.pluginRow, key: skill.id },
               h('div', { className: css.pluginIdentity },
@@ -717,6 +762,7 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
                 install: 'pluginActionInstall', enable: 'pluginActionEnable', disable: 'pluginActionDisable',
               }[operation.action] ?? 'skillActionWorking')) : null)
           })),
+    h(ListPagination, { pagination, total: skills.length, t }),
     operation?.status === 'failed'
       ? h('p', { className: css.error, role: 'alert' }, localizedError(operation.error, t))
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
@@ -1169,7 +1215,7 @@ export function apply(ctx) {
       standaloneManagement: 'DSH 管理中心', standaloneManagementDetail: 'DSH 不可用时仍可进行更新、插件恢复、日志查看和终端操作。', openPlatformManagement: '打开 DSH 管理中心', restartDshSection: '重启 DSH', restartDshDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH', cancelRestartDsh: '取消重启 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
       automaticChecks: '自动检查', automaticChecksDetail: '仅检查可用版本，不会自动下载或更新。', enabled: '已开启', disabled: '已关闭', checkInterval: '检查频率', updateNotifications: '更新提醒', updateNotificationsDetail: '自动检查发现新版本时，弹窗提醒更新。',
       systemPlugins: '系统插件', systemPluginsDetail: '管理 DSH Docker 提供的系统插件。', noSystemPlugins: '当前环境没有提供系统插件。', platformManaged: '平台核心组件，始终保持安装和启用。', managed: '平台托管', notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置', pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载', pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginPendingRestart: '待重启', pluginRestartRequired: '需要重新启动 DSH', pluginRestartRequiredDetail: '插件设置已保存，重新启动 DSH 后生效。可以继续修改其他插件，最后只需重启一次。',
-      systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置',
+      systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', itemsPerPage: '每页', previousPage: '上一页', nextPage: '下一页', pageStatus: '第 {page} 页 · {start}-{end} / {total}',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
       stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
@@ -1191,7 +1237,7 @@ export function apply(ctx) {
       standaloneManagement: 'DSH Management Console', standaloneManagementDetail: 'Updates, plugin recovery, logs, and terminal tools remain available when DSH is unavailable.', openPlatformManagement: 'Open DSH Management Console', restartDshSection: 'Restart DSH', restartDshDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH', cancelRestartDsh: 'Cancel DSH restart', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',
       automaticChecks: 'Automatic checks', automaticChecksDetail: 'Checks for available versions without downloading or updating.', enabled: 'On', disabled: 'Off', checkInterval: 'Check frequency', updateNotifications: 'Update notifications', updateNotificationsDetail: 'Show an update notification popup when an automatic check finds a new version.',
       systemPlugins: 'System plugins', systemPluginsDetail: 'Manage the System Plugins provided by DSH Docker.', noSystemPlugins: 'No System Plugins are provided by the current Environment.', platformManaged: 'Core platform component. It is always installed and enabled.', managed: 'Platform managed', notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings', pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling', pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginPendingRestart: 'Pending restart', pluginRestartRequired: 'Restart DSH required', pluginRestartRequiredDetail: 'Plugin settings are saved and take effect after DSH restarts. You can make more changes and restart only once when finished.',
-      systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings',
+      systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', itemsPerPage: 'Per page', previousPage: 'Previous', nextPage: 'Next', pageStatus: 'Page {page} · {start}-{end} / {total}',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
       stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',

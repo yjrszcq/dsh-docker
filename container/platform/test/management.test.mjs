@@ -1256,6 +1256,17 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /const inventoryKey = inventoryKeyForTab\(tab\)[\s\S]*void loadInventory\(inventoryKey\)/)
   assert.match(script, /if \(inventoriesLoaded\.plugins\) renderBundledPlugins/)
   assert.match(script, /if \(inventoriesLoaded\.userSkills\) renderUserSkills/)
+  assert.match(script, /LIST_PAGE_SIZES = Object\.freeze\(\[5, 10, 20, 50\]\)/)
+  assert.match(script, /LIST_PAGE_SIZE_KEY_PREFIX = 'dsh-platform:console-page-size:'/)
+  assert.match(script, /function paginated\(key, values\)[\s\S]*values\.slice\(start, start \+ pageSize\)/)
+  assert.match(script, /elements\[`\$\{prefix\}-pagination`\]\.hidden = false/)
+  assert.match(script, /writeStorage\(`\$\{LIST_PAGE_SIZE_KEY_PREFIX\}\$\{key\}`/)
+  assert.match(script, /const userPluginDraft = new Map\(\)[\s\S]*for \(const plugin of paginated\('userPlugins', values\)\)/)
+  for (const prefix of ['plugins', 'system-skills', 'user-skills', 'user-plugins']) {
+    assert.match(html, new RegExp(`id="${prefix}-page-size"`))
+    assert.match(html, new RegExp(`id="${prefix}-page-previous"`))
+    assert.match(html, new RegExp(`id="${prefix}-page-next"`))
+  }
   assert.match(script, /connectEvents\(\)[\s\S]*void \(async \(\) => \{[\s\S]*const initial = await loadStatus\(\)/)
   assert.doesNotMatch(script, /^await /m)
   assert.match(script, /initial !== undefined && UPDATE_TERMINAL_STATES\.has/)
