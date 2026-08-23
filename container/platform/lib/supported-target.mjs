@@ -33,9 +33,9 @@ function compareIdentifier(left, right) {
   return left < right ? -1 : 1
 }
 
-export function compareDshVersions(leftValue, rightValue) {
-  const left = parseSemver(leftValue, 'left DSH version')
-  const right = parseSemver(rightValue, 'right DSH version')
+export function compareSemanticVersions(leftValue, rightValue, leftLabel = 'left version', rightLabel = 'right version') {
+  const left = parseSemver(leftValue, leftLabel)
+  const right = parseSemver(rightValue, rightLabel)
   for (let index = 0; index < left.core.length; index += 1) {
     const compared = compareNumeric(left.core[index], right.core[index])
     if (compared !== 0) return compared
@@ -51,6 +51,10 @@ export function compareDshVersions(leftValue, rightValue) {
     if (compared !== 0) return Math.sign(compared)
   }
   return 0
+}
+
+export function compareDshVersions(leftValue, rightValue) {
+  return compareSemanticVersions(leftValue, rightValue, 'left DSH version', 'right DSH version')
 }
 
 export function parseSupportedTarget(bytes) {

@@ -15,7 +15,9 @@ import { verifyManagementDependencies } from '../tools/verify-management-depende
 import { writeDshEntrypointFixture } from './fixtures/dsh-package.mjs'
 
 const supportedTargetUrl = new URL('../../../release/supported-target.json', import.meta.url)
+const environmentDefinitionUrl = new URL('../../environment/definition.json', import.meta.url)
 const supportedDshVersion = JSON.parse(await readFile(supportedTargetUrl, 'utf8')).latestSupportedDsh
+const environmentVersion = JSON.parse(await readFile(environmentDefinitionUrl, 'utf8')).version
 
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
@@ -181,7 +183,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
     supportedTargetUrl.pathname,
-    new URL('../../environment/definition.json', import.meta.url).pathname,
+    environmentDefinitionUrl.pathname,
     new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
     trust, current.privatePath, tarball, '-', '1', 'https://release.example/release-channel/targets/1/', output,
   ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068800' } })
@@ -232,7 +234,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   const ring = JSON.parse(await readFile(join(trust, 'keyring.json'), 'utf8'))
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
   assert.equal(stable.desired.dsh.version, supportedDshVersion)
-  assert.equal(stable.desired.environment.version, '1.0.4')
+  assert.equal(stable.desired.environment.version, environmentVersion)
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
@@ -242,10 +244,10 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     recoveryPublicKeyPath: join(trust, 'recovery-root.spki.base64'),
     dshTarballPath: tarball,
     supportedTargetPath: supportedTargetUrl.pathname,
-    environmentDefinitionPath: new URL('../../environment/definition.json', import.meta.url).pathname,
+    environmentDefinitionPath: environmentDefinitionUrl.pathname,
   })
   assert.equal(verifiedImage.stable.targetSequence, 1)
-  assert.equal(verifiedImage.environment.manifest.version, '1.0.4')
+  assert.equal(verifiedImage.environment.manifest.version, environmentVersion)
 
   const imageInput = join(root, 'image-input')
   const seedOutput = join(root, 'formal-seed')
@@ -254,7 +256,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   await cp(join(trust, 'recovery-root.spki.base64'), join(imageInput, 'recovery-root.spki.base64'))
   await cp(tarball, join(imageInput, 'dsh.tgz'))
   await cp(supportedTargetUrl, join(imageInput, 'supported-target.json'))
-  await cp(new URL('../../environment/definition.json', import.meta.url), join(imageInput, 'environment-definition.json'))
+  await cp(environmentDefinitionUrl, join(imageInput, 'environment-definition.json'))
   result = spawnSync(process.execPath, [
     new URL('../tools/build-seed.mjs', import.meta.url).pathname,
     packageRoot, seedOutput, imageInput, 'fixture-revision',
