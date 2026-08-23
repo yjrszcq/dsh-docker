@@ -343,6 +343,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.pluginRestartNotice \{[\s\S]*justify-content: space-between/)
   assert.match(style, /\.pluginActions \.toggle \{ width: auto; \}/)
+  assert.match(style, /\.resourceSearch \{[^}]*display: block;[^}]*margin-left: auto;/)
   assert.match(style, /\.tabs \{[\s\S]*width: 100%;[\s\S]*overflow-x: auto/)
   assert.match(style, /\.tabs \{[\s\S]*touch-action: pan-x;[\s\S]*white-space: nowrap/)
   assert.match(style, /\.root \{[\s\S]*gap: 12px;[\s\S]*max-width: 760px/)

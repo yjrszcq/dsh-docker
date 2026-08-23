@@ -443,8 +443,10 @@ a.secondaryButton { text-decoration: none; }
 
 .pluginSection { border-bottom: 0; }
 .resourceSearch {
+  display: block;
   box-sizing: border-box;
   width: min(320px, 100%);
+  margin-left: auto;
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--dsw-alias-border-l2);

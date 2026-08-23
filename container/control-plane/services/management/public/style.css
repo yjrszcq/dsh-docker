@@ -416,7 +416,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .plugin-restart-notice p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .plugin-draft-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .plugin-draft-actions button { flex: none; }
-.resource-search { width: min(320px, 100%); }
+.resource-search { display: block; width: min(320px, 100%); margin-left: auto; }
 .plugin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; min-height: 52px; padding: 7px 12px; }
 .plugin-row + .plugin-row { border-top: 1px solid var(--border); }
 .list-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 42px; color: var(--muted); font-size: 12px; }

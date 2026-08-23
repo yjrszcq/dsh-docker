@@ -1416,6 +1416,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function renderFileSort\(\)/)
   assert.match(script, /button\.closest\('th'\)\.setAttribute\('aria-sort'/)
   assert.match(style, /\.file-searchbar label \{[^}]*display: inline-flex;[^}]*align-items: center;/)
+  assert.match(style, /\.resource-search \{[^}]*display: block;[^}]*margin-left: auto;/)
   assert.match(style, /\.file-table \{[^}]*min-width: 600px;/)
   assert.match(style, /button\[data-sort-order='asc'\]/)
   assert.match(script, /const visibleOperationTasks = new Set\(\)/)
