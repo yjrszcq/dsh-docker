@@ -196,6 +196,7 @@ const locale = preferredLocale()
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]))
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
+makeHorizontalTabStripScrollable(document.querySelector('.tabs'))
 const RUNTIME_RESET_PHASES = Object.freeze({
   'runtime-reset-building': Object.freeze({ progress: 20, label: 'runtimeResetBuilding' }),
   'runtime-reset-verifying': Object.freeze({ progress: 55, label: 'runtimeResetVerifying' }),
@@ -328,6 +329,58 @@ function display(value) {
 
 function displayEnvironment(value) {
   return value === undefined || value === null || value === '' ? '-' : `env-${String(value)}`
+}
+
+function makeHorizontalTabStripScrollable(tablist) {
+  let pointerId
+  let pointerStartX = 0
+  let scrollStart = 0
+  let dragged = false
+  let dragTarget
+  let suppressClickTarget
+
+  const finishDrag = event => {
+    if (pointerId === undefined || (event.pointerId !== undefined && event.pointerId !== pointerId)) return
+    if (tablist.hasPointerCapture?.(pointerId)) tablist.releasePointerCapture(pointerId)
+    suppressClickTarget = dragged ? dragTarget : undefined
+    if (suppressClickTarget !== undefined) window.setTimeout(() => { suppressClickTarget = undefined }, 0)
+    pointerId = undefined
+    dragged = false
+    dragTarget = undefined
+  }
+
+  tablist.addEventListener('wheel', event => {
+    if (tablist.scrollWidth <= tablist.clientWidth) return
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (delta === 0) return
+    tablist.scrollLeft += delta
+    event.preventDefault()
+  }, { passive: false })
+  tablist.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || event.pointerType === 'touch' || tablist.scrollWidth <= tablist.clientWidth) return
+    pointerId = event.pointerId
+    pointerStartX = event.clientX
+    scrollStart = tablist.scrollLeft
+    dragged = false
+    dragTarget = event.target
+    tablist.setPointerCapture?.(pointerId)
+  })
+  tablist.addEventListener('pointermove', event => {
+    if (event.pointerId !== pointerId) return
+    const distance = event.clientX - pointerStartX
+    if (Math.abs(distance) >= 4) dragged = true
+    if (!dragged) return
+    tablist.scrollLeft = scrollStart - distance
+    event.preventDefault()
+  })
+  tablist.addEventListener('pointerup', finishDrag)
+  tablist.addEventListener('pointercancel', finishDrag)
+  tablist.addEventListener('click', event => {
+    if (event.target !== suppressClickTarget) return
+    suppressClickTarget = undefined
+    event.preventDefault()
+    event.stopPropagation()
+  }, true)
 }
 
 function localTime(value) {

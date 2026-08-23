@@ -62,6 +62,70 @@ function displayEnvironment(value) {
   return value === undefined || value === null || value === '' ? '-' : `env-${String(value)}`
 }
 
+function makeHorizontalTabStripScrollable(tablist) {
+  let pointerId
+  let pointerStartX = 0
+  let scrollStart = 0
+  let dragged = false
+  let dragTarget
+  let suppressClickTarget
+
+  const finishDrag = event => {
+    if (pointerId === undefined || (event.pointerId !== undefined && event.pointerId !== pointerId)) return
+    if (tablist.hasPointerCapture?.(pointerId)) tablist.releasePointerCapture(pointerId)
+    suppressClickTarget = dragged ? dragTarget : undefined
+    if (suppressClickTarget !== undefined) window.setTimeout(() => { suppressClickTarget = undefined }, 0)
+    pointerId = undefined
+    dragged = false
+    dragTarget = undefined
+  }
+  const wheel = event => {
+    if (tablist.scrollWidth <= tablist.clientWidth) return
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (delta === 0) return
+    tablist.scrollLeft += delta
+    event.preventDefault()
+  }
+  const pointerDown = event => {
+    if (event.button !== 0 || event.pointerType === 'touch' || tablist.scrollWidth <= tablist.clientWidth) return
+    pointerId = event.pointerId
+    pointerStartX = event.clientX
+    scrollStart = tablist.scrollLeft
+    dragged = false
+    dragTarget = event.target
+    tablist.setPointerCapture?.(pointerId)
+  }
+  const pointerMove = event => {
+    if (event.pointerId !== pointerId) return
+    const distance = event.clientX - pointerStartX
+    if (Math.abs(distance) >= 4) dragged = true
+    if (!dragged) return
+    tablist.scrollLeft = scrollStart - distance
+    event.preventDefault()
+  }
+  const click = event => {
+    if (event.target !== suppressClickTarget) return
+    suppressClickTarget = undefined
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  tablist.addEventListener('wheel', wheel, { passive: false })
+  tablist.addEventListener('pointerdown', pointerDown)
+  tablist.addEventListener('pointermove', pointerMove)
+  tablist.addEventListener('pointerup', finishDrag)
+  tablist.addEventListener('pointercancel', finishDrag)
+  tablist.addEventListener('click', click, true)
+  return () => {
+    tablist.removeEventListener('wheel', wheel)
+    tablist.removeEventListener('pointerdown', pointerDown)
+    tablist.removeEventListener('pointermove', pointerMove)
+    tablist.removeEventListener('pointerup', finishDrag)
+    tablist.removeEventListener('pointercancel', finishDrag)
+    tablist.removeEventListener('click', click, true)
+  }
+}
+
 function localTime(value, locale) {
   if (!value) return '-'
   const date = new Date(value)
@@ -848,7 +912,10 @@ function PlatformManagement({ t }) {
   const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
   const inventoryLoadRevisions = useRef({ plugins: 0, skills: 0 })
   const activeTabRef = useRef(activeTab)
+  const tabsRef = useRef(null)
   activeTabRef.current = activeTab
+
+  useEffect(() => makeHorizontalTabStripScrollable(tabsRef.current), [])
 
   const refresh = useCallback(() => {
     statusLoadRevision.current += 1
@@ -1132,7 +1199,7 @@ function PlatformManagement({ t }) {
             t(connection))),
         h('p', { className: css.intro }, t('intro'))),
 
-      h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
+      h('div', { ref: tabsRef, className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
         ['maintenance', 'plugins', 'skills', 'updates'].map(tab => h('button', {
           key: tab,
           id: `platform-tab-${tab}-button`,
