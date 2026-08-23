@@ -645,9 +645,11 @@ function renderBundledPlugins(values, busy) {
     heading.className = 'resource-heading'
     const stateKey = applyingAction !== undefined
       ? { install: 'statusInstalling', uninstall: 'statusUninstalling', enable: 'statusEnabling', disable: 'statusDisabling' }[applyingAction]
+      : action !== undefined
+        ? { install: 'pendingInstall', uninstall: 'pendingUninstall', enable: 'pendingEnable', disable: 'pendingDisable' }[action]
       : plugin.installed ? (plugin.enabled ? 'resourceEnabled' : 'resourceDisabled') : 'notInstalled'
     heading.append(
-      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), applyingAction !== undefined ? 'pending' : plugin.enabled ? 'enabled' : ''),
+      userPluginBadge(t(stateKey ?? 'pluginActionWorking'), applyingAction !== undefined || action !== undefined ? 'pending' : plugin.enabled ? 'enabled' : ''),
       name,
     )
     identity.append(
