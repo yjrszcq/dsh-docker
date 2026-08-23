@@ -529,7 +529,7 @@ test('loads the checked-in Control Plane independently from an Environment manif
   ))
   assert.equal(controlPlane.manifest.version, null)
   assert.deepEqual(controlPlane.components.map(component => component.id), [
-    'platform-recovery', 'platform-management', 'gateway',
+    'gateway', 'platform-recovery', 'platform-management',
   ])
 })
 

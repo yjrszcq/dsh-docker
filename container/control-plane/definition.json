@@ -2,16 +2,16 @@
   "schema": 1,
   "components": [
     {
+      "id": "gateway",
+      "source": "services/gateway/component.json"
+    },
+    {
       "id": "platform-recovery",
       "source": "hooks/recovery/component.json"
     },
     {
       "id": "platform-management",
       "source": "services/management/component.json"
-    },
-    {
-      "id": "gateway",
-      "source": "services/gateway/component.json"
     }
   ]
 }
