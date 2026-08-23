@@ -716,10 +716,14 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
   const visiblePlugins = pagination.items
   const restartRequired = draft.size > 0 || plugins.some(plugin => plugin.pendingRestart)
   return h('section', { className: `${css.section} ${css.pluginSection}`, 'aria-labelledby': 'system-plugins-title' },
-    h('div', { className: css.sectionHeading },
-      h('div', null,
-        h('h3', { id: 'system-plugins-title' }, t('systemPlugins')),
-        h('p', null, t('systemPluginsDetail')))),
+    h('div', { className: `${css.sectionHeading} ${css.resourceSectionHeading}` },
+      h('h3', { id: 'system-plugins-title' }, t('systemPlugins')),
+      h('div', { className: css.resourceHeadingDetail },
+        h('p', null, t('systemPluginsDetail')),
+        h('input', {
+          type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemPlugins'), 'aria-label': t('searchSystemPlugins'),
+          onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
+        }))),
     restartRequired ? h('div', { className: css.pluginRestartNotice, role: 'status' },
       h('div', null,
         h('strong', null, t('pluginChangesPending')),
@@ -727,10 +731,6 @@ function SystemPluginManager({ plugins, draft, operation, busy, error, onAction,
       h('div', { className: css.pluginDraftActions },
         h('button', { type: 'button', className: css.secondaryButton, disabled: busy, onClick: onCancel }, t('cancelChanges')),
         h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: onApply }, t('applyPluginChanges')))) : null,
-    h('input', {
-      type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemPlugins'), 'aria-label': t('searchSystemPlugins'),
-      onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
-    }),
     h('div', { className: css.pluginList },
       visiblePlugins.length === 0
         ? h('p', { className: css.emptyPlugins }, plugins.length === 0 ? t('noSystemPlugins') : t('noMatchingResources'))
@@ -786,14 +786,14 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
   const filteredSkills = skills.filter(skill => matchesResourceSearch(query, [skill.id, skill.description?.zh, skill.description?.en]))
   const pagination = usePaginatedItems('system-skills', filteredSkills)
   return h('section', { className: `${css.section} ${css.pluginSection}`, 'aria-labelledby': 'system-skills-title' },
-    h('div', { className: css.sectionHeading },
-      h('div', null,
-        h('h3', { id: 'system-skills-title' }, t('systemSkills')),
-        h('p', null, t('systemSkillsDetail')))),
-    h('input', {
-      type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemSkills'), 'aria-label': t('searchSystemSkills'),
-      onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
-    }),
+    h('div', { className: `${css.sectionHeading} ${css.resourceSectionHeading}` },
+      h('h3', { id: 'system-skills-title' }, t('systemSkills')),
+      h('div', { className: css.resourceHeadingDetail },
+        h('p', null, t('systemSkillsDetail')),
+        h('input', {
+          type: 'search', className: css.resourceSearch, value: query, placeholder: t('searchSystemSkills'), 'aria-label': t('searchSystemSkills'),
+          onChange: event => { setQuery(event.target.value); pagination.setPage(0) },
+        }))),
     h('div', { className: css.pluginList },
       filteredSkills.length === 0
         ? h('p', { className: css.emptyPlugins }, skills.length === 0 ? t('noSystemSkills') : t('noMatchingResources'))
@@ -1123,25 +1123,26 @@ function PlatformManagement({ t }) {
   }
 
   return h('div', { className: css.root },
-    h('div', { className: css.heading },
-      h('div', { className: css.titleRow },
-        h('h2', { className: css.title }, t('title')),
-        h('span', { className: `${css.connection} ${css[connection]}`, role: 'status' },
-          h('span', { 'aria-hidden': 'true' }),
-          t(connection))),
-      h('p', { className: css.intro }, t('intro'))),
+    h('div', { className: css.platformHeader },
+      h('div', { className: css.heading },
+        h('div', { className: css.titleRow },
+          h('h2', { className: css.title }, t('title')),
+          h('span', { className: `${css.connection} ${css[connection]}`, role: 'status' },
+            h('span', { 'aria-hidden': 'true' }),
+            t(connection))),
+        h('p', { className: css.intro }, t('intro'))),
 
-    h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
-      ['maintenance', 'plugins', 'skills', 'updates'].map(tab => h('button', {
-        key: tab,
-        id: `platform-tab-${tab}-button`,
-        type: 'button',
-        role: 'tab',
-        'aria-selected': activeTab === tab,
-        'aria-controls': `platform-tab-${tab}`,
-        tabIndex: activeTab === tab ? 0 : -1,
-        onClick: () => setActiveTab(tab),
-      }, t(`${tab}Tab`)))),
+      h('div', { className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
+        ['maintenance', 'plugins', 'skills', 'updates'].map(tab => h('button', {
+          key: tab,
+          id: `platform-tab-${tab}-button`,
+          type: 'button',
+          role: 'tab',
+          'aria-selected': activeTab === tab,
+          'aria-controls': `platform-tab-${tab}`,
+          tabIndex: activeTab === tab ? 0 : -1,
+          onClick: () => setActiveTab(tab),
+        }, t(`${tab}Tab`))))),
 
     h('div', {
       id: 'platform-tab-updates',
