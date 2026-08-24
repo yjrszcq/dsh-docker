@@ -3,7 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import test from 'node:test'
 import { DshAvailability, availabilityPage, language } from '../lib/availability.mjs'
-import { closeGatewayServer, createGatewayServer, READINESS_PATH, WAIT_PATH, safeReturnPath } from '../lib/proxy.mjs'
+import { closeGatewayServer, createGatewayServer, PLUGIN_FAILURE_PATH, READINESS_PATH, WAIT_PATH, safeReturnPath } from '../lib/proxy.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
 
 async function listen(server) {
@@ -78,6 +78,25 @@ test('official-style holding page is self-contained and replaces the spinner wit
   assert.match(page, /max-width:520px/)
   assert.doesNotMatch(page, /spinner|Loading plugins/)
   assert.doesNotMatch(page, /letter-spacing:-/)
+})
+
+test('persistent plugin failure page is terminal, localized, and links to Management', async () => {
+  const page = availabilityPage('plugin-failed', { 'accept-language': 'zh-CN' }, { poll: false })
+  assert.match(page, /DeepSeek Harness 插件持续加载失败/)
+  assert.match(page, /打开 DSH 管理中心进行检查和恢复/)
+  assert.doesNotMatch(page, /setTimeout\(check/)
+
+  const context = await unavailableGateway()
+  try {
+    const response = await request(context.port, PLUGIN_FAILURE_PATH, {
+      headers: { 'accept-language': 'zh-CN' },
+    })
+    assert.equal(response.status, 200)
+    assert.match(response.body, /DeepSeek Harness 插件持续加载失败/)
+    assert.equal((await request(context.port, PLUGIN_FAILURE_PATH, { method: 'POST' })).status, 405)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
 })
 
 test('holding pages prefer the last DSH locale cookie over browser language', () => {

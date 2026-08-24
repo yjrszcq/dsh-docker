@@ -13,6 +13,7 @@ const COPY = Object.freeze({
     'runtime-recovering': 'Restoring the DeepSeek Harness runtime',
     recovering: 'DeepSeek Harness stopped unexpectedly and recovery is in progress',
     failed: 'DeepSeek Harness could not start',
+    'plugin-failed': 'DeepSeek Harness plugins repeatedly failed to load',
     unavailable: 'DeepSeek Harness is temporarily unavailable and recovery is in progress',
   }),
   zh: Object.freeze({
@@ -24,6 +25,7 @@ const COPY = Object.freeze({
     'runtime-recovering': '正在恢复 DeepSeek Harness 运行版本',
     recovering: 'DeepSeek Harness 意外停止，正在尝试恢复',
     failed: 'DeepSeek Harness 启动失败',
+    'plugin-failed': 'DeepSeek Harness 插件持续加载失败',
     unavailable: 'DeepSeek Harness 暂时不可用，正在尝试恢复',
   }),
 })
@@ -116,7 +118,7 @@ export function stateMessage(state, headers = {}, lifecycle = {}) {
     : `${message} (attempt ${String(lifecycle.attempt)} of ${String(lifecycle.maxAttempts)})`
 }
 
-export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPath = null } = {}) {
+export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPath = null, poll = true } = {}) {
   const locale = language(headers)
   const message = stateMessage(state, headers, lifecycle)
   const managementLink = MANAGEMENT_LINK[locale]
@@ -133,11 +135,11 @@ html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#
 </head>
 <body>
 <main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><a class="management" href="/_dsh_platform/console/">${managementLink}</a></main>
-<script>
+${poll ? `<script>
 const returnPath=${target};const status=document.querySelector('.status');
 async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}
 setTimeout(check,600);
-</script>
+</script>` : ''}
 </body>
 </html>`
 }

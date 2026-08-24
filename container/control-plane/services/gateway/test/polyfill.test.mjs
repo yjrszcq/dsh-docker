@@ -3,10 +3,9 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { injectRandomUuidPolyfill, LIFECYCLE_TRANSITION_GUARD, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
 
-async function simulatePluginError(bundlePath, { eventType = 'error' } = {}) {
+async function simulatePluginError(bundlePath, { eventType = 'error', storage = new Map() } = {}) {
   let replacement
   const events = []
-  const storage = new Map()
   const listeners = new Map()
   const context = {
     URL,
@@ -47,7 +46,7 @@ async function simulatePluginError(bundlePath, { eventType = 'error' } = {}) {
     reason: { stack: `TypeError: failed to import http://gateway.local${bundlePath}` },
   })
   await new Promise(resolve => setImmediate(resolve))
-  return { events, replacement }
+  return { events, replacement, storage }
 }
 
 test('polyfill is inserted immediately after the head tag', () => {
@@ -83,12 +82,13 @@ test('gateway lifecycle guard moves an already-open DSH page into the holding fl
   assert.equal(replacement, undefined)
 })
 
-test('plugin recovery guard runs before DSH modules and permits only one lifecycle recovery', () => {
+test('plugin recovery guard runs before DSH modules and bounds lifecycle recovery', () => {
   assert.doesNotThrow(() => new Function(PLUGIN_RECOVERY_GUARD.slice('<script>'.length, -'</script>'.length)))
   assert.match(PLUGIN_RECOVERY_GUARD, /globalThis\.fetch=function/)
   assert.match(PLUGIN_RECOVERY_GUARD, /\/_dsh_gateway\/client-event/)
   assert.match(PLUGIN_RECOVERY_GUARD, /\/_dsh_gateway\/wait/)
-  assert.match(PLUGIN_RECOVERY_GUARD, /previous&&previous\.identity===identity/)
+  assert.match(PLUGIN_RECOVERY_GUARD, /attempt>=3/)
+  assert.match(PLUGIN_RECOVERY_GUARD, /\/_dsh_gateway\/plugin-failure/)
   assert.match(PLUGIN_RECOVERY_GUARD, /browser\.plugin-load\.recovery\.completed/)
   assert.match(PLUGIN_RECOVERY_GUARD, /addEventListener\("error"/)
   assert.match(PLUGIN_RECOVERY_GUARD, /unhandledrejection/)
@@ -108,6 +108,23 @@ test('plugin recovery guard catches official and third-party dynamic import fail
       ['browser.plugin-load.recovery.started', pluginId],
     ])
   }
+})
+
+test('plugin recovery guard retries twice and opens the Gateway failure page after the third failure', async () => {
+  const path = '/plugins/@deepseek-ai/dsh-client-ui-input-trigger/client.js?rev=abc123'
+  const storage = new Map()
+  const first = await simulatePluginError(path, { storage })
+  const second = await simulatePluginError(path, { storage })
+  const third = await simulatePluginError(path, { storage })
+
+  assert.match(first.replacement, /^\/_dsh_gateway\/wait\?return=/)
+  assert.match(second.replacement, /^\/_dsh_gateway\/wait\?return=/)
+  assert.equal(third.replacement, '/_dsh_gateway/plugin-failure')
+  assert.equal(first.events.at(-1).recoveryAttempt, 1)
+  assert.equal(second.events.at(-1).recoveryAttempt, 2)
+  assert.deepEqual(third.events.map(value => [value.event, value.recoveryAttempt]), [
+    ['browser.plugin-load.recovery.failed', 3],
+  ])
 })
 
 test('plugin recovery guard does not inspect page text', async () => {

@@ -20,6 +20,7 @@ export const INTERNAL_AUTHORITY = `${INTERNAL_HOST}:${String(INTERNAL_PORT)}`
 export const HEALTH_PATH = '/_dsh_gateway/health'
 export const READINESS_PATH = '/_dsh_gateway/readiness'
 export const WAIT_PATH = '/_dsh_gateway/wait'
+export const PLUGIN_FAILURE_PATH = '/_dsh_gateway/plugin-failure'
 export const CLIENT_EVENT_PATH = '/_dsh_gateway/client-event'
 export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
@@ -110,7 +111,7 @@ async function clientEvent(request) {
     return field
   }
   const attempt = Number(value.recoveryAttempt)
-  if (!Number.isSafeInteger(attempt) || attempt < 0 || attempt > 2) throw new Error('client event recoveryAttempt is invalid')
+  if (!Number.isSafeInteger(attempt) || attempt < 0 || attempt > 3) throw new Error('client event recoveryAttempt is invalid')
   return {
     event: value.event,
     level: ['info', 'warning', 'error'].includes(value.level) ? value.level : 'warning',
@@ -737,24 +738,25 @@ export function createGatewayServer({
   pluginBundleRecentWindowMs = 30_000,
 }) {
   const failures = new Map()
-  // Permit one structured recovery attempt for each running Deployment. This
-  // covers a cold-start module race without creating an endless reload loop.
+  // Permit two reloads for each running Deployment. A third structured browser
+  // failure is terminal and moves the page to the dedicated diagnostics view.
   let pluginRecoveryIdentity
-  const consumedPluginRecovery = new Set()
+  let consumedPluginRecoveries = 0
   const currentPluginRecoveryIdentity = platform => {
     const lifecycle = platform?.dshLifecycle ?? {}
     const identity = deploymentRecordId(platform) ?? lifecycle.updatedAt
     if (typeof identity !== 'string' || identity.length === 0) return null
+    if (pluginRecoveryIdentity !== identity) consumedPluginRecoveries = 0
     pluginRecoveryIdentity = identity
     return identity
   }
   const pluginRecoveryAvailable = platform => {
     if ((platform?.dshLifecycle?.state ?? null) !== 'running' || platform?.recoveryMode != null) return false
     const identity = currentPluginRecoveryIdentity(platform)
-    return identity !== null && !consumedPluginRecovery.has(identity)
+    return identity !== null && consumedPluginRecoveries < 2
   }
   const consumePluginRecovery = () => {
-    if (pluginRecoveryIdentity !== undefined) consumedPluginRecovery.add(pluginRecoveryIdentity)
+    if (pluginRecoveryIdentity !== undefined && consumedPluginRecoveries < 2) consumedPluginRecoveries += 1
   }
   const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
   const reportFailure = (key, message, fields) => {
@@ -874,6 +876,14 @@ export function createGatewayServer({
           lifecycle: result.platform.dshLifecycle,
           returnPath,
         })
+        return
+      }
+      if (pathname === PLUGIN_FAILURE_PATH) {
+        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+          rejectHttp(response, 405, 'method not allowed')
+          return
+        }
+        sendAvailabilityPage(request, response, 'plugin-failed', { poll: false })
         return
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {

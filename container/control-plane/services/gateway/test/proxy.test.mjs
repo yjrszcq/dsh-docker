@@ -452,7 +452,7 @@ test('returns a holding module instead of an import failure after a recent resta
   }
 })
 
-test('grants one cold-start plugin recovery attempt without a lifecycle task', async () => {
+test('grants two cold-start plugin recovery attempts without a lifecycle task', async () => {
   const upstream = createServer((_incoming, response) => {
     response.writeHead(503, { 'content-type': 'text/plain' })
     response.end('temporarily unavailable\n')
@@ -476,7 +476,10 @@ test('grants one cold-start plugin recovery attempt without a lifecycle task', a
     assert.equal(first.status, 200)
     assert.match(first.body, /\/_dsh_gateway\/wait\?return=/)
     const second = await request(gatewayPort, path, { host: '127.0.0.1', referer: 'http://127.0.0.1/' })
-    assert.equal(second.status, 503)
+    assert.equal(second.status, 200)
+    assert.match(second.body, /\/_dsh_gateway\/wait\?return=/)
+    const third = await request(gatewayPort, path, { host: '127.0.0.1', referer: 'http://127.0.0.1/' })
+    assert.equal(third.status, 503)
   } finally {
     await closeGatewayServer(gateway)
     await close(upstream)
