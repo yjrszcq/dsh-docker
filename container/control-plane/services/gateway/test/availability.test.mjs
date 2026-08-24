@@ -175,6 +175,29 @@ test('an unresponsive management service does not block the cold-start holding p
   }
 })
 
+test('cold-start management status failures remain diagnostic warnings', async () => {
+  const reported = []
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort: 1,
+    platformStatus: async () => { throw Object.assign(new Error('socket is not ready'), { code: 'ENOENT' }) },
+    probe: async () => false,
+    probeIntervalMs: 60_000,
+    report: async (message, fields) => reported.push({ message, fields }),
+  })
+  const port = await listen(gateway)
+  try {
+    assert.equal((await request(port)).status, 200)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(reported.length, 1)
+    assert.equal(reported[0].message, 'gateway.platform-status.failed')
+    assert.equal(reported[0].fields.level, 'warning')
+    assert.equal(reported[0].fields.error.code, 'ENOENT')
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
 test('platform switching, recovery, and startup failure select distinct page messages', async () => {
   for (const [platform, expected] of [
     [{ operation: 'switching' }, /Switching the DeepSeek Harness runtime/],

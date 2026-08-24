@@ -415,12 +415,16 @@ async function boundedPlatformStatus(platformStatus, options, timeoutMs = 250) {
         options.reportRecovered('platform-status', 'gateway.platform-status.recovered', { upstream: 'management' })
         return value
       }, error => {
-        options.reportFailure('platform-status', 'gateway.platform-status.failed', { error, upstream: 'management' })
+        options.reportFailure('platform-status', 'gateway.platform-status.failed', {
+          error, level: 'warning', upstream: 'management',
+        })
         return {}
       }),
       new Promise(resolve => {
         timer = setTimeout(() => {
-          options.reportFailure('platform-status', 'gateway.platform-status.timed-out', { timeoutMs, upstream: 'management' })
+          options.reportFailure('platform-status', 'gateway.platform-status.timed-out', {
+            timeoutMs, level: 'warning', upstream: 'management',
+          })
           resolve({})
         }, timeoutMs)
         timer.unref()
