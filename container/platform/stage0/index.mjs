@@ -23,6 +23,9 @@ import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.m
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
 import { createPasswordAccess } from '../../control-plane/services/gateway/lib/auth.mjs'
 import { prepareUserSkillRoots } from '../../control-plane/services/management/user-skills.mjs'
+import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
+import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
+import { createSnapshotServer, listenSnapshots } from './lib/snapshot-server.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -157,6 +160,16 @@ const maintenance = await createMaintenanceServer({
 })
 await startup('maintenance-api', () => listenMaintenance(maintenance.server, paths.maintenanceSocket))
 await logs.diagnostic('stage0', 'maintenance-api.ready', { privileged: true })
+const snapshotServer = createSnapshotServer({
+  dshSnapshots: new PersistentStateSnapshots({ root: paths.snapshotsRoot, sourceRoot: dshHome }),
+  userPluginSnapshots: new UserPluginSnapshots({
+    root: paths.userPluginSnapshotsRoot,
+    profileRoot: join(dshHome, 'profiles', 'web'),
+  }),
+  report: (message, fields) => logs.diagnostic('snapshot-manager', message, fields),
+})
+await startup('snapshot-api', () => listenSnapshots(snapshotServer, paths.snapshotSocket))
+await logs.diagnostic('stage0', 'snapshot-api.ready', { privileged: true })
 await startup('bootstrap', () => supervisor.startWithRollback())
 const recoveryServer = createRecoveryServer({
   inventory,
@@ -185,6 +198,7 @@ trustServer.close()
 recoveryServer.close()
 await maintenance.terminal.shutdown()
 await new Promise(resolve => maintenance.server.close(resolve))
+await new Promise(resolve => snapshotServer.close(resolve))
 try {
   await supervisor.stop()
 } catch (error) {

@@ -168,7 +168,8 @@ export class PersistentStateSnapshots {
     }
     const entries = (await this.run('tar', ['-tzf', snapshot.archive])).split('\n').filter(Boolean)
     await onProgress({ processedItems: 0, totalItems: entries.length })
-    await this.run('tar', ['-xzpf', snapshot.archive, '--no-same-owner', '-C', this.sourceRoot])
+    const ownership = process.getuid?.() === 0 ? [] : ['--no-same-owner']
+    await this.run('tar', ['-xzpf', snapshot.archive, ...ownership, '-C', this.sourceRoot])
     await onProgress({ processedItems: entries.length, totalItems: entries.length })
     await syncDirectory(this.sourceRoot)
     return snapshot

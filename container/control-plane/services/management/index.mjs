@@ -14,7 +14,7 @@ import { UpdateStateStore } from '../../modules/updater/lib/state.mjs'
 import { AutomaticCheckStateStore } from '../../modules/updater/lib/automatic-check.mjs'
 import { PlatformActivator } from '../../modules/updater/lib/activator.mjs'
 import { UpdateJournal } from '../../modules/updater/lib/journal.mjs'
-import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mjs'
+import { SnapshotClient } from '../../modules/updater/lib/snapshot-client.mjs'
 import { reconcileRecoveredState, resumeInterruptedReconcile } from '../../modules/updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
@@ -24,7 +24,6 @@ import { parseImageInventory } from '../../../platform/lib/deployment-contracts.
 import { SettingsDocumentStore } from './settings-document.mjs'
 import { markUserPluginRestartState, UserPluginInventory } from '../../modules/plugin-manager/user-inventory.mjs'
 import { UserPluginJournal } from '../../modules/plugin-manager/user-journal.mjs'
-import { UserPluginSnapshots } from '../../modules/plugin-manager/user-snapshots.mjs'
 import { UserPluginSelectionStore } from '../../modules/plugin-manager/user-state.mjs'
 import { UserPluginTransactionManager } from '../../modules/plugin-manager/user-transaction.mjs'
 import { UserSkillManager } from './user-skills.mjs'
@@ -36,6 +35,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
+const snapshotApi = new LocalApiClient(paths.snapshotSocket)
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
@@ -56,10 +56,7 @@ const metadata = new MetadataClient({
 const preparer = new TargetPreparer({ untrustedRoot: paths.downloadsRoot, trust })
 const activator = new PlatformActivator({ dataRoot, runRoot, stage0: trust })
 const journal = new UpdateJournal(join(paths.updaterStateRoot, 'transaction.json'))
-const snapshots = new PersistentStateSnapshots({
-  root: paths.snapshotsRoot,
-  sourceRoot: dshHome,
-})
+const snapshots = new SnapshotClient(snapshotApi, 'dsh')
 const completeRecovery = new CompleteStateRecovery({ journal, snapshots, activator })
 const automaticChecks = new AutomaticCheckStateStore(join(paths.updaterStateRoot, 'automatic-check.json'))
 const coordinator = new UpdateCoordinator({
@@ -92,10 +89,7 @@ const userPluginInventory = new UserPluginInventory({
 const userPluginTransactions = new UserPluginTransactionManager({
   inventory: userPluginInventory,
   selectionStore: new UserPluginSelectionStore(paths.userPluginStatePath),
-  snapshots: new UserPluginSnapshots({
-    root: paths.userPluginSnapshotsRoot,
-    profileRoot: join(dshHome, 'profiles', 'web'),
-  }),
+  snapshots: new SnapshotClient(snapshotApi, 'user-plugin'),
   journal: new UserPluginJournal(paths.userPluginJournalPath),
   pauseDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/pause'),
   restartDsh: () => bootstrap.request('POST', '/v1/components/dsh-runtime/restart'),

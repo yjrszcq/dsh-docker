@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
+import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
+import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
+import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
+import { createSnapshotServer, listenSnapshots } from '../stage0/lib/snapshot-server.mjs'
 
 async function fixture(options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-snapshots-'))
@@ -69,4 +73,39 @@ test('removing an absent snapshot is idempotent while corrupt snapshots remain e
   const snapshot = await snapshots.create(state)
   await writeFile(join(snapshot.path, 'data.tar.gz'), 'corrupt')
   await assert.rejects(snapshots.remove(state.id), { code: 'TRUST_ARTIFACT_MISMATCH' })
+})
+
+test('Stage-0 serves only fixed DSH and Web Profile snapshot scopes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-snapshot-server-'))
+  const dshHome = join(root, 'dsh')
+  const profileRoot = join(dshHome, 'profiles', 'web')
+  await mkdir(profileRoot, { recursive: true })
+  await writeFile(join(dshHome, 'settings.yaml'), 'before')
+  await writeFile(join(profileRoot, 'package.json'), '{"before":true}')
+  const server = createSnapshotServer({
+    dshSnapshots: new PersistentStateSnapshots({ root: join(root, 'snapshots'), sourceRoot: dshHome }),
+    userPluginSnapshots: new UserPluginSnapshots({ root: join(root, 'user-plugin-snapshots'), profileRoot }),
+  })
+  const socket = join(root, 'snapshot.sock')
+  await listenSnapshots(server, socket)
+  const api = new LocalApiClient(socket)
+  const dsh = new SnapshotClient(api, 'dsh')
+  const userPlugin = new SnapshotClient(api, 'user-plugin')
+  try {
+    const created = await dsh.create(state)
+    assert.equal(created.id, state.id)
+    assert.equal(created.path, undefined)
+    await writeFile(join(dshHome, 'settings.yaml'), 'after')
+    await dsh.restore(state.id)
+    assert.equal(await readFile(join(dshHome, 'settings.yaml'), 'utf8'), 'before')
+
+    const plugin = await userPlugin.create('profile-before-change')
+    assert.equal(plugin.id, 'profile-before-change')
+    assert.equal(plugin.path, undefined)
+    await writeFile(join(profileRoot, 'package.json'), '{"after":true}')
+    await userPlugin.restore('profile-before-change')
+    assert.equal(await readFile(join(profileRoot, 'package.json'), 'utf8'), '{"before":true}')
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
 })

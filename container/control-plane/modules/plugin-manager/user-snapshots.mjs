@@ -128,7 +128,8 @@ export class UserPluginSnapshots {
     for (const entry of await readdir(this.profileRoot)) {
       await rm(join(this.profileRoot, entry), { recursive: true, force: true })
     }
-    await this.run('tar', [snapshot.archive.endsWith('.gz') ? '-xzpf' : '-xpf', snapshot.archive, '--no-same-owner', '-C', this.profileRoot])
+    const ownership = process.getuid?.() === 0 ? [] : ['--no-same-owner']
+    await this.run('tar', [snapshot.archive.endsWith('.gz') ? '-xzpf' : '-xpf', snapshot.archive, ...ownership, '-C', this.profileRoot])
     await syncDirectory(this.profileRoot)
     return snapshot
   }
