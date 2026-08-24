@@ -694,22 +694,26 @@ function proxyUpgrade(request, clientSocket, head, options) {
     clientSocket.pipe(upstreamSocket).pipe(clientSocket)
   })
   upstreamSocket.once('error', error => {
-    options.reportFailure(failureKey, connected ? 'gateway.websocket.disconnected' : 'gateway.websocket.failed', {
-      ...context,
-      error,
-      level: connected ? 'warning' : 'error',
-      upstream: upstreamType,
-    })
-    if (!connected) {
-      if (upstreamType === 'dsh') {
-        options.availability.observe(false)
-        void unavailableState(options).then(state => {
-          if (state === 'unknown') rejectUpgrade(clientSocket, 502, 'Bad Gateway')
-          else rejectUpgrade(clientSocket, 503, 'Service Unavailable')
+    if (connected) {
+      options.reportFailure(failureKey, 'gateway.websocket.disconnected', {
+        ...context, error, level: 'warning', upstream: upstreamType,
+      })
+      clientSocket.destroy()
+    } else if (upstreamType === 'dsh') {
+      options.availability.observe(false)
+      void unavailableState(options).then(state => {
+        options.reportFailure(failureKey, 'gateway.websocket.failed', {
+          ...context, error, level: state === 'unknown' ? 'error' : 'warning', upstream: upstreamType,
         })
-      } else rejectUpgrade(clientSocket, 502, 'Bad Gateway')
+        if (state === 'unknown') rejectUpgrade(clientSocket, 502, 'Bad Gateway')
+        else rejectUpgrade(clientSocket, 503, 'Service Unavailable')
+      })
+    } else {
+      options.reportFailure(failureKey, 'gateway.websocket.failed', {
+        ...context, error, level: 'error', upstream: upstreamType,
+      })
+      rejectUpgrade(clientSocket, 502, 'Bad Gateway')
     }
-    else clientSocket.destroy()
   })
   clientSocket.once('error', () => upstreamSocket.destroy())
   clientSocket.once('close', () => upstreamSocket.destroy())

@@ -257,7 +257,11 @@ test('dedicated holding route preserves a safe return path and redirects when re
 })
 
 test('WebSocket receives 503 during a classified DSH outage', async () => {
-  const { gateway, port } = await unavailableGateway({ platform: { operation: 'switching' } })
+  const reports = []
+  const { gateway, port } = await unavailableGateway({
+    platform: { operation: 'switching' },
+    report: (message, fields) => reports.push({ message, fields }),
+  })
   const socket = netConnect(port, '127.0.0.1')
   try {
     await new Promise((resolve, reject) => {
@@ -270,6 +274,10 @@ test('WebSocket receives 503 during a classified DSH outage', async () => {
       socket.once('error', reject)
     })
     assert.match(response, /^HTTP\/1\.1 503 Service Unavailable/)
+    await new Promise(resolve => setImmediate(resolve))
+    const failure = reports.find(entry => entry.message === 'gateway.websocket.failed')
+    assert.equal(failure?.fields.level, 'warning')
+    assert.equal(failure?.fields.upstream, 'dsh')
   } finally {
     socket.destroy()
     await closeGatewayServer(gateway)
