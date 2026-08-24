@@ -43,6 +43,34 @@ const LIFECYCLE_READINESS_PATH = '/_dsh_gateway/readiness'
 const CONNECTION_LOSS_GRACE_MS = 1_000
 const READINESS_RETRY_MS = 500
 
+let platformStateEventSource
+const platformStateEventSubscribers = new Set()
+
+function subscribePlatformStateEvents({ state, open, error }) {
+  const subscriber = { state, open, error }
+  platformStateEventSubscribers.add(subscriber)
+  if (platformStateEventSource === undefined) {
+    const stream = new EventSource(`${API}/events`)
+    platformStateEventSource = stream
+    stream.addEventListener('state', event => {
+      for (const current of platformStateEventSubscribers) current.state?.(event)
+    })
+    stream.onopen = event => {
+      for (const current of platformStateEventSubscribers) current.open?.(event)
+    }
+    stream.onerror = event => {
+      for (const current of platformStateEventSubscribers) current.error?.(event)
+    }
+  }
+  return () => {
+    platformStateEventSubscribers.delete(subscriber)
+    if (platformStateEventSubscribers.size === 0) {
+      platformStateEventSource?.close()
+      platformStateEventSource = undefined
+    }
+  }
+}
+
 function requiresLifecycleHoldingPage(status) {
   if (['restarting', 'switching', 'recovering', 'restart-failed'].includes(status?.operation)) return true
   if (['snapshotting-data', 'switching', 'probation', 'restoring-data'].includes(status?.update?.status)) return true
@@ -919,15 +947,9 @@ function UpdateReminder({ t }) {
   }, [])
 
   useEffect(() => {
-    let events
-    let stopped = false
-    const connect = () => {
-      if (stopped || events !== undefined) return
-      events = new EventSource(`${API}/events`)
-      events.addEventListener('state', () => { void refresh() })
-    }
+    const unsubscribeEvents = subscribePlatformStateEvents({ state: () => { void refresh() } })
     const refreshAndConnect = async () => {
-      if (await refresh() !== undefined) connect()
+      await refresh()
     }
     void refreshAndConnect()
     const timer = window.setInterval(() => { void refreshAndConnect() }, 30_000)
@@ -942,8 +964,7 @@ function UpdateReminder({ t }) {
     window.addEventListener('storage', changed)
     document.addEventListener('visibilitychange', visibilityChanged)
     return () => {
-      stopped = true
-      events?.close()
+      unsubscribeEvents()
       window.clearInterval(timer)
       window.clearInterval(leaseTimer)
       window.removeEventListener('storage', changed)
@@ -1002,7 +1023,6 @@ function LifecycleGuard({ connection }) {
     let hadConnection = connection.hostDescription.getSnapshot() !== undefined
     let graceTimer
     let retryTimer
-    let events
 
     const clearTimers = () => {
       window.clearTimeout(graceTimer)
@@ -1057,15 +1077,14 @@ function LifecycleGuard({ connection }) {
     }
 
     const unsubscribe = connection.hostDescription.subscribe(connectionChanged)
-    events = new EventSource(`${API}/events`)
-    events.addEventListener('state', () => { void inspectPlatformState() })
+    const unsubscribeEvents = subscribePlatformStateEvents({ state: () => { void inspectPlatformState() } })
     void inspectPlatformState()
     connectionChanged()
     return () => {
       stopped = true
       clearTimers()
       unsubscribe()
-      events.close()
+      unsubscribeEvents()
     }
   }, [connection])
   return null
@@ -1549,32 +1568,22 @@ function PlatformManagement({ t }) {
   }, [activeTab, refreshInventory])
 
   useEffect(() => {
-    let stateEvents
-    let stopped = false
     let checkedOnOpen = false
-    const connectEvents = () => {
-      if (stopped || stateEvents !== undefined) return
-      const events = new EventSource(`${API}/events`)
-      stateEvents = events
-      events.addEventListener('state', () => {
+    const unsubscribeEvents = subscribePlatformStateEvents({
+      state: () => {
         void refresh()
         const inventoryKey = activeTabRef.current
         if (inventoryKey === 'plugins' || inventoryKey === 'skills') void refreshInventory(inventoryKey)
-      })
-      events.onopen = () => setConnection('online')
-      events.onerror = () => {
+      },
+      open: () => setConnection('online'),
+      error: () => {
         setConnection('connecting')
-        void refresh().then(value => {
-          if (value !== undefined || stateEvents !== events) return
-          events.close()
-          stateEvents = undefined
-        })
-      }
-    }
+        void refresh()
+      },
+    })
     const refreshAndConnect = async () => {
       const value = await refresh()
       if (value !== undefined) {
-        connectEvents()
         if (!checkedOnOpen && TERMINAL.has(value.update?.status ?? 'idle')) {
           checkedOnOpen = true
           void checkUpdates('page-open')
@@ -1602,10 +1611,9 @@ function PlatformManagement({ t }) {
     const focus = () => { void refreshAndConnect() }
     window.addEventListener('focus', focus)
     return () => {
-      stopped = true
       window.clearInterval(timer)
       window.removeEventListener('focus', focus)
-      stateEvents?.close()
+      unsubscribeEvents()
     }
   }, [checkUpdates, refresh, refreshInventory])
 
