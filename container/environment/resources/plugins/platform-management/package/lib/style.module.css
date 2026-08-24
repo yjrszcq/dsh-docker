@@ -431,9 +431,9 @@ a.secondaryButton { text-decoration: none; }
 .progressStageItemActive .progressStageItemMarker::before { border: 1.5px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 30%, transparent); border-top-color: var(--dsw-alias-state-business-primary); animation: checkSpin .8s linear infinite; }
 .progressStageItem .progressStageMetric, .progressStageItem .progressStagePercent { grid-column: 2; }
 .progressStageError { margin: 4px 0 0 21px !important; color: var(--dsw-alias-state-error-primary) !important; font-size: 11px !important; overflow-wrap: anywhere; }
-.progressLogGroupList { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-module-platform); }
+.progressLogGroupList { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); }
 .progressLogGroupListPopulated { height: clamp(160px, 24dvh, 240px); max-height: none; align-content: start; }
-.progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 7px 9px; }
+.progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 7px 9px; background: var(--dsw-alias-bg-layer-2); }
 .progressLogEntry:last-child { border-bottom: 0; }
 .progressLogEntry summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; cursor: pointer; font-size: 11px; line-height: 18px; list-style: none; }
 .progressLogEntry summary::-webkit-details-marker { display: none; }
