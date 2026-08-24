@@ -608,9 +608,86 @@ function LogViewer({ active, focusTaskId, t }) {
       && (level === 'all' || logLevel(entry) === level)
       && (normalizedQuery === '' || JSON.stringify(entry).toLocaleLowerCase().includes(normalizedQuery))
   })
+  const hasFilteredEntries = filtered.length > 0
   const exportEntries = entries.slice(-displayLimit).map(item => item.value).filter(entry => (source === 'all' || entry.source === source)
     && (level === 'all' || logLevel(entry) === level)
     && (normalizedQuery === '' || JSON.stringify(entry).toLocaleLowerCase().includes(normalizedQuery)))
+
+  useEffect(() => {
+    const list = listRef.current
+    if (!active || !hasFilteredEntries || list === null) return undefined
+    let pointerId
+    let startY = 0
+    let startHeight = 0
+    let minimumHeight = 0
+    let maximumHeight = 0
+    let scrollFrame
+    let previousCursor = ''
+    let previousUserSelect = ''
+    const onResizeEdge = event => list.getBoundingClientRect().bottom - event.clientY <= 10
+    const keepBottomVisible = () => {
+      if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = undefined
+        list.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      })
+    }
+    const startResize = event => {
+      if (!onResizeEdge(event)) return
+      event.preventDefault()
+      pointerId = event.pointerId
+      startY = event.clientY
+      startHeight = list.getBoundingClientRect().height
+      const style = window.getComputedStyle(list)
+      minimumHeight = Number.parseFloat(style.minHeight)
+      maximumHeight = Number.parseFloat(style.maxHeight)
+      previousCursor = document.body.style.cursor
+      previousUserSelect = document.body.style.userSelect
+      document.body.style.cursor = 'ns-resize'
+      document.body.style.userSelect = 'none'
+      list.setPointerCapture?.(pointerId)
+    }
+    const trackResizeEdge = event => {
+      if (pointerId === undefined) list.style.cursor = onResizeEdge(event) ? 'ns-resize' : ''
+    }
+    const clearResizeEdge = () => {
+      if (pointerId === undefined) list.style.cursor = ''
+    }
+    const resize = event => {
+      if (pointerId === undefined || event.pointerId !== pointerId) return
+      const height = Math.min(maximumHeight, Math.max(minimumHeight, startHeight + event.clientY - startY))
+      list.style.height = `${String(height)}px`
+      keepBottomVisible()
+    }
+    const finishResize = event => {
+      if (pointerId === undefined || event.pointerId !== pointerId) return
+      if (list.hasPointerCapture?.(pointerId)) list.releasePointerCapture(pointerId)
+      pointerId = undefined
+      list.style.cursor = ''
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      keepBottomVisible()
+    }
+    list.addEventListener('pointermove', trackResizeEdge)
+    list.addEventListener('pointerleave', clearResizeEdge)
+    list.addEventListener('pointerdown', startResize)
+    window.addEventListener('pointermove', resize)
+    window.addEventListener('pointerup', finishResize)
+    window.addEventListener('pointercancel', finishResize)
+    return () => {
+      list.removeEventListener('pointermove', trackResizeEdge)
+      list.removeEventListener('pointerleave', clearResizeEdge)
+      list.removeEventListener('pointerdown', startResize)
+      window.removeEventListener('pointermove', resize)
+      window.removeEventListener('pointerup', finishResize)
+      window.removeEventListener('pointercancel', finishResize)
+      if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
+      if (pointerId !== undefined) {
+        document.body.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+      }
+    }
+  }, [active, hasFilteredEntries])
 
   useEffect(() => {
     if (!active || !autoScroll || listRef.current === null) return undefined

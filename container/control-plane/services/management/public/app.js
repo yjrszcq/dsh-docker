@@ -210,6 +210,7 @@ const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(e
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
 makeHorizontalTabStripScrollable(document.querySelector('.tabs'))
+makeLogListVerticallyResizable(elements['log-list'])
 const RUNTIME_RESET_PHASES = Object.freeze({
   'runtime-reset-building': Object.freeze({ progress: 20, label: 'runtimeResetBuilding' }),
   'runtime-reset-verifying': Object.freeze({ progress: 55, label: 'runtimeResetVerifying' }),
@@ -441,6 +442,64 @@ function makeHorizontalTabStripScrollable(tablist) {
     event.preventDefault()
     event.stopPropagation()
   }, true)
+}
+
+function makeLogListVerticallyResizable(element) {
+  let pointerId
+  let startY = 0
+  let startHeight = 0
+  let minimumHeight = 0
+  let maximumHeight = 0
+  let scrollFrame
+  let previousCursor = ''
+  let previousUserSelect = ''
+  const onResizeEdge = event => element.getBoundingClientRect().bottom - event.clientY <= 10
+  const keepBottomVisible = () => {
+    if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
+    scrollFrame = window.requestAnimationFrame(() => {
+      scrollFrame = undefined
+      element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    })
+  }
+  element.addEventListener('pointermove', event => {
+    if (pointerId !== undefined) return
+    element.style.cursor = onResizeEdge(event) ? 'ns-resize' : ''
+  })
+  element.addEventListener('pointerleave', () => {
+    if (pointerId === undefined) element.style.cursor = ''
+  })
+  element.addEventListener('pointerdown', event => {
+    if (!onResizeEdge(event)) return
+    event.preventDefault()
+    pointerId = event.pointerId
+    startY = event.clientY
+    startHeight = element.getBoundingClientRect().height
+    const style = window.getComputedStyle(element)
+    minimumHeight = Number.parseFloat(style.minHeight)
+    maximumHeight = Number.parseFloat(style.maxHeight)
+    previousCursor = document.body.style.cursor
+    previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'ns-resize'
+    document.body.style.userSelect = 'none'
+    element.setPointerCapture?.(pointerId)
+  })
+  window.addEventListener('pointermove', event => {
+    if (pointerId === undefined || event.pointerId !== pointerId) return
+    const height = Math.min(maximumHeight, Math.max(minimumHeight, startHeight + event.clientY - startY))
+    element.style.height = `${String(height)}px`
+    keepBottomVisible()
+  })
+  const finishResize = event => {
+    if (pointerId === undefined || event.pointerId !== pointerId) return
+    if (element.hasPointerCapture?.(pointerId)) element.releasePointerCapture(pointerId)
+    pointerId = undefined
+    element.style.cursor = ''
+    document.body.style.cursor = previousCursor
+    document.body.style.userSelect = previousUserSelect
+    keepBottomVisible()
+  }
+  window.addEventListener('pointerup', finishResize)
+  window.addEventListener('pointercancel', finishResize)
 }
 
 function localTime(value) {

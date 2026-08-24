@@ -725,8 +725,11 @@ a.secondaryButton { text-decoration: none; }
 .logList {
   display: flex;
   flex-direction: column;
-  max-height: min(320px, 42dvh);
+  height: min(280px, 42dvh);
+  min-height: 140px;
+  max-height: min(720px, 70dvh);
   overflow: auto;
+  resize: none;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
 }
@@ -884,7 +887,7 @@ a.secondaryButton { text-decoration: none; }
   .logFilters input { grid-column: 1 / -1; }
   .logMeta { flex-wrap: wrap; }
   .logMeta time { width: auto; margin-left: auto; }
-  .logList { max-height: min(260px, 36dvh); }
+  .logList { height: min(260px, 36dvh); }
   .updateReminder { right: 16px; bottom: 16px; }
 }
 
