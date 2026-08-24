@@ -343,6 +343,25 @@ test('management reports unpublished development metadata without an HTTP error'
   }
 })
 
+test('management treats a page-open check during an update as an accepted no-op', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-busy-page-open-'))
+  const coordinator = new Coordinator()
+  coordinator.check = async () => ({ busy: true })
+  const server = createManagementServer({
+    coordinator,
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    const response = await rawRequest(socketPath, `${API_PREFIX}check`, 'POST')
+    assert.equal(response.status, 202)
+    assert.deepEqual(JSON.parse(response.body), { busy: true })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management edits only the fixed settings document with optimistic revisions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-settings-document-'))
   const dshHome = join(root, 'dsh')
@@ -1405,6 +1424,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /returnStableProgress: '返回稳定通道'/)
   assert.match(script, /returnStableToTarget: '返回稳定通道·\{target\}'/)
   assert.match(script, /progressLogStageExpansion\.set\(previousActiveStage, false\)/)
+  assert.match(script, /function progressLogPhase\(update\) \{[\s\S]*update\?\.phase[\s\S]*update\?\.operation[\s\S]*update\?\.status/)
   assert.match(script, /progressLogAutoScroll = event\.target\.checked/)
   assert.match(script, /elements\['log-search'\]\.value = String\(progressLogUpdate\.taskId\)/)
   assert.match(script, /const failedDismissed = update\.status === 'failed'[\s\S]*dismissedProgressTaskId/)

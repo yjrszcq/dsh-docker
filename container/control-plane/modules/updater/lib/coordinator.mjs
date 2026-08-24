@@ -134,10 +134,24 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   check(source = 'manual') {
+    if (this.task !== undefined && source === 'page-open') return Promise.resolve({ busy: true })
     if (this.task !== undefined) return Promise.reject(new UpdateConflictError('an update task is already running'))
     if (this.checkTask !== undefined) return this.checkTask
     this.checkTask = this.runCheck(source).finally(() => { this.checkTask = undefined })
     return this.checkTask
+  }
+
+  startTask(operation) {
+    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
+    const taskId = randomUUID()
+    const precedingCheck = this.checkTask
+    this.task = (async () => {
+      if (precedingCheck !== undefined) {
+        try { await precedingCheck } catch {}
+      }
+      return operation(taskId)
+    })().finally(() => { this.task = undefined })
+    return { taskId, completion: this.task }
   }
 
   async runCheck(source) {
@@ -216,27 +230,18 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   start() {
-    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
-    const taskId = randomUUID()
-    this.task = this.run(taskId).finally(() => { this.task = undefined })
-    return { taskId, completion: this.task }
+    return this.startTask(taskId => this.run(taskId))
   }
 
   startExperimental() {
-    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
     if (this.npm === undefined || this.journal === undefined || this.snapshots === undefined) {
       throw new Error('Experimental updates are not configured')
     }
-    const taskId = randomUUID()
-    this.task = this.runExperimental(taskId).finally(() => { this.task = undefined })
-    return { taskId, completion: this.task }
+    return this.startTask(taskId => this.runExperimental(taskId))
   }
 
   startReconcile() {
-    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
-    const taskId = randomUUID()
-    this.task = this.runReconcile(taskId).finally(() => { this.task = undefined })
-    return { taskId, completion: this.task }
+    return this.startTask(taskId => this.runReconcile(taskId))
   }
 
   async setChannel(updateChannel) {
@@ -262,11 +267,8 @@ export class UpdateCoordinator extends EventEmitter {
   }
 
   startCompleteRollback(planId, options = {}) {
-    if (this.task !== undefined) throw new UpdateConflictError('an update task is already running')
     if (this.completeRecovery === undefined) throw new Error('complete rollback is not configured')
-    const taskId = randomUUID()
-    this.task = this.runCompleteRollback(taskId, planId, options).finally(() => { this.task = undefined })
-    return { taskId, completion: this.task }
+    return this.startTask(taskId => this.runCompleteRollback(taskId, planId, options))
   }
 
   async runCompleteRollback(taskId, planId, options) {

@@ -569,7 +569,7 @@ function probationRemainingSeconds(update) {
 }
 
 function progressLogPhase(update) {
-  return update.phase ?? (isRecoveryOperation(update.operation) ? update.rollbackPhase : update.status)
+  return update?.phase ?? (isRecoveryOperation(update?.operation) ? update?.rollbackPhase : update?.status)
 }
 
 function progressLogStage(phase, update = progressLogUpdate) {

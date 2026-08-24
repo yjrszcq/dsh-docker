@@ -589,6 +589,10 @@ export function createManagementServer({
         const source = body.source ?? 'manual'
         if (!['manual', 'page-open', 'channel-change'].includes(source)) throw new Error('update check source is invalid')
         const target = await coordinator.check(source)
+        if (target.busy === true) {
+          send(response, 202, { busy: true })
+          return
+        }
         send(response, 200, target.unavailable === true
           ? { available: false, upstream: target.upstream }
           : {

@@ -238,6 +238,44 @@ test('coalesces overlapping metadata checks into one request', async () => {
   assert.equal(state.value.status, 'idle')
 })
 
+test('starts an update only after an in-flight metadata check has settled', async () => {
+  let finishCheck
+  const events = []
+  const state = {
+    value: { status: 'idle', progress: 0 },
+    async read() { return this.value },
+    async write(status, fields) { this.value = { ...this.value, ...fields, status }; return this.value },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: {
+      check: () => new Promise(resolve => { finishCheck = resolve }),
+    },
+    state,
+    preparer: {},
+    activator: {},
+  })
+  const checking = coordinator.check('page-open')
+  await new Promise(resolve => setImmediate(resolve))
+  coordinator.run = async taskId => {
+    events.push(['update', taskId, state.value.status])
+    return coordinator.transition('success', { taskId, operation: 'update', progress: 100 })
+  }
+  const update = coordinator.start()
+  assert.equal(coordinator.hasActiveTask(), true)
+  assert.throws(() => coordinator.start(), UpdateConflictError)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(events, [])
+
+  finishCheck({ value: { targetSequence: 1, desired: {
+    bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: 'rc.1' },
+  } } })
+  await checking
+  await update.completion
+  assert.deepEqual(events, [['update', update.taskId, 'idle']])
+  assert.equal(state.value.status, 'success')
+  assert.equal(state.value.taskId, update.taskId)
+})
+
 test('only an automatic check records update notification candidates', async () => {
   const recorded = []
   const state = {
@@ -486,6 +524,7 @@ test('serializes one update task and persists success progress', async () => {
   })
   const task = coordinator.start()
   assert.throws(() => coordinator.start(), UpdateConflictError)
+  assert.deepEqual(await coordinator.check('page-open'), { busy: true })
   await assert.rejects(coordinator.check(), UpdateConflictError)
   const result = await task.completion
   assert.equal(result.status, 'success')
