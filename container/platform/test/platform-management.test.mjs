@@ -398,6 +398,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /--dsw-alias-border-l2/)
   assert.match(style, /\.progressLogGroupList \{[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
   assert.match(style, /\.progressLogEntry \{[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
+  assert.doesNotMatch(style, /\.progressLogEntry:last-child \{[^}]*border-bottom: 0;/)
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.pluginRestartNotice \{[\s\S]*justify-content: space-between/)
   assert.match(style, /\.pluginActions \.toggle \{ width: auto; \}/)

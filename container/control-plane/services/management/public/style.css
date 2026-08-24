@@ -420,7 +420,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-log-group-list { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
 .progress-log-group-list.populated { height: clamp(160px, 24dvh, 240px); max-height: none; align-content: start; }
 .progress-log-entry { min-width: 0; border-bottom: 1px solid var(--border); padding: 7px 9px; }
-.progress-log-entry:last-child { border-bottom: 0; }
 .progress-log-entry summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; cursor: pointer; color: var(--text); font-size: 11px; line-height: 18px; list-style: none; }
 .progress-log-entry summary::-webkit-details-marker { display: none; }
 .progress-log-entry time, .progress-log-source { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }

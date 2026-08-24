@@ -1397,6 +1397,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /elements\['progress-dismiss'\]\.addEventListener\('click'/)
   assert.match(style, /\.progress-log-group-list[\s\S]*max-height: 250px/)
   assert.match(style, /\.progress-log-group-list\.populated \{ height: clamp\(160px, 24dvh, 240px\);/)
+  assert.doesNotMatch(style, /\.progress-log-entry:last-child \{[^}]*border-bottom: 0;/)
   assert.match(style, /\.progress-log-entry summary[\s\S]*grid-template-columns: auto minmax\(0, 1fr\) auto/)
   assert.match(style, /\.progress-log-message \{[^}]*grid-column: 1 \/ 3;/)
   assert.match(script, /chevron\.className = 'progress-log-chevron'/)

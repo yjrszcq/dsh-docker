@@ -434,7 +434,6 @@ a.secondaryButton { text-decoration: none; }
 .progressLogGroupList { display: grid; gap: 0; max-height: 250px; overflow: auto; margin-top: 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); }
 .progressLogGroupListPopulated { height: clamp(160px, 24dvh, 240px); max-height: none; align-content: start; }
 .progressLogEntry { border-bottom: 1px solid var(--dsw-alias-border-l2); padding: 7px 9px; background: var(--dsw-alias-bg-layer-2); }
-.progressLogEntry:last-child { border-bottom: 0; }
 .progressLogEntry summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; cursor: pointer; font-size: 11px; line-height: 18px; list-style: none; }
 .progressLogEntry summary::-webkit-details-marker { display: none; }
 .progressLogEntry summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
