@@ -90,7 +90,23 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
         const operation = /^\/v1\/components\/([a-z0-9][a-z0-9._-]{0,127})\/(pause|suspend|resume|restart)$/.exec(pathname)
         if (request.method === 'POST' && operation !== null) {
           const [componentId, action] = operation.slice(1)
-          if (componentId === 'dsh-runtime' && action === 'restart' && deployments !== undefined) {
+          if (componentId === 'dsh-runtime' && action === 'resume' && deployments !== undefined) {
+            const status = await deployments.exclusive(async () => {
+              await deployments.setOperation('starting')
+              try {
+                const value = await runner.resume(componentId)
+                await deployments.publishStatus()
+                return value
+              } catch (error) {
+                await deployments.publishStatus({
+                  recoveryMode: runner.status().recoveryMode
+                    ?? (error instanceof Error ? error.message : String(error)),
+                })
+                throw error
+              }
+            })
+            send(response, 200, status)
+          } else if (componentId === 'dsh-runtime' && action === 'restart' && deployments !== undefined) {
             const status = await deployments.exclusive(async () => {
               await deployments.setOperation('restarting')
               let transaction

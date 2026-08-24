@@ -481,7 +481,9 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['discard-system-plugins'],
       ['suspend', 'dsh-runtime'],
       ['pause', 'dsh-runtime'],
+      ['operation', 'starting'],
       ['resume', 'dsh-runtime'],
+      ['status', 'published', null],
       ['operation', 'restarting'],
       ['prepare-system-plugins'],
       ['restart', 'dsh-runtime'],
@@ -515,6 +517,22 @@ test('Bootstrap control socket exposes component suspension, resumption, restart
       ['restart-recovered', 'dsh-runtime'],
       ['status', 'published', { operation: 'restart-failed', recoveryMode: 'overlay failed' }],
       ['report', 'bootstrap.request.failed', '/v1/components/dsh-runtime/restart'],
+    ])
+
+    runner.resume = async id => {
+      calls.push(['resume-failed', id])
+      throw new Error('resume remained unavailable')
+    }
+    runner.status = () => ({ components: [], recoveryMode: 'resume remained unavailable' })
+    await assert.rejects(
+      client.request('POST', '/v1/components/dsh-runtime/resume'),
+      /resume remained unavailable/,
+    )
+    assert.deepEqual(calls.slice(-4), [
+      ['operation', 'starting'],
+      ['resume-failed', 'dsh-runtime'],
+      ['status', 'published', { recoveryMode: 'resume remained unavailable' }],
+      ['report', 'bootstrap.request.failed', '/v1/components/dsh-runtime/resume'],
     ])
   } finally {
     await new Promise(resolve => server.close(resolve))
