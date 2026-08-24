@@ -749,6 +749,12 @@ test('runs a user-started Experimental candidate through snapshot and probation'
   assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
     'suspend', 'snapshot:task', 'switch:runtime-b', 'commit:runtime-b',
   ])
+  const state = await coordinator.state.read()
+  assert.deepEqual(state.current, { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-b' })
+  assert.equal(state.aheadOfStable, true)
+  assert.equal(state.updateAvailable, false)
+  assert.equal(state.outcome, 'frozen')
+  assert.equal(state.probationUntil, null)
 })
 
 test('does not switch when the mandatory snapshot fails', async () => {

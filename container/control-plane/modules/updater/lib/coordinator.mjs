@@ -667,7 +667,16 @@ export class UpdateCoordinator extends EventEmitter {
           })
         }
       }
-      return this.transition('success', { taskId, progress: 100, error: null })
+      return this.transition('success', {
+        taskId,
+        progress: 100,
+        current: { dsh: built.dshVersion, environment: built.environmentVersion, runtime: candidateRuntimeId },
+        aheadOfStable: true,
+        updateAvailable: false,
+        outcome: 'frozen',
+        probationUntil: null,
+        error: null,
+      })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'
       const failureState = await this.state.read()
