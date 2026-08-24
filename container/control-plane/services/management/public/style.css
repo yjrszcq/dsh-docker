@@ -513,7 +513,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .list-pagination select { min-width: 64px; min-height: 30px; padding: 3px 22px 3px 7px; }
 .list-pagination > span, .file-pagination > span { margin-right: auto; }
 .resource-panel .plugin-list, .resource-panel .user-plugin-list { max-height: min(52dvh, 520px); overflow-y: auto; overscroll-behavior: contain; }
-.resource-panel .list-pagination { position: sticky; bottom: 0; z-index: 2; background: var(--bg); }
+.resource-panel .list-pagination { position: static; z-index: 2; background: var(--bg); }
 .page-navigation strong { min-width: 16px; color: var(--text); text-align: center; font-weight: 600; }
 .page-arrow { width: 28px; min-width: 28px; padding: 0; font-size: 18px; line-height: 1; }
 .page-jump input { width: 50px; min-height: 30px; padding: 3px 6px; text-align: center; }
@@ -686,6 +686,10 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
 .confirm { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; }
 .confirm input { margin-top: 3px; accent-color: var(--danger); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+@media (min-width: 641px) {
+  .resource-panel .plugin-list, .resource-panel .user-plugin-list { max-height: min(calc(56.25vw - 27px), 664px); }
+}
 
 :root[data-theme="dark"] {
   color-scheme: dark;
