@@ -111,7 +111,7 @@ test('standalone recovery smoke covers live terminal and consecutive faulty plug
   assert.match(script, /terminal-after-restart-中文/)
   assert.match(script, /operation\?\.status \?\? operation\?\.state/)
   assert.match(script, /uid=0/)
-  assert.match(script, /cwd=\\\/workspace/)
+  assert.match(script, /cwd=\\\/root/)
   assert.match(script, /smoke-fault-one/)
   assert.match(script, /smoke-fault-two/)
   assert.match(script, /firstOutcome/)

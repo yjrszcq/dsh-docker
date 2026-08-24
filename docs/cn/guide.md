@@ -418,7 +418,7 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 ### 容器终端
 
-“容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录取自 `DSH_DEFAULT_WORKSPACE`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
+“容器终端”由 Stage-0 内的受限 Maintenance Broker 以 root 身份启动真实的交互式 `/bin/bash`，初始目录和 `HOME` 均为 `/root`，并传入 `DSH_HOME`、PATH 和代理变量。`DSH_DEFAULT_WORKSPACE` 只用于文件管理和普通工作区选择，不影响这个 Root 维护 Shell。`DSH_SUDO_ENABLED` 只控制 DSH/Agent 的 sudo 能力，不会降低此终端的管理员权限。只重启 DSH 不会终止终端。浏览器刷新或短暂断线后可在 30 秒内重连，并重绘最近最多 256 KiB 输出；显式关闭会话、停止 Stage-0 或停止容器都会终止终端。平台日志只记录会话生命周期，不记录终端输入、输出、命令历史或完整环境。
 
 ### 文件管理
 

@@ -418,7 +418,7 @@ The managed Runtime also pins the Web Profile pnpm store to `$DSH_HOME/.pnpm-sto
 
 ### Container Terminal
 
-The Container terminal tab uses a constrained Maintenance Broker inside Stage-0 to start a real interactive `/bin/bash` as root. Its initial directory comes from `DSH_DEFAULT_WORKSPACE`, and it receives `DSH_HOME`, PATH, and proxy variables. `DSH_SUDO_ENABLED` controls only DSH/Agent sudo access; it does not reduce this terminal's administrator privileges. Restarting only DSH does not terminate the terminal. A browser refresh or brief disconnect can reattach for 30 seconds and redraw up to 256 KiB of recent output; explicitly closing the session, stopping Stage-0, or stopping the container terminates it. Platform logs record session lifecycle only, never terminal input, output, command history, or the complete environment.
+The Container terminal tab uses a constrained Maintenance Broker inside Stage-0 to start a real interactive `/bin/bash` as root. It starts in `/root` with `HOME=/root`, and receives `DSH_HOME`, PATH, and proxy variables. `DSH_DEFAULT_WORKSPACE` applies to the file manager and ordinary workspace selection, not to this Root maintenance shell. `DSH_SUDO_ENABLED` controls only DSH/Agent sudo access; it does not reduce this terminal's administrator privileges. Restarting only DSH does not terminate the terminal. A browser refresh or brief disconnect can reattach for 30 seconds and redraw up to 256 KiB of recent output; explicitly closing the session, stopping Stage-0, or stopping the container terminates it. Platform logs record session lifecycle only, never terminal input, output, command history, or the complete environment.
 
 ### File Management
 
