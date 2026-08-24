@@ -560,6 +560,8 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   await runtime.start()
   await runtime.suspend('dsh-runtime')
   assert.equal(runtime.status().dshLifecycle.state, 'stopped')
+  await runtime.reload()
+  assert.equal(runtime.status().dshLifecycle.state, 'running')
   await runtime.pause('dsh-runtime')
   await runtime.resume('dsh-runtime')
   assert.equal(runtime.status().dshLifecycle.state, 'running')
@@ -573,6 +575,7 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     'control:start',
     'environment:start',
     'environment:suspend:dsh-runtime',
+    'environment:reload',
     'environment:pause:dsh-runtime',
     'environment:resume:dsh-runtime',
     'environment:restart:dsh-runtime',

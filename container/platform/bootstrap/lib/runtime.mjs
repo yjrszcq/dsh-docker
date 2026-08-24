@@ -207,6 +207,9 @@ export class BootstrapRuntime {
     await this.prepareDeployment()
     const status = await this.environment.reload()
     this.recoveryMode = null
+    if (this.environment.status().components.some(value => value.id === 'dsh-runtime')) {
+      this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+    }
     return status
   }
   async suspend(componentId) {
