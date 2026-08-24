@@ -26,6 +26,18 @@ async function exists(path) {
   return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
 }
 
+function matchesRecoveryJournal(record, deployment) {
+  if (record?.id === deployment.runtime) return true
+  if (record === null || record === undefined) return false
+  if (!Array.isArray(record.receiptTokens) || !Array.isArray(deployment.receiptTokens)) return false
+  const sameReceipts = [...record.receiptTokens].sort().join('\0')
+    === [...deployment.receiptTokens].sort().join('\0')
+  return record.dshVersion === deployment.dsh
+    && record.environmentVersion === deployment.environment
+    && record.snapshotId === deployment.dataSnapshot
+    && sameReceipts
+}
+
 export class PlatformActivator {
   constructor({
     dataRoot,
@@ -186,19 +198,12 @@ export class PlatformActivator {
   async restoreDeployment(deployment, { resume = true } = {}) {
     await this.bootstrap.request('POST', '/v1/deployments/candidate/cancel')
     const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
-    if (record?.id !== deployment.runtime) {
+    if (!matchesRecoveryJournal(record, deployment)) {
       const { previous } = await this.rollbackDeployments()
       if (previous === null) throw new Error('previous Deployment is unavailable')
-      const sameReceipts = [...previous.receiptTokens].sort().join('\0')
-        === [...deployment.receiptTokens].sort().join('\0')
-      if (
-        previous.id !== deployment.runtime
-        && (
-          previous.dshVersion !== deployment.dsh
-          || previous.environmentVersion !== deployment.environment
-          || !sameReceipts
-        )
-      ) throw new Error('previous Deployment differs from the recovery journal')
+      if (!matchesRecoveryJournal(previous, deployment)) {
+        throw new Error('previous Deployment differs from the recovery journal')
+      }
       await this.bootstrap.request('POST', '/v1/deployments/rollback', { recordId: previous.id })
     }
     if (resume) await this.resumeDsh()

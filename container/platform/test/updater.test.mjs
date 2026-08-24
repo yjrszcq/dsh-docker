@@ -1051,6 +1051,32 @@ test('restores the materialized previous Deployment recorded by Bootstrap slots'
   })
 })
 
+test('restores an equivalent materialized current Deployment without a previous slot', async () => {
+  const calls = []
+  const current = {
+    id: 'runtime-a-materialized', dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1',
+    receiptTokens: ['stable-a'], snapshotId: null,
+  }
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async (method, path) => {
+      calls.push(`${method}:${path}`)
+      if (path.endsWith('/cancel')) return { cancelled: false }
+      if (path.endsWith('/current')) return { record: current }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+  await activator.restoreDeployment({
+    runtime: 'runtime-a-image', dsh: '0.1.0-rc.7', environment: 'env-1',
+    receiptTokens: ['stable-a'], dataSnapshot: null,
+  }, { resume: false })
+  assert.deepEqual(calls, [
+    'POST:/v1/deployments/candidate/cancel',
+    'GET:/v1/deployments/current',
+  ])
+})
+
 test('rejects a materialized previous Deployment that differs from the recovery journal', async () => {
   const activator = new PlatformActivator({
     dataRoot: '/unused',
