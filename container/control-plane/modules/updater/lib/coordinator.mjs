@@ -455,9 +455,13 @@ export class UpdateCoordinator extends EventEmitter {
     try {
       const plan = await this.desiredState()
       if (plan.action === 'stable') {
+        const blockExperimentalCombination = plan.current?.authority === 'experimental'
+          && plan.current.environment !== plan.supported?.environment
         await this.run(taskId, { complete: false })
         const next = await this.desiredState()
-        if (next.action === 'experimental') return this.runExperimental(taskId)
+        if (next.action === 'experimental') {
+          return this.runExperimental(taskId, { blockCombination: blockExperimentalCombination })
+        }
         return this.transition('success', { taskId, progress: 100, error: null, outcome: next.action })
       }
       if (plan.action === 'experimental') return this.runExperimental(taskId)
@@ -560,7 +564,7 @@ export class UpdateCoordinator extends EventEmitter {
     return this.preparer.trust.activate(prepared.receiptTokens)
   }
 
-  async runExperimental(taskId) {
+  async runExperimental(taskId, { blockCombination = false } = {}) {
     let transaction
     let candidate
     let failureClass = 'check'
@@ -690,9 +694,24 @@ export class UpdateCoordinator extends EventEmitter {
           }), undefined, { dshVersion: candidate.version, holdType: 'version', taskId })
         } else if (failureClass === 'combination') {
           const environmentVersion = transaction?.to.environment
-          if (environmentVersion !== undefined) await this.bestEffort('update.hold.persist.failed', () => this.channelState.addHold({
-            type: 'combination', dshVersion: candidate.version, environmentVersion, reason: message,
-          }), undefined, { dshVersion: candidate.version, environmentVersion, holdType: 'combination', taskId })
+          if (environmentVersion !== undefined) {
+            const persist = blockCombination
+              ? () => this.channelState.block({ dshVersion: candidate.version, environmentVersion, reason: message })
+              : () => this.channelState.addHold({
+                type: 'combination', dshVersion: candidate.version, environmentVersion, reason: message,
+              })
+            await this.bestEffort(
+              blockCombination ? 'update.experimental-block.persist.failed' : 'update.hold.persist.failed',
+              persist,
+              undefined,
+              {
+                dshVersion: candidate.version,
+                environmentVersion,
+                ...(blockCombination ? { blocked: true } : { holdType: 'combination' }),
+                taskId,
+              },
+            )
+          }
         }
       }
       if (this.journal !== undefined) {

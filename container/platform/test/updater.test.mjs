@@ -1250,6 +1250,25 @@ test('records candidate and combination Holds without holding snapshot failures'
   assert.equal((await snapshotState.read()).holds.length, 0)
 })
 
+test('blocks a failed Experimental combination after converging a newer Stable Environment', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-environment-block-'))
+  const channelState = new ChannelStateStore(join(root, 'state', 'channel.json'))
+  const system = experimentalSystem(root, {
+    channelState,
+    activator: { health: async () => ({ healthy: false }) },
+  })
+
+  await assert.rejects(
+    system.coordinator.runExperimental('task-a', { blockCombination: true }),
+    /probation/,
+  )
+  const local = await channelState.read()
+  assert.equal(local.holds.length, 0)
+  assert.equal(local.experimentalBlocked.type, 'combination')
+  assert.equal(local.experimentalBlocked.dshVersion, '0.1.0-rc.8')
+  assert.equal(local.experimentalBlocked.environmentVersion, 'env-1')
+})
+
 test('allows Stable return only to a recovery point no newer than signed Stable', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-return-stable-'))
   let restored = false
@@ -1347,15 +1366,45 @@ test('continues from Stable convergence into Experimental activation in one task
   coordinator.desiredState = async () => {
     if (!planned) {
       planned = true
-      return { action: 'stable' }
+      return {
+        action: 'stable',
+        current: { authority: 'experimental', environment: 'env-old' },
+        supported: { environment: 'env-new' },
+      }
     }
     return { action: 'experimental' }
   }
   coordinator.run = async (taskId, options) => { actions.push(['stable', taskId, options]) }
-  coordinator.runExperimental = async taskId => { actions.push(['experimental', taskId]) }
+  coordinator.runExperimental = async (taskId, options) => { actions.push(['experimental', taskId, options]) }
   await coordinator.runReconcile('task-a')
   assert.deepEqual(actions, [
     ['stable', 'task-a', { complete: false }],
-    ['experimental', 'task-a'],
+    ['experimental', 'task-a', { blockCombination: true }],
   ])
+})
+
+test('keeps ordinary Stable-to-Experimental reconciliation retryable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-reconcile-ordinary-experimental-'))
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, activator: {},
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+  })
+  let planned = false
+  let options
+  coordinator.desiredState = async () => {
+    if (!planned) {
+      planned = true
+      return {
+        action: 'stable',
+        current: { authority: 'stable', environment: 'env-old' },
+        supported: { environment: 'env-new' },
+      }
+    }
+    return { action: 'experimental' }
+  }
+  coordinator.run = async () => {}
+  coordinator.runExperimental = async (_taskId, value) => { options = value }
+
+  await coordinator.runReconcile('task-a')
+  assert.deepEqual(options, { blockCombination: false })
 })
