@@ -1634,7 +1634,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(style, /:root\[data-theme="dark"\][\s\S]*@media \(prefers-color-scheme: dark\)[\s\S]*:root:not\(\[data-theme\]\)/)
   assert.match(style, /\.topbar-actions \{[^}]*display: flex/)
   assert.match(style, /@media \(max-width: 640px\)/)
-  assert.match(style, /\.log-resize-frame \{[^}]*height: 320px;[^}]*min-height: 140px;[^}]*max-height: min\(720px, 70dvh\);/)
+  assert.match(style, /\.log-resize-frame \{[^}]*height: 480px;[^}]*min-height: 140px;[^}]*max-height: min\(1080px, 105dvh\);/)
   assert.match(style, /\.log-resize-handle \{[^}]*height: 16px;[^}]*cursor: ns-resize;/)
   assert.match(script, /makeLogListVerticallyResizable\(elements\['log-resize-frame'\], elements\['log-resize-handle'\]\)/)
   assert.match(script, /element\.style\.height = `\$\{String\(height\)\}px`/)
