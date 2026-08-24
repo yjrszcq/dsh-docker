@@ -71,7 +71,18 @@ export class UpdateCoordinator extends EventEmitter {
               : status
           )
     )
-    const value = await this.state.write(status, { ...fields, phase })
+    const contextChanged = phase !== (previous.phase ?? null)
+      || (fields.operation !== undefined && fields.operation !== previous.operation)
+    const phaseMetrics = contextChanged ? {
+      processedBytes: null,
+      totalBytes: null,
+      processedItems: null,
+      totalItems: null,
+      readyServices: null,
+      totalServices: null,
+      detail: null,
+    } : {}
+    const value = await this.state.write(status, { ...phaseMetrics, ...fields, phase })
     this.emit('state', value)
     await this.record('update.phase.changed', {
       status,

@@ -238,6 +238,44 @@ test('coalesces overlapping metadata checks into one request', async () => {
   assert.equal(state.value.status, 'idle')
 })
 
+test('keeps telemetry within a phase and clears it at operation and phase boundaries', async () => {
+  const state = {
+    value: { status: 'idle', phase: null, operation: null, progress: 0 },
+    async read() { return this.value },
+    async write(status, fields) { this.value = { ...this.value, ...fields, status }; return this.value },
+  }
+  const coordinator = new UpdateCoordinator({ metadata: {}, preparer: {}, activator: {}, state })
+
+  await coordinator.transition('downloading', {
+    operation: 'update', processedBytes: 20, totalBytes: 100,
+    processedItems: 1, totalItems: 4, detail: 'downloading',
+  })
+  await coordinator.transition('downloading', { progress: 20, processedBytes: 40 })
+  assert.equal(state.value.totalBytes, 100)
+  assert.equal(state.value.processedItems, 1)
+  assert.equal(state.value.detail, 'downloading')
+
+  await coordinator.transition('building-candidate', { progress: 75 })
+  assert.equal(state.value.processedBytes, null)
+  assert.equal(state.value.totalBytes, null)
+  assert.equal(state.value.processedItems, null)
+  assert.equal(state.value.totalItems, null)
+  assert.equal(state.value.detail, null)
+
+  await coordinator.transition('building-candidate', {
+    processedBytes: 75, totalBytes: 100, processedItems: 3, totalItems: 4,
+  })
+  await coordinator.transition('failed', { error: 'build failed' })
+  assert.equal(state.value.processedBytes, 75)
+  assert.equal(state.value.processedItems, 3)
+
+  await coordinator.transition('checking', { operation: 'check', taskId: null, progress: 0 })
+  assert.equal(state.value.processedBytes, null)
+  assert.equal(state.value.totalBytes, null)
+  assert.equal(state.value.processedItems, null)
+  assert.equal(state.value.totalItems, null)
+})
+
 test('starts an update only after an in-flight metadata check has settled', async () => {
   let finishCheck
   const events = []
