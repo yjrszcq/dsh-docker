@@ -26,12 +26,14 @@ import { prepareUserSkillRoots } from '../../control-plane/services/management/u
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
 import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
 import { createSnapshotServer, listenSnapshots } from './lib/snapshot-server.mjs'
+import { prepareUserWritableRoots } from './lib/user-roots.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 const paths = new PlatformPaths(dataRoot, runRoot)
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
+const defaultWorkspace = process.env.DSH_DEFAULT_WORKSPACE ?? '/workspace'
 const agentsHome = process.env.DSH_AGENTS_HOME ?? '/home/node/.agents'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
@@ -61,6 +63,12 @@ await logs.diagnostic('stage0', 'stage0.starting', {
   targetSequence: inventory.targetSequence,
 })
 await startup('runtime-layout', () => resetRuntimeLayout(paths))
+await startup('user-writable-roots', () => prepareUserWritableRoots({
+  dshHome,
+  defaultWorkspace,
+  uid: process.getuid?.() === 0 ? 1000 : undefined,
+  gid: process.getgid?.() === 0 ? 1000 : undefined,
+}))
 await startup('user-skill-roots', () => prepareUserSkillRoots({
   dshHome,
   agentsHome,
@@ -134,7 +142,7 @@ const gatewayPassword = createPasswordAccess(process.env.DSH_PROXY_PASSWORD ?? '
 const maintenance = await createMaintenanceServer({
   paths,
   dshHome,
-  defaultWorkspace: process.env.DSH_DEFAULT_WORKSPACE ?? '/workspace',
+  defaultWorkspace,
   authorize: async request => {
     if (gatewayPassword.enabled) return gatewayPassword.isAuthenticated(request)
     try {
