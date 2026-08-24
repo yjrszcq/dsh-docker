@@ -727,7 +727,7 @@ a.secondaryButton { text-decoration: none; }
   box-sizing: border-box;
   height: 280px;
   min-height: 140px;
-  max-height: min(720px, 70dvh);
+  max-height: min(560px, 70dvh);
 }
 
 .logList {
@@ -904,7 +904,10 @@ a.secondaryButton { text-decoration: none; }
   .logFilters input { grid-column: 1 / -1; }
   .logMeta { flex-wrap: wrap; }
   .logMeta time { width: auto; margin-left: auto; }
-  .logResizeFrame { height: min(260px, 36dvh); }
+  .logResizeFrame {
+    height: min(260px, 36dvh);
+    max-height: min(520px, 72dvh);
+  }
   .updateReminder { right: 16px; bottom: 16px; }
 }
 
