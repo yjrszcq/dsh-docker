@@ -265,6 +265,7 @@ const progressLogStageTouched = new Set()
 let progressLogAutoScroll = true
 let progressSuccessTimer
 let progressSuccessTimerKey
+let progressSuccessDismissedKey
 let dismissedProgressTaskId
 let logLastActivity = 0
 let logWatchdogTimer
@@ -704,6 +705,12 @@ function progressLogTime(value) {
   return Number.isNaN(date.valueOf()) ? '-' : localTime(value)
 }
 
+function transactionStageState(index, currentIndex, status) {
+  if (index < currentIndex || (index === currentIndex && status === 'success')) return 'completed'
+  if (index === currentIndex) return status === 'failed' ? 'failed' : 'active'
+  return 'pending'
+}
+
 function renderProgressLogs() {
   const panel = elements['progress-stage-log']
   if (!panel) return
@@ -722,8 +729,7 @@ function renderProgressLogs() {
   const definitions = progressStageDefinitions(progressLogUpdate)
   for (const definition of definitions) {
     const group = groups.get(definition.key) ?? { ...definition, entries: [] }
-    const state = group.index < activeStage.index ? 'completed'
-      : group.index === activeStage.index ? (failed ? 'failed' : 'active') : 'pending'
+    const state = transactionStageState(group.index, activeStage.index, progressLogUpdate?.status)
     group.labelKey = definition.labelKey
     const latest = group.entries.at(-1)
     const metricSource = state === 'active' || state === 'failed' ? { ...latest, ...progressLogUpdate } : latest
@@ -847,9 +853,11 @@ function renderProgressLogs() {
     })
     actions.append(autoScroll, copy)
     stageDetails.append(stageSummary, checklist, entries, actions)
+    stageSummary.addEventListener('click', () => {
+      progressLogStageTouched.add(group.key)
+    })
     stageDetails.addEventListener('toggle', () => {
       progressLogStageExpansion.set(group.key, stageDetails.open)
-      progressLogStageTouched.add(group.key)
       toggle.textContent = t(stageDetails.open ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
     })
     elements['progress-log-list'].append(stageDetails)
@@ -885,10 +893,16 @@ function connectProgressLogs(update) {
     return
   }
   const key = String(taskId)
+  const previousStatus = progressLogUpdate?.status
   const previousActiveStage = progressLogUpdate === undefined ? undefined : progressLogStage(progressLogPhase(progressLogUpdate)).key
   progressLogUpdate = update
   const activeStage = progressLogStage(phase)
-  if (!progressLogStageTouched.has(activeStage.key)) progressLogStageExpansion.set(activeStage.key, true)
+  if (update.status === 'success') {
+    if (previousStatus !== 'success') progressLogStageTouched.delete(activeStage.key)
+    progressLogStageExpansion.set(activeStage.key, false)
+  } else if (!progressLogStageTouched.has(activeStage.key)) {
+    progressLogStageExpansion.set(activeStage.key, true)
+  }
   if (previousActiveStage !== undefined && previousActiveStage !== activeStage.key && !progressLogStageTouched.has(previousActiveStage)) {
     progressLogStageExpansion.set(previousActiveStage, false)
   }
@@ -901,7 +915,7 @@ function connectProgressLogs(update) {
   progressLogIdentities.clear()
   progressLogStageExpansion.clear()
   progressLogStageTouched.clear()
-  progressLogStageExpansion.set(activeStage.key, true)
+  progressLogStageExpansion.set(activeStage.key, update.status !== 'success')
   progressLogKey = key
   const params = new URLSearchParams({ taskId: String(taskId), operation: String(update.operation ?? 'update'), limit: '1000' })
   progressLogSource = new EventSource(`${API}/logs/stream?${params.toString()}`)
@@ -1587,25 +1601,27 @@ function render(next) {
   const pluginOperationVisible = operationResultVisible(pluginOperation, 'running')
   const busy = runtimeBusy(next)
   const updateActive = !UPDATE_TERMINAL_STATES.has(update.status ?? 'idle')
-  const successDeadline = update.status === 'success' && update.taskId
-    ? Date.parse(update.updatedAt ?? '') + 3_000
-    : 0
-  const successVisible = Number.isFinite(successDeadline) && successDeadline > Date.now()
+  const successTimerKey = update.status === 'success' && update.taskId
+    ? `${String(update.taskId)}:${String(update.updatedAt)}`
+    : undefined
   const failedDismissed = update.status === 'failed' && String(update.taskId ?? '') === dismissedProgressTaskId
-  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId) && !failedDismissed) || successVisible
-  const successTimerKey = successVisible ? `${String(update.taskId)}:${String(update.updatedAt)}` : undefined
   if (successTimerKey !== progressSuccessTimerKey) {
     if (progressSuccessTimer !== undefined) window.clearTimeout(progressSuccessTimer)
     progressSuccessTimer = undefined
     progressSuccessTimerKey = successTimerKey
-    if (successVisible) {
+    if (successTimerKey !== undefined && successTimerKey !== progressSuccessDismissedKey) {
       progressSuccessTimer = window.setTimeout(() => {
+        progressSuccessDismissedKey = successTimerKey
         progressSuccessTimer = undefined
         progressSuccessTimerKey = undefined
         if (status !== undefined) render(status)
-      }, Math.max(0, successDeadline - Date.now()))
+      }, 3_000)
     }
   }
+  const successVisible = successTimerKey !== undefined
+    && successTimerKey !== progressSuccessDismissedKey
+    && progressSuccessTimer !== undefined
+  const progressVisible = updateActive || (update.status === 'failed' && Boolean(update.taskId) && !failedDismissed) || successVisible
   const checkingUpdates = checking || update.status === 'checking'
   if (restart.state === 'running' && hasTaskId(restart) && !plugins.some(plugin => plugin.pendingRestart)) {
     window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
@@ -1641,6 +1657,7 @@ function render(next) {
   elements['progress-value'].value = `${String(progress)}%`
   elements['progress-value'].textContent = `${String(progress)}%`
   elements.progress.setAttribute('aria-valuenow', String(progress))
+  elements.progress.dataset.complete = String(progress === 100)
   elements['progress-bar'].style.width = `${String(progress)}%`
   elements['progress-dismiss'].hidden = update.status !== 'failed' || !progressVisible
   if (progressVisible) {

@@ -1190,6 +1190,12 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
       : error ? h('p', { className: css.error, role: 'alert' }, localizedError(error, t)) : null)
 }
 
+function transactionStageState(index, currentIndex, status) {
+  if (index < currentIndex || (index === currentIndex && status === 'success')) return 'completed'
+  if (index === currentIndex) return status === 'failed' ? 'failed' : 'active'
+  return 'pending'
+}
+
 function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   const [entries, setEntries] = useState([])
   const [expanded, setExpanded] = useState({})
@@ -1208,7 +1214,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
       return undefined
     }
     setEntries([])
-    setExpanded({ [currentStage.key]: true })
+    setExpanded({ [currentStage.key]: update.status !== 'success' })
     touched.current.clear()
     identities.current.clear()
     previousStage.current = currentStage.key
@@ -1230,11 +1236,16 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     setExpanded(value => {
       const next = { ...value }
       if (prior !== undefined && prior !== currentStage.key && !touched.current.has(prior)) next[prior] = false
-      if (!touched.current.has(currentStage.key)) next[currentStage.key] = true
+      if (update.status === 'success') {
+        touched.current.delete(currentStage.key)
+        next[currentStage.key] = false
+      } else if (!touched.current.has(currentStage.key)) {
+        next[currentStage.key] = true
+      }
       return next
     })
     previousStage.current = currentStage.key
-  }, [currentStage.key])
+  }, [currentStage.key, update.status])
   useEffect(() => {
     if (!autoScroll || !expanded[currentStage.key]) return
     activeList.current?.scrollTo({ top: activeList.current.scrollHeight })
@@ -1270,8 +1281,7 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
   }
   return h('div', { className: css.progressStageLog },
     h('div', { className: css.progressLogList, role: 'log' }, orderedGroups.map(group => {
-      const state = group.index < model.stage ? 'completed'
-        : group.index === model.stage ? (update.status === 'failed' ? 'failed' : 'active') : 'pending'
+      const state = transactionStageState(group.index, model.stage, update.status)
       const isExpanded = expanded[group.key] ?? (state === 'active' || state === 'failed')
       const latest = group.entries.at(-1)
       const metricSource = state === 'active' || state === 'failed' ? { ...latest, ...update } : latest
@@ -1597,13 +1607,8 @@ function PlatformManagement({ t }) {
       setShowSuccessfulProgress(false)
       return undefined
     }
-    const remaining = Date.parse(update.updatedAt ?? '') + 3_000 - Date.now()
-    if (!Number.isFinite(remaining) || remaining <= 0) {
-      setShowSuccessfulProgress(false)
-      return undefined
-    }
     setShowSuccessfulProgress(true)
-    const timer = window.setTimeout(() => setShowSuccessfulProgress(false), remaining)
+    const timer = window.setTimeout(() => setShowSuccessfulProgress(false), 3_000)
     return () => window.clearTimeout(timer)
   }, [update.status, update.taskId, update.updatedAt])
   const failedDismissed = update.status === 'failed' && String(update.taskId ?? '') === dismissedProgressTaskId
@@ -1702,7 +1707,7 @@ function PlatformManagement({ t }) {
             h('span', { className: css.progressHeadingActions },
               h('output', null, `${String(progress)}%`),
               update.status === 'failed' ? h('button', { type: 'button', className: css.smallButton, onClick: () => setDismissedProgressTaskId(String(update.taskId ?? '')) }, t('dismissProgress')) : null)),
-          h('div', { className: css.progress, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
+          h('div', { className: css.progress, 'data-complete': progress === 100, role: 'progressbar', 'aria-label': t('progress'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress },
             h('span', { style: { width: `${String(progress)}%` } })),
           h(TransactionStageLogs, {
             update,
