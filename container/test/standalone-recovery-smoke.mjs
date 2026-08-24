@@ -99,7 +99,7 @@ const identity = await first.waitOutput('sudo=ok', 3)
 assert.match(identity, /terminal-before-restart/)
 assert.match(identity, /uid=0/)
 assert.match(identity, /gids=.+/)
-assert.match(identity, /cwd=\/workspace/)
+assert.match(identity, /cwd=\/root/)
 assert.match(identity, /home=\/root/)
 assert.match(identity, /dsh=\/data\/dsh/)
 
