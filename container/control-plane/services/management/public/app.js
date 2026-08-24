@@ -927,8 +927,10 @@ function connectProgressLogs(update) {
   progressLogUpdate = update
   const activeStage = progressLogStage(phase)
   if (update.status === 'success') {
-    if (previousStatus !== 'success') progressLogStageTouched.delete(activeStage.key)
-    progressLogStageExpansion.set(activeStage.key, false)
+    if (previousStatus !== 'success') {
+      progressLogStageTouched.delete(activeStage.key)
+      progressLogStageExpansion.set(activeStage.key, false)
+    }
   } else if (!progressLogStageTouched.has(activeStage.key)) {
     progressLogStageExpansion.set(activeStage.key, true)
   }

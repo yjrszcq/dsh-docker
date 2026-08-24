@@ -1434,6 +1434,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /toggle\.addEventListener\('click',[\s\S]*const nextOpen = !stageDetails\.open[\s\S]*stageDetails\.open = nextOpen/)
   assert.match(script, /stageDetails\.addEventListener\('toggle',[\s\S]*toggle\.textContent = t\(stageDetails\.open \? 'collapseStage' : 'expandStage'/)
   assert.match(script, /progressLogStageExpansion\.set\(group\.key, nextOpen\)[\s\S]*toggle\.textContent = t\(nextOpen \? 'collapseStage' : 'expandStage'/)
+  assert.match(script, /if \(update\.status === 'success'\) \{\s*if \(previousStatus !== 'success'\) \{[\s\S]*progressLogStageExpansion\.set\(activeStage\.key, false\)/)
+  assert.doesNotMatch(script, /if \(update\.status === 'success'\) \{\s*if \(previousStatus !== 'success'\) progressLogStageTouched\.delete\(activeStage\.key\)\s*progressLogStageExpansion\.set\(activeStage\.key, false\)/)
   assert.doesNotMatch(script, /stageDetails\.addEventListener\('toggle',[\s\S]{0,160}progressLogStageTouched\.add/)
   assert.match(script, /function progressLogPhase\(update\) \{[\s\S]*update\?\.phase[\s\S]*update\?\.operation[\s\S]*update\?\.status/)
   assert.match(script, /progressLogAutoScroll = event\.target\.checked/)
