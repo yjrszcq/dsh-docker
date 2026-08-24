@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script src="./theme-init.js"></script>
   <title>DSH Management Console</title>
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -15,6 +16,11 @@
         <div><strong data-i18n="title">DSH Management Console</strong><span data-i18n="consoleLabel">Standalone console</span></div>
       </div>
       <div class="topbar-actions">
+        <button id="theme-switch" class="theme-switch" type="button" aria-label="Theme" title="Theme">
+          <span class="theme-icon" data-theme-icon="system" aria-hidden="true"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg></span>
+          <span class="theme-icon" data-theme-icon="light" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.42"/></svg></span>
+          <span class="theme-icon" data-theme-icon="dark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></span>
+        </button>
         <select id="language-switch" class="language-switch" aria-label="Language" title="Language" data-i18n-aria-label="switchLanguage" data-i18n-title="switchLanguage">
           <option value="zh">中文</option>
           <option value="en">English</option>

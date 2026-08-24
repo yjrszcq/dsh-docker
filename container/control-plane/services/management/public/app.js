@@ -8,10 +8,11 @@ const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
 const TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'
 const LANGUAGE_KEY = 'dsh-platform:console-language'
+const THEME_KEY = 'dsh-platform:console-theme'
 const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
-    switchLanguage: '切换为英文',
+    switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
@@ -101,7 +102,7 @@ const COPY = Object.freeze({
   }),
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
-    switchLanguage: 'Switch to Chinese',
+    switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
     managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
@@ -194,18 +195,14 @@ const COPY = Object.freeze({
 function preferredLocale() {
   const override = storageValue(LANGUAGE_KEY)
   if (override === 'zh' || override === 'en') return override
-  for (const part of document.cookie.split(';')) {
-    const [name, value] = part.trim().split('=', 2)
-    if (name === 'dsh_locale' && (value === 'zh' || value === 'en')) return value
-  }
-  for (const value of navigator.languages ?? [navigator.language]) {
-    const primary = String(value).split('-', 1)[0].toLowerCase()
-    if (primary === 'zh' || primary === 'en') return primary
-  }
-  return 'en'
+  return String(navigator.language ?? '').toLowerCase().split('-', 1)[0] === 'zh' ? 'zh' : 'en'
 }
 
 const locale = preferredLocale()
+let themePreference = (() => {
+  const value = storageValue(THEME_KEY)
+  return value === 'light' || value === 'dark' ? value : 'system'
+})()
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]))
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
@@ -351,6 +348,24 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n-title]')) node.setAttribute('title', t(node.dataset.i18nTitle))
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
   elements['language-switch'].value = locale
+  renderThemeControl()
+}
+
+const THEME_ORDER = Object.freeze(['system', 'light', 'dark'])
+
+function renderThemeControl() {
+  const currentIndex = THEME_ORDER.indexOf(themePreference)
+  const next = THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length]
+  const label = t('themeButtonLabel', { current: t(`theme${themePreference[0].toUpperCase()}${themePreference.slice(1)}`), next: t(`theme${next[0].toUpperCase()}${next.slice(1)}`) })
+  elements['theme-switch'].dataset.themePreference = themePreference
+  elements['theme-switch'].setAttribute('aria-label', label)
+  elements['theme-switch'].title = label
+}
+
+function applyTheme(preference) {
+  if (preference === 'light' || preference === 'dark') document.documentElement.dataset.theme = preference
+  else delete document.documentElement.dataset.theme
+  if (terminalEmulator !== undefined) terminalEmulator.options.theme = terminalTheme()
 }
 
 function display(value) {
@@ -2200,7 +2215,9 @@ function appendLog(entry) {
 }
 
 function terminalTheme() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+  const dark = document.documentElement.dataset.theme === 'dark'
+    || (document.documentElement.dataset.theme === undefined && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  return dark
     ? { background: '#18181a', foreground: '#f0f0f1', cursor: '#f0f0f1', selectionBackground: '#4b5f80', black: '#18181a', brightBlack: '#85858b' }
     : { background: '#ffffff', foreground: '#202124', cursor: '#202124', selectionBackground: '#c9d9f4', black: '#202124', brightBlack: '#6f7177' }
 }
@@ -2324,7 +2341,9 @@ async function initializeTerminal() {
   terminalResizeObserver = new ResizeObserver(fitTerminal)
   terminalResizeObserver.observe(elements['terminal-frame'])
   const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
-  colorScheme.addEventListener('change', () => { terminalEmulator.options.theme = terminalTheme() })
+  colorScheme.addEventListener('change', () => {
+    if (document.documentElement.dataset.theme === undefined) terminalEmulator.options.theme = terminalTheme()
+  })
   setTerminalPlaceholder('terminalPlaceholder')
   fitTerminal()
 }
@@ -3496,6 +3515,13 @@ elements['language-switch'].addEventListener('change', event => { void (async ()
   writeStorage(LANGUAGE_KEY, event.target.value)
   window.location.reload()
 })() })
+elements['theme-switch'].addEventListener('click', () => {
+  const currentIndex = THEME_ORDER.indexOf(themePreference)
+  themePreference = THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length]
+  writeStorage(THEME_KEY, themePreference === 'system' ? null : themePreference)
+  applyTheme(themePreference)
+  renderThemeControl()
+})
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['start-dsh'].addEventListener('click', () => { void act('start-dsh', { method: 'POST' }) })
 elements['stop-dsh'].addEventListener('click', () => elements['stop-dialog'].showModal())
@@ -3770,6 +3796,7 @@ window.addEventListener('beforeunload', () => {
   logSource?.close()
   window.clearInterval(logWatchdogTimer)
 })
+applyTheme(themePreference)
 applyTranslations()
 void selectTab('maintenance')
 renderLogs()

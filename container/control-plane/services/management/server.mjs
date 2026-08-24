@@ -14,6 +14,7 @@ const FILE_TASK_ROUTE = /^files\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[8
 const CONSOLE_ASSETS = new Map([
   ['', ['public', 'index.html', 'text/html; charset=utf-8']],
   ['app.js', ['public', 'app.js', 'text/javascript; charset=utf-8']],
+  ['theme-init.js', ['public', 'theme-init.js', 'text/javascript; charset=utf-8']],
   ['style.css', ['public', 'style.css', 'text/css; charset=utf-8']],
   ['vendor/xterm.mjs', ['dependencies', '@xterm/xterm/lib/xterm.mjs', 'text/javascript; charset=utf-8']],
   ['vendor/xterm.css', ['dependencies', '@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8']],
