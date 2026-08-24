@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { chown, lstat, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
+import { chmod, lchown, lstat, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 
@@ -7,13 +7,32 @@ const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DISABLED_DIRECTORY = '.disabled'
 const MAX_SKILL_BYTES = 2 * 1024 * 1024
 
+async function adoptSkillTree(path, uid, gid) {
+  const metadata = await lstat(path)
+  await lchown(path, uid ?? -1, gid ?? -1)
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) return
+  for (const entry of await readdir(path)) await adoptSkillTree(join(path, entry), uid, gid)
+}
+
+async function adoptSkillRoot(root, uid, gid, { skipSystem = false } = {}) {
+  await lchown(root, uid ?? -1, gid ?? -1)
+  for (const entry of await readdir(root)) {
+    if (skipSystem && entry === '.system') continue
+    const path = join(root, entry)
+    const metadata = await lstat(path)
+    if ((uid === undefined || metadata.uid === uid) && (gid === undefined || metadata.gid === gid)) continue
+    await adoptSkillTree(path, uid, gid)
+  }
+}
+
 export async function prepareUserSkillRoots({ dshHome = '/data/dsh', agentsHome = '/home/node/.agents', uid, gid } = {}) {
   const roots = [join(resolve(dshHome), 'skills'), join(resolve(agentsHome), 'skills')]
-  for (const root of roots) {
+  for (const [index, root] of roots.entries()) {
     await mkdir(root, { recursive: true })
     const metadata = await lstat(root)
     if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error(`User Skill root ${root} must be a directory`)
-    if (uid !== undefined || gid !== undefined) await chown(root, uid ?? -1, gid ?? -1)
+    if (uid !== undefined || gid !== undefined) await adoptSkillRoot(root, uid, gid, { skipSystem: index === 0 })
+    await chmod(root, 0o2775)
   }
   return Object.freeze(roots)
 }

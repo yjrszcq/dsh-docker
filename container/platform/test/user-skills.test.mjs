@@ -30,6 +30,8 @@ test('prepares real user Skill roots before privileged tools create entries', as
   assert.deepEqual(roots, [join(dshHome, 'skills'), join(agentsHome, 'skills')])
   assert.equal((await lstat(roots[0])).isDirectory(), true)
   assert.equal((await lstat(roots[1])).isDirectory(), true)
+  assert.equal((await lstat(roots[0])).mode & 0o2777, 0o2775)
+  assert.equal((await lstat(roots[1])).mode & 0o2777, 0o2775)
 
   await rm(roots[0], { recursive: true })
   await symlink(root, roots[0])

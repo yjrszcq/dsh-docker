@@ -46,6 +46,7 @@ def main():
     pid, master = pty.fork()
     if pid == 0:
         os.chdir(cwd)
+        os.umask(0o002)
         os.execvpe("/bin/bash", ["/bin/bash", "-i"], os.environ)
     def stop_child(received_signal, _frame):
         terminate(pid, signal.SIGTERM if received_signal in (signal.SIGINT, signal.SIGTERM) else received_signal)

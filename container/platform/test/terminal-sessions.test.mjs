@@ -104,7 +104,7 @@ test('terminal HTTP and WebSocket lifecycle provides a real bounded PTY', async 
     first.socket.send(JSON.stringify({ type: 'resize', cols: 101, rows: 37 }))
     first.socket.send(JSON.stringify({
       type: 'input',
-      data: "printf '\\033[31mred\\033[0m\\n'; printf '中文✓\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'home=%s\\n' \"$HOME\"; printf 'dsh=%s\\n' \"$DSH_HOME\"; printf 'uid=%s\\n' \"$(id -u)\"; printf 'gids=%s\\n' \"$(id -G)\"; printf 'path=%s\\n' \"$PATH\"; stty size; printf 'command-complete\\n'\n",
+      data: "printf '\\033[31mred\\033[0m\\n'; printf '中文✓\\n'; printf 'cwd=%s\\n' \"$PWD\"; printf 'home=%s\\n' \"$HOME\"; printf 'dsh=%s\\n' \"$DSH_HOME\"; printf 'uid=%s\\n' \"$(id -u)\"; printf 'gids=%s\\n' \"$(id -G)\"; printf 'path=%s\\n' \"$PATH\"; printf 'umask=%s\\n' \"$(umask)\"; stty size; printf 'command-complete\\n'\n",
     }))
     let initial
     try {
@@ -121,6 +121,7 @@ test('terminal HTTP and WebSocket lifecycle provides a real bounded PTY', async 
     assert.match(initial.output, new RegExp(`uid=${String(process.getuid())}`))
     for (const group of process.getgroups()) assert.match(initial.output, new RegExp(`gids=[^\\r\\n]*\\b${String(group)}\\b`))
     assert.match(initial.output, /path=\S+/)
+    assert.match(initial.output, /umask=0002/)
     assert.match(initial.output, /37 101/)
 
     first.socket.send(JSON.stringify({ type: 'input', data: "read -p 'answer: ' value; printf 'interactive=%s\\n' \"$value\"\n" }))
@@ -178,8 +179,13 @@ test('terminal sessions enforce dimensions, message size, expiry, and exact IDs'
     connection.socket.send(JSON.stringify({ type: 'resize', cols: 1, rows: 20 }))
     const closeCode = await new Promise(resolve => connection.socket.once('close', resolve))
     assert.equal(closeCode, 1008)
-    await new Promise(resolve => setTimeout(resolve, 120))
-    assert.equal((await request(value.port, 'GET', path)).status, 404)
+    let expiredStatus
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      expiredStatus = (await request(value.port, 'GET', path)).status
+      if (expiredStatus === 404) break
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert.equal(expiredStatus, 404)
 
     const oversized = (await request(value.port, 'POST', `${API}terminal/sessions`, {})).body
     const oversizedConnection = collector(`ws://127.0.0.1:${value.port}${API}terminal/sessions/${oversized.sessionId}/stream`)
