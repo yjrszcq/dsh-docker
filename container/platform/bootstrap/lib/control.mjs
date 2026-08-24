@@ -19,7 +19,7 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-export function createBootstrapControl(runner, { deployments, trust, systemPlugins, systemSkills } = {}) {
+export function createBootstrapControl(runner, { deployments, trust, systemPlugins, systemSkills, snapshots } = {}) {
   return createServer(async (request, response) => {
     let pathname = 'invalid-url'
     try {
@@ -79,7 +79,7 @@ export function createBootstrapControl(runner, { deployments, trust, systemPlugi
       } else if (request.method === 'POST' && pathname === '/v1/deployments/candidate/cancel' && deployments !== undefined) {
         send(response, 200, await deployments.cancelCandidate())
       } else if (request.method === 'POST' && pathname === '/v1/platform/gc' && deployments !== undefined) {
-        send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments }).collect())
+        send(response, 200, await new PlatformGarbageCollector({ paths: deployments.paths, deployments, snapshots }).collect())
       } else if (request.method === 'POST' && pathname === '/v1/deployments/runtime/reset' && deployments !== undefined) {
         send(response, 200, await deployments.resetCurrentRuntime({
           pauseDsh: () => runner.pause('dsh-runtime'),

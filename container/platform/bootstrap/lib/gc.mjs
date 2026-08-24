@@ -59,9 +59,22 @@ function heldRecords(channel, records, roots) {
 }
 
 export class PlatformGarbageCollector {
-  constructor({ paths, deployments }) {
+  constructor({ paths, deployments, snapshots }) {
     this.paths = paths
     this.deployments = deployments
+    this.snapshots = snapshots
+  }
+
+  async removeSnapshots(retained) {
+    if (this.snapshots?.remove === undefined) throw new Error('privileged snapshot cleanup is unavailable')
+    const removed = []
+    for (const name of await files(join(this.paths.snapshotsRoot, 'versions'))) {
+      if (retained.has(name)) continue
+      const details = await lstat(join(this.paths.snapshotsRoot, 'versions', name))
+      if (!details.isDirectory() || details.isSymbolicLink()) continue
+      if (await this.snapshots.remove(name)) removed.push(name)
+    }
+    return removed
   }
 
   async roots(records) {
@@ -105,7 +118,7 @@ export class PlatformGarbageCollector {
       pristine: await removeUnmarked(this.paths.pristineRoot, retained.pristine, reserved),
       runtimes: await removeUnmarked(this.paths.runtimesRoot, retained.runtimes, reserved),
       systemPlugins: await removeUnmarked(this.paths.systemPluginsRoot, retained.systemPlugins, reserved),
-      snapshots: await removeUnmarked(join(this.paths.snapshotsRoot, 'versions'), retained.snapshots),
+      snapshots: await this.removeSnapshots(retained.snapshots),
       records: [],
     }
     for (const [id] of records) {

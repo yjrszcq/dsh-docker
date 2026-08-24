@@ -22,6 +22,7 @@ import {
 import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
 import { SystemSkillManager } from '../../control-plane/modules/skill-manager/index.mjs'
+import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -43,6 +44,7 @@ await logs.diagnostic('bootstrap', 'bootstrap.starting', {
 })
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
 const trust = new LocalApiClient(paths.trustSocket)
+const snapshots = new SnapshotClient(new LocalApiClient(paths.snapshotSocket), 'dsh')
 try {
   await deployments.recoverActivation(trust)
 } catch (error) {
@@ -240,7 +242,7 @@ const systemPlugins = {
 }
 systemPlugins.configure = (pluginId, action) => systemPlugins.mutate(pluginId, action)
 systemPlugins.recover = (pluginId, action) => systemPlugins.mutate(pluginId, action, true)
-const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins, systemSkills })
+const server = createBootstrapControl(runtime, { deployments, trust, systemPlugins, systemSkills, snapshots })
 const dshLifecycleServer = createDshLifecycleServer(dshLifecycleBroker)
 await listenBootstrapControl(server, paths.bootstrapSocket)
 await listenDshLifecycle(dshLifecycleServer, paths.dshLifecycleSocket)

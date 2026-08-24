@@ -851,7 +851,18 @@ test('collects only Store assets and records outside slots, transactions, Holds,
   }))
   await writeFile(join(context.paths.downloadsRoot, 'disposable'), 'cache')
 
-  const result = await new PlatformGarbageCollector({ paths: context.paths, deployments: context.manager }).collect()
+  const removedSnapshots = []
+  const result = await new PlatformGarbageCollector({
+    paths: context.paths,
+    deployments: context.manager,
+    snapshots: {
+      remove: async id => {
+        removedSnapshots.push(id)
+        await rm(join(context.paths.snapshotsRoot, 'versions', id), { recursive: true, force: true })
+        return true
+      },
+    },
+  }).collect()
   assert.equal(result.deployments.records.includes(orphan.id), true)
   assert.equal(result.deployments.records.includes(held.id), false)
   await assert.rejects(lstat(context.manager.recordPath(orphan.id)), { code: 'ENOENT' })
@@ -859,6 +870,7 @@ test('collects only Store assets and records outside slots, transactions, Holds,
   await assert.rejects(lstat(join(context.paths.runtimesRoot, orphan.runtime.id)), { code: 'ENOENT' })
   assert.equal((await lstat(join(context.paths.runtimesRoot, held.runtime.id))).isDirectory(), true)
   assert.equal((await lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-kept'))).isDirectory(), true)
+  assert.deepEqual(removedSnapshots, ['snapshot-orphan'])
   await assert.rejects(lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-orphan')), { code: 'ENOENT' })
   await assert.rejects(lstat(join(context.paths.downloadsRoot, 'disposable')), { code: 'ENOENT' })
 })
