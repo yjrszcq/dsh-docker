@@ -5,6 +5,7 @@ ARG TARGET_SEQUENCE=0
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION
 COPY container/platform/image-input /opt/dsh-platform-image-input
+COPY release/supported-target.json /opt/dsh-supported-target.json
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -14,7 +15,11 @@ RUN apt-get update \
     && if [ -f /opt/dsh-platform-image-input/dsh.tgz ]; then \
          npm install --global /opt/dsh-platform-image-input/dsh.tgz; \
        else \
-         npm install --global "@deepseek-ai/dsh@${DSH_VERSION}"; \
+         requested_version="$DSH_VERSION"; \
+         if [ "$requested_version" = latest ]; then \
+           requested_version="$(node -p "JSON.parse(require('fs').readFileSync('/opt/dsh-supported-target.json', 'utf8')).latestSupportedDsh")"; \
+         fi; \
+         npm install --global "@deepseek-ai/dsh@${requested_version}"; \
        fi \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
