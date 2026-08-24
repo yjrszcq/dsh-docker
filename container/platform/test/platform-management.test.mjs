@@ -60,6 +60,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /function ListPagination[\s\S]*pagination\.lastPage[\s\S]*className: css\.pageJump/)
   assert.match(source, /Math\.min\(pagination\.lastPage, Math\.max\(0, value - 1\)\)[\s\S]*setJumpValue\(String\(page \+ 1\)\)/)
   assert.match(source, /function ExpandableDescription[\s\S]*scrollWidth > node\.clientWidth[\s\S]*aria-expanded/)
+  assert.match(source, /function preserveScrollableAncestors\(element, update\)[\s\S]*current\.scrollTop = top[\s\S]*requestAnimationFrame/)
+  assert.match(source, /preserveScrollableAncestors\(event\.currentTarget, \(\) => setExpanded\(value => !value\)\)/)
   assert.match(source, /h\('div', \{ className: css\.resourceHeading \}[\s\S]*h\('strong', null, `@dsh-docker\/\$\{plugin\.id\}`\)\),\s*h\(ExpandableDescription/)
   assert.match(source, /h\('div', \{ className: css\.resourceHeading \}[\s\S]*h\('strong', null, skill\.id\)\),\s*h\(ExpandableDescription/)
   assert.match(source, /function matchesResourceSearch/)

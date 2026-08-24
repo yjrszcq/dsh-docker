@@ -1083,7 +1083,15 @@ function filteredResources(key, values) {
     .some(part => String(part ?? '').toLocaleLowerCase(locale).includes(query)))
 }
 
-function expandableResourceDescription(text, identity, expanded, rerender) {
+function toggleExpandedElement(element, identity, expanded) {
+  const isExpanded = !expanded.has(identity)
+  if (isExpanded) expanded.add(identity)
+  else expanded.delete(identity)
+  element.classList.toggle('expanded', isExpanded)
+  element.setAttribute('aria-expanded', String(isExpanded))
+}
+
+function expandableResourceDescription(text, identity, expanded) {
   const description = document.createElement('button')
   const isExpanded = expanded.has(identity)
   description.type = 'button'
@@ -1093,9 +1101,7 @@ function expandableResourceDescription(text, identity, expanded, rerender) {
   description.setAttribute('aria-expanded', String(isExpanded))
   description.addEventListener('click', () => {
     if (!description.classList.contains('expandable')) return
-    if (expanded.has(identity)) expanded.delete(identity)
-    else expanded.add(identity)
-    rerender()
+    toggleExpandedElement(description, identity, expanded)
   })
   if (!isExpanded) window.requestAnimationFrame(() => {
     if (description.isConnected && description.scrollWidth > description.clientWidth) description.classList.add('expandable')
@@ -1103,7 +1109,7 @@ function expandableResourceDescription(text, identity, expanded, rerender) {
   return description
 }
 
-function expandableUserMetadata(metadata, identity, expanded, rerender) {
+function expandableUserMetadata(metadata, identity, expanded) {
   const isExpanded = expanded.has(identity)
   metadata.className = `user-plugin-metadata${isExpanded ? ' expanded expandable' : ''}`
   metadata.setAttribute('aria-expanded', String(isExpanded))
@@ -1111,9 +1117,7 @@ function expandableUserMetadata(metadata, identity, expanded, rerender) {
     if (!metadata.classList.contains('expandable')) return
     if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
-    if (expanded.has(identity)) expanded.delete(identity)
-    else expanded.add(identity)
-    rerender()
+    toggleExpandedElement(metadata, identity, expanded)
   }
   metadata.addEventListener('click', toggle)
   metadata.addEventListener('keydown', toggle)
@@ -1238,7 +1242,7 @@ function renderBundledPlugins(values, busy) {
     )
     identity.append(
       heading,
-      expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions, () => renderBundledPlugins(values, busy)),
+      expandableResourceDescription(pluginDescription(plugin), plugin.id, expandedSystemPluginDescriptions),
     )
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
@@ -1288,7 +1292,7 @@ function renderSystemSkills(values, busy) {
     )
     identity.append(
       heading,
-      expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions, () => renderSystemSkills(values, busy)),
+      expandableResourceDescription(skill.description?.[locale] ?? skill.id, skill.id, expandedSystemSkillDescriptions),
     )
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
@@ -1372,9 +1376,7 @@ function renderUserSkills(busy) {
     description.setAttribute('aria-expanded', String(descriptionExpanded))
     description.addEventListener('click', () => {
       if (!description.classList.contains('expandable')) return
-      if (expandedUserSkillDescriptions.has(skill.entryId)) expandedUserSkillDescriptions.delete(skill.entryId)
-      else expandedUserSkillDescriptions.add(skill.entryId)
-      renderUserSkills(runtimeBusy())
+      toggleExpandedElement(description, skill.entryId, expandedUserSkillDescriptions)
     })
     heading.append(name)
     if (!descriptionExpanded) window.requestAnimationFrame(() => {
@@ -1390,7 +1392,7 @@ function renderUserSkills(busy) {
       field.append(term, detail)
       metadata.append(field)
     }
-    expandableUserMetadata(metadata, skill.entryId, expandedUserSkillMetadata, () => renderUserSkills(runtimeBusy()))
+    expandableUserMetadata(metadata, skill.entryId, expandedUserSkillMetadata)
     identity.append(heading, description, metadata)
     const controls = document.createElement('div')
     controls.className = 'plugin-actions'
@@ -1483,9 +1485,7 @@ function renderUserPlugins(busy) {
       description.setAttribute('aria-expanded', String(descriptionExpanded))
       description.addEventListener('click', () => {
         if (!description.classList.contains('expandable')) return
-        if (expandedUserPluginDescriptions.has(plugin.name)) expandedUserPluginDescriptions.delete(plugin.name)
-        else expandedUserPluginDescriptions.add(plugin.name)
-        renderUserPlugins(runtimeBusy())
+        toggleExpandedElement(description, plugin.name, expandedUserPluginDescriptions)
       })
       identity.append(description)
       if (!descriptionExpanded) window.requestAnimationFrame(() => {
@@ -1504,7 +1504,7 @@ function renderUserPlugins(busy) {
       field.append(term, description)
       metadata.append(field)
     }
-    expandableUserMetadata(metadata, plugin.name, expandedUserPluginMetadata, () => renderUserPlugins(runtimeBusy()))
+    expandableUserMetadata(metadata, plugin.name, expandedUserPluginMetadata)
     identity.append(metadata)
     if (plugin.metadataError) {
       const detail = document.createElement('p')

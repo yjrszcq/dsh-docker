@@ -394,8 +394,29 @@ function ExpandableDescription({ text, identity }) {
     className: `${css.resourceDescription}${expandable ? ` ${css.expandable}` : ''}${expanded ? ` ${css.expanded}` : ''}`,
     title: text,
     'aria-expanded': expanded,
-    onClick: () => { if (expandable) setExpanded(value => !value) },
+    onClick: event => {
+      if (!expandable) return
+      preserveScrollableAncestors(event.currentTarget, () => setExpanded(value => !value))
+    },
   }, text)
+}
+
+function preserveScrollableAncestors(element, update) {
+  const positions = []
+  for (let current = element.parentElement; current !== null; current = current.parentElement) {
+    if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+      positions.push([current, current.scrollLeft, current.scrollTop])
+    }
+  }
+  const restore = () => {
+    for (const [current, left, top] of positions) {
+      current.scrollLeft = left
+      current.scrollTop = top
+    }
+  }
+  update()
+  restore()
+  window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
 }
 
 function matchesResourceSearch(query, values) {
