@@ -20,6 +20,8 @@ test('upstream workflow discovers candidates without production credentials', as
   assert.match(workflow, /supported-target\.mjs" advance/)
   assert.match(workflow, /trusted-platform/)
   assert.match(workflow, /node "\$trusted_platform\/tools\/supported-target\.mjs"/)
+  assert.match(workflow, /jq -r 'if \(\.changed \| type\) == "boolean" then \.changed else error\("expected boolean changed"\) end'/)
+  assert.doesNotMatch(workflow, /jq -er '\.changed'/)
   assert.match(workflow, /candidate_remote_sha="\$\(git ls-remote --heads origin/)
   assert.match(workflow, /git switch --create "\$CANDIDATE_BRANCH" "\$base_sha"/)
   assert.match(workflow, /git push --force-with-lease="refs\/heads\/\$CANDIDATE_BRANCH:\$candidate_remote_sha"/)

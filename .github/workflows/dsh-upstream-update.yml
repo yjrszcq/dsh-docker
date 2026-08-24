@@ -72,7 +72,7 @@ jobs:
           git switch --create "$CANDIDATE_BRANCH" "$base_sha"
           result="$(node "$trusted_platform/tools/supported-target.mjs" advance \
             "$SUPPORTED_TARGET" "$ENVIRONMENT_DEFINITION" "$UPSTREAM_VERSION")"
-          changed="$(jq -er '.changed' <<<"$result")"
+          changed="$(jq -r 'if (.changed | type) == "boolean" then .changed else error("expected boolean changed") end' <<<"$result")"
           environment="$(jq -er '.target.environment' <<<"$result")"
           {
             printf 'changed=%s\n' "$changed"
