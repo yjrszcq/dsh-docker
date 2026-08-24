@@ -559,8 +559,10 @@ test('keeps the Control Plane running while Environment operations replace DSH',
 
   await runtime.start()
   await runtime.suspend('dsh-runtime')
+  assert.equal(runtime.status().dshLifecycle.state, 'stopped')
   await runtime.pause('dsh-runtime')
   await runtime.resume('dsh-runtime')
+  assert.equal(runtime.status().dshLifecycle.state, 'running')
   await runtime.restart('dsh-runtime')
   await runtime.reload()
   assert.equal((await runtime.health()).healthy, true)

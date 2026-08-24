@@ -4,6 +4,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable, Transform } from 'node:stream'
+import { setTimeout as delay } from 'node:timers/promises'
 import { durableReplace } from '../../lib/atomic.mjs'
 import {
   MANIFEST_MEDIA_TYPE,
@@ -125,7 +126,10 @@ function validateReceipt(value) {
 }
 
 export class VerifiedObjectStore {
-  constructor({ root, objectRoot, receiptRoot, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch, requestTimeoutMs = 30_000 }) {
+  constructor({
+    root, objectRoot, receiptRoot, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch,
+    requestTimeoutMs = 30_000, requestAttempts = 3, retryMs = 250,
+  }) {
     if (root === undefined && (objectRoot === undefined || receiptRoot === undefined)) {
       throw new TypeError('VerifiedObjectStore requires root or explicit objectRoot and receiptRoot')
     }
@@ -136,7 +140,23 @@ export class VerifiedObjectStore {
     this.now = now
     this.fetchImpl = fetchImpl
     this.requestTimeoutMs = requestTimeoutMs
+    this.requestAttempts = requestAttempts
+    this.retryMs = retryMs
     this.queue = Promise.resolve()
+  }
+
+  async retryOfficialRequest(operation) {
+    let lastError
+    for (let attempt = 1; attempt <= this.requestAttempts; attempt += 1) {
+      try {
+        return await operation(AbortSignal.timeout(this.requestTimeoutMs))
+      } catch (error) {
+        if (error instanceof TrustError || attempt === this.requestAttempts) throw error
+        lastError = error
+        await delay(this.retryMs)
+      }
+    }
+    throw lastError
   }
 
   exclusive(operation) {
@@ -305,18 +325,19 @@ export class VerifiedObjectStore {
       if (compareDshVersions(requestedVersion, target.desired.dsh.version) < 0) {
         throw new TrustError('official DSH version is older than the current supported target', 'TRUST_ROLLBACK')
       }
-      const signal = AbortSignal.timeout(this.requestTimeoutMs)
-      const candidate = await fetchOfficialDshCandidate({
+      const candidate = await this.retryOfficialRequest(signal => fetchOfficialDshCandidate({
         requestedVersion,
         policy: target.officialDshPolicy,
         fetchImpl: this.fetchImpl,
         now: this.now(),
         signal,
-      })
+      }))
       if (requestedVersion === target.desired.dsh.version && candidate.dist.integrity !== target.desired.dsh.integrity) {
         throw new TrustError('official DSH metadata does not match the supported target integrity', 'TRUST_ARTIFACT_MISMATCH')
       }
-      const body = await fetchOfficialDshTarball({ candidate, fetchImpl: this.fetchImpl, signal })
+      const body = await this.retryOfficialRequest(signal => fetchOfficialDshTarball({
+        candidate, fetchImpl: this.fetchImpl, signal,
+      }))
       await mkdir(this.objectRoot, { recursive: true })
       await mkdir(this.receiptRoot, { recursive: true })
       const temporary = join(this.objectRoot, `.${randomUUID()}.tmp`)

@@ -62,3 +62,11 @@ test('does not publish a partial snapshot when archive creation fails', async ()
   await assert.rejects(snapshots.create(state), /no space/)
   assert.deepEqual(await snapshots.list(), [])
 })
+
+test('removing an absent snapshot is idempotent while corrupt snapshots remain errors', async () => {
+  const { snapshots } = await fixture()
+  assert.equal(await snapshots.remove('already-removed'), false)
+  const snapshot = await snapshots.create(state)
+  await writeFile(join(snapshot.path, 'data.tar.gz'), 'corrupt')
+  await assert.rejects(snapshots.remove(state.id), { code: 'TRUST_ARTIFACT_MISMATCH' })
+})

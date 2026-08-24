@@ -982,6 +982,18 @@ test('removes the superseded snapshot only after the next Experimental commit', 
   assert.equal(removed.length, 1)
 })
 
+test('treats removal of an already absent superseded snapshot as complete', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-absent-snapshot-'))
+  const { coordinator } = experimentalSystem(root)
+  await coordinator.startExperimental().completion
+  coordinator.activator.currentDeployment = async () => ({
+    dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-b', dataSnapshot: null, receiptTokens: ['stable-receipt'],
+  })
+  coordinator.snapshots.remove = async () => false
+  await coordinator.startExperimental().completion
+  assert.equal((await coordinator.state.read()).status, 'success')
+})
+
 test('reads npm latest from the official packument without trusting it locally', async () => {
   const candidate = {
     name: '@deepseek-ai/dsh', version: '0.1.0-rc.8',

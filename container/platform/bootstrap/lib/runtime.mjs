@@ -209,7 +209,21 @@ export class BootstrapRuntime {
     this.recoveryMode = null
     return status
   }
-  suspend(componentId) { return this.environment.suspend(componentId) }
+  async suspend(componentId) {
+    if (componentId !== 'dsh-runtime') return this.environment.suspend(componentId)
+    this.publishDshLifecycle({ state: 'stopping', action: 'stop', attempt: 0, error: null })
+    try {
+      const status = await this.environment.suspend(componentId)
+      this.publishDshLifecycle({ state: 'stopped', action: null, attempt: 0, error: null })
+      return status
+    } catch (error) {
+      this.publishDshLifecycle({
+        state: 'failed', action: null,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  }
   async pause(componentId) {
     if (componentId !== 'dsh-runtime') return this.environment.pause(componentId)
     this.publishDshLifecycle({ state: 'stopping', action: 'stop', attempt: 0, error: null })

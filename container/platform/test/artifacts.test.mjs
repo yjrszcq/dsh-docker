@@ -152,6 +152,30 @@ test('imports official DSH from Stage-0-owned metadata and tarball requests', as
   assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })
 
+test('retries transient official DSH metadata and tarball connection failures', async () => {
+  const content = Buffer.from('official tarball after retry')
+  const registry = registryKeyPair()
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const { ledger, untrustedRoot, directory } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    officialDshPolicy(registry),
+  )
+  let request = 0
+  const store = new VerifiedObjectStore({
+    root: join(directory, 'trust'), untrustedRoot, ledger, requestAttempts: 3, retryMs: 1,
+    fetchImpl: async () => {
+      request += 1
+      if (request === 1 || request === 3) throw new TypeError('fetch failed')
+      return request === 2
+        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
+        : new Response(content)
+    },
+  })
+  const receipt = await store.ensureOfficialDsh(candidate.version)
+  assert.equal(request, 4)
+  assert.deepEqual(await readFile(receipt.path), content)
+})
+
 test('official DSH import rejects redirects and mismatched bytes', async () => {
   const content = Buffer.from('official tarball')
   const registry = registryKeyPair()

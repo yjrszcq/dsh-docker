@@ -186,7 +186,13 @@ export class PersistentStateSnapshots {
   }
 
   async remove(id) {
-    await this.inspect(id)
+    try {
+      await this.inspect(id)
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false
+      throw error
+    }
     await rm(this.path(id), { recursive: true, force: true })
+    return true
   }
 }
