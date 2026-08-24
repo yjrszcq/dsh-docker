@@ -218,7 +218,7 @@ class TerminalSession extends EventEmitter {
 export class TerminalSessionManager {
   constructor({
     helperPath = new URL('./pty-helper.py', import.meta.url).pathname,
-    cwd = '/workspace',
+    cwd = '/root',
     dshHome = '/data/dsh',
     env = process.env,
     python = '/usr/bin/python3',

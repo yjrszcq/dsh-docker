@@ -202,6 +202,11 @@ test('terminal sessions enforce dimensions, message size, expiry, and exact IDs'
   }
 })
 
+test('terminal sessions default to the Root maintenance home', () => {
+  const terminalSessions = new TerminalSessionManager()
+  assert.equal(terminalSessions.cwd, '/root')
+})
+
 test('terminal shutdown waits for every helper process to close', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-terminal-shutdown-'))
   const workspace = join(root, 'workspace')

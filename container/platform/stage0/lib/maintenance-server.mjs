@@ -72,7 +72,7 @@ export async function createMaintenanceServer({
     privileged: true,
   })
   const terminal = new TerminalSessionManager({
-    cwd: defaultWorkspace,
+    cwd: '/root',
     dshHome,
     report: (message, fields) => terminalReport(message, fields),
   })
