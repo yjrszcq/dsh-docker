@@ -15,7 +15,7 @@ import { AutomaticCheckStateStore } from '../../modules/updater/lib/automatic-ch
 import { PlatformActivator } from '../../modules/updater/lib/activator.mjs'
 import { UpdateJournal } from '../../modules/updater/lib/journal.mjs'
 import { PersistentStateSnapshots } from '../../modules/updater/lib/snapshots.mjs'
-import { reconcileRecoveredState } from '../../modules/updater/lib/recovery.mjs'
+import { reconcileRecoveredState, resumeInterruptedReconcile } from '../../modules/updater/lib/recovery.mjs'
 import { ChannelStateStore } from '../../modules/updater/lib/channel-state.mjs'
 import { CompleteStateRecovery } from '../../modules/updater/lib/rollback.mjs'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
@@ -205,9 +205,12 @@ const resumeUpdate = !journalOwnsState && !['idle', 'success', 'failed'].include
 if (resumeUpdate) {
   setImmediate(() => {
     try {
-      const task = coordinator.start()
-      void logs.diagnostic('updater', 'update.resume.started', { taskId: task.taskId })
-      void task.completion.catch(error => logs.diagnostic('updater', 'update.resume.failed', { error, taskId: task.taskId }))
+      resumeInterruptedReconcile({
+        coordinator,
+        persisted,
+        report: (message, fields) => logs.diagnostic('updater', message, fields),
+        audit: (message, fields) => logs.diagnostic('audit', message, { stream: 'audit', ...fields }),
+      })
     } catch (error) {
       void logs.diagnostic('updater', 'update.resume.failed', { error })
     }

@@ -13,7 +13,11 @@ import { MetadataClient, MetadataUnavailableError, NpmRegistryClient } from '../
 import { TargetPreparer } from '../../control-plane/modules/updater/lib/preparer.mjs'
 import { UpdateStateStore } from '../../control-plane/modules/updater/lib/state.mjs'
 import { UpdateJournal } from '../../control-plane/modules/updater/lib/journal.mjs'
-import { reconcileRecoveredState, recoverInterruptedUpdate } from '../../control-plane/modules/updater/lib/recovery.mjs'
+import {
+  reconcileRecoveredState,
+  recoverInterruptedUpdate,
+  resumeInterruptedReconcile,
+} from '../../control-plane/modules/updater/lib/recovery.mjs'
 import { PlatformActivator } from '../../control-plane/modules/updater/lib/activator.mjs'
 import { ChannelStateStore } from '../../control-plane/modules/updater/lib/channel-state.mjs'
 import { keyPair, keyring, officialDshPolicy, registryCandidate, registryKeyPair, signature } from './helpers.mjs'
@@ -883,6 +887,69 @@ test('clears a metadata check interrupted by Management restart', async () => {
   assert.equal(recovered.persisted.taskId, null)
   assert.equal(recovered.persisted.checkSource, null)
   assert.deepEqual(recovered.persisted.available, { dsh: '0.1.1-rc.1' })
+})
+
+test('resumes interrupted updates through channel-aware reconcile and closes audit logs', async () => {
+  const completion = Promise.withResolvers()
+  const reports = []
+  const audits = []
+  let stableStarts = 0
+  let reconcileStarts = 0
+  const task = resumeInterruptedReconcile({
+    coordinator: {
+      start: () => { stableStarts += 1 },
+      startReconcile: () => {
+        reconcileStarts += 1
+        return { taskId: 'resumed-task', completion: completion.promise }
+      },
+    },
+    persisted: { taskId: 'interrupted-task' },
+    report: async (message, fields) => { reports.push({ message, fields }) },
+    audit: async (message, fields) => { audits.push({ message, fields }) },
+  })
+
+  assert.equal(task.taskId, 'resumed-task')
+  assert.equal(stableStarts, 0)
+  assert.equal(reconcileStarts, 1)
+  completion.resolve()
+  await completion.promise
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.deepEqual(audits, [{
+    message: 'update.failed',
+    fields: {
+      taskId: 'interrupted-task', outcome: 'interrupted',
+      resumedByTaskId: 'resumed-task', level: 'warning',
+    },
+  }])
+  assert.deepEqual(reports.map(value => value.message), [
+    'update.resume.started',
+    'update.resume.completed',
+  ])
+  assert.equal(reports.every(value => value.fields.taskId === 'resumed-task'), true)
+  assert.equal(reports.every(value => value.fields.interruptedTaskId === 'interrupted-task'), true)
+})
+
+test('records a terminal failure when an interrupted reconcile cannot resume', async () => {
+  const completion = Promise.withResolvers()
+  const reports = []
+  resumeInterruptedReconcile({
+    coordinator: {
+      startReconcile: () => ({ taskId: 'resumed-task', completion: completion.promise }),
+    },
+    persisted: { taskId: 'interrupted-task' },
+    report: async (message, fields) => { reports.push({ message, fields }) },
+    audit: async () => {},
+  })
+  completion.reject(new Error('resume failed'))
+  await completion.promise.catch(() => {})
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.deepEqual(reports.map(value => value.message), [
+    'update.resume.started',
+    'update.resume.failed',
+  ])
+  assert.equal(reports[1].fields.error.message, 'resume failed')
 })
 
 test('replaces the prior official DSH authority while retaining Stable deployment receipts', async () => {

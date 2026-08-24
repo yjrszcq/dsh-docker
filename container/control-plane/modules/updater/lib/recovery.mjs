@@ -50,3 +50,33 @@ export async function reconcileRecoveredState({ journal, state }) {
   }
   return { transaction, persisted }
 }
+
+export function resumeInterruptedReconcile({ coordinator, persisted, report, audit }) {
+  const task = coordinator.startReconcile()
+  const context = {
+    taskId: task.taskId,
+    interruptedTaskId: persisted.taskId ?? null,
+  }
+  const started = Promise.resolve()
+    .then(() => persisted.taskId === null || persisted.taskId === undefined
+      ? undefined
+      : audit('update.failed', {
+          taskId: persisted.taskId,
+          outcome: 'interrupted',
+          resumedByTaskId: task.taskId,
+          level: 'warning',
+        }))
+    .then(() => report('update.resume.started', context))
+    .catch(() => {})
+  void task.completion.then(
+    async () => {
+      await started
+      await report('update.resume.completed', context)
+    },
+    async error => {
+      await started
+      await report('update.resume.failed', { ...context, error })
+    },
+  ).catch(() => {})
+  return task
+}
