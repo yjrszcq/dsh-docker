@@ -21,7 +21,7 @@ function report(event,fields){nativeFetch("/_dsh_gateway/client-event",{method:"
 async function json(path){try{var response=await nativeFetch(path,{cache:"no-store"});return await response.json()}catch(e){return {}}}
 function transition(value){return ["restarting","switching","recovering","restart-failed"].includes(value.operation)||["snapshotting-data","switching","probation","restoring-data"].includes(value.update&&value.update.status)||["starting","stopping","stopped","restarting","recovering","failed"].includes(value.dshLifecycle&&value.dshLifecycle.state)}
 async function recover(url,pluginId,reason){
-var values=await Promise.all([json("/_dsh_gateway/readiness"),json("/_dsh_platform/plugin-api/v1/status")]),readiness=values[0],status=values[1],lifecycle=status.dshLifecycle||{},updated=Date.parse(lifecycle.updatedAt),recent=typeof lifecycle.taskId==="string"&&Number.isFinite(updated)&&Date.now()-updated<30000,eligible=transition(status)||recent;
+var values=await Promise.all([json("/_dsh_gateway/readiness"),json("/_dsh_platform/plugin-api/v1/status")]),readiness=values[0],status=values[1],lifecycle=status.dshLifecycle||{},updated=Date.parse(lifecycle.updatedAt),recent=typeof lifecycle.taskId==="string"&&Number.isFinite(updated)&&Date.now()-updated<30000,eligible=transition(status)||recent||readiness.pluginRecoveryEligible===true;
 var identity=typeof lifecycle.taskId==="string"?lifecycle.taskId:(lifecycle.updatedAt||readiness.state||"unknown"),previous=marker(),fields={pluginId:pluginId,revision:url.searchParams.get("rev"),lifecycleState:lifecycle.state||readiness.state||null,lifecycleTaskId:lifecycle.taskId||null,recoveryAttempt:1,reason:reason};
 if(!eligible){report("browser.plugin-load.failed",Object.assign({level:"error",recoveryAttempt:0},fields));return false}
 if(previous&&previous.identity===identity){report("browser.plugin-load.recovery.failed",Object.assign({level:"error",recoveryAttempt:previous.attempt+1},fields));return false}
@@ -32,9 +32,14 @@ var back=location.pathname+location.search+location.hash;location.replace(waitPa
 }
 function completed(url,pluginId){var value=marker();if(!value||value.completed||value.url!==url.pathname+url.search)return;value.completed=true;save(value);report("browser.plugin-load.recovery.completed",{level:"info",pluginId:pluginId,revision:url.searchParams.get("rev"),lifecycleTaskId:value.taskId||null,recoveryAttempt:value.attempt})}
 globalThis.fetch=function(input,init){var url=target(input),pluginId=url&&plugin(url),pending=nativeFetch(input,init);if(!pluginId)return pending;return pending.then(function(response){if(response.ok){completed(url,pluginId);return response}if(response.status!==502&&response.status!==503)return response;return recover(url,pluginId,"HTTP "+response.status).then(function(active){return active?new Promise(function(){}):response})},function(error){return recover(url,pluginId,error&&error.name||"network error").then(function(active){if(active)return new Promise(function(){});throw error})})}
-function failedBoot(){var root=document.querySelector("[data-dsh-boot]");if(!root)return null;var nodes=root.querySelectorAll("div"),title=null;for(var i=0;i<nodes.length;i++){if(nodes[i].children.length===0&&nodes[i].textContent==="Failed to load plugins"){title=nodes[i];break}}if(!title)return null;var text=(title.parentElement&&title.parentElement.textContent)||title.textContent,match=text.match(/\\/plugins\\/((?:@[^/\\s]+\\/)?[^/\\s]+)\\/client\\.js(?:\\?rev=([A-Za-z0-9._~%-]+))?/),url=target(match?match[0]:"/plugins/unknown/client.js");return url&&{url:url,pluginId:match?match[1]:"unknown",reason:"DSH plugin loader failed"}}
-function watchBoot(){var handled=false,observer=new MutationObserver(function(){if(handled)return;var value=failedBoot();if(!value)return;handled=true;recover(value.url,value.pluginId,value.reason).then(function(active){if(!active)observer.disconnect()})});observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true})}
-if(document.documentElement)watchBoot();else addEventListener("DOMContentLoaded",watchBoot,{once:true});
+function errorUrl(value){
+var candidates=[value&&value.filename,value&&value.error&&value.error.stack,value&&value.error&&value.error.message,value&&value.reason&&value.reason.stack,value&&value.reason&&value.reason.message];
+for(var i=0;i<candidates.length;i++){if(typeof candidates[i]!=="string")continue;var match=candidates[i].match(/(?:https?:\\/\\/[^\\s)]+)?(\\/plugins\\/(?:@[^/\\s]+\\/)?[^/\\s]+\\/client\\.js(?:\\?[^\\s)]+)?)/);if(!match)continue;var url=target(match[1]);if(url)return url}
+return null
+}
+function handleError(value,reason){var url=errorUrl(value);if(!url)return;var pluginId=plugin(url);if(!pluginId)return;recover(url,pluginId,reason).catch(function(){})}
+addEventListener("error",function(event){handleError(event,"plugin module error")},true);
+addEventListener("unhandledrejection",function(event){handleError({reason:event.reason},"plugin module rejection")},true);
 }catch(e){}
 })();</script>`
 

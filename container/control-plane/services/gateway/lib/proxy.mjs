@@ -452,6 +452,7 @@ async function readiness(options) {
     ready: upstreamReady && registeredState === null,
     state: registeredState ?? options.availability.classify(platform),
     platform,
+    pluginRecoveryEligible: options.pluginRecoveryAvailable?.(platform) === true,
   }
 }
 
@@ -508,6 +509,7 @@ async function proxyPluginBundle(request, response, options, pathname) {
       const sameDeployment = beforeRecord === deploymentRecordId(after)
       recoveryEligible = recoveryEligible || MODULE_HOLD_STATES.has(state)
         || recentLifecycleTransition(after, options.now, options.pluginBundleRecentWindowMs)
+        || options.pluginRecoveryAvailable?.(after) === true
 
       if (ready && sameDeployment && !MODULE_HOLD_STATES.has(state) && !MODULE_FAILED_STATES.has(state)) {
         if (isJavaScriptBundle(value)) {
@@ -534,6 +536,7 @@ async function proxyPluginBundle(request, response, options, pathname) {
       const state = registeredAvailabilityState(after, options.availability)
       recoveryEligible = recoveryEligible || MODULE_HOLD_STATES.has(state)
         || recentLifecycleTransition(after, options.now, options.pluginBundleRecentWindowMs)
+        || options.pluginRecoveryAvailable?.(after) === true
       options.reportFailure('dsh-plugin-bundle', 'gateway.plugin-bundle.failed', {
         ...requestContext(request), error, level: 'warning', attempt: attempts,
       })
@@ -545,6 +548,7 @@ async function proxyPluginBundle(request, response, options, pathname) {
 
   if (request.destroyed || response.destroyed) return true
   if (recoveryEligible) {
+    options.consumePluginRecovery?.()
     sendPluginHoldingModule(request, response)
   } else if (lastResponse !== undefined) {
     sendBufferedPluginBundle(request, response, lastResponse)
@@ -733,6 +737,25 @@ export function createGatewayServer({
   pluginBundleRecentWindowMs = 30_000,
 }) {
   const failures = new Map()
+  // Permit one structured recovery attempt for each running Deployment. This
+  // covers a cold-start module race without creating an endless reload loop.
+  let pluginRecoveryIdentity
+  const consumedPluginRecovery = new Set()
+  const currentPluginRecoveryIdentity = platform => {
+    const lifecycle = platform?.dshLifecycle ?? {}
+    const identity = deploymentRecordId(platform) ?? lifecycle.updatedAt
+    if (typeof identity !== 'string' || identity.length === 0) return null
+    pluginRecoveryIdentity = identity
+    return identity
+  }
+  const pluginRecoveryAvailable = platform => {
+    if ((platform?.dshLifecycle?.state ?? null) !== 'running' || platform?.recoveryMode != null) return false
+    const identity = currentPluginRecoveryIdentity(platform)
+    return identity !== null && !consumedPluginRecovery.has(identity)
+  }
+  const consumePluginRecovery = () => {
+    if (pluginRecoveryIdentity !== undefined) consumedPluginRecovery.add(pluginRecoveryIdentity)
+  }
   const record = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
   const reportFailure = (key, message, fields) => {
     const timestamp = now()
@@ -760,6 +783,7 @@ export function createGatewayServer({
     availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
     now, pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs, pluginBundleMaxBytes,
     pluginBundleRecentWindowMs, pluginBundleCache: createPluginBundleCache(pluginBundleCacheMaxBytes),
+    pluginRecoveryAvailable, consumePluginRecovery,
   }
   const upgradedSockets = new Set()
   const server = createServer((request, response) => {
@@ -803,6 +827,7 @@ export function createGatewayServer({
           return
         }
         const value = await clientEvent(request)
+        if (value.event === 'browser.plugin-load.recovery.started') options.consumePluginRecovery?.()
         await record(value.event, {
           level: value.level,
           pluginId: value.pluginId,
@@ -819,7 +844,11 @@ export function createGatewayServer({
       }
       if (pathname === READINESS_PATH) {
         const result = await readiness(options)
-        if (result.ready) sendJson(response, 200, { ready: true, state: 'ready' })
+        if (result.ready) sendJson(response, 200, {
+          ready: true,
+          state: 'ready',
+          pluginRecoveryEligible: result.pluginRecoveryEligible,
+        })
         else {
           sendJson(response, result.state === 'unknown' ? 502 : 503, {
             ready: false,

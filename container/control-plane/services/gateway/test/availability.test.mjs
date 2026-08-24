@@ -205,7 +205,9 @@ test('dedicated holding route preserves a safe return path and redirects when re
     const redirected = await request(context.port, `${WAIT_PATH}?return=${encodeURIComponent(target)}`)
     assert.equal(redirected.status, 302)
     assert.equal(redirected.headers.location, target)
-    assert.deepEqual(JSON.parse((await request(context.port, READINESS_PATH)).body), { ready: true, state: 'ready' })
+    assert.deepEqual(JSON.parse((await request(context.port, READINESS_PATH)).body), {
+      ready: true, state: 'ready', pluginRecoveryEligible: false,
+    })
     assert.equal((await request(context.port, WAIT_PATH, { method: 'POST' })).status, 405)
   } finally {
     await closeGatewayServer(context.gateway)
@@ -264,7 +266,9 @@ test('readiness immediately reports ready and clears confirmed failure state', a
     ready = true
     const healthy = await request(context.port, READINESS_PATH, { accept: 'application/json' })
     assert.equal(healthy.status, 200)
-    assert.deepEqual(JSON.parse(healthy.body), { ready: true, state: 'ready' })
+    assert.deepEqual(JSON.parse(healthy.body), {
+      ready: true, state: 'ready', pluginRecoveryEligible: false,
+    })
     assert.equal(availability.classify({}), 'unknown')
   } finally {
     await closeGatewayServer(context.gateway)

@@ -452,6 +452,37 @@ test('returns a holding module instead of an import failure after a recent resta
   }
 })
 
+test('grants one cold-start plugin recovery attempt without a lifecycle task', async () => {
+  const upstream = createServer((_incoming, response) => {
+    response.writeHead(503, { 'content-type': 'text/plain' })
+    response.end('temporarily unavailable\n')
+  })
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    platformStatus: async () => ({
+      current: { recordId: 'fresh-deployment' },
+      dshLifecycle: { state: 'running', taskId: null, updatedAt: new Date().toISOString() },
+    }),
+    probe: async () => true,
+    pluginBundleHoldTimeoutMs: 40,
+    pluginBundlePollIntervalMs: 5,
+  })
+  const gatewayPort = await listen(gateway)
+  const path = '/plugins/@deepseek-ai/dsh-client-ui-workflow-run/client.js?rev=fresh'
+  try {
+    const first = await request(gatewayPort, path, { host: '127.0.0.1', referer: 'http://127.0.0.1/' })
+    assert.equal(first.status, 200)
+    assert.match(first.body, /\/_dsh_gateway\/wait\?return=/)
+    const second = await request(gatewayPort, path, { host: '127.0.0.1', referer: 'http://127.0.0.1/' })
+    assert.equal(second.status, 503)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
 test('records bounded browser plugin recovery events without request credentials', async () => {
   const reports = []
   const gateway = createGatewayServer({

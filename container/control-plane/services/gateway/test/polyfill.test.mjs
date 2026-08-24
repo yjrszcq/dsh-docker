@@ -3,24 +3,14 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { injectRandomUuidPolyfill, LIFECYCLE_TRANSITION_GUARD, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
 
-async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
-  let notifyMutation
+async function simulatePluginError(bundlePath, { eventType = 'error' } = {}) {
   let replacement
   const events = []
   const storage = new Map()
+  const listeners = new Map()
   const context = {
     URL,
     crypto: globalThis.crypto,
-    document: {
-      documentElement: {},
-      querySelector: selector => bootRoot && selector === '[data-dsh-boot]' ? {
-        querySelectorAll: () => [{
-          children: [],
-          textContent: 'Failed to load plugins',
-          parentElement: { textContent: `Failed to load plugins failed to import ${bundlePath}` },
-        }],
-      } : null,
-    },
     location: {
       href: 'http://gateway.local/sessions/current',
       pathname: '/sessions/current',
@@ -32,14 +22,9 @@ async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
       getItem: key => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
     },
-    MutationObserver: class {
-      constructor(callback) { notifyMutation = callback }
-      observe() {}
-      disconnect() {}
-    },
-    addEventListener() {},
+    addEventListener: (name, callback) => listeners.set(name, callback),
     fetch: async (input, init) => {
-      if (input === '/_dsh_gateway/readiness') return { json: async () => ({ state: 'ready' }) }
+      if (input === '/_dsh_gateway/readiness') return { json: async () => ({ state: 'ready', pluginRecoveryEligible: true }) }
       if (input === '/_dsh_platform/plugin-api/v1/status') return {
         json: async () => ({
           dshLifecycle: {
@@ -57,7 +42,10 @@ async function simulateFailedBoot(bundlePath, { bootRoot = true } = {}) {
     },
   }
   vm.runInNewContext(PLUGIN_RECOVERY_GUARD.slice('<script>'.length, -'</script>'.length), context)
-  notifyMutation()
+  if (eventType === 'error') listeners.get('error')?.({ filename: `http://gateway.local${bundlePath}` })
+  else if (eventType === 'unhandledrejection') listeners.get('unhandledrejection')?.({
+    reason: { stack: `TypeError: failed to import http://gateway.local${bundlePath}` },
+  })
   await new Promise(resolve => setImmediate(resolve))
   return { events, replacement }
 }
@@ -102,10 +90,9 @@ test('plugin recovery guard runs before DSH modules and permits only one lifecyc
   assert.match(PLUGIN_RECOVERY_GUARD, /\/_dsh_gateway\/wait/)
   assert.match(PLUGIN_RECOVERY_GUARD, /previous&&previous\.identity===identity/)
   assert.match(PLUGIN_RECOVERY_GUARD, /browser\.plugin-load\.recovery\.completed/)
-  assert.match(PLUGIN_RECOVERY_GUARD, /MutationObserver/)
-  assert.match(PLUGIN_RECOVERY_GUARD, /\[data-dsh-boot\]/)
-  assert.match(PLUGIN_RECOVERY_GUARD, /Failed to load plugins/)
-  assert.match(PLUGIN_RECOVERY_GUARD, /DSH plugin loader failed/)
+  assert.match(PLUGIN_RECOVERY_GUARD, /addEventListener\("error"/)
+  assert.match(PLUGIN_RECOVERY_GUARD, /unhandledrejection/)
+  assert.doesNotMatch(PLUGIN_RECOVERY_GUARD, /Failed to load plugins/)
   assert.doesNotMatch(PLUGIN_RECOVERY_GUARD, /localStorage/)
 })
 
@@ -114,7 +101,7 @@ test('plugin recovery guard catches official and third-party dynamic import fail
     ['/plugins/@deepseek-ai/dsh-client-ui-input-trigger/client.js?rev=abc123', '@deepseek-ai/dsh-client-ui-input-trigger'],
     ['/plugins/community-plugin/client.js?rev=def456', 'community-plugin'],
   ]) {
-    const result = await simulateFailedBoot(path)
+    const result = await simulatePluginError(path)
     assert.match(result.replacement, /^\/_dsh_gateway\/wait\?return=/)
     assert.deepEqual(result.events.map(value => [value.event, value.pluginId]), [
       ['browser.plugin-load.failed', pluginId],
@@ -123,8 +110,8 @@ test('plugin recovery guard catches official and third-party dynamic import fail
   }
 })
 
-test('plugin recovery guard ignores matching text outside the DSH boot page', async () => {
-  const result = await simulateFailedBoot('/plugins/example/client.js?rev=abc123', { bootRoot: false })
+test('plugin recovery guard does not inspect page text', async () => {
+  const result = await simulatePluginError('/plugins/example/client.js?rev=abc123', { eventType: 'none' })
   assert.equal(result.replacement, undefined)
   assert.deepEqual(result.events, [])
 })
