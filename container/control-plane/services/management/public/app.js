@@ -1134,10 +1134,30 @@ function filteredResources(key, values) {
 
 function toggleExpandedElement(element, identity, expanded) {
   const isExpanded = !expanded.has(identity)
-  if (isExpanded) expanded.add(identity)
-  else expanded.delete(identity)
-  element.classList.toggle('expanded', isExpanded)
-  element.setAttribute('aria-expanded', String(isExpanded))
+  preserveScrollableAncestors(element, () => {
+    if (isExpanded) expanded.add(identity)
+    else expanded.delete(identity)
+    element.classList.toggle('expanded', isExpanded)
+    element.setAttribute('aria-expanded', String(isExpanded))
+  })
+}
+
+function preserveScrollableAncestors(element, update) {
+  const positions = []
+  for (let current = element.parentElement; current !== null; current = current.parentElement) {
+    if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+      positions.push([current, current.scrollLeft, current.scrollTop])
+    }
+  }
+  const restore = () => {
+    for (const [current, left, top] of positions) {
+      current.scrollLeft = left
+      current.scrollTop = top
+    }
+  }
+  update()
+  restore()
+  window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
 }
 
 function expandableResourceDescription(text, identity, expanded) {
