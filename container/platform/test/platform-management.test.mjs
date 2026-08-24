@@ -103,7 +103,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /t\(isExpanded \? 'collapseStage' : 'expandStage'\)\.replace\('\{count\}', String\(group\.entries\.length\)\)/)
   assert.match(source, /progressDetailProbation: '候选 Runtime 正在持续接受健康检查，观察至 \{until\}。'/)
   const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
-  assert.match(style, /\.progress\[data-complete='true'\] span \{ transition: none; \}/)
+  assert.match(style, /\.progress\[data-complete='true'\] span \{ width: 100% !important; transition: none; \}/)
   assert.match(style, /\.progressStageMarker \{ --marker-size: 10px;/)
   assert.match(style, /\.progressStageItemMarker \{ --marker-size: 10px;/)
   assert.doesNotMatch(source, /[✓⟳✗○]/u)

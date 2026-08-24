@@ -450,7 +450,7 @@ a.secondaryButton { text-decoration: none; }
 .progressFullLog { justify-self: start; padding: 0; border: 0; color: var(--dsw-alias-state-business-primary); background: transparent; cursor: pointer; font-size: 11px; }
 .progress { height: 8px; overflow: hidden; border-radius: 4px; background: var(--dsw-alias-border-l2); }
 .progress span { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); transition: width .2s ease; }
-.progress[data-complete='true'] span { transition: none; }
+.progress[data-complete='true'] span { width: 100% !important; transition: none; }
 
 .holds { display: flex; flex-direction: column; border-top: 1px solid var(--dsw-alias-border-l2); }
 .hold { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
