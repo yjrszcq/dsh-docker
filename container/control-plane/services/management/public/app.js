@@ -763,7 +763,11 @@ function renderProgressLogs() {
       event.preventDefault()
       event.stopPropagation()
       progressLogStageTouched.add(group.key)
-      stageDetails.open = !stageDetails.open
+      const nextOpen = !stageDetails.open
+      progressLogStageExpansion.set(group.key, nextOpen)
+      stageDetails.open = nextOpen
+      toggle.setAttribute('aria-expanded', String(nextOpen))
+      toggle.textContent = t(nextOpen ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
     })
     stageSummary.append(marker, summaryBody, toggle)
     const checklist = document.createElement('div')
