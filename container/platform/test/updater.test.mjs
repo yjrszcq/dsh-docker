@@ -1190,8 +1190,9 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
   const root = await mkdtemp(join(tmpdir(), 'dsh-return-stable-'))
   let restored = false
   const phases = []
+  const previous = { dsh: '0.1.0-rc.8', environment: 'env-1', runtime: 'runtime-a' }
   const recovery = {
-    plan: async () => ({ planId: 'plan-a', previous: { dsh: '0.1.0-rc.8' } }),
+    plan: async () => ({ planId: 'plan-a', previous }),
     restore: async (_planId, options) => {
       restored = true
       await options.onProgress('switching', 35)
@@ -1201,7 +1202,7 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
   }
   const coordinator = new UpdateCoordinator({
     metadata: { check: async () => ({ value: { desired: { dsh: { version: '0.1.0-rc.7' } } } }) },
-    preparer: {}, activator: {}, completeRecovery: recovery,
+    preparer: {}, activator: { currentDeployment: async () => previous }, completeRecovery: recovery,
     state: new UpdateStateStore(join(root, 'state', 'update.json')),
   })
   coordinator.on('state', value => {
@@ -1211,12 +1212,51 @@ test('allows Stable return only to a recovery point no newer than signed Stable'
     requireConfirmation: true, confirmDataLoss: true,
   }).completion, /no verified/)
   assert.equal(restored, false)
-  coordinator.metadata.check = async () => ({ value: { desired: { dsh: { version: '0.1.0-rc.8' } } } })
+  coordinator.metadata.check = async () => ({ value: { desired: {
+    dsh: { version: '0.1.0-rc.8' }, environment: { version: 'env-1' },
+  } } })
   phases.length = 0
   await coordinator.startCompleteRollback('plan-a', { requireConfirmation: true, confirmDataLoss: true }).completion
   assert.equal(restored, true)
   assert.deepEqual(phases, [['preparing', 5], ['switching', 35], ['verifying', 90]])
   assert.equal((await coordinator.state.read()).operation, 'return-stable')
+})
+
+test('refreshes current and availability state after a complete rollback', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-rollback-state-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  await state.write('success', {
+    available: { targetSequence: 11, dsh: '0.1.1-rc.1', environment: 'env-1' },
+    supported: { dsh: '0.1.1-rc.1', environment: 'env-1' },
+    upstream: { version: '0.1.1-rc.2' },
+    current: { dsh: '0.1.1-rc.2', environment: 'env-1', runtime: 'runtime-experimental' },
+    aheadOfStable: true,
+    updateAvailable: false,
+  })
+  const channelState = new ChannelStateStore(join(root, 'state', 'channel.json'))
+  await channelState.setChannel('experimental')
+  const previous = {
+    authority: 'stable', targetSequence: 11,
+    dsh: '0.1.1-rc.1', environment: 'env-1', runtime: 'runtime-stable',
+  }
+  const recovery = {
+    plan: async () => ({ planId: 'plan-a', previous, snapshot: { id: 'snapshot-a' } }),
+    restore: async () => ({ status: 'rolled-back' }),
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, state, channelState, completeRecovery: recovery,
+    activator: { currentDeployment: async () => previous },
+  })
+
+  await coordinator.startCompleteRollback('plan-a').completion
+
+  const update = await state.read()
+  assert.deepEqual(update.current, {
+    dsh: '0.1.1-rc.1', environment: 'env-1', runtime: 'runtime-stable',
+  })
+  assert.equal(update.aheadOfStable, false)
+  assert.equal(update.updateAvailable, true)
+  assert.equal(update.outcome, null)
 })
 
 test('persists a planner failure started through the selected channel', async () => {

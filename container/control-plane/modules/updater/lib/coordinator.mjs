@@ -286,6 +286,7 @@ export class UpdateCoordinator extends EventEmitter {
     const operation = options.requireConfirmation ? 'return-stable' : 'rollback'
     try {
       const rollbackPlan = await this.completeRecovery.plan()
+      let verifiedStable = null
       await this.transition('restoring-data', {
         taskId,
         progress: 5,
@@ -301,6 +302,7 @@ export class UpdateCoordinator extends EventEmitter {
           || plan.planId !== planId
           || compareDshVersions(plan.previous.dsh, target.value.desired.dsh.version) > 0
         ) throw new Error('no verified pre-Experimental Stable recovery point is available')
+        verifiedStable = target.value
       }
       const result = await this.completeRecovery.restore(planId, {
         ...options,
@@ -334,8 +336,54 @@ export class UpdateCoordinator extends EventEmitter {
         operation,
         rollbackPhase: 'verifying',
       })
+      const current = await this.activator.currentDeployment()
+      if (
+        rollbackPlan === null
+        || current.dsh !== rollbackPlan.previous.dsh
+        || current.environment !== rollbackPlan.previous.environment
+        || current.runtime !== rollbackPlan.previous.runtime
+      ) throw new Error('restored Deployment differs from the rollback plan')
+      const [stored, local] = await Promise.all([
+        this.state.read(),
+        this.channelState?.read() ?? Promise.resolve({ updateChannel: 'stable', holds: [], experimentalBlocked: null }),
+      ])
+      const supported = verifiedStable === null
+        ? stored.supported ?? null
+        : {
+            dsh: verifiedStable.desired.dsh.version,
+            environment: verifiedStable.desired.environment.version,
+          }
+      let aheadOfStable = false
+      let updateAvailable = false
+      if (supported !== null) {
+        const upstream = local.updateChannel === 'experimental'
+          && typeof stored.upstream?.version === 'string'
+          && compareDshVersions(stored.upstream.version, supported.dsh) > 0
+          ? stored.upstream
+          : null
+        const plan = planDesiredState({
+          local,
+          current,
+          supported,
+          stableTargetSequence: verifiedStable?.targetSequence ?? stored.available?.targetSequence,
+          upstream,
+        })
+        aheadOfStable = plan.aheadOfStable
+        updateAvailable = ['stable', 'experimental'].includes(plan.action)
+      }
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
-      await this.transition('success', { taskId, progress: 100, error: null })
+      await this.transition('success', {
+        taskId,
+        progress: 100,
+        current: { dsh: current.dsh, environment: current.environment, runtime: current.runtime },
+        aheadOfStable,
+        updateAvailable,
+        experimentalBlocked: local.experimentalBlocked,
+        holds: local.holds,
+        outcome: null,
+        probationUntil: null,
+        error: null,
+      })
       return result
     } catch (error) {
       await this.record('update.rollback.failed', { error, taskId, operation })
