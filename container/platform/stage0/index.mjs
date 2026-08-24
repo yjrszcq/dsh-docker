@@ -145,7 +145,7 @@ const maintenance = await createMaintenanceServer({
   },
   platformBusy: async () => {
     try {
-      const status = await management.status()
+      const status = await management.request('GET', '/_dsh_platform/api/v1/status')
       return !['idle', 'success', 'failed'].includes(status.update?.status)
         || ['starting', 'stopping', 'restarting', 'recovering'].includes(status.dshLifecycle?.state)
         || status.runtimeReset?.status === 'resetting'

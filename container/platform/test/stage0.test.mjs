@@ -25,6 +25,12 @@ import {
 } from '../lib/deployment-contracts.mjs'
 import { hashTree } from '../lib/tree-hash.mjs'
 
+test('Stage-0 checks the Management status endpoint before managed file mutations', async () => {
+  const source = await readFile(new URL('../stage0/index.mjs', import.meta.url), 'utf8')
+  assert.match(source, /management\.request\('GET', '\/_dsh_platform\/api\/v1\/status'\)/)
+  assert.doesNotMatch(source, /management\.status\(\)/)
+})
+
 async function bootstrap(root, version, behavior) {
   const directory = join(root, version)
   await mkdir(directory, { recursive: true })
