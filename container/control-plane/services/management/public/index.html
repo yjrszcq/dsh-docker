@@ -134,7 +134,10 @@
         </div>
         <div class="log-filters"><input id="log-search" type="search" placeholder="Search logs" aria-label="Search logs" data-i18n-placeholder="searchLogs" data-i18n-aria-label="searchLogs"><select id="log-source" aria-label="Log module" data-i18n-aria-label="logSource"><option value="all" data-i18n="allSources">All modules</option></select><select id="log-level" aria-label="Log level" data-i18n-aria-label="logLevel"><option value="all" data-i18n="levelAll">All levels</option><option value="debug" data-i18n="levelDebug">Debug</option><option value="info" data-i18n="levelInfo">Info</option><option value="warning" data-i18n="levelWarning">Warning</option><option value="error" data-i18n="levelError">Error</option></select><select id="log-limit" aria-label="Entries shown" data-i18n-aria-label="logDisplayLimit"><option value="100" data-log-limit="100">Latest 100</option><option value="250" data-log-limit="250">Latest 250</option><option value="500" data-log-limit="500">Latest 500</option><option value="1000" data-log-limit="1000">Latest 1000</option></select></div>
         <div class="log-summary-row"><p id="log-summary" class="log-summary"></p><label class="log-auto-scroll"><input id="auto-scroll" type="checkbox" checked aria-label="Auto-scroll" data-i18n-aria-label="autoScroll"><span aria-hidden="true"></span><strong data-i18n="autoScroll">Auto-scroll</strong></label></div>
-        <div id="log-list" class="log-list" tabindex="0"></div>
+        <div id="log-resize-frame" class="log-resize-frame">
+          <div id="log-list" class="log-list" tabindex="0"></div>
+          <span id="log-resize-handle" class="log-resize-handle" aria-hidden="true"></span>
+        </div>
         <p id="empty-logs" class="empty-state" data-i18n="noLogs">No logs yet</p>
       </section>
     </div>

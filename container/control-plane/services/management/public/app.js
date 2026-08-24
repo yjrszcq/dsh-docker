@@ -210,7 +210,7 @@ const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(e
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
 makeHorizontalTabStripScrollable(document.querySelector('.tabs'))
-makeLogListVerticallyResizable(elements['log-list'])
+makeLogListVerticallyResizable(elements['log-resize-frame'], elements['log-resize-handle'])
 const RUNTIME_RESET_PHASES = Object.freeze({
   'runtime-reset-building': Object.freeze({ progress: 20, label: 'runtimeResetBuilding' }),
   'runtime-reset-verifying': Object.freeze({ progress: 55, label: 'runtimeResetVerifying' }),
@@ -444,36 +444,50 @@ function makeHorizontalTabStripScrollable(tablist) {
   }, true)
 }
 
-function makeLogListVerticallyResizable(element) {
+function makeLogListVerticallyResizable(element, handle) {
   let pointerId
   let startY = 0
   let startHeight = 0
+  let startScrollTop = 0
+  let lastClientY = 0
   let minimumHeight = 0
   let maximumHeight = 0
   let scrollFrame
   let previousCursor = ''
   let previousUserSelect = ''
-  const onResizeEdge = event => element.getBoundingClientRect().bottom - event.clientY <= 10
+  const scrollContainer = (() => {
+    for (let candidate = element.parentElement; candidate !== null; candidate = candidate.parentElement) {
+      const overflowY = window.getComputedStyle(candidate).overflowY
+      if (/(auto|scroll)/u.test(overflowY)) return candidate
+    }
+    return document.scrollingElement
+  })()
   const keepBottomVisible = () => {
     if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
     scrollFrame = window.requestAnimationFrame(() => {
       scrollFrame = undefined
-      element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      if (scrollContainer === null) return
+      const viewportBottom = scrollContainer === document.scrollingElement
+        ? window.innerHeight
+        : scrollContainer.getBoundingClientRect().bottom
+      const overflow = element.getBoundingClientRect().bottom - viewportBottom + 8
+      if (overflow <= 0) return
+      const previousScrollTop = scrollContainer.scrollTop
+      scrollContainer.scrollTop += Math.min(overflow, 24)
+      const height = Math.min(maximumHeight, Math.max(minimumHeight,
+        startHeight + lastClientY - startY + scrollContainer.scrollTop - startScrollTop))
+      element.style.height = `${String(height)}px`
+      if (scrollContainer.scrollTop > previousScrollTop
+        && (pointerId === undefined || lastClientY >= viewportBottom - 24)) keepBottomVisible()
     })
   }
-  element.addEventListener('pointermove', event => {
-    if (pointerId !== undefined) return
-    element.style.cursor = onResizeEdge(event) ? 'ns-resize' : ''
-  })
-  element.addEventListener('pointerleave', () => {
-    if (pointerId === undefined) element.style.cursor = ''
-  })
-  element.addEventListener('pointerdown', event => {
-    if (!onResizeEdge(event)) return
+  handle.addEventListener('pointerdown', event => {
     event.preventDefault()
     pointerId = event.pointerId
     startY = event.clientY
+    lastClientY = event.clientY
     startHeight = element.getBoundingClientRect().height
+    startScrollTop = scrollContainer?.scrollTop ?? 0
     const style = window.getComputedStyle(element)
     minimumHeight = Number.parseFloat(style.minHeight)
     maximumHeight = Number.parseFloat(style.maxHeight)
@@ -481,19 +495,20 @@ function makeLogListVerticallyResizable(element) {
     previousUserSelect = document.body.style.userSelect
     document.body.style.cursor = 'ns-resize'
     document.body.style.userSelect = 'none'
-    element.setPointerCapture?.(pointerId)
+    handle.setPointerCapture?.(pointerId)
   })
   window.addEventListener('pointermove', event => {
     if (pointerId === undefined || event.pointerId !== pointerId) return
-    const height = Math.min(maximumHeight, Math.max(minimumHeight, startHeight + event.clientY - startY))
+    lastClientY = event.clientY
+    const height = Math.min(maximumHeight, Math.max(minimumHeight,
+      startHeight + lastClientY - startY + (scrollContainer?.scrollTop ?? 0) - startScrollTop))
     element.style.height = `${String(height)}px`
     keepBottomVisible()
   })
   const finishResize = event => {
     if (pointerId === undefined || event.pointerId !== pointerId) return
-    if (element.hasPointerCapture?.(pointerId)) element.releasePointerCapture(pointerId)
+    if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId)
     pointerId = undefined
-    element.style.cursor = ''
     document.body.style.cursor = previousCursor
     document.body.style.userSelect = previousUserSelect
     keepBottomVisible()

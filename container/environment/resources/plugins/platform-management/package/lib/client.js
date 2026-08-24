@@ -543,6 +543,7 @@ function LogViewer({ active, focusTaskId, t }) {
   const [displayLimit, setDisplayLimit] = useState(readLogDisplayLimit)
   const [expanded, setExpanded] = useState(() => new Set())
   const listRef = useRef(null)
+  const resizeFrameRef = useRef(null)
   const clearCutoff = useRef(readLogClearCutoff())
   const logIdentities = useRef(new Set())
   const pendingEntries = useRef([])
@@ -614,70 +615,75 @@ function LogViewer({ active, focusTaskId, t }) {
     && (normalizedQuery === '' || JSON.stringify(entry).toLocaleLowerCase().includes(normalizedQuery)))
 
   useEffect(() => {
-    const list = listRef.current
-    if (!active || !hasFilteredEntries || list === null) return undefined
+    const frame = resizeFrameRef.current
+    if (!active || !hasFilteredEntries || frame === null) return undefined
+    const handle = frame.querySelector(`.${css.logResizeHandle}`)
+    const scrollContainer = frame.closest(`.${css.tabPanel}`)
+    if (handle === null) return undefined
     let pointerId
     let startY = 0
     let startHeight = 0
+    let startScrollTop = 0
+    let lastClientY = 0
     let minimumHeight = 0
     let maximumHeight = 0
     let scrollFrame
     let previousCursor = ''
     let previousUserSelect = ''
-    const onResizeEdge = event => list.getBoundingClientRect().bottom - event.clientY <= 10
     const keepBottomVisible = () => {
       if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
       scrollFrame = window.requestAnimationFrame(() => {
         scrollFrame = undefined
-        list.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        if (scrollContainer === null) return
+        const overflow = frame.getBoundingClientRect().bottom - scrollContainer.getBoundingClientRect().bottom + 8
+        if (overflow <= 0) return
+        const previousScrollTop = scrollContainer.scrollTop
+        scrollContainer.scrollTop += Math.min(overflow, 24)
+        const height = Math.min(maximumHeight, Math.max(minimumHeight,
+          startHeight + lastClientY - startY + scrollContainer.scrollTop - startScrollTop))
+        frame.style.height = `${String(height)}px`
+        if (scrollContainer.scrollTop > previousScrollTop
+          && (pointerId === undefined || lastClientY >= scrollContainer.getBoundingClientRect().bottom - 24)) keepBottomVisible()
       })
     }
     const startResize = event => {
-      if (!onResizeEdge(event)) return
       event.preventDefault()
       pointerId = event.pointerId
       startY = event.clientY
-      startHeight = list.getBoundingClientRect().height
-      const style = window.getComputedStyle(list)
+      lastClientY = event.clientY
+      startHeight = frame.getBoundingClientRect().height
+      startScrollTop = scrollContainer?.scrollTop ?? 0
+      const style = window.getComputedStyle(frame)
       minimumHeight = Number.parseFloat(style.minHeight)
       maximumHeight = Number.parseFloat(style.maxHeight)
       previousCursor = document.body.style.cursor
       previousUserSelect = document.body.style.userSelect
       document.body.style.cursor = 'ns-resize'
       document.body.style.userSelect = 'none'
-      list.setPointerCapture?.(pointerId)
-    }
-    const trackResizeEdge = event => {
-      if (pointerId === undefined) list.style.cursor = onResizeEdge(event) ? 'ns-resize' : ''
-    }
-    const clearResizeEdge = () => {
-      if (pointerId === undefined) list.style.cursor = ''
+      handle.setPointerCapture?.(pointerId)
     }
     const resize = event => {
       if (pointerId === undefined || event.pointerId !== pointerId) return
-      const height = Math.min(maximumHeight, Math.max(minimumHeight, startHeight + event.clientY - startY))
-      list.style.height = `${String(height)}px`
+      lastClientY = event.clientY
+      const height = Math.min(maximumHeight, Math.max(minimumHeight,
+        startHeight + lastClientY - startY + (scrollContainer?.scrollTop ?? 0) - startScrollTop))
+      frame.style.height = `${String(height)}px`
       keepBottomVisible()
     }
     const finishResize = event => {
       if (pointerId === undefined || event.pointerId !== pointerId) return
-      if (list.hasPointerCapture?.(pointerId)) list.releasePointerCapture(pointerId)
+      if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId)
       pointerId = undefined
-      list.style.cursor = ''
       document.body.style.cursor = previousCursor
       document.body.style.userSelect = previousUserSelect
       keepBottomVisible()
     }
-    list.addEventListener('pointermove', trackResizeEdge)
-    list.addEventListener('pointerleave', clearResizeEdge)
-    list.addEventListener('pointerdown', startResize)
+    handle.addEventListener('pointerdown', startResize)
     window.addEventListener('pointermove', resize)
     window.addEventListener('pointerup', finishResize)
     window.addEventListener('pointercancel', finishResize)
     return () => {
-      list.removeEventListener('pointermove', trackResizeEdge)
-      list.removeEventListener('pointerleave', clearResizeEdge)
-      list.removeEventListener('pointerdown', startResize)
+      handle.removeEventListener('pointerdown', startResize)
       window.removeEventListener('pointermove', resize)
       window.removeEventListener('pointerup', finishResize)
       window.removeEventListener('pointercancel', finishResize)
@@ -776,7 +782,8 @@ function LogViewer({ active, focusTaskId, t }) {
         h('b', null, t('autoScroll')))),
     filtered.length === 0
       ? h('p', { className: css.emptyLogs }, visibleEntries.length === 0 ? t('noLogs') : t('noMatchingLogs'))
-      : h('div', { className: css.logList, ref: listRef }, filtered.map(item => {
+      : h('div', { className: css.logResizeFrame, ref: resizeFrameRef },
+        h('div', { className: css.logList, ref: listRef }, filtered.map(item => {
           const entry = item.value
           const entryLevel = logLevel(entry)
           const isExpanded = expanded.has(item.identity)
@@ -806,7 +813,8 @@ function LogViewer({ active, focusTaskId, t }) {
               h('pre', null, display(entry.message)),
               h('span', { className: css.logChevron, 'aria-hidden': true })),
             isExpanded ? h('pre', { className: css.logDetails }, JSON.stringify(entry, null, 2)) : null)
-        })))
+        })),
+        h('span', { className: css.logResizeHandle, 'aria-hidden': true })))
 }
 
 function storageValue(key) {

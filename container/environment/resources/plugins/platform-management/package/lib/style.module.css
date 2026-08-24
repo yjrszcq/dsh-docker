@@ -722,16 +722,33 @@ a.secondaryButton { text-decoration: none; }
   line-height: 18px;
 }
 
+.logResizeFrame {
+  position: relative;
+  box-sizing: border-box;
+  height: 280px;
+  min-height: 140px;
+  max-height: min(720px, 70dvh);
+}
+
 .logList {
   display: flex;
   flex-direction: column;
-  height: min(280px, 42dvh);
-  min-height: 140px;
-  max-height: min(720px, 70dvh);
+  box-sizing: border-box;
+  height: 100%;
   overflow: auto;
-  resize: none;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
+}
+
+.logResizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: 16px;
+  cursor: ns-resize;
+  touch-action: none;
 }
 
 .logEntry {
@@ -887,7 +904,7 @@ a.secondaryButton { text-decoration: none; }
   .logFilters input { grid-column: 1 / -1; }
   .logMeta { flex-wrap: wrap; }
   .logMeta time { width: auto; margin-left: auto; }
-  .logList { height: min(260px, 36dvh); }
+  .logResizeFrame { height: min(260px, 36dvh); }
   .updateReminder { right: 16px; bottom: 16px; }
 }
 
