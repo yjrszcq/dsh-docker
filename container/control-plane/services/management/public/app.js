@@ -410,11 +410,13 @@ function makeHorizontalTabStripScrollable(tablist) {
   const finishDrag = event => {
     if (pointerId === undefined || (event.pointerId !== undefined && event.pointerId !== pointerId)) return
     if (tablist.hasPointerCapture?.(pointerId)) tablist.releasePointerCapture(pointerId)
+    const displacedClickTarget = !dragged && event.target !== dragTarget ? dragTarget : undefined
     suppressClickTarget = dragged ? dragTarget : undefined
     if (suppressClickTarget !== undefined) window.setTimeout(() => { suppressClickTarget = undefined }, 0)
     pointerId = undefined
     dragged = false
     dragTarget = undefined
+    displacedClickTarget?.click()
   }
 
   tablist.addEventListener('wheel', event => {
@@ -439,12 +441,14 @@ function makeHorizontalTabStripScrollable(tablist) {
     scrollStart = tablist.scrollLeft
     dragged = false
     dragTarget = event.target
-    tablist.setPointerCapture?.(pointerId)
   })
   tablist.addEventListener('pointermove', event => {
     if (event.pointerId !== pointerId) return
     const distance = event.clientX - pointerStartX
-    if (Math.abs(distance) >= 4) dragged = true
+    if (Math.abs(distance) >= 4 && !dragged) {
+      dragged = true
+      tablist.setPointerCapture?.(pointerId)
+    }
     if (!dragged) return
     tablist.scrollLeft = scrollStart - distance
     event.preventDefault()
