@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { UserSkillConflictError, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
+import { prepareUserSkillRoots, UserSkillConflictError, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
 
 async function writeDirectorySkill(root, entry, name = entry, description = `${name} description`) {
   const path = join(root, entry)
@@ -20,6 +20,21 @@ async function fixture() {
   await mkdir(join(agentsHome, 'skills'), { recursive: true })
   return { root, dshHome, agentsHome, manager: new UserSkillManager({ dshHome, agentsHome }) }
 }
+
+test('prepares real user Skill roots before privileged tools create entries', async t => {
+  const root = await import('node:fs/promises').then(fs => fs.mkdtemp(join(tmpdir(), 'dsh-user-skill-roots-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const dshHome = join(root, 'dsh')
+  const agentsHome = join(root, 'agents')
+  const roots = await prepareUserSkillRoots({ dshHome, agentsHome })
+  assert.deepEqual(roots, [join(dshHome, 'skills'), join(agentsHome, 'skills')])
+  assert.equal((await lstat(roots[0])).isDirectory(), true)
+  assert.equal((await lstat(roots[1])).isDirectory(), true)
+
+  await rm(roots[0], { recursive: true })
+  await symlink(root, roots[0])
+  await assert.rejects(prepareUserSkillRoots({ dshHome, agentsHome }), /must be a directory/)
+})
 
 test('inventories native directory and flat user skills from both user roots', async t => {
   const value = await fixture()

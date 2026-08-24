@@ -22,11 +22,14 @@ import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.m
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
 import { createPasswordAccess } from '../../control-plane/services/gateway/lib/auth.mjs'
+import { prepareUserSkillRoots } from '../../control-plane/services/management/user-skills.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 const paths = new PlatformPaths(dataRoot, runRoot)
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
+const dshHome = process.env.DSH_HOME ?? '/data/dsh'
+const agentsHome = process.env.DSH_AGENTS_HOME ?? '/home/node/.agents'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
@@ -55,6 +58,12 @@ await logs.diagnostic('stage0', 'stage0.starting', {
   targetSequence: inventory.targetSequence,
 })
 await startup('runtime-layout', () => resetRuntimeLayout(paths))
+await startup('user-skill-roots', () => prepareUserSkillRoots({
+  dshHome,
+  agentsHome,
+  uid: process.getuid?.() === 0 ? 1000 : undefined,
+  gid: process.getgid?.() === 0 ? 1000 : undefined,
+}))
 const ledger = new TrustLedger(trustStateRoot, recoveryPublicKey)
 const objects = new VerifiedObjectStore({
   objectRoot: paths.objectsRoot,
@@ -121,7 +130,7 @@ const gatewayPassword = createPasswordAccess(process.env.DSH_PROXY_PASSWORD ?? '
 })
 const maintenance = await createMaintenanceServer({
   paths,
-  dshHome: process.env.DSH_HOME ?? '/data/dsh',
+  dshHome,
   defaultWorkspace: process.env.DSH_DEFAULT_WORKSPACE ?? '/workspace',
   authorize: async request => {
     if (gatewayPassword.enabled) return gatewayPassword.isAuthenticated(request)

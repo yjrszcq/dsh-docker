@@ -1,11 +1,22 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
+import { chown, lstat, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DISABLED_DIRECTORY = '.disabled'
 const MAX_SKILL_BYTES = 2 * 1024 * 1024
+
+export async function prepareUserSkillRoots({ dshHome = '/data/dsh', agentsHome = '/home/node/.agents', uid, gid } = {}) {
+  const roots = [join(resolve(dshHome), 'skills'), join(resolve(agentsHome), 'skills')]
+  for (const root of roots) {
+    await mkdir(root, { recursive: true })
+    const metadata = await lstat(root)
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error(`User Skill root ${root} must be a directory`)
+    if (uid !== undefined || gid !== undefined) await chown(root, uid ?? -1, gid ?? -1)
+  }
+  return Object.freeze(roots)
+}
 
 export class UserSkillConflictError extends Error {
   constructor(message) {
