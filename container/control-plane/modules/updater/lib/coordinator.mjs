@@ -670,6 +670,9 @@ export class UpdateCoordinator extends EventEmitter {
       return this.transition('success', { taskId, progress: 100, error: null })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'
+      const failureState = await this.state.read()
+      const failurePhase = failureState.phase ?? failureState.status
+      let recoveryCompleted = false
       await this.record('update.experimental.failed', { error, failureClass, taskId })
       if (candidate !== undefined && this.channelState !== undefined) {
         if (failureClass === 'candidate') {
@@ -690,11 +693,62 @@ export class UpdateCoordinator extends EventEmitter {
         try {
           if (['snapshot-created', 'switched', 'probation', 'restoring-data'].includes(transaction.phase)) {
             if (transaction.phase !== 'restoring-data') transaction = await this.journal.transition('restoring-data', { error: message })
+            const recoveryProgress = offset => Math.min(99, Math.max(Number(failureState.progress) || 0, offset))
+            await this.transition('restoring-data', {
+              taskId,
+              operation: 'update',
+              progress: recoveryProgress(86),
+              detail: 'recovery:suspend',
+              rollbackIncludesSnapshot: transaction.snapshotId !== null,
+              error: null,
+            })
             await this.bestEffort('update.rollback.suspend.failed', () => this.activator.suspendDsh(), undefined, { taskId })
+            await this.transition('restoring-data', {
+              taskId, operation: 'update', progress: recoveryProgress(88), detail: 'recovery:deployment',
+            })
             await this.activator.restoreDeployment(transaction.from, { resume: false })
-            if (transaction.snapshotId !== null) await this.snapshots.restore(transaction.snapshotId)
+            if (transaction.snapshotId !== null) {
+              await this.transition('restoring-data', {
+                taskId, operation: 'update', progress: recoveryProgress(90), detail: 'recovery:snapshot',
+              })
+              let previousRestoreProgress
+              await this.snapshots.restore(transaction.snapshotId, {
+                onProgress: metrics => {
+                  const metricProgress = metricPercentage(metrics.processedItems, metrics.totalItems)
+                    ?? metricPercentage(metrics.processedBytes, metrics.totalBytes)
+                  if (metricProgress === previousRestoreProgress) return undefined
+                  previousRestoreProgress = metricProgress
+                  return this.transition('restoring-data', {
+                    taskId,
+                    operation: 'update',
+                    progress: recoveryProgress(90 + Math.round((metricProgress ?? 0) * 0.05)),
+                    detail: 'recovery:snapshot',
+                    processedBytes: metrics.processedBytes ?? null,
+                    totalBytes: metrics.totalBytes ?? null,
+                    processedItems: metrics.processedItems ?? null,
+                    totalItems: metrics.totalItems ?? null,
+                  })
+                },
+              })
+            }
+            await this.transition('restoring-data', {
+              taskId,
+              operation: 'update',
+              progress: recoveryProgress(96),
+              detail: 'recovery:runtime',
+              processedBytes: null,
+              totalBytes: null,
+              processedItems: null,
+              totalItems: null,
+            })
             await this.activator.resumeDsh()
+            const health = await this.reportHealth('restoring-data', {
+              taskId, operation: 'update', progress: recoveryProgress(99), detail: 'recovery:health',
+            })
+            if (health?.healthy === false) throw new Error('restored Deployment failed health checks')
             await this.journal.transition('rolled-back', { error: message })
+            recoveryCompleted = true
+            await this.record('update.experimental.rollback.completed', { taskId })
           } else {
             await this.bestEffort('update.rollback.resume.failed', () => this.activator.resumeDsh(), undefined, { taskId })
             await this.journal.transition('failed', { error: message })
@@ -705,7 +759,21 @@ export class UpdateCoordinator extends EventEmitter {
           message = `${message}; rollback failed: ${rollbackMessage}`
         }
       }
-      await this.transition('failed', { taskId, error: message })
+      await this.transition('failed', {
+        taskId,
+        error: message,
+        ...(recoveryCompleted ? {
+          phase: failurePhase,
+          progress: failureState.progress,
+          detail: failureState.detail,
+          processedBytes: failureState.processedBytes,
+          totalBytes: failureState.totalBytes,
+          processedItems: failureState.processedItems,
+          totalItems: failureState.totalItems,
+          readyServices: failureState.readyServices,
+          totalServices: failureState.totalServices,
+        } : {}),
+      })
       throw error
     }
   }

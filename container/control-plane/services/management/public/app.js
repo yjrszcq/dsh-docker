@@ -554,6 +554,7 @@ const UPDATE_PROGRESS_STAGE = Object.freeze({
   'snapshotting-data': 3,
   switching: 3,
   probation: 3,
+  'restoring-data': 3,
 })
 const ROLLBACK_PROGRESS_STEPS = Object.freeze(['rollbackPrepare', 'rollbackSwitch', 'rollbackData', 'rollbackVerify'])
 const ROLLBACK_PROGRESS_STAGE = Object.freeze({ preparing: 0, stopping: 0, switching: 1, 'restoring-data': 2, verifying: 3 })
@@ -611,6 +612,10 @@ const UPDATE_STAGE_ITEMS = Object.freeze({
   progressActivate: ['itemSwitchDeployment', 'itemCheckHealth', 'itemObserveProbation'],
 })
 
+const UPDATE_RECOVERY_STAGE_ITEMS = Object.freeze([
+  'itemSwitchPrevious', 'itemRestoreSnapshot', 'itemStartRuntime', 'itemCheckHealth',
+])
+
 const ROLLBACK_STAGE_ITEMS = Object.freeze({
   rollbackPrepare: ['itemValidateRollback', 'itemPauseRuntime'],
   rollbackSwitch: ['itemSwitchPrevious'],
@@ -631,6 +636,15 @@ function activeStageItemIndex(stage, update) {
     return 3
   }
   if (stage.labelKey === 'progressActivate') {
+    if (phase === 'restoring-data') {
+      return {
+        'recovery:suspend': 0,
+        'recovery:deployment': 0,
+        'recovery:snapshot': 1,
+        'recovery:runtime': 2,
+        'recovery:health': 3,
+      }[update?.detail] ?? 0
+    }
     if (phase === 'probation') return 2
     if (Number(update?.totalServices) > 0) return 1
     return update?.rollbackIncludesSnapshot === true && phase === 'snapshotting-data' ? 0 : 0
@@ -643,7 +657,9 @@ function activeStageItemIndex(stage, update) {
 }
 
 function stageItems(stage, update, state) {
-  const keys = (stage.key.startsWith('rollback') ? ROLLBACK_STAGE_ITEMS : UPDATE_STAGE_ITEMS)[stage.labelKey] ?? ['stageCompleted']
+  const keys = stage.labelKey === 'progressActivate' && progressLogPhase(update) === 'restoring-data'
+    ? UPDATE_RECOVERY_STAGE_ITEMS
+    : (stage.key.startsWith('rollback') ? ROLLBACK_STAGE_ITEMS : UPDATE_STAGE_ITEMS)[stage.labelKey] ?? ['stageCompleted']
   const active = activeStageItemIndex(stage, update)
   return keys.map((key, index) => ({
     key,

@@ -763,15 +763,47 @@ test('does not switch when the mandatory snapshot fails', async () => {
 
 test('restores exact Runtime and data when Experimental probation fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-experimental-health-fail-'))
+  let healthChecks = 0
   const { calls, coordinator } = experimentalSystem(root, {
-    activator: { health: async () => ({ healthy: false }) },
+    activator: {
+      health: async () => {
+        healthChecks += 1
+        return healthChecks === 1
+          ? { healthy: false, components: [{ id: 'dsh-runtime', healthy: false }] }
+          : { healthy: true, components: [{ id: 'dsh-runtime', healthy: true }] }
+      },
+    },
+    snapshots: {
+      restore: async (id, { onProgress } = {}) => {
+        calls.push(`restore-data:${id}`)
+        await onProgress?.({ processedItems: 0, totalItems: 4 })
+        await onProgress?.({ processedItems: 4, totalItems: 4 })
+      },
+    },
   })
+  const states = []
+  coordinator.on('state', value => { states.push(value) })
   await assert.rejects(coordinator.startExperimental().completion, /probation/)
   assert.equal((await coordinator.journal.read()).phase, 'rolled-back')
   assert.deepEqual(calls.map(value => value.replace(/[0-9a-f-]{36}/, 'task')), [
     'suspend', 'snapshot:task', 'switch:runtime-b', 'suspend',
     'restore-runtime:runtime-a:false', 'restore-data:task', 'resume',
   ])
+  assert.deepEqual(
+    [...new Set(states.filter(value => value.phase === 'restoring-data').map(value => value.detail))],
+    ['recovery:suspend', 'recovery:deployment', 'recovery:snapshot', 'recovery:runtime', 'recovery:health'],
+  )
+  assert.ok(states.some(value => (
+    value.phase === 'restoring-data'
+    && value.detail === 'recovery:snapshot'
+    && value.processedItems === 4
+    && value.totalItems === 4
+  )))
+  const failed = await coordinator.state.read()
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.phase, 'probation')
+  assert.equal(failed.readyServices, 0)
+  assert.equal(failed.totalServices, 1)
 })
 
 test('keeps restoration resumable when rollback itself is interrupted', async () => {
