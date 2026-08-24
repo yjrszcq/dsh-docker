@@ -243,6 +243,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /sessionStorage\.setItem\(PLUGIN_DRAFT_KEY, '1'\)/)
   assert.match(source, /bundled-plugins\/discard[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(source, /\(acting && !checking\)/)
+  assert.match(source, /const checkingProgress = update\.operation === 'check'[\s\S]*checkingProgress[\s\S]*t\('statusChecking'\)[\s\S]*updateToTarget/)
   assert.doesNotMatch(source, /插件设置并重启 DSH|settings and restarting DSH/)
   for (const action of ['enable', 'disable']) assert.match(source, new RegExp(`'${action}'`))
   assert.match(systemPluginManager, /!projected\.installed[\s\S]*onAction\(plugin, 'install'\)/)

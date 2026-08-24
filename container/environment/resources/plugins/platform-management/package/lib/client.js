@@ -1502,6 +1502,7 @@ function PlatformManagement({ t }) {
   const progress = Math.max(0, Math.min(100, Number(update.progress) || 0))
   const progressModel = updateProgressModel(update, t)
   const recoveryProgress = isRecoveryOperation(update.operation)
+  const checkingProgress = update.operation === 'check'
   const progressTarget = status?.updateChannel === 'experimental' ? status?.upstream?.version : status?.supported?.dsh
   const holds = [...new Map([
     ...(status?.holds ?? []),
@@ -1585,7 +1586,9 @@ function PlatformManagement({ t }) {
         !progressVisible && !failedDismissed && (update.error || update.outcome) ? h('p', null, update.error ? localizedError(update.error, t) : updateOutcome(update.outcome, t)) : null,
         progressVisible ? h('div', { className: css.updateProgress },
           h('div', { className: css.progressHeading },
-            h('strong', null, recoveryProgress ? progressModel.title : progressTarget ? t('updateToTarget').replace('{target}', String(progressTarget)) : progressModel.title),
+            h('strong', null, checkingProgress
+              ? t('statusChecking')
+              : recoveryProgress ? progressModel.title : progressTarget ? t('updateToTarget').replace('{target}', String(progressTarget)) : progressModel.title),
             h('span', { className: css.progressHeadingActions },
               h('output', null, `${String(progress)}%`),
               update.status === 'failed' ? h('button', { type: 'button', className: css.smallButton, onClick: () => setDismissedProgressTaskId(String(update.taskId ?? '')) }, t('dismissProgress')) : null)),

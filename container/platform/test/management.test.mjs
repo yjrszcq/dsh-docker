@@ -1437,6 +1437,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /restart\.state === 'running' && hasTaskId\(restart\)[\s\S]*sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.doesNotMatch(script, /if \(hadDraft\) sessionStorage\.removeItem\(PLUGIN_DRAFT_KEY\)/)
   assert.match(script, /\(acting && !checking\)/)
+  assert.match(script, /const checkingProgress = update\.operation === 'check'[\s\S]*checkingProgress[\s\S]*t\('statusChecking'\)[\s\S]*updateToTarget/)
   assert.doesNotMatch(script, /可离线恢复|Offline recovery|recovery-badge/)
   assert.doesNotMatch(script, /插件设置并重启 DSH|settings and restarting DSH/)
   assert.doesNotMatch(script, /shell\.overlay|settings\.section|dsh-platform:update-notice-owner/)

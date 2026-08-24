@@ -1553,10 +1553,13 @@ function render(next) {
   if (progressVisible) {
     const recovery = isRecoveryOperation(update.operation)
     const returningStable = update.operation === 'return-stable'
+    const checkingProgress = update.operation === 'check'
     const target = recovery
       ? rollbackPlan?.previous?.dsh ?? rollbackPlan?.target?.dsh
       : experimental ? next.upstream?.version ?? next.supported?.dsh : next.supported?.dsh
-    elements['progress-title'].textContent = target
+    elements['progress-title'].textContent = checkingProgress
+      ? t('statusChecking')
+      : target
       ? t(returningStable ? 'returnStableToTarget' : recovery ? 'rollbackToTarget' : 'updateToTarget', { target: String(target) })
       : t(returningStable ? 'returnStableProgress' : recovery ? 'rollbackProgress' : 'updateProgress')
     elements['progress-value'].textContent = `${String(progress)}%`
