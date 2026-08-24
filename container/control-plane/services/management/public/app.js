@@ -754,9 +754,17 @@ function renderProgressLogs() {
     count.className = 'progress-stage-count'
     count.textContent = t('stageItemsCompleted', { completed: String(completedItems), total: String(items.length) })
     summaryBody.append(count)
-    const toggle = document.createElement('span')
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
     toggle.className = 'progress-stage-toggle'
+    toggle.setAttribute('aria-expanded', String(stageDetails.open))
     toggle.textContent = t(stageDetails.open ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
+    toggle.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      progressLogStageTouched.add(group.key)
+      stageDetails.open = !stageDetails.open
+    })
     stageSummary.append(marker, summaryBody, toggle)
     const checklist = document.createElement('div')
     checklist.className = 'progress-stage-items'
@@ -858,6 +866,7 @@ function renderProgressLogs() {
     })
     stageDetails.addEventListener('toggle', () => {
       progressLogStageExpansion.set(group.key, stageDetails.open)
+      toggle.setAttribute('aria-expanded', String(stageDetails.open))
       toggle.textContent = t(stageDetails.open ? 'collapseStage' : 'expandStage', { count: String(group.entries.length) })
     })
     elements['progress-log-list'].append(stageDetails)

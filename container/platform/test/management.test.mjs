@@ -1428,6 +1428,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /progressLogStageExpansion\.set\(activeStage\.key, update\.status !== 'success'\)/)
   assert.match(script, /elements\.progress\.dataset\.complete = String\(progress === 100\)/)
   assert.match(script, /stageSummary\.addEventListener\('click',[\s\S]*progressLogStageTouched\.add\(group\.key\)/)
+  assert.match(script, /toggle\.addEventListener\('click',[\s\S]*stageDetails\.open = !stageDetails\.open/)
   assert.match(script, /stageDetails\.addEventListener\('toggle',[\s\S]*toggle\.textContent = t\(stageDetails\.open \? 'collapseStage' : 'expandStage'/)
   assert.doesNotMatch(script, /stageDetails\.addEventListener\('toggle',[\s\S]{0,160}progressLogStageTouched\.add/)
   assert.match(script, /function progressLogPhase\(update\) \{[\s\S]*update\?\.phase[\s\S]*update\?\.operation[\s\S]*update\?\.status/)

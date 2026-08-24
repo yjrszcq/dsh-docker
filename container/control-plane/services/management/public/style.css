@@ -411,7 +411,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .progress-stage-summary strong { font-size: 13px; line-height: 20px; font-weight: 600; }
 .progress-stage-detail, .progress-stage-count { color: var(--muted); font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
 .progress-stage-metric, .progress-stage-percent { color: var(--text); font: 11px/17px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-.progress-stage-toggle { align-self: start; color: var(--accent); font-size: 10px; line-height: 20px; white-space: nowrap; }
+.progress-stage-toggle { align-self: start; padding: 0; border: 0; color: var(--accent); background: transparent; font: inherit; font-size: 10px; line-height: 20px; white-space: nowrap; cursor: pointer; }
 .progress-stage-items { display: grid; gap: 4px; margin-top: 8px; padding: 8px 10px; border-left: 1px solid var(--border); }
 .progress-stage-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 5px; color: var(--muted); font-size: 11px; line-height: 17px; }
 .progress-stage-item.completed { color: var(--success); }
