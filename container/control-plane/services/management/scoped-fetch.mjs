@@ -1,16 +1,17 @@
 import { fetch as undiciFetch, ProxyAgent } from 'undici'
+import { OUTBOUND_PROXY_PORTS } from '../../../platform/lib/outbound-proxy.mjs'
 
 const LOOPBACK = '127.0.0.1'
 
 export const PROXY_SCOPE_PORTS = Object.freeze({
-  updates: 17891,
-  platform: 17892,
-  dshCore: 17893,
-  dshPlugins: 17894,
-  agent: 17895,
-  terminal: 17896,
-  provider: 17897,
-  sharedDsh: 17898,
+  updates: OUTBOUND_PROXY_PORTS.updates,
+  platform: OUTBOUND_PROXY_PORTS.platform,
+  dshCore: OUTBOUND_PROXY_PORTS.dshCore,
+  dshPlugins: OUTBOUND_PROXY_PORTS.dshPlugins,
+  agent: OUTBOUND_PROXY_PORTS.agentNetwork,
+  terminal: OUTBOUND_PROXY_PORTS.managementTerminal,
+  provider: OUTBOUND_PROXY_PORTS.modelApi,
+  sharedDsh: OUTBOUND_PROXY_PORTS.sharedDsh,
 })
 
 export function createScopedFetch(scope, { fetchImpl = undiciFetch } = {}) {
