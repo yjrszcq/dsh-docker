@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -514,6 +514,48 @@ test('rejects same-sequence Stable content conflicts', async () => {
   await context.manager.initialize(context.image)
   const conflicting = await context.manager.writeRecord(await managedRecord(context, 'conflict', 1))
   await context.manager.activate(conflicting.id, async () => {})
+  await assert.rejects(context.manager.prepareImage(context.image), /same targetSequence/)
+})
+
+test('prefers a same-sequence image when the managed Environment differs only by file mode', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const managed = await context.manager.materializeCurrent()
+  const environmentPath = await context.manager.resolveReference(managed.environment)
+  await chmod(join(environmentPath, 'sentinel'), 0o444)
+  const content = {
+    ...managed,
+    environment: { ...managed.environment, sha256: await hashTree(environmentPath) },
+  }
+  delete content.id
+  const current = await context.manager.writeRecord({
+    ...content,
+    id: deriveRecordId('deployment-record', content),
+  })
+  await context.manager.commit(current.id, null)
+
+  const plan = await context.manager.prepareImage(context.image)
+  assert.equal(plan.action, 'prefer-image')
+  assert.equal(plan.target, context.image.id)
+})
+
+test('rejects a same-sequence image when the managed Environment content differs', async () => {
+  const context = await fixture()
+  await context.manager.initialize(context.image)
+  const managed = await context.manager.materializeCurrent()
+  const environmentPath = await context.manager.resolveReference(managed.environment)
+  await writeFile(join(environmentPath, 'sentinel'), 'different environment content')
+  const content = {
+    ...managed,
+    environment: { ...managed.environment, sha256: await hashTree(environmentPath) },
+  }
+  delete content.id
+  const current = await context.manager.writeRecord({
+    ...content,
+    id: deriveRecordId('deployment-record', content),
+  })
+  await context.manager.commit(current.id, null)
+
   await assert.rejects(context.manager.prepareImage(context.image), /same targetSequence/)
 })
 

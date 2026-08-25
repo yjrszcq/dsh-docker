@@ -11,7 +11,7 @@ import {
 import { durableCreate, durableReplace } from '../../lib/atomic.mjs'
 import { readDeploymentStatus, writeDeploymentStatus } from '../../lib/deployment-status.mjs'
 import { replaceDeploymentView, replaceSystemPluginView } from '../../lib/paths.mjs'
-import { hashTree } from '../../lib/tree-hash.mjs'
+import { hashTree, hashTreeContent } from '../../lib/tree-hash.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { TrustError } from '../../lib/validation.mjs'
 import { buildRuntime, cloneTree, loadEnvironmentPatchSet } from '../../../control-plane/modules/patch-manager/index.mjs'
@@ -226,6 +226,26 @@ export class DeploymentManager {
     return Object.freeze({ record, paths: Object.freeze(Object.fromEntries(entries)) })
   }
 
+  async sameImageDeployment(current, image) {
+    if (sameDeployment(current, image)) return true
+    if (
+      current.dshVersion !== image.dshVersion
+      || current.environmentVersion !== image.environmentVersion
+      || current.pristine.sha256 !== image.pristine.sha256
+      || current.runtime.sha256 !== image.runtime.sha256
+      || current.systemPlugins.sha256 !== image.systemPlugins.sha256
+    ) return false
+    const [currentEnvironment, imageEnvironment] = await Promise.all([
+      this.resolveReference(current.environment),
+      this.resolveReference(image.environment),
+    ])
+    const [currentContent, imageContent] = await Promise.all([
+      hashTreeContent(currentEnvironment),
+      hashTreeContent(imageEnvironment),
+    ])
+    return currentContent === imageContent
+  }
+
   async selected() {
     const recordId = this.selectedRecordId ?? (await this.state()).current
     return recordId === null ? null : this.resolveRecord(recordId)
@@ -313,7 +333,7 @@ export class DeploymentManager {
         action = 'image-forward'
       } else if (image.targetSequence < current.targetSequence) {
         imageBehindCurrent = true
-      } else if (!sameDeployment(current, image)) {
+      } else if (!await this.sameImageDeployment(current, image)) {
         throw new TrustError('Deployment image conflicts with current content at the same targetSequence')
       } else if (current.id !== image.id) {
         target = image.id

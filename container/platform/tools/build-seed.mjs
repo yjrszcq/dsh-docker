@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { buildRuntime } from '../../control-plane/modules/patch-manager/index.mjs'
@@ -31,6 +31,15 @@ const version = packageMetadata.version
 const platformRoot = resolve(new URL('..', import.meta.url).pathname)
 const containerRoot = resolve(platformRoot, '..')
 const imageInput = imageInputArg === '-' ? undefined : resolve(imageInputArg)
+
+async function makeFilesReadOnly(root) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) await makeFilesReadOnly(path)
+    else if (entry.isFile()) await chmod(path, 0o444)
+  }
+}
+
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 
@@ -135,6 +144,7 @@ await reconcileSystemPlugins({
 })
 await cp(join(pluginBuildRoot, 'versions', environmentVersion), pluginRoot, { recursive: true })
 await rm(pluginBuildRoot, { recursive: true, force: true })
+await makeFilesReadOnly(environmentOutput)
 
 await cp(join(platformRoot, 'seed', 'trust'), join(output, 'trust'), { recursive: true })
 

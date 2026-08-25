@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { canonicalJson } from './canonical-json.mjs'
 import { TrustError } from './validation.mjs'
 
-async function entries(root, relative = '') {
+async function entries(root, relative = '', includeMode = true) {
   const names = await readdir(join(root, relative))
   const result = []
   for (const name of names.sort()) {
@@ -13,20 +13,20 @@ async function entries(root, relative = '') {
     const details = await lstat(absolute)
     const mode = details.mode & 0o777
     if (details.isDirectory()) {
-      result.push({ path, type: 'directory', mode })
-      result.push(...await entries(root, path))
+      result.push({ path, type: 'directory', ...(includeMode ? { mode } : {}) })
+      result.push(...await entries(root, path, includeMode))
     } else if (details.isFile()) {
       result.push({
         path,
         type: 'file',
-        mode,
+        ...(includeMode ? { mode } : {}),
         sha256: createHash('sha256').update(await readFile(absolute)).digest('hex'),
         size: details.size,
       })
     } else if (details.isSymbolicLink()) {
       const target = await readlink(absolute)
       if (target.includes('\0')) throw new TrustError(`tree symlink ${path} is invalid`)
-      result.push({ path, type: 'symlink', mode, target })
+      result.push({ path, type: 'symlink', ...(includeMode ? { mode } : {}), target })
     } else {
       throw new TrustError(`tree entry ${path} has an unsupported type`)
     }
@@ -36,5 +36,10 @@ async function entries(root, relative = '') {
 
 export async function hashTree(root) {
   const manifest = { schema: 1, entries: await entries(root) }
+  return createHash('sha256').update(canonicalJson(manifest)).digest('hex')
+}
+
+export async function hashTreeContent(root) {
+  const manifest = { schema: 1, entries: await entries(root, '', false) }
   return createHash('sha256').update(canonicalJson(manifest)).digest('hex')
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -266,6 +266,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(inventory.authority, 'stable')
   assert.equal(inventory.targetSequence, 1)
   assert.equal(inventory.deployment.dshVersion, supportedDshVersion)
+  assert.equal((await lstat(join(seedOutput, 'environments', environmentVersion, 'environment.manifest.json'))).mode & 0o777, 0o444)
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
