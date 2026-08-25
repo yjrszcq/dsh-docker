@@ -63,6 +63,10 @@ function normalizeProviderPolicy(value, label) {
   return value
 }
 
+export function validProviderId(value) {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,127}$/.test(value)
+}
+
 function normalizeModelApi(value) {
   object(value, 'model API proxy policy')
   requiredKeys(value, ['default', 'providers'], 'model API proxy policy')
@@ -70,7 +74,7 @@ function normalizeModelApi(value) {
   object(value.providers, 'model API provider policies')
   const providers = {}
   for (const [id, policy] of Object.entries(value.providers)) {
-    if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(id)) throw new ProxyConfigurationError('model API provider ID is invalid')
+    if (!validProviderId(id)) throw new ProxyConfigurationError('model API provider ID is invalid')
     providers[id] = normalizeProviderPolicy(policy, `model API provider ${id}`)
   }
   return { default: normalizeProviderPolicy(value.default, 'model API default'), providers }

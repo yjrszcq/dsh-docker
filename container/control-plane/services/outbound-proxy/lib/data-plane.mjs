@@ -20,6 +20,7 @@ function proxyError(response, statusCode, code, message) {
     'content-length': Buffer.byteLength(body),
     'x-dsh-proxy-error': code,
     connection: 'close',
+    ...statusCode === 407 ? { 'proxy-authenticate': 'DSH-Provider' } : {},
   })
   response.end(body)
 }
@@ -28,10 +29,11 @@ function socketError(socket, statusCode, code, message) {
   if (socket.destroyed) return
   const body = `${message}\n`
   socket.end([
-    `HTTP/1.1 ${statusCode} ${statusCode === 504 ? 'Gateway Timeout' : statusCode === 431 ? 'Request Header Fields Too Large' : statusCode === 400 ? 'Bad Request' : 'Bad Gateway'}`,
+    `HTTP/1.1 ${statusCode} ${statusCode === 504 ? 'Gateway Timeout' : statusCode === 431 ? 'Request Header Fields Too Large' : statusCode === 407 ? 'Proxy Authentication Required' : statusCode === 400 ? 'Bad Request' : 'Bad Gateway'}`,
     'Content-Type: text/plain; charset=utf-8',
     `Content-Length: ${Buffer.byteLength(body)}`,
     `X-DSH-Proxy-Error: ${code}`,
+    ...statusCode === 407 ? ['Proxy-Authenticate: DSH-Provider'] : [],
     'Connection: close',
     '',
     body,
@@ -48,6 +50,18 @@ function errorFields(error) {
 function observeRouteHealth(context, snapshot, outcome) {
   if (context.getSnapshot().revision === snapshot.revision) {
     context.routeHealth.observe(snapshot, context.scope, outcome)
+  }
+}
+
+function authorizeProvider(context, headers, snapshot) {
+  if (context.scope !== 'modelApi') return undefined
+  try {
+    if (context.providerHandles === undefined) throw new Error('provider handles are unavailable')
+    return context.providerHandles.resolve(headers['proxy-authorization'], snapshot)
+  } catch {
+    throw new ProxyTransportError('provider policy handle is invalid', {
+      code: 'PROVIDER_HANDLE_INVALID', statusCode: 407,
+    })
   }
 }
 
@@ -257,8 +271,9 @@ async function handleHttp(request, response, context) {
   try {
     request.pause()
     snapshot = context.getSnapshot()
+    const providerId = authorizeProvider(context, request.headers, snapshot)
     route = await selectProxyRoute({
-      snapshot, scope: context.scope, host: target.host, port: target.port,
+      snapshot, scope: context.scope, providerId, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     const proxied = route.mode === 'http'
@@ -344,8 +359,9 @@ async function handleUpgrade(request, socket, head, context) {
   socket.once('close', () => cancellation.abort())
   try {
     snapshot = context.getSnapshot()
+    const providerId = authorizeProvider(context, request.headers, snapshot)
     route = await selectProxyRoute({
-      snapshot, scope: context.scope, host: target.host, port: target.port,
+      snapshot, scope: context.scope, providerId, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     if (!['direct', 'http', 'socks5'].includes(route.mode)) throw new ProxyTransportError('configured proxy protocol is not available', { code: 'PROXY_PROTOCOL_UNAVAILABLE' })
@@ -375,8 +391,9 @@ async function handleConnect(request, socket, head, context) {
   socket.once('close', () => cancellation.abort())
   try {
     snapshot = context.getSnapshot()
+    const providerId = authorizeProvider(context, request.headers, snapshot)
     route = await selectProxyRoute({
-      snapshot, scope: context.scope, host: target.host, port: target.port,
+      snapshot, scope: context.scope, providerId, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     const connected = await routeSocket(route, target, cancellation.signal)
@@ -401,8 +418,9 @@ export function createScopedProxyServer({
   dnsCache = new ProxyDnsCache({ resolver }),
   agentPool = new ProxyAgentPool(),
   routeHealth = new ProxyRouteHealth(),
+  providerHandles,
 }) {
-  const context = Object.freeze({ scope, getSnapshot, dnsCache, agentPool, routeHealth })
+  const context = Object.freeze({ scope, getSnapshot, dnsCache, agentPool, routeHealth, providerHandles })
   const server = createServer({ maxHeaderSize: 256 * 1024, allowHalfOpen: true }, (request, response) => {
     void handleHttp(request, response, context)
   })

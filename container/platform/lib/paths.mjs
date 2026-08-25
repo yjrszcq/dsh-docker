@@ -29,6 +29,7 @@ export class PlatformPaths {
     this.managementStateRoot = join(this.stateRoot, 'management')
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
     this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
+    this.proxyProviderInventoryPath = join(this.managementStateRoot, 'proxy-provider-inventory.json')
     this.fileTasksRoot = join(this.managementStateRoot, 'file-tasks')
     this.maintenanceLeasePath = join(this.managementStateRoot, 'maintenance-mutation.lock')
     this.objectsRoot = join(this.storeRoot, 'objects')

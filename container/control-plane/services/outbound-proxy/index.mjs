@@ -10,6 +10,7 @@ import { ProxyDnsCache } from './lib/dns-cache.mjs'
 import { probeProxyEntry } from './lib/readiness.mjs'
 import { ProxyRouteHealth } from './lib/route-health.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
+import { ProviderHandleStore } from './lib/provider-handles.mjs'
 
 const paths = new PlatformPaths(
   process.env.DSH_PLATFORM_DATA ?? '/data/platform',
@@ -21,9 +22,12 @@ const listeners = []
 const dnsCache = new ProxyDnsCache()
 const agentPool = new ProxyAgentPool()
 const routeHealth = new ProxyRouteHealth()
+const providerHandles = new ProviderHandleStore()
 
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
-  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot, dnsCache, agentPool, routeHealth })
+  const server = createScopedProxyServer({
+    scope, getSnapshot: () => snapshot, dnsCache, agentPool, routeHealth, providerHandles,
+  })
   await new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, '127.0.0.1', resolve)
@@ -32,7 +36,7 @@ for (const [scope, port] of Object.entries(PROXY_PORTS)) {
 }
 await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))
 
-const control = createOutboundProxyControl({ getSnapshot: () => snapshot, routeHealth })
+const control = createOutboundProxyControl({ getSnapshot: () => snapshot, routeHealth, providerHandles })
 await mkdir(dirname(paths.proxyControlSocket), { recursive: true })
 await unlink(paths.proxyControlSocket).catch(error => {
   if (error?.code !== 'ENOENT') throw error

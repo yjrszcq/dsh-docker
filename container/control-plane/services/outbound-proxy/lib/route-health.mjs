@@ -3,7 +3,10 @@ import { PROXY_PORTS } from './contracts.mjs'
 function enabled(configuration, scope) {
   if (!configuration.enabled) return false
   if (scope === 'sharedDsh') return configuration.scopes.dshCore || configuration.scopes.dshPlugins
-  if (scope === 'modelApi') return false
+  if (scope === 'modelApi') {
+    return configuration.modelApi.default === 'proxy'
+      || Object.values(configuration.modelApi.providers).includes('proxy')
+  }
   return configuration.scopes[scope] === true
 }
 
