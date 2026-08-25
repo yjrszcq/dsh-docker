@@ -181,6 +181,7 @@ The Container Environment includes these DSH-Docker integrations:
 | Plugin | Purpose |
 | --- | --- |
 | `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugins, and System Skills; this integration is platform-managed |
+| `@dsh-docker/settings-navigation` | Keeps the desktop Settings directory independently scrollable and provides directory/detail navigation on narrow screens |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 
 Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Changes are marked pending and take effect after restarting DSH. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.

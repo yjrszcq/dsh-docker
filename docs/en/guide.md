@@ -421,9 +421,12 @@ The Container Environment currently includes:
 | Plugin | Purpose |
 | --- | --- |
 | `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugin, and System Skill controls |
+| `@dsh-docker/settings-navigation` | Keeps the desktop Settings directory independently scrollable and provides directory/detail navigation on narrow screens |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 
 The standalone console lists every System Plugin bundled by the current Environment and can install, uninstall, enable, or disable them, including recovery of the `platform-management` DSH integration. The integration inside DSH shows missing plugins with an Install action and limits installed plugins to enable/disable; it cannot uninstall them. Changes are marked **Pending restart** and take effect only after restarting DSH. Refreshing before restart discards the pending draft. Installation rebuilds and verifies the complete System Plugin Set from the current Deployment's local trusted Environment Artifact against the Deployment Record content hash. It never contacts GitHub or npm, never copies files from a built Runtime, and never reinstalls a missing plugin automatically.
+
+Settings Navigation leaves DSH's native Settings content mounted and changes only navigation presentation after semantically recognizing the official dialog structure. Desktop Settings retain the native two-column layout while the directory scrolls independently. Panels narrower than 640 pixels open on a scrollable directory; selecting an item opens its detail with a back button, preserving the selected section, unsaved content, directory scroll position, and focus across navigation and resizing. Disabling, uninstalling, or failing to recognize the shell restores the unmodified DSH Settings layout.
 
 The optional Settings Document Editor System Plugin replaces DSH's native **Open configuration file** action in container deployments with a responsive browser editor. It edits only the current `$DSH_HOME/settings.yaml`, saves atomically, and rejects a save when the file changed after the page loaded. It uses the same restricted DSH-side platform boundary as Platform Management and remains usable without first signing in to the standalone console.
 
