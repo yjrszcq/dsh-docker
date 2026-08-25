@@ -1418,11 +1418,25 @@ function proxyLines(value) {
   return String(value ?? '').split(/\r?\n/u).map(entry => entry.trim()).filter(Boolean)
 }
 
+function directRuleText(configuration) {
+  return [...new Set([
+    ...(configuration.noProxy?.user ?? []),
+    ...(configuration.bypass?.additional ?? []),
+  ])].join('\n')
+}
+
+function splitDirectRules(value) {
+  const rules = proxyLines(value)
+  return {
+    noProxy: rules.filter(rule => !/\/\d+$/u.test(rule)),
+    bypass: rules.filter(rule => /\/\d+$/u.test(rule)),
+  }
+}
+
 function ProxySettings({ active, t }) {
   const [configuration, setConfiguration] = useState(null)
   const [providers, setProviders] = useState([])
-  const [noProxyText, setNoProxyText] = useState('')
-  const [bypassText, setBypassText] = useState('')
+  const [directRulesText, setDirectRulesText] = useState('')
   const [password, setPassword] = useState('')
   const [clearPassword, setClearPassword] = useState(false)
   const [task, setTask] = useState(null)
@@ -1430,6 +1444,9 @@ function ProxySettings({ active, t }) {
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
   const scopeDialog = useRef(null)
+  const systemRulesDialog = useRef(null)
+  const providerInfoDialog = useRef(null)
+  const [providerInfo, setProviderInfo] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -1437,8 +1454,7 @@ function ProxySettings({ active, t }) {
         request('proxy'), request('proxy/provider-inventory'), request('status'),
       ])
       setConfiguration(next)
-      setNoProxyText((next.noProxy?.user ?? []).join('\n'))
-      setBypassText((next.bypass?.additional ?? []).join('\n'))
+      setDirectRulesText(directRuleText(next))
       setProviders(inventory.providers ?? [])
       setError('')
       const activeTask = platformStatus?.proxyTestOperation
@@ -1490,6 +1506,7 @@ function ProxySettings({ active, t }) {
     h('p', { className: error ? css.error : undefined }, error || t('proxyLoading')))
 
   const candidate = () => {
+    const directRules = splitDirectRules(directRulesText)
     const proxy = {
       protocol: configuration.proxy.protocol,
       host: configuration.proxy.host.trim(),
@@ -1505,8 +1522,8 @@ function ProxySettings({ active, t }) {
       scopes: Object.fromEntries(PROXY_SCOPES.map(([id]) => [id, configuration.scopes[id] === true])),
       environment: { allProxy: configuration.environment.allProxy },
       modelApi: configuration.modelApi,
-      noProxy: { user: proxyLines(noProxyText) },
-      bypass: { additional: proxyLines(bypassText) },
+      noProxy: { user: directRules.noProxy },
+      bypass: { additional: directRules.bypass },
     }
   }
 
@@ -1515,8 +1532,7 @@ function ProxySettings({ active, t }) {
     try {
       const next = await request('proxy', { method: 'PUT', body: { baseRevision: configuration.revision, value: candidate() } })
       setConfiguration(next)
-      setNoProxyText((next.noProxy?.user ?? []).join('\n'))
-      setBypassText((next.bypass?.additional ?? []).join('\n'))
+      setDirectRulesText(directRuleText(next))
       setPassword('')
       setClearPassword(false)
       setResult(t('proxySaved'))
@@ -1575,30 +1591,38 @@ function ProxySettings({ active, t }) {
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-scopes-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-scopes-title' }, t('proxyScopes')), h('p', null, t('proxyScopesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => scopeDialog.current?.showModal() }, t('proxyScopeHelp'))),
       h('div', { className: css.proxyScopeGrid }, PROXY_SCOPES.map(([id, title, detail]) =>
-        h('label', { key: id },
-          h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }),
-          h('span', null,
+        h('div', { className: css.proxyScopeCard, key: id },
+          h('span', { className: css.proxyScopeCopy },
             h('b', null, t(title)),
-            h(ExpandableProxyDescription, { text: t(detail), identity: `scope:${id}` })))))),
+            h(ExpandableProxyDescription, { text: t(detail), identity: `scope:${id}` })),
+          h('label', { className: css.toggle, 'aria-label': t(title) },
+            h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }),
+            h('span', { 'aria-hidden': true })))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-rules-title' },
-      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail')))),
-      h('div', { className: css.proxyRulesGrid },
-        h('label', null, h('span', null, t('proxyNoProxy')), h('textarea', { rows: 4, value: noProxyText, spellCheck: false, onChange: event => setNoProxyText(event.target.value) }), h('small', null, t('proxyNoProxyDetail'))),
-        h('label', null, h('span', null, t('proxyBypass')), h('textarea', { rows: 4, value: bypassText, spellCheck: false, onChange: event => setBypassText(event.target.value) }), h('small', null, t('proxyBypassDetail')))),
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => systemRulesDialog.current?.showModal() }, t('proxySystemRules'))),
+      h('label', { className: css.proxyDirectRulesField }, h('span', null, t('proxyDirectRules')), h('textarea', { rows: 5, value: directRulesText, spellCheck: false, placeholder: t('proxyDirectRulesPlaceholder'), onChange: event => setDirectRulesText(event.target.value) }), h('small', null, t('proxyDirectRulesDetail'))),
       h('label', { className: css.proxyCheckRow }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', onChange: event => patch(['environment', 'allProxy'], event.target.checked ? 'scope-proxy' : null) }), h('span', null, h('b', null, t('proxyAllProxy')), h('small', null, t('proxyAllProxyDetail'))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-providers-title' }, t('proxyProviders')), h('p', null, t('proxyProvidersDetail')))),
-      providers.length === 0 ? h('p', { className: css.emptyPlugins }, t('proxyNoProviders')) : h('div', { className: css.proxyProviderList }, providers.map(provider => h('div', { className: css.proxyProvider, key: provider.id },
-        h('div', null,
-          h('b', null, provider.displayName),
-          h(ExpandableProxyDescription, {
-            className: css.proxyProviderDescription,
-            identity: `provider:${provider.id}`,
-            text: provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id,
-          })),
-        provider.routingCapability === 'provider' ? h('select', { value: configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default, onChange: event => patch(['modelApi', 'providers', provider.id], event.target.value) }, h('option', { value: 'direct' }, t('proxyProviderDirect')), h('option', { value: 'proxy' }, t('proxyProviderIndependent'))) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))))),
+      providers.length === 0 ? h('p', { className: css.emptyPlugins }, t('proxyNoProviders')) : h('div', { className: css.proxyProviderList }, providers.map(provider => {
+        const displayName = typeof provider.displayName === 'string' && provider.displayName.trim() !== '' ? provider.displayName : provider.id
+        const information = provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : null
+        return h('div', { className: css.proxyProvider, key: provider.id },
+          h('div', { className: css.proxyProviderIdentity },
+            h('b', null, displayName),
+            information === null ? null : h('button', {
+              type: 'button',
+              className: css.proxyProviderInfo,
+              'aria-label': t('proxyProviderInfo', { name: displayName }),
+              onClick: () => {
+                setProviderInfo({ title: displayName, detail: information })
+                requestAnimationFrame(() => providerInfoDialog.current?.showModal())
+              },
+            }, 'i')),
+          provider.routingCapability === 'provider' ? h('label', { className: css.toggle, 'aria-label': displayName }, h('input', { type: 'checkbox', checked: (configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default) === 'proxy', onChange: event => patch(['modelApi', 'providers', provider.id], event.target.checked ? 'proxy' : 'direct') }), h('span', { 'aria-hidden': true })) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))
+      }))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-test-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-test-title' }, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('div', { className: css.actions }, taskRunning ? h('button', { type: 'button', className: css.secondaryButton, onClick: () => { void cancelTest() } }, t('cancel')) : null, h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning, onClick: () => { void startTest() } }, t('proxyTestStart')), h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void save() } }, t('proxySave')))),
@@ -1613,7 +1637,21 @@ function ProxySettings({ active, t }) {
           h('div', null, h('h3', null, t('proxyScopeGuideTitle')), h('p', null, t('proxyScopeGuideDetail'))),
           h('button', { value: 'cancel', className: css.secondaryButton }, t('close'))),
         h('div', { className: css.proxyScopeCatalog }, catalogNodes),
-        h('div', { className: css.proxyScopeSummaries }, summaryNodes))))
+        h('div', { className: css.proxyScopeSummaries }, summaryNodes))),
+    h('dialog', { ref: providerInfoDialog, className: css.proxyProviderInfoDialog },
+      h('form', { method: 'dialog' },
+        h('header', null,
+          h('h3', null, providerInfo?.title ?? ''),
+          h('button', { value: 'cancel', className: css.secondaryButton }, t('close'))),
+        h('p', null, providerInfo?.detail ?? ''))),
+    h('dialog', { ref: systemRulesDialog, className: css.proxyProviderInfoDialog },
+      h('form', { method: 'dialog' },
+        h('header', null,
+          h('h3', null, t('proxySystemRulesTitle')),
+          h('button', { value: 'cancel', className: css.secondaryButton }, t('close'))),
+        h('div', { className: css.proxySystemRulesBody },
+          h('p', null, t('proxySystemRulesDetail')),
+          h('pre', null, (configuration.noProxy?.system ?? []).join('\n'))))))
 }
 
 function PlatformManagement({ t }) {
@@ -2132,7 +2170,7 @@ export function apply(ctx) {
       managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', proxyTab: '代理设置',
       proxyTitle: '代理设置', proxyDetail: '配置由 DSH Docker 使用的外部 HTTP 或 SOCKS5 代理。', proxyLoading: '正在加载代理配置…', proxyProtocol: '代理协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空则保持当前密码', proxyRemoteDns: '通过代理解析域名', proxyRemoteDnsDetail: '仅适用于 SOCKS5；关闭时由容器本地解析。', proxyClearPassword: '清除已保存的密码', proxyPasswordConfigured: '已保存代理密码；密码不会从平台读取或回显。', proxyPasswordNotConfigured: '尚未保存代理密码。', proxyTransportWarning: '当前页面未使用 HTTPS。代理凭据会受到传输链路保护能力的限制。', proxyComponentReady: '出站代理组件已就绪。配置只影响新建立的连接。', proxyComponentUnavailable: '出站代理组件当前不可用；可以保存配置，但连接测试可能失败。',
       proxyScopes: '代理范围', proxyScopesDetail: '仅勾选需要通过外部代理访问网络的来源。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '此表由管理后端提供，两套管理界面使用相同分类。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: '更新检查、npm metadata 与 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'Management、Updater 等平台组件的非本地外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: 'DSH 核心联网，不包括模型 Provider API。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: '官方、第三方及 DSH Docker 系统插件的联网。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 工具、命令与其子进程的联网。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: 'DSH 管理中心提供的容器终端。',
-      proxyRules: '直连与兼容规则', proxyRulesDetail: '强制本地直连始终优先；NO_PROXY 优先于 bypass。', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: '每行一项；使用 .google.com 表示域后缀，不使用 *.google.com。', proxyBypass: '额外 bypass', proxyBypassDetail: '平台代理可识别的精确主机、域后缀、IP 或 CIDR。', proxyAllProxy: '为兼容客户端注入 ALL_PROXY', proxyAllProxyDetail: '仅对明确支持 ALL_PROXY 的客户端有效；默认关闭。', proxyProviders: '模型 Provider', proxyProvidersDetail: '本地 Provider 强制直连；只有具备稳定独立路由能力的 Provider 才可单独选择。', proxyNoProviders: '当前没有可识别的模型 Provider。', proxyProviderDirect: '直连', proxyProviderIndependent: '独立代理', proxyProviderShared: '跟随 DSH', proxyProviderReasonLocal: '本地 Provider 强制直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此跟随 DSH 共享流量策略。',
+      proxyRules: '直连规则', proxyRulesDetail: '列出的目标不会使用外部代理。', proxyDirectRules: '附加直连规则', proxyDirectRulesDetail: '每行一个主机、域后缀、IP 地址或 CIDR；使用 .google.com，不使用 *.google.com。', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: '内置规则', proxySystemRulesTitle: '内置直连规则', proxySystemRulesDetail: '以下平台托管的本地目标始终直连，无需重复填写。', proxyAllProxy: '为兼容客户端注入 ALL_PROXY', proxyAllProxyDetail: '仅对明确支持 ALL_PROXY 的客户端有效；默认关闭。', proxyProviders: '模型 Provider', proxyProvidersDetail: '本地 Provider 强制直连；只有具备稳定独立路由能力的 Provider 才可单独选择。', proxyNoProviders: '当前没有可识别的模型 Provider。', proxyProviderDirect: '直连', proxyProviderIndependent: '独立代理', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 强制直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此跟随 DSH 共享流量策略。',
       proxyTest: '代理连接测试', proxyTestDetail: '测试当前表单，不会覆盖已保存配置。', proxyTestStart: '测试连接', proxySave: '保存并应用', proxySaving: '正在保存代理设置', proxySaved: '代理设置已保存', proxyTestSuccess: '代理连接测试通过。', proxyTestFailed: '代理连接测试失败', proxyTestCancelled: '代理连接测试已取消。', proxyStageAddress: '解析代理地址', proxyStageConnect: '连接代理', proxyStageHandshake: '代理握手', proxyStageDns: '解析目标域名', proxyStageTls: '建立目标 TLS', proxyStageHttp: '请求目标服务', proxyStagePending: '待测试', proxyStageRunning: '测试中', proxyStageSuccess: '已通过', proxyStageFailed: '失败', proxyStageSkipped: '已跳过',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。', returnStableProgress: '返回稳定通道',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
@@ -2162,7 +2200,7 @@ export function apply(ctx) {
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', proxyTab: 'Proxy',
       proxyTitle: 'Proxy settings', proxyDetail: 'Configure an external HTTP or SOCKS5 proxy used by DSH Docker.', proxyLoading: 'Loading proxy configuration…', proxyProtocol: 'Proxy protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the current password', proxyRemoteDns: 'Resolve names through the proxy', proxyRemoteDnsDetail: 'SOCKS5 only. When off, names are resolved locally in the container.', proxyClearPassword: 'Clear the saved password', proxyPasswordConfigured: 'A proxy password is saved. It cannot be read back or displayed.', proxyPasswordNotConfigured: 'No proxy password is saved.', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are limited by the protection of the transport path.', proxyComponentReady: 'The outbound proxy component is ready. Changes affect new connections only.', proxyComponentUnavailable: 'The outbound proxy component is unavailable. Settings can be saved, but connection tests may fail.',
       proxyScopes: 'Proxy scopes', proxyScopesDetail: 'Enable the external proxy only for sources that need it.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'The Management backend supplies this table to both management interfaces.', proxyScopeUpdates: 'Update management', proxyScopeUpdatesDetail: 'Update checks, npm metadata, and Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'Non-local external requests from Management, Updater, and other platform components.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic, excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official, third-party, and DSH Docker System Plugin traffic.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent tools, commands, and their child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'The container terminal provided by DSH Management Console.',
-      proxyRules: 'Direct and compatibility rules', proxyRulesDetail: 'Forced local direct routes always win; NO_PROXY takes priority over bypass.', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: 'One entry per line. Use .google.com for a domain suffix, not *.google.com.', proxyBypass: 'Additional bypass', proxyBypassDetail: 'Exact hosts, domain suffixes, IP addresses, or CIDRs understood by the platform proxy.', proxyAllProxy: 'Inject ALL_PROXY for compatible clients', proxyAllProxyDetail: 'Only affects clients known to support ALL_PROXY. Off by default.', proxyProviders: 'Model Providers', proxyProvidersDetail: 'Local Providers are forced direct. Independent selection is available only when Provider identity is stable end to end.', proxyNoProviders: 'No model Providers are currently discoverable.', proxyProviderDirect: 'Direct', proxyProviderIndependent: 'Independent proxy', proxyProviderShared: 'Follow DSH', proxyProviderReasonLocal: 'Local Provider; forced direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so this Provider follows shared DSH routing.',
+      proxyRules: 'Direct rules', proxyRulesDetail: 'Listed destinations bypass the external proxy.', proxyDirectRules: 'Additional direct rules', proxyDirectRulesDetail: 'One host, domain suffix, IP address, or CIDR per line. Use .google.com, not *.google.com.', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: 'Built-in rules', proxySystemRulesTitle: 'Built-in direct rules', proxySystemRulesDetail: 'These platform-managed local destinations are always direct and do not need to be entered again.', proxyAllProxy: 'Inject ALL_PROXY for compatible clients', proxyAllProxyDetail: 'Only affects clients known to support ALL_PROXY. Off by default.', proxyProviders: 'Model Providers', proxyProvidersDetail: 'Local Providers are forced direct. Independent selection is available only when Provider identity is stable end to end.', proxyNoProviders: 'No model Providers are currently discoverable.', proxyProviderDirect: 'Direct', proxyProviderIndependent: 'Independent proxy', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Provider; forced direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so this Provider follows shared DSH routing.',
       proxyTest: 'Proxy connection test', proxyTestDetail: 'Tests the current form without replacing saved settings.', proxyTestStart: 'Test connection', proxySave: 'Save and apply', proxySaving: 'Saving proxy settings', proxySaved: 'Proxy settings saved', proxyTestSuccess: 'Proxy connection test passed.', proxyTestFailed: 'Proxy connection test failed', proxyTestCancelled: 'Proxy connection test cancelled.', proxyStageAddress: 'Resolve proxy address', proxyStageConnect: 'Connect to proxy', proxyStageHandshake: 'Proxy handshake', proxyStageDns: 'Resolve target name', proxyStageTls: 'Establish target TLS', proxyStageHttp: 'Request target service', proxyStagePending: 'Pending', proxyStageRunning: 'Testing', proxyStageSuccess: 'Passed', proxyStageFailed: 'Failed', proxyStageSkipped: 'Skipped',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.', returnStableProgress: 'Return to Stable',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',

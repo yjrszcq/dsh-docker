@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 import { apply as applyPlatformManagement, inject, managedNetworkInternals } from '../../environment/resources/plugins/platform-management/package/lib/index.js'
+import {
+  fetchRoutedProviderIds,
+  installProviderRouting,
+} from '../../environment/resources/plugins/platform-management/package/lib/provider-routing.js'
+import { FETCH_ROUTED_PROVIDER_IDS } from '../lib/provider-routing.mjs'
 
 const root = new URL('../../environment/resources/plugins/platform-management/package/', import.meta.url)
 
@@ -40,6 +48,7 @@ test('Platform Management classifies official DSH Shell subprocesses as Agent ne
   let cleanup
   applyPlatformManagement({
     subprocess,
+    on() { return () => {} },
     effect(factory) { cleanup = factory() },
   })
   const previous = process.env.DSH_PLATFORM_AGENT_PROXY_URL
@@ -53,6 +62,175 @@ test('Platform Management classifies official DSH Shell subprocesses as Agent ne
   } finally {
     if (previous === undefined) delete process.env.DSH_PLATFORM_AGENT_PROXY_URL
     else process.env.DSH_PLATFORM_AGENT_PROXY_URL = previous
+  }
+})
+
+test('Platform Management routes verified Provider fetches through opaque handles', async () => {
+  assert.deepEqual(fetchRoutedProviderIds, FETCH_ROUTED_PROVIDER_IDS)
+  assert.equal(fetchRoutedProviderIds.includes('amazon-bedrock'), false)
+  assert.equal(fetchRoutedProviderIds.includes('openai-codex'), false)
+
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-routing-'))
+  const socketPath = join(root, 'proxy.sock')
+  const requests = []
+  const server = createServer(async (request, response) => {
+    const chunks = []
+    for await (const chunk of request) chunks.push(chunk)
+    const body = chunks.length === 0 ? undefined : JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    requests.push([request.method, request.url, body])
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') response.end(JSON.stringify({ revision: 'revision-one' }))
+    else response.end(JSON.stringify({ handle: 'a'.repeat(43), policyRevision: 'revision-one' }))
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socketPath, resolve)
+  })
+
+  const previousFetch = globalThis.fetch
+  const observed = []
+  const dispatchers = []
+  globalThis.fetch = async (_input, init) => {
+    observed.push(init?.dispatcher ?? null)
+    return { ok: true }
+  }
+  let listener
+  const remove = installProviderRouting({
+    on(event, callback, options) {
+      assert.equal(event, 'llm/stream')
+      assert.deepEqual(options, { global: true, prepend: true })
+      listener = callback
+      return () => { listener = undefined }
+    },
+  }, {
+    socketPath,
+    routedFetch: async (_input, init) => {
+      observed.push(init?.dispatcher ?? null)
+      return { ok: true }
+    },
+    createDispatcher(options) {
+      const dispatcher = { options, closed: false, async close() { this.closed = true } }
+      dispatchers.push(dispatcher)
+      return dispatcher
+    },
+  })
+
+  try {
+    const routed = listener({ provider: 'deepseek-official' }, () => (async function* () {
+      await fetch('https://provider.invalid')
+      yield 'chunk'
+    })())
+    assert.deepEqual(await routed.next(), { value: 'chunk', done: false })
+    assert.deepEqual(await routed.next(), { value: undefined, done: true })
+    assert.equal(observed[0], dispatchers[0])
+    assert.deepEqual(dispatchers[0].options, {
+      uri: 'http://127.0.0.1:17897',
+      token: `DSH-Provider ${'a'.repeat(43)}`,
+    })
+    assert.equal(dispatchers[0].closed, true)
+    assert.deepEqual(requests, [
+      ['GET', '/v1/configuration', undefined],
+      ['POST', '/v1/provider-handles', { providerId: 'deepseek-official', policyRevision: 'revision-one' }],
+    ])
+
+    const shared = listener({ provider: 'amazon-bedrock' }, () => (async function* () {
+      await fetch('https://provider.invalid')
+      yield 'shared'
+    })())
+    assert.deepEqual(await shared.next(), { value: 'shared', done: false })
+    assert.equal(observed[1], null)
+  } finally {
+    remove()
+    globalThis.fetch = previousFetch
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Platform Management keeps Provider fetch and dispatcher ownership aligned across scopes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-scope-routing-'))
+  const socketPath = join(root, 'proxy.sock')
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify(request.method === 'GET'
+      ? { revision: 'scope-revision' }
+      : { handle: 'b'.repeat(43), policyRevision: 'scope-revision' }))
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socketPath, resolve)
+  })
+
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true })
+  const listeners = []
+  const observed = []
+  const install = owner => installProviderRouting({
+    on(_event, listener) { listeners.push(listener); return () => {} },
+  }, {
+    socketPath,
+    createDispatcher: () => ({ owner, async close() {} }),
+    routedFetch: async (_input, init) => {
+      observed.push([owner, init.dispatcher.owner])
+      return { ok: true }
+    },
+  })
+  const removeFirst = install('first')
+  const removeSecond = install('second')
+  try {
+    const stream = listeners.at(-1)({ provider: 'deepseek-official' }, () => (async function* () {
+      await fetch('https://provider.invalid')
+      yield 'done'
+    })())
+    assert.deepEqual(await stream.next(), { value: 'done', done: false })
+    assert.deepEqual(observed, [['second', 'second']])
+  } finally {
+    removeSecond()
+    removeFirst()
+    globalThis.fetch = previousFetch
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Platform Management closes Provider dispatchers when a minimal stream is cancelled', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-cancel-'))
+  const socketPath = join(root, 'proxy.sock')
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') response.end(JSON.stringify({ revision: 'revision-one' }))
+    else response.end(JSON.stringify({ handle: 'b'.repeat(43), policyRevision: 'revision-one' }))
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socketPath, resolve)
+  })
+
+  let listener
+  const dispatchers = []
+  const remove = installProviderRouting({
+    on(_event, callback) { listener = callback; return () => { listener = undefined } },
+  }, {
+    socketPath,
+    createDispatcher(options) {
+      const dispatcher = { options, closed: false, async close() { this.closed = true } }
+      dispatchers.push(dispatcher)
+      return dispatcher
+    },
+  })
+
+  try {
+    const stream = listener({ provider: 'deepseek-official' }, () => ({
+      [Symbol.asyncIterator]() {
+        return { next: async () => ({ value: 'unused', done: false }) }
+      },
+    }))
+    assert.deepEqual(await stream.return('cancelled'), { value: 'cancelled', done: true })
+    assert.equal(dispatchers[0].closed, true)
+  } finally {
+    remove()
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
   }
 })
 
@@ -242,8 +420,10 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /function ProxySettings\(\{ active, t \}\)/)
   assert.match(source, /baseRevision: configuration\.revision, value: candidate\(\)/)
   assert.match(source, /setPassword\(''\)[\s\S]*setClearPassword\(false\)/)
-  assert.match(source, /proxyLines\(noProxyText\)/)
-  assert.match(source, /proxyLines\(bypassText\)/)
+  assert.match(source, /function splitDirectRules\(value\)[\s\S]*noProxy:[\s\S]*bypass:/)
+  assert.match(source, /setDirectRulesText\(directRuleText\(next\)\)/)
+  assert.match(source, /proxySystemRulesTitle/)
+  assert.doesNotMatch(source, /const \[noProxyText|const \[bypassText/)
   assert.match(source, /configuration\.proxy\.port === '' \|\| configuration\.proxy\.port == null \? null/)
   assert.match(source, /function ExpandableProxyDescription\([\s\S]*preserveScrollableAncestors/)
   assert.match(source, /configuration\.scopeCatalog/)
@@ -493,7 +673,12 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /\.pluginList \{[^}]*max-height:[^}]*overflow-y: auto;/)
   assert.match(style, /\.proxyProviderList \{[^}]*max-height: 320px;[^}]*overflow-y: auto;/)
   assert.match(style, /\.proxyScopeDescription \{[^}]*-webkit-line-clamp: 1;/)
-  assert.match(style, /\.proxyProviderDescription \{[^}]*-webkit-line-clamp: 1;/)
+  assert.match(source, /className: css\.proxyScopeCard[\s\S]*className: css\.toggle[\s\S]*checked: configuration\.scopes\[id\]/)
+  assert.match(source, /className: css\.toggle[\s\S]*configuration\.modelApi\.providers\[provider\.id\][\s\S]*event\.target\.checked \? 'proxy' : 'direct'/)
+  assert.doesNotMatch(source, /className: css\.proxyProvider[\s\S]{0,800}h\('select'/)
+  assert.match(source, /className: css\.proxyProviderIdentity[\s\S]*className: css\.proxyProviderInfo/)
+  assert.match(source, /ref: providerInfoDialog[\s\S]*providerInfo\?\.detail/)
+  assert.doesNotMatch(style, /\.proxyProviderDescription/)
   assert.match(style, /\.listPagination \{[^}]*position: sticky;[^}]*bottom: 0;[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) auto auto auto;/)
   assert.match(style, /\.listPagination \{[^}]*background: var\(--dsw-alias-bg-layer-2\);/)
   assert.match(style, /\.pageArrow::before \{[^}]*border-top: 1\.5px solid currentColor;[^}]*border-right: 1\.5px solid currentColor;/)

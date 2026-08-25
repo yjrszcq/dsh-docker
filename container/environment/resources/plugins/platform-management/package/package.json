@@ -8,6 +8,9 @@
     "./client": "./lib/client.bundle.js",
     "./package.json": "./package.json"
   },
+  "dependencies": {
+    "undici": "8.10.0"
+  },
   "dshDocker": {
     "description": {
       "zh": "管理 DSH Docker 更新、运行维护、系统插件与系统技能。",

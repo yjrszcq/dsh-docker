@@ -12,7 +12,7 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 - **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
 - **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers. A strong `DSH_PROXY_PASSWORD` is recommended, together with HTTPS or another trusted network boundary. Do not expose privileged Docker or host resources to the container.
 - **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. If they do not need root, remove that `group_add` entry from the minimal Compose example (or omit `--group-add dsh-sudo-true` from `docker run`); with the repository Compose file, set `DSH_SUDO_ENABLED=false`. This does not disable the standalone Management Console's terminal and file manager, which always operate as container root and must remain protected by authentication and a trusted network boundary.
-- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
+- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, outbound proxy settings, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
 
 | Variant | Rolling tag | Versioned tag | Contents |
 | --- | --- | --- | --- |
@@ -150,7 +150,7 @@ See the [complete configuration reference](docs/en/guide.md#configuration) for a
 
 ## Online Updates
 
-Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/console/>. Checks do not download or activate anything until you confirm an update.
+Open **Platform Management** in DSH settings or visit the standalone **DSH Management Console** at <http://127.0.0.1:3080/_dsh_platform/console/>. Checks do not download or activate anything until you confirm an update. Both interfaces can configure an existing HTTP or SOCKS5 proxy for selected managed outbound traffic; DSH Docker does not expose or create a public proxy service.
 
 The standalone page remains available when DSH is down. It provides DSH lifecycle and recovery controls, live logs, bundled System Plugin and System Skill management, User Plugin and User Skill recovery, root file management, and a container terminal.
 

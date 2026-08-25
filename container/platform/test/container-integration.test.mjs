@@ -134,6 +134,7 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
   const seed = await readFile(new URL('../stage0/lib/seed.mjs', import.meta.url), 'utf8')
   const buildSeed = await readFile(new URL('../tools/build-seed.mjs', import.meta.url), 'utf8')
   assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts[\s\S]*--prefix \/opt\/dsh-platform-source\/control-plane\/services\/management/)
+  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts --legacy-peer-deps[\s\S]*--prefix \/opt\/dsh-platform-source\/environment\/resources\/plugins\/platform-management\/package/)
   assert.match(dockerfile, /util-linux/)
   assert.match(dockerfile, /\n\s+g\+\+ \\\n/)
   assert.match(dockerfile, /\n\s+make \\\n/)

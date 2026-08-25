@@ -514,16 +514,21 @@ a.secondaryButton { text-decoration: none; }
 
 .settingRows { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; overflow: hidden; }
 .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.proxyDirectRulesField { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.proxyDirectRulesField > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
+.proxyDirectRulesField textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 6px 9px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.proxyDirectRulesField small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyFormGrid > label, .proxyRulesGrid > label { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.proxyFormGrid input, .proxyFormGrid select, .proxyRulesGrid textarea, .proxyProvider select { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
+.proxyFormGrid input, .proxyFormGrid select, .proxyRulesGrid textarea { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
 .proxyRulesGrid textarea { min-height: 88px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyFormGrid label > span, .proxyRulesGrid label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyRulesGrid small, .proxyCheckRow small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyCheckRow { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
 .proxyCheckRow input { flex: none; margin-top: 3px; }
 .proxyHint { margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
-.proxyScopeGrid > label { display: flex; gap: 9px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
-.proxyScopeGrid > label > input { flex: none; margin-top: 3px; }
+.proxyScopeCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
+.proxyScopeCopy { min-width: 0; }
+.proxyScopeCard > .toggle { justify-self: end; }
 .proxyScopeGrid b, .proxyScopeGrid small { display: block; }
 .proxyScopeGrid b { font-size: 13px; line-height: 20px; }
 .proxyScopeGrid small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
@@ -532,12 +537,12 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxyProviderList { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; scrollbar-gutter: stable; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.proxyProvider > .toggle { justify-self: end; }
 .proxyProvider:last-child { border-bottom: 0; }
-.proxyProvider b, .proxyProvider small { display: block; overflow-wrap: anywhere; }
-.proxyProvider small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
-.proxyProviderDescription { display: -webkit-box; width: 100%; margin-top: 2px; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; border: 0; color: var(--dsw-alias-label-tertiary); background: transparent; font: inherit; font-size: 11px; line-height: 17px; text-align: left; cursor: default; }
-.proxyProviderDescription.expandable { cursor: pointer; }
-.proxyProviderDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
+.proxyProviderIdentity { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.proxyProviderIdentity b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proxyProviderInfo { box-sizing: border-box; flex: none; width: 17px; height: 17px; padding: 0; border: 1px solid var(--dsw-alias-label-tertiary); border-radius: 50%; color: var(--dsw-alias-label-tertiary); background: transparent; font: 600 11px/15px ui-sans-serif, system-ui, sans-serif; text-align: center; cursor: pointer; }
+.proxyProviderInfo:hover, .proxyProviderInfo:focus-visible { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .proxyCapability { padding: 3px 7px; border-radius: 999px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; white-space: nowrap; }
 .proxyTestStages { display: grid; gap: 0; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; list-style: none; }
 .proxyTestStages > li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 7px; align-items: start; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 12px; }
@@ -553,6 +558,15 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeDialog header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyScopeDialog h3, .proxyScopeDialog h4 { margin: 0; }
 .proxyScopeDialog header p { margin: 2px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.proxyProviderInfoDialog { box-sizing: border-box; width: min(460px, calc(100vw - 40px)); padding: 0; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.proxyProviderInfoDialog::backdrop { background: rgb(0 0 0 / 50%); }
+.proxyProviderInfoDialog form { display: grid; gap: 14px; }
+.proxyProviderInfoDialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 0; }
+.proxyProviderInfoDialog h3 { margin: 0; }
+.proxyProviderInfoDialog p { margin: 0; padding: 0 16px 16px; color: var(--dsw-alias-label-tertiary); line-height: 1.6; }
+.proxySystemRulesBody { padding: 0 16px 16px; }
+.proxySystemRulesBody p { padding: 0; }
+.proxySystemRulesBody pre { margin: 12px 0 0; padding: 9px 11px; overflow: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyScopeCatalog { overflow: auto; padding: 8px 16px; }
 .proxyScopeCatalog section { margin: 10px 0; }
 .proxyScopeCatalog h4 { margin-bottom: 5px; font-size: 13px; }
@@ -917,7 +931,7 @@ a.secondaryButton { text-decoration: none; }
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }
   .resourceSearch { width: 100%; margin-left: 0; }
   .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { grid-template-columns: 1fr; }
-  .proxyProvider { align-items: start; }
+  .proxyProvider { align-items: center; }
   .proxyProviderList { max-height: 280px; }
   .proxyScopeCatalog section > div { grid-template-columns: 1fr; gap: 2px; }
   .proxyScopeDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }

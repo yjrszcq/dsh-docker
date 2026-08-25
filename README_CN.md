@@ -12,7 +12,7 @@
 - **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
 - **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，同时应通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
 - **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
-- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，提供更新与恢复、实时日志、内置系统插件和系统技能管理、用户插件恢复、用户技能管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
+- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，提供更新与恢复、出站代理设置、实时日志、内置系统插件和系统技能管理、用户插件恢复、用户技能管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
 
 | 变体 | 滚动标签 | 固定版本标签 | 内容 |
 | --- | --- | --- | --- |
@@ -150,7 +150,7 @@ docker run -d \
 
 ## 在线更新
 
-在 DSH 设置中打开“平台管理”，或访问独立的 <http://127.0.0.1:3080/_dsh_platform/console/> DSH 管理中心。检查不会自动下载或激活，必须由用户确认更新。
+在 DSH 设置中打开“平台管理”，或访问独立的 <http://127.0.0.1:3080/_dsh_platform/console/> DSH 管理中心。检查不会自动下载或激活，必须由用户确认更新。两个界面都可以为选定的受管出站流量配置现有 HTTP 或 SOCKS5 代理；DSH Docker 不会创建或对外开放代理服务。
 
 独立页面在 DSH 无法启动时仍可使用，提供 DSH 生命周期与恢复、实时日志、内置系统插件和系统技能管理、用户插件和用户技能恢复、Root 文件管理及容器终端。
 

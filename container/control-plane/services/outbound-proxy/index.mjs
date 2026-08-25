@@ -12,6 +12,7 @@ import { ProxyRouteHealth } from './lib/route-health.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
 import { ProviderHandleStore } from './lib/provider-handles.mjs'
 import { ProxyTestManager } from './lib/test-manager.mjs'
+import { FETCH_ROUTED_PROVIDER_ID_SET } from '../../../platform/lib/provider-routing.mjs'
 
 const paths = new PlatformPaths(
   process.env.DSH_PLATFORM_DATA ?? '/data/platform',
@@ -24,7 +25,10 @@ const dnsCache = new ProxyDnsCache()
 const agentPool = new ProxyAgentPool()
 const routeHealth = new ProxyRouteHealth()
 const providerHandles = new ProviderHandleStore()
-const proxyTests = new ProxyTestManager({ statePath: paths.proxyTestStatePath })
+const proxyTests = new ProxyTestManager({
+  statePath: paths.proxyTestStatePath,
+  supportedProviderIds: FETCH_ROUTED_PROVIDER_ID_SET,
+})
 await proxyTests.initialize(async path => JSON.parse(await readFile(path, 'utf8')))
 
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
@@ -44,6 +48,7 @@ const control = createOutboundProxyControl({
   routeHealth,
   providerHandles,
   proxyTests,
+  supportedProviderIds: FETCH_ROUTED_PROVIDER_ID_SET,
   getTestState: () => proxyTests.getState(),
   commitConfiguration: async request => {
     const activated = await store.commit(request)

@@ -1,3 +1,5 @@
+import { installProviderRouting } from './provider-routing.js'
+
 export const name = '@dsh-docker/platform-management'
 export const inject = ['subprocess']
 
@@ -32,6 +34,7 @@ function managedSubprocessSpec(spec, environment = process.env) {
 }
 
 export function apply(ctx) {
+  const removeProviderRouting = installProviderRouting(ctx)
   const service = ctx.subprocess
   const spawn = service.spawn
   const spawnTerminal = service.spawnTerminal
@@ -44,6 +47,7 @@ export function apply(ctx) {
   service.spawn = managedSpawn
   service.spawnTerminal = managedSpawnTerminal
   ctx.effect(() => () => {
+    removeProviderRouting()
     if (service.spawn === managedSpawn) service.spawn = spawn
     if (service.spawnTerminal === managedSpawnTerminal) service.spawnTerminal = spawnTerminal
   }, 'dsh-docker managed network scopes')

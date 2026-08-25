@@ -29,6 +29,8 @@ COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
 RUN npm ci --omit=dev --ignore-scripts \
       --prefix /opt/dsh-platform-source/control-plane/services/management \
+    && npm ci --omit=dev --ignore-scripts --legacy-peer-deps \
+      --prefix /opt/dsh-platform-source/environment/resources/plugins/platform-management/package \
     && if [ -f /opt/dsh-platform-source/platform/image-input/release/stable.json ]; then \
       image_input=/opt/dsh-platform-source/platform/image-input; \
     else \

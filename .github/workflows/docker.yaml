@@ -84,7 +84,9 @@ jobs:
 
       - name: Install Management runtime dependencies
         working-directory: source
-        run: npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
+        run: |
+          npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
+          npm ci --omit=dev --ignore-scripts --legacy-peer-deps --prefix container/environment/resources/plugins/platform-management/package
 
       - name: Verify gateway and Compose configuration
         working-directory: source

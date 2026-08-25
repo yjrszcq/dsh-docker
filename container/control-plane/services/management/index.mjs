@@ -30,6 +30,7 @@ import { UserSkillManager } from './user-skills.mjs'
 import { createScopedFetch } from './scoped-fetch.mjs'
 import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
 import { ProviderInventory } from './provider-inventory.mjs'
+import { FETCH_ROUTED_PROVIDER_IDS } from '../../../platform/lib/provider-routing.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
@@ -49,7 +50,10 @@ const logs = new JsonlLogManager({
   output: { stdout: process.stdout, stderr: process.stderr },
 })
 const updateFetch = createScopedFetch('updates')
-const providerInventory = new ProviderInventory({ cachePath: paths.proxyProviderInventoryPath })
+const providerInventory = new ProviderInventory({
+  cachePath: paths.proxyProviderInventoryPath,
+  adaptedProviders: FETCH_ROUTED_PROVIDER_IDS,
+})
 
 function proxySnapshot(view) {
   return Object.freeze({
