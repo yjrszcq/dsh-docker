@@ -11,15 +11,15 @@ import {
   PROXY_PORTS,
   sanitizedProxyConfiguration,
   validateProxyConfiguration,
-} from '../../control-plane/services/proxy/lib/contracts.mjs'
-import { ProxyConfigurationError, proxyErrorBody } from '../../control-plane/services/proxy/lib/errors.mjs'
+} from '../../control-plane/services/outbound-proxy/lib/contracts.mjs'
+import { ProxyConfigurationError, proxyErrorBody } from '../../control-plane/services/outbound-proxy/lib/errors.mjs'
 import {
   matchesProxyRules,
   noProxyEnvironment,
   normalizeProxyRules,
-} from '../../control-plane/services/proxy/lib/rules.mjs'
-import { ProxyConfigurationStore } from '../../control-plane/services/proxy/lib/store.mjs'
-import { PROXY_SCOPE_CATALOG } from '../../control-plane/services/proxy/lib/scope-catalog.mjs'
+} from '../../control-plane/services/outbound-proxy/lib/rules.mjs'
+import { ProxyConfigurationStore } from '../../control-plane/services/outbound-proxy/lib/store.mjs'
+import { PROXY_SCOPE_CATALOG } from '../../control-plane/services/outbound-proxy/lib/scope-catalog.mjs'
 
 function configured(overrides = {}) {
   const defaults = defaultProxyConfiguration()
@@ -198,7 +198,7 @@ test('keeps the Bootstrap proxy supervisor alive until an explicit stop', async 
     server.once('error', reject)
     server.listen(socket, resolve)
   })
-  const script = new URL('../../control-plane/services/proxy/supervisor.mjs', import.meta.url).pathname
+  const script = new URL('../../control-plane/services/outbound-proxy/supervisor.mjs', import.meta.url).pathname
   const child = spawn(process.execPath, [script], {
     env: {
       ...process.env,
@@ -237,7 +237,7 @@ test('restarts Proxy Manager after an unclean exit leaves its control socket beh
   const runRoot = join(root, 'run')
   const dataRoot = join(root, 'data')
   await mkdir(runRoot)
-  const script = new URL('../../control-plane/services/proxy/index.mjs', import.meta.url).pathname
+  const script = new URL('../../control-plane/services/outbound-proxy/index.mjs', import.meta.url).pathname
   const launch = () => spawn(process.execPath, [script], {
     env: { ...process.env, DSH_PLATFORM_DATA: dataRoot, DSH_PLATFORM_RUN: runRoot },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

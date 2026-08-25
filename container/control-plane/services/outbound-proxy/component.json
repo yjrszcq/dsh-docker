@@ -4,7 +4,7 @@
   "type": "service",
   "command": {
     "executable": "/usr/local/bin/node",
-    "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/proxy/supervisor.mjs"],
+    "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/outbound-proxy/supervisor.mjs"],
     "timeoutSeconds": 30
   },
   "environment": {},
@@ -20,7 +20,7 @@
     "type": "exec",
     "command": {
       "executable": "/usr/local/bin/node",
-      "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/proxy/supervisor.mjs", "health"],
+      "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/outbound-proxy/supervisor.mjs", "health"],
       "timeoutSeconds": 5
     },
     "intervalSeconds": 1,

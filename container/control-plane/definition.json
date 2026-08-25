@@ -7,7 +7,7 @@
     },
     {
       "id": "outbound-proxy",
-      "source": "services/proxy/component.json"
+      "source": "services/outbound-proxy/component.json"
     },
     {
       "id": "platform-recovery",
