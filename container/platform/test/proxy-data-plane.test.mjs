@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
-import { createServer, request as httpRequest } from 'node:http'
+import { Agent, createServer, request as httpRequest } from 'node:http'
 import { createServer as createNetServer, connect } from 'node:net'
 import test from 'node:test'
 import { defaultProxyConfiguration, validateProxyConfiguration } from '../../control-plane/services/proxy/lib/contracts.mjs'
 import { createScopedProxyServer } from '../../control-plane/services/proxy/lib/data-plane.mjs'
+import { probeProxyEntry } from '../../control-plane/services/proxy/lib/readiness.mjs'
+import { ProxyDnsCache } from '../../control-plane/services/proxy/lib/dns-cache.mjs'
 import { selectProxyRoute } from '../../control-plane/services/proxy/lib/policy.mjs'
+import { connectThroughSocks5 } from '../../control-plane/services/proxy/lib/transport.mjs'
 
 const connections = new WeakMap()
 
@@ -29,7 +32,16 @@ async function close(server) {
   await new Promise(resolve => server.close(resolve))
 }
 
-function snapshot({ proxyPort = null, protocol = 'http', scopes = {}, noProxy = [], bypass = [] } = {}) {
+function snapshot({
+  proxyPort = null,
+  protocol = 'http',
+  remoteDns = true,
+  username = 'proxy-user',
+  password = 'proxy-password',
+  scopes = {},
+  noProxy = [],
+  bypass = [],
+} = {}) {
   const defaults = defaultProxyConfiguration()
   const validated = validateProxyConfiguration({
     ...defaults,
@@ -39,8 +51,9 @@ function snapshot({ proxyPort = null, protocol = 'http', scopes = {}, noProxy = 
       protocol,
       host: proxyPort === null ? '' : '127.0.0.1',
       port: proxyPort,
-      username: proxyPort === null ? '' : 'proxy-user',
-      password: proxyPort === null ? undefined : 'proxy-password',
+      username: proxyPort === null ? '' : username,
+      password: proxyPort === null ? undefined : password,
+      remoteDns,
     },
     scopes: { ...defaults.scopes, updates: proxyPort !== null, ...scopes },
     noProxy: { user: noProxy },
@@ -63,8 +76,21 @@ function proxyRequest({ proxyPort, target, method = 'GET', headers = {}, body = 
         trailers: response.trailers,
       }))
     })
+    request.setTimeout(5_000, () => request.destroy(new Error('proxy fixture request timed out')))
     request.once('error', reject)
     if (body !== null) request.write(body)
+    request.end()
+  })
+}
+
+function proxyAgentRequest({ proxyPort, target, agent }) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ host: '127.0.0.1', port: proxyPort, path: target, agent }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => resolve({ body: Buffer.concat(chunks), socket: request.socket }))
+    })
+    request.once('error', reject)
     request.end()
   })
 }
@@ -91,6 +117,110 @@ function rawExchange(port, request, { waitFor = '\r\n\r\n', keepOpen = false } =
   })
 }
 
+class FixtureReader {
+  constructor(socket) {
+    this.socket = socket
+    this.buffer = Buffer.alloc(0)
+    this.waiters = []
+    this.onData = chunk => {
+      this.buffer = Buffer.concat([this.buffer, chunk])
+      this.flush()
+    }
+    socket.on('data', this.onData)
+  }
+
+  flush() {
+    while (this.waiters.length > 0 && this.buffer.byteLength >= this.waiters[0].size) {
+      const waiter = this.waiters.shift()
+      const value = this.buffer.subarray(0, waiter.size)
+      this.buffer = this.buffer.subarray(waiter.size)
+      waiter.resolve(value)
+    }
+  }
+
+  exact(size) {
+    if (this.buffer.byteLength >= size) {
+      const value = this.buffer.subarray(0, size)
+      this.buffer = this.buffer.subarray(size)
+      return Promise.resolve(value)
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('SOCKS fixture read timed out')), 3_000)
+      this.waiters.push({ size, resolve: value => { clearTimeout(timer); resolve(value) } })
+    })
+  }
+
+  release() {
+    this.socket.pause()
+    this.socket.off('data', this.onData)
+    return this.buffer
+  }
+}
+
+test('readiness probes one local proxy entry without contacting an upstream', async t => {
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => snapshot() })
+  const port = await listen(proxy)
+  t.after(() => close(proxy))
+  await probeProxyEntry(port)
+})
+
+function socksFixture({ username = null, password = null, rejectAuth = false, rejectConnect = false, connectTarget = true, sticky = '' } = {}) {
+  const observations = []
+  const server = createNetServer({ allowHalfOpen: true }, socket => {
+    void (async () => {
+      const reader = new FixtureReader(socket)
+      const greeting = await reader.exact(2)
+      assert.equal(greeting[0], 0x05)
+      const methods = await reader.exact(greeting[1])
+      const method = username === null ? 0x00 : 0x02
+      assert.equal(methods.includes(method), true)
+      socket.write(Buffer.from([0x05, method]))
+      if (method === 0x02) {
+        const versionAndLength = await reader.exact(2)
+        const receivedUser = (await reader.exact(versionAndLength[1])).toString('utf8')
+        const passwordLength = (await reader.exact(1))[0]
+        const receivedPassword = (await reader.exact(passwordLength)).toString('utf8')
+        observations.push({ authentication: { username: receivedUser, password: receivedPassword } })
+        socket.write(Buffer.from([0x01, rejectAuth ? 0x01 : 0x00]))
+        if (rejectAuth) return socket.end()
+        assert.equal(receivedUser, username)
+        assert.equal(receivedPassword, password)
+      }
+      const request = await reader.exact(4)
+      assert.deepEqual([...request.subarray(0, 3)], [0x05, 0x01, 0x00])
+      let host
+      if (request[3] === 0x01) host = [...await reader.exact(4)].join('.')
+      else if (request[3] === 0x03) host = (await reader.exact((await reader.exact(1))[0])).toString('ascii')
+      else if (request[3] === 0x04) host = (await reader.exact(16)).toString('hex')
+      else throw new Error(`unexpected SOCKS fixture ATYP ${request[3]}`)
+      const port = (await reader.exact(2)).readUInt16BE()
+      observations.push({ target: { atyp: request[3], host, port } })
+      const remainder = reader.release()
+      const success = Buffer.from([0x05, rejectConnect ? 0x05 : 0x00, 0x00, 0x01, 127, 0, 0, 1, 0x12, 0x34])
+      socket.write(success.subarray(0, 3))
+      setTimeout(() => {
+        socket.write(Buffer.concat([success.subarray(3), Buffer.from(sticky)]))
+        if (rejectConnect) return socket.end()
+        if (connectTarget) {
+          const target = connect({ host, port, allowHalfOpen: true })
+          target.once('connect', () => {
+            if (remainder.byteLength > 0) target.write(remainder)
+            socket.pipe(target)
+            target.pipe(socket)
+          })
+          target.once('error', error => socket.destroy(error))
+          socket.once('close', () => target.destroy())
+        } else {
+          if (remainder.byteLength > 0) socket.write(remainder)
+          socket.on('data', chunk => socket.write(chunk))
+          socket.resume()
+        }
+      }, 5)
+    })().catch(error => socket.destroy(error))
+  })
+  return { server, observations }
+}
+
 test('routes direct HTTP absolute-form requests and preserves streamed bodies and trailers', async () => {
   const payload = Buffer.alloc(2 * 1024 * 1024, 0x5a)
   const target = createServer((request, response) => {
@@ -112,6 +242,44 @@ test('routes direct HTTP absolute-form requests and preserves streamed bodies an
     assert.equal(createHash('sha256').update(result.body).digest('hex'), createHash('sha256').update(payload).digest('hex'))
     assert.equal(result.trailers['x-result'], 'complete')
   } finally {
+    await close(proxy)
+    await close(target)
+  }
+})
+
+test('preserves request trailers while removing client hop-by-hop framing', async () => {
+  const target = createServer((request, response) => {
+    const chunks = []
+    request.on('data', chunk => chunks.push(chunk))
+    request.on('end', () => {
+      assert.equal(Buffer.concat(chunks).toString(), 'body')
+      assert.deepEqual(request.trailers, { 'x-checksum': 'verified' })
+      response.end('request-trailers-preserved')
+    })
+  })
+  const targetPort = await listen(target)
+  const state = snapshot()
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let socket
+  try {
+    const exchange = await rawExchange(proxyPort, [
+      `POST http://127.0.0.1:${targetPort}/upload HTTP/1.1`,
+      `Host: 127.0.0.1:${targetPort}`,
+      'Transfer-Encoding: chunked',
+      'Trailer: X-Checksum',
+      '',
+      '4',
+      'body',
+      '0',
+      'X-Checksum: verified',
+      '',
+      '',
+    ].join('\r\n'), { waitFor: 'request-trailers-preserved' })
+    socket = exchange.socket
+    assert.equal(exchange.bytes.includes('request-trailers-preserved'), true)
+  } finally {
+    socket?.destroy()
     await close(proxy)
     await close(target)
   }
@@ -331,6 +499,278 @@ test('forwards absolute-form WebSocket upgrade as an opaque bidirectional stream
   }
 })
 
+test('forwards WebSocket absolute-form and in-memory authentication through an external HTTP proxy', async () => {
+  let observed
+  const upstream = createServer()
+  upstream.on('upgrade', (request, socket, head) => {
+    observed = {
+      url: request.url,
+      authorization: request.headers['proxy-authorization'],
+      upgrade: request.headers.upgrade,
+    }
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    if (head.byteLength > 0) socket.write(head)
+    socket.on('data', chunk => socket.write(chunk))
+  })
+  const upstreamPort = await listen(upstream)
+  const state = snapshot({ proxyPort: upstreamPort })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let socket
+  try {
+    const exchange = await rawExchange(proxyPort, [
+      'GET ws://socket.example/events HTTP/1.1',
+      'Host: socket.example',
+      'Connection: Upgrade',
+      'Upgrade: websocket',
+      '',
+      'external-ws-sticky',
+    ].join('\r\n'), { waitFor: 'external-ws-sticky', keepOpen: true })
+    socket = exchange.socket
+    assert.deepEqual(observed, {
+      url: 'ws://socket.example/events',
+      authorization: `Basic ${Buffer.from('proxy-user:proxy-password').toString('base64')}`,
+      upgrade: 'websocket',
+    })
+    assert.equal(exchange.bytes.toString('latin1').endsWith('external-ws-sticky'), true)
+  } finally {
+    socket?.destroy()
+    await close(proxy)
+    await close(upstream)
+  }
+})
+
+test('routes HTTP through authenticated SOCKS5 with local DNS and fragmented replies', async () => {
+  const payload = Buffer.alloc(2 * 1024 * 1024, 0x6b)
+  const target = createServer((request, response) => {
+    assert.equal(request.url, '/resource')
+    response.end(payload)
+  })
+  const targetPort = await listen(target)
+  const username = '代理:@/'
+  const password = '密钥:@/'
+  const fixture = socksFixture({ username, password })
+  const socksPort = await listen(fixture.server)
+  const state = snapshot({ proxyPort: socksPort, protocol: 'socks5', remoteDns: false, username, password })
+  const resolver = async (host, options = {}) => {
+    assert.equal(host, 'target.test')
+    if (options.all) return [{ address: '127.0.0.1', family: 4 }]
+    return { address: '127.0.0.1', family: 4 }
+  }
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state, resolver })
+  const proxyPort = await listen(proxy)
+  try {
+    const result = await proxyRequest({ proxyPort, target: `http://target.test:${targetPort}/resource` })
+    assert.equal(result.statusCode, 200)
+    assert.equal(result.body.byteLength, payload.byteLength)
+    assert.equal(createHash('sha256').update(result.body).digest('hex'), createHash('sha256').update(payload).digest('hex'))
+    assert.deepEqual(fixture.observations, [
+      { authentication: { username, password } },
+      { target: { atyp: 0x01, host: '127.0.0.1', port: targetPort } },
+    ])
+  } finally {
+    await close(proxy)
+    await close(fixture.server)
+    await close(target)
+  }
+})
+
+test('routes WebSocket upgrade through unauthenticated SOCKS5 without exposing proxy details', async () => {
+  const target = createServer()
+  target.on('upgrade', (request, socket, head) => {
+    assert.equal(request.url, '/events')
+    assert.equal(request.headers['proxy-authorization'], undefined)
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    if (head.byteLength > 0) socket.write(head)
+    socket.on('data', chunk => socket.write(chunk))
+  })
+  const targetPort = await listen(target)
+  const fixture = socksFixture()
+  const socksPort = await listen(fixture.server)
+  const state = snapshot({ proxyPort: socksPort, protocol: 'socks5', username: '', password: null })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let socket
+  try {
+    const exchange = await rawExchange(proxyPort, [
+      `GET ws://127.0.0.1:${targetPort}/events HTTP/1.1`,
+      `Host: 127.0.0.1:${targetPort}`,
+      'Connection: Upgrade',
+      'Upgrade: websocket',
+      '',
+      'socks-ws-sticky',
+    ].join('\r\n'), { waitFor: 'socks-ws-sticky', keepOpen: true })
+    socket = exchange.socket
+    assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 101 Switching Protocols/)
+    assert.equal(exchange.bytes.toString('latin1').endsWith('socks-ws-sticky'), true)
+    assert.equal(fixture.observations.some(entry => 'authentication' in entry), false)
+  } finally {
+    socket?.destroy()
+    await close(proxy)
+    await close(fixture.server)
+    await close(target)
+  }
+})
+
+test('routes CONNECT through SOCKS5 remote DNS and preserves post-handshake bytes', async () => {
+  const fixture = socksFixture({
+    username: 'proxy-user', password: 'proxy-password', connectTarget: false, sticky: 'socks-prefetched',
+  })
+  const socksPort = await listen(fixture.server)
+  const state = snapshot({ proxyPort: socksPort, protocol: 'socks5', remoteDns: true })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let socket
+  try {
+    const exchange = await rawExchange(proxyPort, 'CONNECT remote.example:443 HTTP/1.1\r\nHost: remote.example:443\r\n\r\n', {
+      waitFor: 'socks-prefetched', keepOpen: true,
+    })
+    socket = exchange.socket
+    assert.equal(exchange.bytes.toString('latin1').endsWith('socks-prefetched'), true)
+    assert.deepEqual(fixture.observations.at(-1), { target: { atyp: 0x03, host: 'remote.example', port: 443 } })
+    socket.write('socks-echo')
+    const [chunk] = await once(socket, 'data')
+    assert.equal(chunk.toString(), 'socks-echo')
+  } finally {
+    socket?.destroy()
+    await close(proxy)
+    await close(fixture.server)
+  }
+})
+
+test('encodes IPv6 SOCKS5 targets and does not fall back direct on authentication failure', async () => {
+  const ipv6 = socksFixture({ username: 'proxy-user', password: 'proxy-password', connectTarget: false })
+  const ipv6Port = await listen(ipv6.server)
+  const ipv6State = snapshot({ proxyPort: ipv6Port, protocol: 'socks5' })
+  const ipv6Proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => ipv6State })
+  const ipv6ProxyPort = await listen(ipv6Proxy)
+  let tunnel
+  try {
+    tunnel = (await rawExchange(ipv6ProxyPort, 'CONNECT [2001:db8::1]:443 HTTP/1.1\r\nHost: [2001:db8::1]:443\r\n\r\n', { keepOpen: true })).socket
+    assert.deepEqual(ipv6.observations.at(-1), {
+      target: { atyp: 0x04, host: '20010db8000000000000000000000001', port: 443 },
+    })
+  } finally {
+    tunnel?.destroy()
+    await close(ipv6Proxy)
+    await close(ipv6.server)
+  }
+
+  const rejected = socksFixture({ username: 'proxy-user', password: 'proxy-password', rejectAuth: true })
+  const rejectedPort = await listen(rejected.server)
+  const rejectedState = snapshot({ proxyPort: rejectedPort, protocol: 'socks5' })
+  const rejectedProxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => rejectedState })
+  const rejectedProxyPort = await listen(rejectedProxy)
+  try {
+    const result = await proxyRequest({ proxyPort: rejectedProxyPort, target: 'http://must-not-connect.invalid/' })
+    assert.equal(result.statusCode, 502)
+    assert.equal(result.headers['x-dsh-proxy-error'], 'UPSTREAM_PROXY_AUTH_FAILED')
+  } finally {
+    await close(rejectedProxy)
+    await close(rejected.server)
+  }
+})
+
+test('reports a SOCKS5 CONNECT rejection without retrying the target directly', async () => {
+  const rejected = socksFixture({ username: 'proxy-user', password: 'proxy-password', rejectConnect: true })
+  const rejectedPort = await listen(rejected.server)
+  const state = snapshot({ proxyPort: rejectedPort, protocol: 'socks5' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  try {
+    const result = await proxyRequest({ proxyPort, target: 'http://must-not-connect.invalid/' })
+    assert.equal(result.statusCode, 502)
+    assert.equal(result.headers['x-dsh-proxy-error'], 'UPSTREAM_PROXY_REJECTED')
+  } finally {
+    await close(proxy)
+    await close(rejected.server)
+  }
+})
+
+test('cancels a pending SOCKS5 handshake when the proxy client disconnects', async () => {
+  let accepted
+  let closed
+  const hanging = createNetServer(socket => {
+    accepted?.()
+    socket.once('close', () => closed?.())
+    socket.resume()
+  })
+  const hangingPort = await listen(hanging)
+  const state = snapshot({ proxyPort: hangingPort, protocol: 'socks5' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  const client = connect({ host: '127.0.0.1', port: proxyPort })
+  try {
+    const proxyAccepted = new Promise(resolve => { accepted = resolve })
+    const upstreamClosed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('cancelled SOCKS5 handshake left an upstream socket open')), 1_000)
+      closed = () => { clearTimeout(timer); resolve() }
+    })
+    await once(client, 'connect')
+    client.write('GET http://cancelled.invalid/ HTTP/1.1\r\nHost: cancelled.invalid\r\n\r\n')
+    await proxyAccepted
+    client.destroy()
+    await upstreamClosed
+  } finally {
+    client.destroy()
+    await close(proxy)
+    await close(hanging)
+  }
+})
+
+test('times out a silent SOCKS5 handshake and closes its transport', async () => {
+  let closed
+  const hanging = createNetServer(socket => {
+    socket.once('close', () => closed?.())
+    socket.resume()
+  })
+  const port = await listen(hanging)
+  try {
+    const upstreamClosed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timed-out SOCKS5 handshake left an upstream socket open')), 1_000)
+      closed = () => { clearTimeout(timer); resolve() }
+    })
+    await assert.rejects(connectThroughSocks5({
+      endpoint: { host: '127.0.0.1', port, username: '', password: null, remoteDns: true },
+      targetHost: 'timeout.invalid', targetPort: 443, timeoutMs: 30,
+    }), error => error.code === 'UPSTREAM_TIMEOUT' && error.statusCode === 504)
+    await upstreamClosed
+  } finally {
+    await close(hanging)
+  }
+})
+
+test('preserves half-close semantics through a SOCKS5 CONNECT tunnel', async () => {
+  const target = createNetServer({ allowHalfOpen: true }, socket => {
+    const chunks = []
+    socket.on('data', chunk => chunks.push(chunk))
+    socket.on('end', () => socket.end(`socks-response:${Buffer.concat(chunks).toString()}`))
+  })
+  const targetPort = await listen(target)
+  const fixture = socksFixture({ username: 'proxy-user', password: 'proxy-password' })
+  const socksPort = await listen(fixture.server)
+  const state = snapshot({ proxyPort: socksPort, protocol: 'socks5' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  const socket = connect({ host: '127.0.0.1', port: proxyPort, allowHalfOpen: true })
+  try {
+    await once(socket, 'connect')
+    socket.write(`CONNECT 127.0.0.1:${targetPort} HTTP/1.1\r\nHost: 127.0.0.1:${targetPort}\r\n\r\n`)
+    let received = Buffer.alloc(0)
+    while (!received.includes('\r\n\r\n')) received = Buffer.concat([received, (await once(socket, 'data'))[0]])
+    socket.end('half-close-socks')
+    while (!received.includes('socks-response:half-close-socks')) {
+      received = Buffer.concat([received, (await once(socket, 'data'))[0]])
+    }
+    assert.equal(received.toString('latin1').endsWith('socks-response:half-close-socks'), true)
+  } finally {
+    socket.destroy()
+    await close(proxy)
+    await close(fixture.server)
+    await close(target)
+  }
+})
+
 test('applies forced direct, NO_PROXY, bypass, shared DSH and scoped proxy priority', async () => {
   const state = snapshot({
     proxyPort: 3128,
@@ -338,11 +778,203 @@ test('applies forced direct, NO_PROXY, bypass, shared DSH and scoped proxy prior
     noProxy: ['.example.com'],
     bypass: ['10.0.0.0/8'],
   })
-  const resolver = async host => host === 'cidr.example' ? [{ address: '10.4.3.2', family: 4 }] : [{ address: '203.0.113.1', family: 4 }]
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: '127.0.0.1', port: 80, resolver })).reason, 'platform-forced-direct')
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: 'sub.example.com', port: 80, resolver })).reason, 'no-proxy')
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: 'cidr.example', port: 80, resolver })).reason, 'bypass')
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'sharedDsh', host: 'remote.invalid', port: 80, resolver })).mode, 'http')
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'platform', host: 'remote.invalid', port: 80, resolver })).reason, 'scope-direct')
-  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: '::1', port: 443, resolver })).reason, 'platform-forced-direct')
+  let resolutions = 0
+  const dnsCache = new ProxyDnsCache({ resolver: async () => {
+    resolutions += 1
+    return [{ address: '10.4.3.2', family: 4 }]
+  } })
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: '127.0.0.1', port: 80, dnsCache })).reason, 'platform-forced-direct')
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: 'sub.example.com', port: 80, dnsCache })).reason, 'no-proxy')
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: 'cidr.example', port: 80, dnsCache })).reason, 'scope-proxy')
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'sharedDsh', host: 'remote.invalid', port: 80, dnsCache })).mode, 'http')
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'platform', host: 'remote.invalid', port: 80, dnsCache })).reason, 'scope-direct')
+  assert.equal((await selectProxyRoute({ snapshot: state, scope: 'updates', host: '::1', port: 443, dnsCache })).reason, 'platform-forced-direct')
+  assert.equal(resolutions, 0, 'HTTP proxy and direct hostname rules must not leak DNS locally')
+})
+
+test('resolves SOCKS5 local-DNS candidates once per revision and isolates CIDR bypass targets', async () => {
+  let now = 0
+  let calls = 0
+  const resolver = async () => {
+    calls += 1
+    return [
+      { address: '10.4.3.2', family: 4, ttl: 30 },
+      { address: '203.0.113.9', family: 4, ttl: 30 },
+      { address: '10.4.3.2', family: 4, ttl: 30 },
+    ]
+  }
+  const dnsCache = new ProxyDnsCache({ resolver, now: () => now })
+  const local = snapshot({ proxyPort: 1080, protocol: 'socks5', remoteDns: false, bypass: ['10.0.0.0/8'] })
+  const first = await selectProxyRoute({ snapshot: local, scope: 'updates', host: 'mixed.example', port: 443, dnsCache })
+  assert.equal(first.reason, 'bypass-cidr')
+  assert.deepEqual(first.targets.map(target => target.address), ['10.4.3.2'])
+  await selectProxyRoute({ snapshot: local, scope: 'updates', host: 'mixed.example', port: 443, dnsCache })
+  assert.equal(calls, 1)
+  now = 30_001
+  await selectProxyRoute({ snapshot: local, scope: 'updates', host: 'mixed.example', port: 443, dnsCache })
+  assert.equal(calls, 2)
+
+  const nextRevision = Object.freeze({ ...local, revision: 'next-revision' })
+  await selectProxyRoute({ snapshot: nextRevision, scope: 'updates', host: 'mixed.example', port: 443, dnsCache })
+  assert.equal(calls, 3)
+
+  const remote = snapshot({ proxyPort: 1080, protocol: 'socks5', remoteDns: true, bypass: ['10.0.0.0/8'] })
+  const remoteRoute = await selectProxyRoute({ snapshot: remote, scope: 'updates', host: 'mixed.example', port: 443, dnsCache })
+  assert.equal(remoteRoute.mode, 'socks5')
+  assert.equal('targets' in remoteRoute, false)
+  assert.equal(calls, 3, 'remote DNS must not resolve a domain to apply CIDR locally')
+})
+
+test('negative DNS results expire after ten seconds without leaking across revisions', async () => {
+  let now = 0
+  let calls = 0
+  const dnsCache = new ProxyDnsCache({
+    resolver: async () => { calls += 1; throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' }) },
+    now: () => now,
+  })
+  await assert.rejects(dnsCache.resolve('missing.example', 'revision-a'), error => error.code === 'TARGET_DNS_FAILED')
+  await assert.rejects(dnsCache.resolve('missing.example', 'revision-a'), error => error.code === 'TARGET_DNS_FAILED')
+  assert.equal(calls, 1)
+  now = 10_001
+  await assert.rejects(dnsCache.resolve('missing.example', 'revision-a'), error => error.code === 'TARGET_DNS_FAILED')
+  assert.equal(calls, 2)
+  await assert.rejects(dnsCache.resolve('missing.example', 'revision-b'), error => error.code === 'TARGET_DNS_FAILED')
+  assert.equal(calls, 3)
+})
+
+test('does not fall back to an unbypassed address or proxy after a CIDR-selected direct target fails', async () => {
+  const target = createServer((_request, response) => response.end('must-not-be-reached'))
+  const targetPort = await listen(target)
+  const fixture = socksFixture({ username: 'proxy-user', password: 'proxy-password' })
+  const socksPort = await listen(fixture.server)
+  const state = snapshot({ proxyPort: socksPort, protocol: 'socks5', remoteDns: false, bypass: ['127.0.0.2/32'] })
+  const resolver = async () => [
+    { address: '127.0.0.2', family: 4 },
+    { address: '127.0.0.1', family: 4 },
+  ]
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state, resolver })
+  const proxyPort = await listen(proxy)
+  try {
+    const result = await proxyRequest({ proxyPort, target: `http://mixed.test:${targetPort}/` })
+    assert.equal(result.statusCode, 502)
+    assert.equal(result.body.includes('must-not-be-reached'), false)
+    assert.equal(fixture.observations.length, 0)
+  } finally {
+    await close(proxy)
+    await close(fixture.server)
+    await close(target)
+  }
+})
+
+test('reevaluates policy revision for each request on one client keep-alive connection', async () => {
+  const firstUpstream = createServer((_request, response) => response.end('first-revision'))
+  const secondUpstream = createServer((_request, response) => response.end('second-revision'))
+  const firstPort = await listen(firstUpstream)
+  const secondPort = await listen(secondUpstream)
+  let state = Object.freeze({ ...snapshot({ proxyPort: firstPort }), revision: 'revision-one' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+  try {
+    const first = await proxyAgentRequest({ proxyPort, target: 'http://revision.test/value', agent })
+    state = Object.freeze({ ...snapshot({ proxyPort: secondPort }), revision: 'revision-two' })
+    const second = await proxyAgentRequest({ proxyPort, target: 'http://revision.test/value', agent })
+    assert.equal(first.body.toString(), 'first-revision')
+    assert.equal(second.body.toString(), 'second-revision')
+    assert.equal(first.socket, second.socket, 'the local client connection should be reused')
+  } finally {
+    agent.destroy()
+    await close(proxy)
+    await close(firstUpstream)
+    await close(secondUpstream)
+  }
+})
+
+test('reuses outbound HTTP connections only within one policy revision', async () => {
+  let connectionsOpened = 0
+  const target = createServer((_request, response) => response.end('ok'))
+  target.on('connection', () => { connectionsOpened += 1 })
+  const targetPort = await listen(target)
+  let state = Object.freeze({ ...snapshot(), revision: 'revision-one' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  try {
+    await proxyRequest({ proxyPort, target: `http://127.0.0.1:${targetPort}/one` })
+    await proxyRequest({ proxyPort, target: `http://127.0.0.1:${targetPort}/two` })
+    assert.equal(connectionsOpened, 1)
+    state = Object.freeze({ ...snapshot(), revision: 'revision-two' })
+    await proxyRequest({ proxyPort, target: `http://127.0.0.1:${targetPort}/three` })
+    assert.equal(connectionsOpened, 2)
+  } finally {
+    await close(proxy)
+    await close(target)
+  }
+})
+
+test('lets an active old-revision request finish while retiring its connection', async () => {
+  let releaseSlow
+  let slowStarted
+  const started = new Promise(resolve => { slowStarted = resolve })
+  const target = createServer((request, response) => {
+    if (request.url === '/slow') {
+      slowStarted()
+      return void new Promise(resolve => { releaseSlow = () => { response.end('old-complete'); resolve() } })
+    }
+    response.end('new-complete')
+  })
+  const targetPort = await listen(target)
+  let state = Object.freeze({ ...snapshot(), revision: 'revision-one' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  try {
+    const oldRequest = proxyRequest({ proxyPort, target: `http://127.0.0.1:${targetPort}/slow` })
+    await started
+    state = Object.freeze({ ...snapshot(), revision: 'revision-two' })
+    const current = await proxyRequest({ proxyPort, target: `http://127.0.0.1:${targetPort}/current` })
+    assert.equal(current.body.toString(), 'new-complete')
+    releaseSlow()
+    assert.equal((await oldRequest).body.toString(), 'old-complete')
+  } finally {
+    releaseSlow?.()
+    await close(proxy)
+    await close(target)
+  }
+})
+
+test('keeps an established CONNECT tunnel on its original revision while new tunnels use the new revision', async () => {
+  const counts = [0, 0]
+  const upstream = index => createNetServer(socket => {
+    let bytes = Buffer.alloc(0)
+    socket.on('data', chunk => {
+      bytes = Buffer.concat([bytes, chunk])
+      if (!bytes.includes('\r\n\r\n')) return
+      counts[index] += 1
+      socket.removeAllListeners('data')
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      socket.on('data', value => socket.write(value))
+    })
+  })
+  const firstUpstream = upstream(0)
+  const secondUpstream = upstream(1)
+  const firstPort = await listen(firstUpstream)
+  const secondPort = await listen(secondUpstream)
+  let state = Object.freeze({ ...snapshot({ proxyPort: firstPort }), revision: 'revision-one' })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let first
+  let second
+  try {
+    first = (await rawExchange(proxyPort, 'CONNECT fixed.example:443 HTTP/1.1\r\nHost: fixed.example:443\r\n\r\n', { keepOpen: true })).socket
+    state = Object.freeze({ ...snapshot({ proxyPort: secondPort }), revision: 'revision-two' })
+    first.write('old-tunnel')
+    assert.equal((await once(first, 'data'))[0].toString(), 'old-tunnel')
+    second = (await rawExchange(proxyPort, 'CONNECT fixed.example:443 HTTP/1.1\r\nHost: fixed.example:443\r\n\r\n', { keepOpen: true })).socket
+    assert.deepEqual(counts, [1, 1])
+  } finally {
+    first?.destroy()
+    second?.destroy()
+    await close(proxy)
+    await close(firstUpstream)
+    await close(secondUpstream)
+  }
 })

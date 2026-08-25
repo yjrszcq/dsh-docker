@@ -1,4 +1,3 @@
-import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { matchesProxyRules, normalizeProxyRules } from './rules.mjs'
 
@@ -10,25 +9,11 @@ function scopeEnabled(configuration, scope) {
   return configuration.scopes[scope] === true
 }
 
-async function resolvedAddresses(host, resolver) {
-  if (isIP(host) !== 0) return [host]
-  try {
-    const records = await resolver(host, { all: true, verbatim: true })
-    return [...new Set(records.map(record => record.address))]
-  } catch {
-    return []
-  }
+function route(mode, reason, snapshot, fields = {}) {
+  return Object.freeze({ mode, reason, revision: snapshot.revision, ...fields })
 }
 
-async function rulesMatch(rules, host, port, resolver) {
-  if (matchesProxyRules(rules.filter(rule => rule.type !== 'cidr'), host, port)) return true
-  const cidr = rules.filter(rule => rule.type === 'cidr')
-  if (cidr.length === 0) return false
-  const addresses = await resolvedAddresses(host, resolver)
-  return addresses.some(address => matchesProxyRules(cidr, address, port))
-}
-
-export async function selectProxyRoute({ snapshot, scope, host, port, resolver = lookup }) {
+export async function selectProxyRoute({ snapshot, scope, host, port, dnsCache, signal }) {
   const configuration = snapshot.configuration
   const userNoProxy = normalizeProxyRules(configuration.noProxy.user, {
     allowWildcard: true,
@@ -38,28 +23,28 @@ export async function selectProxyRoute({ snapshot, scope, host, port, resolver =
     allowCidr: true,
     label: 'proxy bypass',
   })
-  if (await rulesMatch(PLATFORM_RULES, host, port, resolver)) {
-    return Object.freeze({ mode: 'direct', reason: 'platform-forced-direct', revision: snapshot.revision })
-  }
-  if (await rulesMatch(userNoProxy, host, port, resolver)) {
-    return Object.freeze({ mode: 'direct', reason: 'no-proxy', revision: snapshot.revision })
-  }
-  if (await rulesMatch(bypass, host, port, resolver)) {
-    return Object.freeze({ mode: 'direct', reason: 'bypass', revision: snapshot.revision })
-  }
+  const bypassHosts = bypass.filter(rule => rule.type !== 'cidr')
+  const bypassCidrs = bypass.filter(rule => rule.type === 'cidr')
+  if (matchesProxyRules(PLATFORM_RULES, host, port)) return route('direct', 'platform-forced-direct', snapshot)
+  if (matchesProxyRules(userNoProxy, host, port)) return route('direct', 'no-proxy', snapshot)
+  if (matchesProxyRules(bypassHosts, host, port)) return route('direct', 'bypass', snapshot)
+  if (isIP(host) !== 0 && matchesProxyRules(bypassCidrs, host, port)) return route('direct', 'bypass', snapshot)
   if (!configuration.enabled || !scopeEnabled(configuration, scope)) {
-    return Object.freeze({ mode: 'direct', reason: 'scope-direct', revision: snapshot.revision })
+    return route('direct', 'scope-direct', snapshot)
   }
-  return Object.freeze({
-    mode: configuration.proxy.protocol,
-    reason: 'scope-proxy',
-    revision: snapshot.revision,
-    endpoint: Object.freeze({
-      host: configuration.proxy.host,
-      port: configuration.proxy.port,
-      remoteDns: configuration.proxy.remoteDns,
-      username: snapshot.credentials.username,
-      password: snapshot.credentials.password,
-    }),
+  const endpoint = Object.freeze({
+    host: configuration.proxy.host,
+    port: configuration.proxy.port,
+    remoteDns: configuration.proxy.remoteDns,
+    username: snapshot.credentials.username,
+    password: snapshot.credentials.password,
   })
+  if (configuration.proxy.protocol !== 'socks5' || configuration.proxy.remoteDns || isIP(host) !== 0) {
+    return route(configuration.proxy.protocol, 'scope-proxy', snapshot, { endpoint })
+  }
+  if (dnsCache === undefined) throw new TypeError('SOCKS5 local DNS requires a ProxyDnsCache')
+  const targets = await dnsCache.resolve(host, snapshot.revision, { signal })
+  const directTargets = targets.filter(target => matchesProxyRules(bypassCidrs, target.address, port))
+  if (directTargets.length > 0) return route('direct', 'bypass-cidr', snapshot, { targets: Object.freeze(directTargets) })
+  return route('socks5', 'scope-proxy', snapshot, { endpoint, targets })
 }

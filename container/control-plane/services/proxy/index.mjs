@@ -5,7 +5,9 @@ import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { PROXY_PORTS } from './lib/contracts.mjs'
-import { createScopedProxyServer } from './lib/data-plane.mjs'
+import { createScopedProxyServer, ProxyAgentPool } from './lib/data-plane.mjs'
+import { ProxyDnsCache } from './lib/dns-cache.mjs'
+import { probeProxyEntry } from './lib/readiness.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
 
 const paths = new PlatformPaths(
@@ -15,15 +17,19 @@ const paths = new PlatformPaths(
 const store = new ProxyConfigurationStore(paths.proxyStateRoot)
 let snapshot = await store.load()
 const listeners = []
+const dnsCache = new ProxyDnsCache()
+const agentPool = new ProxyAgentPool()
 
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
-  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot })
+  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot, dnsCache, agentPool })
   await new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, '127.0.0.1', resolve)
   })
   listeners.push(server)
 }
+await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))
+const routeHealth = Object.freeze(Object.fromEntries(Object.keys(PROXY_PORTS).map(scope => [scope, 'ready'])))
 
 const control = createHttpServer((request, response) => {
   if (request.method === 'GET' && request.url === '/v1/status') {
@@ -32,7 +38,7 @@ const control = createHttpServer((request, response) => {
       componentReady: true,
       revision: snapshot.revision,
       recovery: snapshot.recovery,
-      routeHealth: Object.fromEntries(Object.keys(PROXY_PORTS).map(scope => [scope, 'unknown'])),
+      routeHealth,
     })}\n`)
     return
   }
@@ -61,6 +67,7 @@ const signal = new Promise(resolve => { resolveSignal = resolve })
 process.once('SIGINT', () => resolveSignal())
 process.once('SIGTERM', () => resolveSignal())
 await signal
+agentPool.close()
 await Promise.all(listeners.map(server => new Promise(resolve => server.close(resolve))))
 await new Promise(resolve => control.close(resolve))
 await unlink(paths.proxyControlSocket).catch(error => {

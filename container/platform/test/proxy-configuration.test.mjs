@@ -71,6 +71,19 @@ test('rejects unknown schemas, fields, wildcards, URLs, incomplete endpoints, an
   ]) assert.throws(() => validateProxyConfiguration(value), ProxyConfigurationError)
 })
 
+test('enforces SOCKS5 credential byte limits without rejecting valid UTF-8 credentials', () => {
+  const boundary = validateProxyConfiguration(configured({ proxy: {
+    username: 'u'.repeat(255), password: 'p'.repeat(255), protocol: 'socks5',
+  } }))
+  assert.equal(Buffer.byteLength(boundary.credentials.username), 255)
+  assert.equal(Buffer.byteLength(boundary.credentials.password), 255)
+  assert.equal(validateProxyConfiguration(configured({ proxy: {
+    username: '代理', password: '密钥', protocol: 'socks5',
+  } })).credentials.username, '代理')
+  assert.throws(() => validateProxyConfiguration(configured({ proxy: { username: 'u'.repeat(256) } })), ProxyConfigurationError)
+  assert.throws(() => validateProxyConfiguration(configured({ proxy: { password: 'p'.repeat(256) } })), ProxyConfigurationError)
+})
+
 test('matches exact, suffix, port, IPv6, CIDR, wildcard, and domain boundaries', () => {
   const noProxy = normalizeProxyRules(['example.com', '.example.net', 'service.local:8443', '*'], { allowWildcard: true })
   assert.equal(matchesProxyRules(noProxy, 'anything.invalid', 443), true)
