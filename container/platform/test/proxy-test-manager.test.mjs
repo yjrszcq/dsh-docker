@@ -69,6 +69,9 @@ test('proxy tests allow one in-memory candidate, persist no credentials, and can
     scopes: { updates: true },
   })
   const started = await manager.start({ baseRevision: state.revision, value }, state)
+  await assert.rejects(manager.start({ baseRevision: state.revision, value, unexpected: true }, state), error => (
+    error.code === 'INVALID_CONFIG' && error.stage === 'test'
+  ))
   await assert.rejects(manager.start({ baseRevision: state.revision, value }, state), error => error.code === 'PROXY_TEST_BUSY')
   assert.equal((await readFile(statePath, 'utf8')).includes('never-persist-this'), false)
   await manager.cancel(started.taskId)

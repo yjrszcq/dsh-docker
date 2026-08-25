@@ -225,7 +225,12 @@ export class ProxyTestManager {
     })
   }
 
-  async start({ baseRevision, value }, current) {
+  async start(request, current) {
+    if (request === null || typeof request !== 'object' || Array.isArray(request)
+      || Object.keys(request).sort().join(',') !== 'baseRevision,value') {
+      throw new ProxyConfigurationError('proxy test request is invalid', { stage: 'test' })
+    }
+    const { baseRevision, value } = request
     if (this.active !== null) {
       throw new ProxyConfigurationError('another proxy test is already running', {
         code: 'PROXY_TEST_BUSY', statusCode: 409, stage: 'test', retryable: true,
@@ -285,7 +290,9 @@ export class ProxyTestManager {
       })
       await this.update(task, {})
     } catch (error) {
-      const failure = safeError(error)
+      const failure = signal.reason?.name === 'TimeoutError'
+        ? { errorCode: 'PROXY_TEST_STAGE_TIMEOUT', detail: `${name} timed out` }
+        : safeError(error)
       Object.assign(entry, { status: 'failed', durationMs: Date.now() - started, ...failure })
       throw error
     }
