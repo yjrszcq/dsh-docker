@@ -151,18 +151,31 @@ export class EnvironmentRunner {
     capture = defaultCapture,
     loader = loadEnvironment,
     prepareService = async () => ({ environment: {}, release: () => {} }),
+    recoverableComponents = [],
+    recoveryDelaysMs = [0, 2_000, 5_000],
     report = () => {},
   }) {
+    if (!Array.isArray(recoverableComponents)
+      || recoverableComponents.some(value => typeof value !== 'string' || value.length === 0)) {
+      throw new Error('Recoverable component IDs must be non-empty strings')
+    }
+    if (!Array.isArray(recoveryDelaysMs) || recoveryDelaysMs.length === 0
+      || recoveryDelaysMs.some(value => !Number.isFinite(value) || value < 0)) {
+      throw new Error('Component recovery delays must be non-negative durations')
+    }
     this.environmentRoot = environmentRoot
     this.spawnImpl = spawnImpl
     this.capture = capture
     this.loader = loader
     this.prepareService = prepareService
+    this.recoverableComponents = new Set(recoverableComponents)
+    this.recoveryDelaysMs = Object.freeze([...recoveryDelaysMs])
     this.report = report
     this.running = []
     this.environment = undefined
     this.operation = Promise.resolve()
     this.stopping = false
+    this.componentRecoveries = new Map()
     this.fatalListeners = new Set()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
@@ -187,6 +200,61 @@ export class EnvironmentRunner {
     const result = this.operation.then(operation, operation)
     this.operation = result.then(() => undefined, () => undefined)
     return result
+  }
+
+  recoverable(component) {
+    return this.recoverableComponents.has(component.id) && component.type === 'service'
+  }
+
+  scheduleRecovery(component, originalError) {
+    if (this.stopping || !this.recoverable(component) || this.componentRecoveries.has(component.id)) return
+    const recover = () => this.recoverComponentUnlocked(component, originalError)
+    const pending = this.serialized(recover).finally(() => {
+      if (this.componentRecoveries.get(component.id) === pending) this.componentRecoveries.delete(component.id)
+    })
+    this.componentRecoveries.set(component.id, pending)
+    void pending.catch(() => {})
+  }
+
+  async recoverComponentUnlocked(component, originalError) {
+    const stale = this.running.find(value => value.component.id === component.id)
+    if (stale !== undefined) {
+      try { await this.stopComponentUnlocked(stale) } catch {}
+    }
+    for (let index = 0; index < this.recoveryDelaysMs.length; index += 1) {
+      if (this.stopping) return
+      const delayMs = this.recoveryDelaysMs[index]
+      if (delayMs > 0) await delay(delayMs)
+      if (this.stopping) return
+      const attempt = index + 1
+      this.emitLifecycle('component.recovery.started', {
+        componentId: component.id,
+        attempt,
+        maxAttempts: this.recoveryDelaysMs.length,
+      })
+      try {
+        await this.startComponentUnlocked(component, true)
+        this.emitLifecycle('component.recovery.completed', {
+          componentId: component.id,
+          attempt,
+          maxAttempts: this.recoveryDelaysMs.length,
+        })
+        return
+      } catch (error) {
+        this.emitLifecycle('component.recovery.failed', {
+          componentId: component.id,
+          attempt,
+          maxAttempts: this.recoveryDelaysMs.length,
+          error: error instanceof Error ? error.message : String(error),
+          level: 'warning',
+        })
+      }
+    }
+    this.emitLifecycle('component.isolated', {
+      componentId: component.id,
+      error: originalError instanceof Error ? originalError.message : String(originalError),
+      level: 'error',
+    })
   }
 
   commandOptions(component) {
@@ -214,7 +282,17 @@ export class EnvironmentRunner {
     try {
       for (const component of this.environment.components) await this.phase(component, 'prepare')
       for (const component of this.environment.components) {
-        await this.startComponentUnlocked(component)
+        try {
+          await this.startComponentUnlocked(component)
+        } catch (error) {
+          if (!this.recoverable(component)) throw error
+          this.emitLifecycle('component.isolated', {
+            componentId: component.id,
+            error: error instanceof Error ? error.message : String(error),
+            level: 'error',
+          })
+          this.scheduleRecovery(component, error)
+        }
       }
       return this.status()
     } catch (error) {
@@ -274,7 +352,8 @@ export class EnvironmentRunner {
               error: error.message,
               level: 'error',
             })
-            this.emitFatal(error)
+            if (this.recoverable(component)) this.scheduleRecovery(component, error)
+            else this.emitFatal(error)
           }
         })
       } else {
@@ -342,6 +421,7 @@ export class EnvironmentRunner {
   }
 
   stop() {
+    this.stopping = true
     return this.serialized(() => this.stopUnlocked())
   }
 

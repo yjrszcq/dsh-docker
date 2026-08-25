@@ -73,6 +73,8 @@ RUN apt-get update \
         zip \
     && groupadd --system dsh-sudo-true \
     && groupadd --system dsh-sudo-false \
+    && groupadd --system --gid 991 dsh-proxy \
+    && useradd --system --uid 991 --gid 991 --home-dir /nonexistent --shell /usr/sbin/nologin dsh-proxy \
     && npm install --global "pnpm@${PNPM_VERSION}" \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 

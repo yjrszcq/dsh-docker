@@ -289,6 +289,68 @@ test('reports a service exit after readiness as a fatal Bootstrap condition', as
   await runner.stop()
 })
 
+test('recovers an opted-in service exit without stopping sibling services', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-isolated-recovery-'))
+  const counter = join(temp, 'counter')
+  const recoverable = join(temp, 'recoverable.mjs')
+  const sibling = join(temp, 'sibling.mjs')
+  await writeFile(recoverable, `import { existsSync, writeFileSync } from 'node:fs'; if (!existsSync(process.argv[2])) { writeFileSync(process.argv[2], '1'); setTimeout(() => process.exit(7), 20) } else setInterval(() => {}, 1000)`)
+  await writeFile(sibling, 'setInterval(() => {}, 1000)')
+  const candidate = component('proxy-manager', recoverable, 'service')
+  candidate.command = command(recoverable, [counter])
+  const reports = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate, component('management', sibling, 'service')]),
+    capture: () => {},
+    recoverableComponents: ['proxy-manager'],
+    recoveryDelaysMs: [0, 0, 0],
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  await runner.start()
+  const deadline = Date.now() + 2_000
+  while (!reports.some(report => report.message === 'component.recovery.completed')) {
+    if (Date.now() >= deadline) throw new Error('recoverable component did not restart')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(runner.status().components.map(value => value.id), ['proxy-manager', 'management'])
+  assert.equal(reports.some(report => report.message === 'component.exited'), true)
+  assert.equal(await Promise.race([
+    runner.fatal.then(() => 'fatal'),
+    new Promise(resolve => setTimeout(() => resolve('isolated'), 20)),
+  ]), 'isolated')
+  await runner.stop()
+})
+
+test('isolates a persistently failing opted-in component and starts later services', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-isolated-startup-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const reports = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([
+      component('proxy-manager', service, 'service'),
+      component('management', service, 'service'),
+    ]),
+    capture: () => {},
+    recoverableComponents: ['proxy-manager'],
+    recoveryDelaysMs: [0, 0, 0],
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+  const start = runner.startComponentUnlocked.bind(runner)
+  runner.startComponentUnlocked = (candidate, prepare) => candidate.id === 'proxy-manager'
+    ? Promise.reject(new Error('proxy port conflict'))
+    : start(candidate, prepare)
+  await runner.start()
+  const deadline = Date.now() + 2_000
+  while (reports.filter(report => report.message === 'component.isolated').length < 2) {
+    if (Date.now() >= deadline) throw new Error('proxy failure was not isolated')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(runner.status().components.map(value => value.id), ['management'])
+  assert.equal(reports.filter(report => report.message === 'component.recovery.failed').length, 3)
+  await runner.stop()
+})
+
 test('contains a service exit during readiness inside the startup operation', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-startup-exit-'))
   const service = join(temp, 'service.mjs')
@@ -547,7 +609,7 @@ test('loads the checked-in Control Plane independently from an Environment manif
   ))
   assert.equal(controlPlane.manifest.version, null)
   assert.deepEqual(controlPlane.components.map(component => component.id), [
-    'gateway', 'platform-recovery', 'platform-management',
+    'gateway', 'proxy-manager', 'platform-recovery', 'platform-management',
   ])
 })
 

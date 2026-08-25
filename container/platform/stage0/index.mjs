@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
+import { chmod, chown, mkdir, readFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { TrustLedger } from './lib/ledger.mjs'
 import { VerifiedObjectStore } from './lib/artifacts.mjs'
@@ -27,6 +28,11 @@ import { PersistentStateSnapshots } from '../../control-plane/modules/updater/li
 import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
 import { createSnapshotServer, listenSnapshots } from './lib/snapshot-server.mjs'
 import { prepareUserWritableRoots } from './lib/user-roots.mjs'
+import {
+  ProxyLaunchBroker,
+  createProxyLaunchServer,
+  listenProxyLaunch,
+} from './lib/proxy-launch-server.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -36,6 +42,9 @@ const dshHome = process.env.DSH_HOME ?? '/data/dsh'
 const defaultWorkspace = process.env.DSH_DEFAULT_WORKSPACE ?? '/workspace'
 const agentsHome = process.env.DSH_AGENTS_HOME ?? '/home/node/.agents'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
+const proxyUid = 991
+const proxyGid = 991
+const platformGid = 1000
 const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
 const trustStateRoot = trustStateRootForAuthority(paths, inventory.authority)
@@ -92,6 +101,31 @@ const slots = new BootstrapManager({
 await startup('bootstrap-reconcile', () => slots.reconcileImage(imageRecords.bootstrap))
 const currentBootstrap = await startup('bootstrap-resolve', () => slots.current())
 await startup('bootstrap-view', () => replaceRuntimeView(paths, 'bootstrap', currentBootstrap.path))
+await startup('proxy-state-root', async () => {
+  await mkdir(paths.proxyStateRoot, { recursive: true })
+  if (process.getuid?.() === 0) await chown(paths.proxyStateRoot, proxyUid, proxyGid)
+  await chmod(paths.proxyStateRoot, process.getuid?.() === 0 ? 0o700 : 0o700)
+})
+const proxyLaunchToken = randomBytes(32).toString('base64url')
+const proxyBroker = new ProxyLaunchBroker({
+  token: proxyLaunchToken,
+  dataRoot,
+  runRoot,
+  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'proxy-manager', 'index.mjs'),
+  controlSocket: paths.proxyControlSocket,
+  uid: proxyUid,
+  gid: proxyGid,
+  platformGid,
+  capture: (child, source, declaration) => logs.capture(child, source, declaration),
+  report: (message, fields) => logs.diagnostic('proxy-manager', message, fields),
+})
+const proxyLaunchServer = createProxyLaunchServer({
+  broker: proxyBroker,
+  token: proxyLaunchToken,
+  report: (message, fields) => logs.diagnostic('stage0', message, fields),
+})
+await startup('proxy-launch-api', () => listenProxyLaunch(proxyLaunchServer, paths.proxyLaunchSocket, platformGid))
+await logs.diagnostic('stage0', 'proxy-launch-api.ready')
 const seedKeyring = await readFile(join(seedRoot, 'trust', 'keyring.json'))
 const seedSignature = JSON.parse(await readFile(join(seedRoot, 'trust', 'keyring.sig.json'), 'utf8'))
 await startup('keyring', () => ledger.acceptKeyring(seedKeyring, seedSignature))
@@ -104,6 +138,7 @@ const supervisor = new BootstrapSupervisor({
   gid: process.getgid?.() === 0 ? 1000 : undefined,
   user: process.getuid?.() === 0 ? 'node' : undefined,
   home: process.getuid?.() === 0 ? '/home/node' : undefined,
+  proxyLaunchToken,
   entrypoint: 'platform/bootstrap/index.mjs',
   seedRoot,
   report: (message, fields) => logs.diagnostic('stage0', message, fields),
@@ -204,6 +239,8 @@ if (outcome.type === 'exit') await logs.diagnostic('stage0', 'stage0.fatal', { e
 else await logs.diagnostic('stage0', 'stage0.stopping', { signal: outcome.signal })
 trustServer.close()
 recoveryServer.close()
+await proxyBroker.stop()
+await new Promise(resolve => proxyLaunchServer.close(resolve))
 await maintenance.terminal.shutdown()
 await new Promise(resolve => maintenance.server.close(resolve))
 await new Promise(resolve => snapshotServer.close(resolve))

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -157,5 +160,98 @@ test('publishes one complete bilingual proxy scope catalog', () => {
     assert.equal(typeof entry.source.en, 'string')
     assert.equal(typeof entry.detail.zh, 'string')
     assert.equal(typeof entry.detail.en, 'string')
+  }
+})
+
+test('keeps the Bootstrap proxy supervisor alive until an explicit stop', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-supervisor-'))
+  const runRoot = join(root, 'run')
+  const socket = join(runRoot, 'proxy-launch.sock')
+  await mkdir(runRoot)
+  let running = false
+  const calls = []
+  const server = createServer((request, response) => {
+    const chunks = []
+    request.on('data', chunk => chunks.push(chunk))
+    request.on('end', () => {
+      calls.push(`${request.method} ${request.url}`)
+      if (request.method === 'POST' && request.url === '/v1/start') running = true
+      if (request.method === 'POST' && request.url === '/v1/stop') running = false
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ running, componentReady: running }))
+    })
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socket, resolve)
+  })
+  const script = new URL('../../control-plane/services/proxy-manager/supervisor.mjs', import.meta.url).pathname
+  const child = spawn(process.execPath, [script], {
+    env: {
+      ...process.env,
+      DSH_PLATFORM_DATA: join(root, 'data'),
+      DSH_PLATFORM_RUN: runRoot,
+      DSH_PROXY_LAUNCH_TOKEN: 'x'.repeat(43),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  try {
+    await new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error('proxy supervisor did not start')), 3_000)
+      const check = setInterval(() => {
+        if (calls.includes('POST /v1/start')) {
+          clearInterval(check)
+          clearTimeout(deadline)
+          resolve()
+        }
+      }, 20)
+    })
+    await new Promise(resolve => setTimeout(resolve, 750))
+    assert.equal(child.exitCode, null)
+    child.kill('SIGTERM')
+    const [code] = await once(child, 'exit')
+    assert.equal(code, 0)
+    assert.equal(calls.includes('POST /v1/stop'), true)
+  } finally {
+    if (child.exitCode === null) child.kill('SIGKILL')
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('restarts Proxy Manager after an unclean exit leaves its control socket behind', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-process-restart-'))
+  const runRoot = join(root, 'run')
+  const dataRoot = join(root, 'data')
+  await mkdir(runRoot)
+  const script = new URL('../../control-plane/services/proxy-manager/index.mjs', import.meta.url).pathname
+  const launch = () => spawn(process.execPath, [script], {
+    env: { ...process.env, DSH_PLATFORM_DATA: dataRoot, DSH_PLATFORM_RUN: runRoot },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  })
+  const ready = child => Promise.race([
+    once(child, 'message').then(([message]) => {
+      assert.equal(message.componentReady, true)
+    }),
+    once(child, 'exit').then(([code, signal]) => {
+      throw new Error(`Proxy Manager exited before readiness (${String(code)}, ${String(signal)})`)
+    }),
+  ])
+  const first = launch()
+  let second
+  try {
+    await ready(first)
+    first.kill('SIGKILL')
+    await once(first, 'exit')
+    second = launch()
+    await ready(second)
+    assert.equal(second.exitCode, null)
+  } finally {
+    if (first.exitCode === null) first.kill('SIGKILL')
+    if (second?.exitCode === null) {
+      second.kill('SIGTERM')
+      await once(second, 'exit')
+    }
+    await rm(root, { recursive: true, force: true })
   }
 })

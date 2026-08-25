@@ -6,6 +6,10 @@
       "source": "services/gateway/component.json"
     },
     {
+      "id": "proxy-manager",
+      "source": "services/proxy-manager/component.json"
+    },
+    {
       "id": "platform-recovery",
       "source": "hooks/recovery/component.json"
     },

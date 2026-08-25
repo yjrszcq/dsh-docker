@@ -3,7 +3,7 @@ import { cp, lstat, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { request } from 'node:http'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { BootstrapManager } from '../stage0/lib/slots.mjs'
 import {
@@ -13,6 +13,13 @@ import {
 } from '../stage0/lib/supervisor.mjs'
 import { createTrustServer, listenUnix } from '../stage0/lib/trust-server.mjs'
 import { createRecoveryServer, listenRecovery } from '../stage0/lib/recovery-server.mjs'
+import {
+  ProxyLaunchBroker,
+  createProxyLaunchServer,
+  listenProxyLaunch,
+  proxyLaunchCommand,
+  proxyLaunchEnvironment,
+} from '../stage0/lib/proxy-launch-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
@@ -118,15 +125,104 @@ test('preserves container supplementary groups while lowering Bootstrap privileg
   }), /UID and GID/)
 })
 
+test('launches Proxy Manager with a dedicated identity and isolated environment', () => {
+  assert.deepEqual(proxyLaunchCommand({
+    node: '/usr/local/bin/node', script: '/opt/proxy/index.mjs', uid: 991, gid: 991, platformGid: 1000,
+  }), {
+    executable: '/usr/bin/setpriv',
+    args: [
+      '--reuid=991', '--regid=991', '--groups=1000', '--',
+      '/usr/local/bin/node', '/opt/proxy/index.mjs',
+    ],
+  })
+  assert.throws(() => proxyLaunchCommand({
+    node: 'node', script: 'proxy.mjs', uid: 0, gid: 0, platformGid: 1000,
+  }), /positive/)
+  assert.deepEqual(proxyLaunchEnvironment({
+    environment: { PATH: '/usr/bin', DSH_PROXY_MASTER_KEY: 'secret', HOME: '/root', LEAK: 'value' },
+    dataRoot: '/data/platform', runRoot: '/run/dsh-platform',
+  }), {
+    HOME: '/nonexistent', USER: 'dsh-proxy', LOGNAME: 'dsh-proxy', PATH: '/usr/bin',
+    DSH_PLATFORM_DATA: '/data/platform', DSH_PLATFORM_RUN: '/run/dsh-platform',
+    DSH_PROXY_MASTER_KEY: 'secret',
+  })
+})
+
+test('Proxy Manager launch broker requires its token and exposes only fixed operations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-launch-'))
+  const worker = join(root, 'worker.mjs')
+  const socket = join(root, 'launch.sock')
+  const controlSocket = join(root, 'control.sock')
+  await writeFile(worker, `
+    import { writeFileSync } from 'node:fs'
+    writeFileSync(${JSON.stringify(controlSocket)}, '')
+    process.send({ type: 'ready', componentReady: true, revision: 'revision', ports: [17891] })
+    process.once('SIGTERM', () => process.exit(0))
+    setInterval(() => {}, 1000)
+  `)
+  const broker = new ProxyLaunchBroker({
+    token: 'valid-token', dataRoot: root, runRoot: root, script: worker,
+    controlSocket, uid: 991, gid: 991,
+    platformGid: process.getgid?.() ?? 1000,
+    spawnImpl: (_executable, _args, options) => {
+      const child = spawn(process.execPath, [worker], {
+        ...options, env: process.env,
+      })
+      return child
+    },
+  })
+  const server = createProxyLaunchServer({ broker, token: 'valid-token' })
+  await listenProxyLaunch(server, socket)
+  const client = new LocalApiClient(socket)
+  try {
+    assert.deepEqual(await client.request('GET', '/v1/status'), {
+      running: false, componentReady: false, pid: null, revision: null, ports: [],
+    })
+    await assert.rejects(client.request('POST', '/v1/start', { token: 'invalid' }), error => error.statusCode === 403)
+    const started = await client.request('POST', '/v1/start', { token: 'valid-token' })
+    assert.equal(started.running, true)
+    assert.equal(started.componentReady, true)
+    assert.equal((await client.request('GET', '/v1/status')).revision, 'revision')
+    await assert.rejects(client.request('POST', '/v1/arbitrary', { token: 'valid-token' }), error => error.statusCode === 404)
+    assert.equal((await client.request('POST', '/v1/stop', { token: 'valid-token' })).running, false)
+  } finally {
+    await broker.stop()
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('Proxy Manager launch failure returns after an already-exited child without waiting for another exit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-launch-failure-'))
+  const worker = join(root, 'worker.mjs')
+  await writeFile(worker, 'process.exit(9)')
+  const broker = new ProxyLaunchBroker({
+    token: 'valid-token', dataRoot: root, runRoot: root, script: worker,
+    controlSocket: join(root, 'control.sock'), uid: 991, gid: 991,
+    platformGid: process.getgid?.() ?? 1000,
+    spawnImpl: (_executable, _args, options) => spawn(process.execPath, [worker], {
+      ...options, env: process.env,
+    }),
+  })
+  await assert.rejects(Promise.race([
+    broker.start(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('launch failure timed out')), 1_000)),
+  ]), /exited before readiness.*code=9/)
+  assert.equal(broker.status().running, false)
+})
+
 test('replaces the root login environment when lowering Bootstrap privileges', () => {
   assert.deepEqual(bootstrapLaunchEnvironment({
-    environment: { HOME: '/root', USER: 'root', LOGNAME: 'root', PATH: '/usr/local/bin:/usr/bin' },
+    environment: {
+      HOME: '/root', USER: 'root', LOGNAME: 'root', PATH: '/usr/local/bin:/usr/bin',
+      DSH_PROXY_MASTER_KEY: 'must-not-leak', DSH_PROXY_LAUNCH_TOKEN: 'old-token',
+    },
     dataRoot: '/data/platform',
     runRoot: '/run/dsh-platform',
     seedRoot: '/opt/dsh-platform/seed',
     bootstrapVersion: '1.0.0',
     user: 'node',
     home: '/home/node',
+    proxyLaunchToken: 'new-token',
   }), {
     HOME: '/home/node',
     USER: 'node',
@@ -139,6 +235,7 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     DSH_PLATFORM_RUN: '/run/dsh-platform',
     DSH_PLATFORM_SEED: '/opt/dsh-platform/seed',
     DSH_BOOTSTRAP_VERSION: '1.0.0',
+    DSH_PROXY_LAUNCH_TOKEN: 'new-token',
   })
 })
 

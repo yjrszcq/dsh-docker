@@ -37,9 +37,13 @@ export function bootstrapLaunchEnvironment({
   bootstrapVersion,
   user,
   home,
+  proxyLaunchToken,
 }) {
+  const inherited = { ...environment }
+  delete inherited.DSH_PROXY_MASTER_KEY
+  delete inherited.DSH_PROXY_LAUNCH_TOKEN
   return {
-    ...environment,
+    ...inherited,
     ...(home === undefined ? {} : {
       HOME: home,
       XDG_CACHE_HOME: join(home, '.cache'),
@@ -51,6 +55,7 @@ export function bootstrapLaunchEnvironment({
     DSH_PLATFORM_RUN: runRoot,
     ...(seedRoot === undefined ? {} : { DSH_PLATFORM_SEED: seedRoot }),
     DSH_BOOTSTRAP_VERSION: bootstrapVersion,
+    ...(proxyLaunchToken === undefined ? {} : { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken }),
   }
 }
 
@@ -84,6 +89,7 @@ export class BootstrapSupervisor {
     gid,
     user,
     home,
+    proxyLaunchToken,
   }) {
     this.slots = slots
     this.dataRoot = dataRoot
@@ -99,6 +105,7 @@ export class BootstrapSupervisor {
     this.gid = gid
     this.user = user
     this.home = home
+    this.proxyLaunchToken = proxyLaunchToken
     this.child = undefined
     this.requests = new Map()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
@@ -136,6 +143,7 @@ export class BootstrapSupervisor {
         bootstrapVersion: resolved.record.version,
         user: this.user,
         home: this.home,
+        proxyLaunchToken: this.proxyLaunchToken,
       }),
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     })

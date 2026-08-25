@@ -145,6 +145,8 @@ const capture = (child, source, declaration) => logs.capture(
   declaration,
   { acceptForwarded: ['gateway', 'platform-management'].includes(source) },
 )
+const proxyLaunchToken = process.env.DSH_PROXY_LAUNCH_TOKEN
+delete process.env.DSH_PROXY_LAUNCH_TOKEN
 const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
 let runtime
 const dshLifecycleBroker = new DshLifecycleBroker({
@@ -160,6 +162,13 @@ const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
   capture,
+  prepareService: component => component.id === 'proxy-manager'
+    ? {
+        environment: { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken },
+        release: () => {},
+      }
+    : { environment: {}, release: () => {} },
+  recoverableComponents: ['proxy-manager'],
   report: reportLifecycle,
 })
 const environment = new EnvironmentRunner({
