@@ -87,7 +87,10 @@ class SettingsNavigationController {
 
   scan() {
     const next = findSettingsDialog(this.root)
-    if (next !== null && this.match !== null && next.dialog === this.match.dialog) {
+    const sameStructure = next !== null && this.match !== null
+      && ['dialog', 'nav', 'navTitle', 'navList', 'content', 'header', 'options']
+        .every(key => next[key] === this.match[key])
+    if (sameStructure) {
       this.match.current = next.current
       this.match.buttons = next.buttons
       return
