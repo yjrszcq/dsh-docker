@@ -79,12 +79,18 @@ function connectTerminal(sessionId) {
 }
 
 async function waitTask(kind, taskId, expected) {
-  return waitFor(async () => {
-    const status = await request('GET', `${API}status`)
-    const operation = status[kind]
-    const operationState = operation?.status ?? operation?.state
-    return operation?.taskId === taskId && expected.includes(operationState) ? operation : false
-  }, `${kind} ${taskId}`)
+  let lastOperation
+  try {
+    return await waitFor(async () => {
+      const status = await request('GET', `${API}status`)
+      const operation = status[kind]
+      lastOperation = operation
+      const operationState = operation?.status ?? operation?.state
+      return operation?.taskId === taskId && expected.includes(operationState) ? operation : false
+    }, `${kind} ${taskId}`, 600)
+  } catch (error) {
+    throw new Error(`${error.message}; last operation: ${JSON.stringify(lastOperation)}`)
+  }
 }
 
 const terminal = await request('POST', `${API}terminal/sessions`, { cols: 100, rows: 32 })
