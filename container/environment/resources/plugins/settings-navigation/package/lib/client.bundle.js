@@ -141,13 +141,21 @@ class SettingsNavigationController {
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.match.navList.removeEventListener('click', this.onNavClick)
-    for (const node of [
-      this.match.dialog, this.match.nav, this.match.navTitle, this.match.navList,
-      this.match.content, this.match.header, this.match.options,
-    ]) {
+    const roles = [
+      [this.match.dialog, this.classes.panel],
+      [this.match.nav, this.classes.nav],
+      [this.match.navTitle, this.classes.navTitle],
+      [this.match.navList, this.classes.navList],
+      [this.match.content, this.classes.content],
+      [this.match.header, this.classes.header],
+      [this.match.options, this.classes.options],
+    ]
+    for (const [node, className] of roles) {
       delete node.dataset.dshSettingsNavigationRole
-      node.classList.remove(...Object.values(this.classes))
+      node.classList.remove(className)
     }
+    delete this.match.dialog.dataset.dshSettingsNavigationMode
+    delete this.match.dialog.dataset.dshSettingsNavigationView
     this.backMount?.remove()
     this.backMount = null
     this.match = null
