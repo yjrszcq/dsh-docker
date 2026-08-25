@@ -474,6 +474,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-form-grid label > span, .proxy-rules-grid label > span { color: var(--text); font-weight: 500; }
 .proxy-rules-grid small, .proxy-check-row small { display: block; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-check-row { display: flex !important; align-items: flex-start; gap: 9px; margin-top: 12px; color: var(--text) !important; }
+.proxy-check-row[hidden] { display: none !important; }
 .proxy-check-row input { width: auto !important; min-height: 0 !important; margin-top: 3px; }
 .proxy-hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-scope-grid > label { display: flex; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
