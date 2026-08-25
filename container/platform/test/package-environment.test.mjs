@@ -38,6 +38,11 @@ test('packages the initial Environment deterministically from real resources', a
     assert.deepEqual(Object.keys(reference).sort(), ['id', 'sha256'])
   }
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
+  const navigationArchive = join(first, 'artifacts', 'system-plugin-settings-navigation')
+  const listing = spawnSync('tar', ['-tzf', navigationArchive], { encoding: 'utf8' })
+  assert.equal(listing.status, 0, listing.stderr)
+  assert.match(listing.stdout, /^package\/lib\/client\.bundle\.js$/m)
+  assert.match(listing.stdout, /^package\/cordis\.patch\.json$/m)
 })
 
 test('can emit flat Artifact URLs for GitHub Release assets', async () => {
