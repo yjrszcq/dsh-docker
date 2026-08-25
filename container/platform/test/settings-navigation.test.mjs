@@ -93,6 +93,7 @@ test('Settings Navigation owns compact navigation without moving native nodes', 
   assert.match(source, /MutationObserverImpl/)
   assert.match(source, /ResizeObserverImpl/)
   assert.match(source, /attributeFilter: \['aria-current', 'aria-labelledby'\]/)
+  assert.match(source, /next !== null && this\.match !== null && next\.dialog === this\.match\.dialog/)
   assert.match(source, /this\.view = match\.buttons\.indexOf\(match\.current\) > 0 \? 'detail' : 'directory'/)
   assert.match(source, /this\.requestFrame\(\(\) => current\?\.focus\(\)\)/)
   assert.match(source, /delete this\.match\.dialog\.dataset\.dshSettingsNavigationMode/)

@@ -97,7 +97,7 @@ class SettingsNavigationController {
 
   scan() {
     const next = findSettingsDialog(this.root)
-    if (next?.dialog === this.match?.dialog) {
+    if (next !== null && this.match !== null && next.dialog === this.match.dialog) {
       this.match.current = next.current
       this.match.buttons = next.buttons
       return
