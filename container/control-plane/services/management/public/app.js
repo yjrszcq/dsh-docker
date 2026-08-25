@@ -366,6 +366,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
   elements['language-switch'].value = locale
   renderThemeControl()
+  refreshProxyDescriptions()
 }
 
 const THEME_ORDER = Object.freeze(['system', 'light', 'dark'])
@@ -1179,6 +1180,37 @@ function preserveScrollableAncestors(element, update) {
   update()
   restore()
   window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
+}
+
+function refreshProxyDescriptions() {
+  for (const description of document.querySelectorAll('.proxy-scope-description, .proxy-provider-description')) {
+    if (description.dataset.expandListener !== 'true') {
+      description.dataset.expandListener = 'true'
+      description.setAttribute('aria-expanded', 'false')
+      description.addEventListener('click', () => {
+        if (!description.classList.contains('expandable')) return
+        preserveScrollableAncestors(description, () => {
+          const expanded = !description.classList.contains('expanded')
+          description.classList.toggle('expanded', expanded)
+          description.setAttribute('aria-expanded', String(expanded))
+        })
+      })
+    }
+    window.requestAnimationFrame(() => {
+      if (!description.isConnected || description.classList.contains('expanded')) return
+      const clone = description.cloneNode(true)
+      clone.classList.remove('expandable', 'expanded')
+      Object.assign(clone.style, {
+        position: 'fixed', visibility: 'hidden', width: `${description.clientWidth}px`,
+        height: 'auto', maxHeight: 'none', overflow: 'visible', display: 'block',
+        webkitLineClamp: 'unset', pointerEvents: 'none',
+      })
+      document.body.append(clone)
+      const fullHeight = clone.scrollHeight
+      clone.remove()
+      description.classList.toggle('expandable', fullHeight > description.clientHeight + 1)
+    })
+  }
 }
 
 function expandableResourceDescription(text, identity, expanded) {
@@ -3496,7 +3528,9 @@ function renderProxyProviders() {
     const identity = document.createElement('div')
     const name = document.createElement('strong')
     name.textContent = provider.displayName
-    const detail = document.createElement('small')
+    const detail = document.createElement('button')
+    detail.type = 'button'
+    detail.className = 'proxy-provider-description'
     detail.textContent = provider.routingCapability === 'forced-direct'
       ? t('proxyProviderReasonLocal')
       : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id
@@ -3521,6 +3555,7 @@ function renderProxyProviders() {
     }
     container.append(row)
   }
+  refreshProxyDescriptions()
 }
 
 function renderProxyCatalog() {

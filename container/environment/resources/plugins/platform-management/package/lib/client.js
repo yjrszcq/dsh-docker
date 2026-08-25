@@ -449,6 +449,43 @@ function ExpandableDescription({ text, identity }) {
   }, text)
 }
 
+function ExpandableProxyDescription({ text, identity, className = css.proxyScopeDescription }) {
+  const element = useRef(null)
+  const [expanded, setExpanded] = useState(false)
+  const [expandable, setExpandable] = useState(false)
+  useEffect(() => {
+    const node = element.current
+    if (node === null) return undefined
+    const measure = () => {
+      if (expanded) return
+      const clone = node.cloneNode(true)
+      clone.classList.remove(css.expandable, css.expanded)
+      Object.assign(clone.style, {
+        position: 'fixed', visibility: 'hidden', width: `${node.clientWidth}px`,
+        height: 'auto', maxHeight: 'none', overflow: 'visible', display: 'block',
+        webkitLineClamp: 'unset', pointerEvents: 'none',
+      })
+      document.body.append(clone)
+      setExpandable(clone.scrollHeight > node.clientHeight + 1)
+      clone.remove()
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [expanded, identity, text])
+  return h('button', {
+    ref: element,
+    type: 'button',
+    className: `${className}${expandable ? ` ${css.expandable}` : ''}${expanded ? ` ${css.expanded}` : ''}`,
+    'aria-expanded': expanded,
+    onClick: event => {
+      if (!expandable) return
+      preserveScrollableAncestors(event.currentTarget, () => setExpanded(value => !value))
+    },
+  }, text)
+}
+
 function preserveScrollableAncestors(element, update) {
   const positions = []
   for (let current = element.parentElement; current !== null; current = current.parentElement) {
@@ -1537,7 +1574,12 @@ function ProxySettings({ active, t }) {
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-scopes-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-scopes-title' }, t('proxyScopes')), h('p', null, t('proxyScopesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => scopeDialog.current?.showModal() }, t('proxyScopeHelp'))),
-      h('div', { className: css.proxyScopeGrid }, PROXY_SCOPES.map(([id, title, detail]) => h('label', { key: id }, h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }), h('span', null, h('b', null, t(title)), h('small', null, t(detail))))))),
+      h('div', { className: css.proxyScopeGrid }, PROXY_SCOPES.map(([id, title, detail]) =>
+        h('label', { key: id },
+          h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }),
+          h('span', null,
+            h('b', null, t(title)),
+            h(ExpandableProxyDescription, { text: t(detail), identity: `scope:${id}` })))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-rules-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail')))),
@@ -1549,7 +1591,13 @@ function ProxySettings({ active, t }) {
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-providers-title' }, t('proxyProviders')), h('p', null, t('proxyProvidersDetail')))),
       providers.length === 0 ? h('p', { className: css.emptyPlugins }, t('proxyNoProviders')) : h('div', { className: css.proxyProviderList }, providers.map(provider => h('div', { className: css.proxyProvider, key: provider.id },
-        h('div', null, h('b', null, provider.displayName), h('small', null, provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id)),
+        h('div', null,
+          h('b', null, provider.displayName),
+          h(ExpandableProxyDescription, {
+            className: css.proxyProviderDescription,
+            identity: `provider:${provider.id}`,
+            text: provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id,
+          })),
         provider.routingCapability === 'provider' ? h('select', { value: configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default, onChange: event => patch(['modelApi', 'providers', provider.id], event.target.value) }, h('option', { value: 'direct' }, t('proxyProviderDirect')), h('option', { value: 'proxy' }, t('proxyProviderIndependent'))) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-test-title' },

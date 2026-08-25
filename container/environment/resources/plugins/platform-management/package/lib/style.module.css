@@ -527,11 +527,17 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeGrid b, .proxyScopeGrid small { display: block; }
 .proxyScopeGrid b { font-size: 13px; line-height: 20px; }
 .proxyScopeGrid small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
+.proxyScopeDescription { display: -webkit-box; width: 100%; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; border: 0; color: var(--dsw-alias-label-tertiary); background: transparent; font: inherit; font-size: 11px; line-height: 17px; text-align: left; cursor: default; }
+.proxyScopeDescription.expandable { cursor: pointer; }
+.proxyScopeDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxyProviderList { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; scrollbar-gutter: stable; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyProvider:last-child { border-bottom: 0; }
 .proxyProvider b, .proxyProvider small { display: block; overflow-wrap: anywhere; }
 .proxyProvider small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
+.proxyProviderDescription { display: -webkit-box; width: 100%; margin-top: 2px; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; border: 0; color: var(--dsw-alias-label-tertiary); background: transparent; font: inherit; font-size: 11px; line-height: 17px; text-align: left; cursor: default; }
+.proxyProviderDescription.expandable { cursor: pointer; }
+.proxyProviderDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxyCapability { padding: 3px 7px; border-radius: 999px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; white-space: nowrap; }
 .proxyTestStages { display: grid; gap: 0; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; list-style: none; }
 .proxyTestStages > li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 7px; align-items: start; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 12px; }
