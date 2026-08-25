@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { createServer as createHttpServer } from 'node:http'
-import { createServer as createNetServer } from 'node:net'
 import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { PROXY_PORTS } from './lib/contracts.mjs'
+import { createScopedProxyServer } from './lib/data-plane.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
 
 const paths = new PlatformPaths(
@@ -13,23 +13,11 @@ const paths = new PlatformPaths(
   process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform',
 )
 const store = new ProxyConfigurationStore(paths.proxyStateRoot)
-const snapshot = await store.load()
+let snapshot = await store.load()
 const listeners = []
 
-function unavailable(socket) {
-  socket.end([
-    'HTTP/1.1 503 Service Unavailable',
-    'Content-Type: text/plain; charset=utf-8',
-    'X-DSH-Proxy-Error: PROXY_DATA_PLANE_STARTING',
-    'Content-Length: 37',
-    'Connection: close',
-    '',
-    'proxy data plane is not available yet',
-  ].join('\r\n'))
-}
-
-for (const port of Object.values(PROXY_PORTS)) {
-  const server = createNetServer(unavailable)
+for (const [scope, port] of Object.entries(PROXY_PORTS)) {
+  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot })
   await new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, '127.0.0.1', resolve)
