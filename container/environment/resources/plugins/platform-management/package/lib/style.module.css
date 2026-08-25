@@ -979,7 +979,5 @@ a.secondaryButton { text-decoration: none; }
 }
 
 @media (max-width: 480px) {
-  [role='dialog']:has(.root) > nav { display: none; }
-  [role='dialog']:has(.root) > div { min-width: 0; }
   .actions > button { flex-basis: 100%; }
 }

@@ -249,6 +249,7 @@ test('Platform Management declares a DSH web client and a platform-namespaced ov
 })
 
 test('Platform Management checked-in client bundle matches its source and DSH loader protocol', async () => {
+  const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
   const bundle = await readFile(new URL('lib/client.bundle.js', root), 'utf8')
   const rebuilt = await buildSystemPluginClient({
     pluginId: '@dsh-docker/platform-management',
@@ -259,6 +260,8 @@ test('Platform Management checked-in client bundle matches its source and DSH lo
   assert.doesNotThrow(() => new Function(bundle))
   assert.match(bundle, /^window\.__ModuleLoader__\.load\(/)
   assert.doesNotMatch(bundle, /^import /m)
+  assert.doesNotMatch(style, /\[role=['"]dialog['"]\]/)
+  assert.doesNotMatch(style, /:has\(\.root\)/)
 })
 
 test('Platform Management is embedded in the official settings.section slot', async () => {
