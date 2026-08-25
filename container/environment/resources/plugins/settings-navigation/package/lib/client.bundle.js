@@ -62,6 +62,7 @@ class SettingsNavigationController {
     this.onChange = onChange
     this.match = null
     this.compact = false
+    this.modeInitialized = false
     this.view = 'directory'
     this.backMount = null
     this.resizeObserver = null
@@ -160,13 +161,16 @@ class SettingsNavigationController {
     this.backMount = null
     this.match = null
     this.compact = false
+    this.modeInitialized = false
     this.view = 'directory'
     this.onChange()
   }
 
   setCompact(compact) {
     if (this.match === null) return
+    if (this.modeInitialized && compact && !this.compact) this.view = 'detail'
     this.compact = compact
+    this.modeInitialized = true
     this.match.dialog.dataset.dshSettingsNavigationMode = compact ? 'compact' : 'wide'
     this.match.dialog.dataset.dshSettingsNavigationView = this.view
     this.onChange()
