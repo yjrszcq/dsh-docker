@@ -201,7 +201,7 @@ function SettingsNavigationOverlay({ t }) {
       root: document,
       ResizeObserverImpl: ResizeObserver,
       MutationObserverImpl: MutationObserver,
-      requestFrame: requestAnimationFrame,
+      requestFrame: callback => requestAnimationFrame(callback),
       classes: css,
       onChange: forceRender,
     })
