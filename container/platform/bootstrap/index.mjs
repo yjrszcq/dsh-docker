@@ -23,6 +23,11 @@ import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
 import { SystemSkillManager } from '../../control-plane/modules/skill-manager/index.mjs'
 import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
+import {
+  outboundProxyEnvironment,
+  outboundProxyUrl,
+  parseOutboundProxyEnvironment,
+} from '../lib/outbound-proxy.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -44,6 +49,7 @@ await logs.diagnostic('bootstrap', 'bootstrap.starting', {
 })
 const deployments = new DeploymentManager({ paths, seedRoot, inventory })
 const trust = new LocalApiClient(paths.trustSocket)
+const outboundProxy = new LocalApiClient(paths.proxyControlSocket)
 const snapshots = new SnapshotClient(new LocalApiClient(paths.snapshotSocket), 'dsh')
 try {
   await deployments.recoverActivation(trust)
@@ -148,6 +154,19 @@ const capture = (child, source, declaration) => logs.capture(
 const proxyLaunchToken = process.env.DSH_PROXY_LAUNCH_TOKEN
 delete process.env.DSH_PROXY_LAUNCH_TOKEN
 const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
+const managedNetworkEnvironment = async scope => {
+  try {
+    const result = await outboundProxy.request('GET', `/v1/environment?scope=${encodeURIComponent(scope)}`)
+    return parseOutboundProxyEnvironment(result.environment, scope)
+  } catch (error) {
+    await logs.diagnostic('bootstrap', 'outbound-proxy.environment.fallback', {
+      scope,
+      error,
+      level: 'warning',
+    })
+    return outboundProxyEnvironment(scope)
+  }
+}
 let runtime
 const dshLifecycleBroker = new DshLifecycleBroker({
   report: reportLifecycle,
@@ -162,19 +181,36 @@ const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
   capture,
-  prepareService: component => component.id === 'outbound-proxy'
-    ? {
+  prepareService: async component => {
+    if (component.id === 'outbound-proxy') return {
         environment: { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken },
         release: () => {},
       }
-    : { environment: {}, release: () => {} },
+    const environment = component.id === 'gateway'
+      ? outboundProxyEnvironment('platform')
+      : await managedNetworkEnvironment('platform')
+    return { environment: { ...environment, NODE_USE_ENV_PROXY: '1' }, release: () => {} }
+  },
   recoverableComponents: ['outbound-proxy'],
   report: reportLifecycle,
 })
 const environment = new EnvironmentRunner({
   environmentRoot: join(paths.viewsRoot, 'environment'),
   capture,
-  prepareService: component => dshLifecycleBroker.prepareLaunch(component.id),
+  prepareService: async component => {
+    const launch = dshLifecycleBroker.prepareLaunch(component.id)
+    if (component.id !== 'dsh-runtime') return launch
+    const environment = await managedNetworkEnvironment('sharedDsh')
+    return {
+      ...launch,
+      environment: {
+        ...launch.environment,
+        ...environment,
+        NODE_USE_ENV_PROXY: '1',
+        DSH_PLATFORM_AGENT_PROXY_URL: outboundProxyUrl('agentNetwork'),
+      },
+    }
+  },
   report: reportLifecycle,
 })
 runtime = new BootstrapRuntime({

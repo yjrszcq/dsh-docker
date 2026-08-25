@@ -2,21 +2,13 @@ import { isIP } from 'node:net'
 import { domainToASCII } from 'node:url'
 import { ProxyConfigurationError } from './errors.mjs'
 import { normalizeProxyRules, PLATFORM_NO_PROXY } from './rules.mjs'
+import { OUTBOUND_PROXY_PORTS } from '../../../../platform/lib/outbound-proxy.mjs'
 
 export const PROXY_SCHEMA = 1
 export const PROXY_SCOPES = Object.freeze([
   'updates', 'platform', 'dshCore', 'dshPlugins', 'agentNetwork', 'managementTerminal',
 ])
-export const PROXY_PORTS = Object.freeze({
-  updates: 17891,
-  platform: 17892,
-  dshCore: 17893,
-  dshPlugins: 17894,
-  agentNetwork: 17895,
-  managementTerminal: 17896,
-  modelApi: 17897,
-  sharedDsh: 17898,
-})
+export const PROXY_PORTS = OUTBOUND_PROXY_PORTS
 
 function deepFreeze(value) {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {

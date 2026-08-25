@@ -163,6 +163,31 @@ test('terminal HTTP and WebSocket lifecycle provides a real bounded PTY', async 
   }
 })
 
+test('terminal sessions accept a trusted per-session network environment', async () => {
+  const value = await fixture()
+  try {
+    const created = value.terminalSessions.create({}, {
+      HTTP_PROXY: 'http://127.0.0.1:17896',
+      NO_PROXY: 'localhost,.example.com',
+    })
+    const path = `${API}terminal/sessions/${created.sessionId}`
+    const connection = collector(`ws://127.0.0.1:${value.port}${path}/stream`)
+    await new Promise((resolve, reject) => {
+      connection.socket.once('open', resolve)
+      connection.socket.once('error', reject)
+    })
+    connection.socket.send(JSON.stringify({
+      type: 'input',
+      data: "printf 'proxy=%s\\nno_proxy=%s\\n' \"$HTTP_PROXY\" \"$NO_PROXY\"\n",
+    }))
+    const result = await connection.waitFor(({ output }) => output.includes('no_proxy=localhost,.example.com'))
+    assert.match(result.output, /proxy=http:\/\/127\.0\.0\.1:17896/)
+    connection.socket.close()
+  } finally {
+    await value.close()
+  }
+})
+
 test('terminal sessions enforce dimensions, message size, expiry, and exact IDs', async () => {
   const value = await fixture({ reconnectMs: 80 })
   try {

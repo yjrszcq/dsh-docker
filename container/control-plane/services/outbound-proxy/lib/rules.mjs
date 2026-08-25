@@ -1,8 +1,9 @@
 import { BlockList, isIP } from 'node:net'
 import { domainToASCII } from 'node:url'
 import { ProxyConfigurationError } from './errors.mjs'
+import { PLATFORM_NO_PROXY } from '../../../../platform/lib/outbound-proxy.mjs'
 
-export const PLATFORM_NO_PROXY = Object.freeze(['localhost', '127.0.0.1', '::1'])
+export { PLATFORM_NO_PROXY }
 
 function invalid(label) {
   throw new ProxyConfigurationError(`${label} rule is invalid`)

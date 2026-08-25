@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { createServer as createHttpServer } from 'node:http'
 import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { PROXY_PORTS } from './lib/contracts.mjs'
+import { createOutboundProxyControl } from './lib/control.mjs'
 import { createScopedProxyServer, ProxyAgentPool } from './lib/data-plane.mjs'
 import { ProxyDnsCache } from './lib/dns-cache.mjs'
 import { probeProxyEntry } from './lib/readiness.mjs'
@@ -32,20 +32,7 @@ for (const [scope, port] of Object.entries(PROXY_PORTS)) {
 }
 await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))
 
-const control = createHttpServer((request, response) => {
-  if (request.method === 'GET' && request.url === '/v1/status') {
-    response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-    response.end(`${JSON.stringify({
-      componentReady: true,
-      revision: snapshot.revision,
-      recovery: snapshot.recovery,
-      routeHealth: routeHealth.status(snapshot),
-    })}\n`)
-    return
-  }
-  response.writeHead(404, { 'content-type': 'application/json; charset=utf-8' })
-  response.end('{"error":"not found"}\n')
-})
+const control = createOutboundProxyControl({ getSnapshot: () => snapshot, routeHealth })
 await mkdir(dirname(paths.proxyControlSocket), { recursive: true })
 await unlink(paths.proxyControlSocket).catch(error => {
   if (error?.code !== 'ENOENT') throw error

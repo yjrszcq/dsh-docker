@@ -2,8 +2,59 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
+import { apply as applyPlatformManagement, inject, managedNetworkInternals } from '../../environment/resources/plugins/platform-management/package/lib/index.js'
 
 const root = new URL('../../environment/resources/plugins/platform-management/package/', import.meta.url)
+
+test('Platform Management classifies official DSH Shell subprocesses as Agent network traffic', () => {
+  assert.deepEqual(inject, ['subprocess'])
+  const environment = {
+    DSH_PLATFORM_AGENT_PROXY_URL: 'http://127.0.0.1:17895',
+    NO_PROXY: 'localhost,.example.com',
+    ALL_PROXY: 'http://127.0.0.1:17898',
+  }
+  const ordinary = { env: { FEATURE: 'ordinary' } }
+  assert.equal(managedNetworkInternals.managedSubprocessSpec(ordinary, environment), ordinary)
+  assert.equal(managedNetworkInternals.managedSubprocessSpec({ env: { DSH_SHELL: '1' } }, {}).env.DSH_SHELL, '1')
+  const managed = managedNetworkInternals.managedSubprocessSpec({
+    env: { DSH_SHELL: '1', FEATURE: 'kept', HTTP_PROXY: 'http://127.0.0.1:17898' },
+  }, environment)
+  assert.deepEqual(managed.env, {
+    DSH_SHELL: '1',
+    FEATURE: 'kept',
+    HTTP_PROXY: 'http://127.0.0.1:17895',
+    HTTPS_PROXY: 'http://127.0.0.1:17895',
+    http_proxy: 'http://127.0.0.1:17895',
+    https_proxy: 'http://127.0.0.1:17895',
+    NO_PROXY: 'localhost,.example.com',
+    no_proxy: 'localhost,.example.com',
+    ALL_PROXY: 'http://127.0.0.1:17895',
+    all_proxy: 'http://127.0.0.1:17895',
+  })
+
+  const observed = []
+  const subprocess = {
+    spawn(spec) { observed.push(['spawn', spec]); return 'spawned' },
+    spawnTerminal(spec) { observed.push(['terminal', spec]); return Promise.resolve('terminal') },
+  }
+  let cleanup
+  applyPlatformManagement({
+    subprocess,
+    effect(factory) { cleanup = factory() },
+  })
+  const previous = process.env.DSH_PLATFORM_AGENT_PROXY_URL
+  process.env.DSH_PLATFORM_AGENT_PROXY_URL = 'http://127.0.0.1:17895'
+  try {
+    assert.equal(subprocess.spawn({ env: { DSH_SHELL: '1' } }), 'spawned')
+    assert.equal(observed[0][1].env.HTTP_PROXY, 'http://127.0.0.1:17895')
+    cleanup()
+    subprocess.spawn({ env: { DSH_SHELL: '1' } })
+    assert.equal(observed[1][1].env.HTTP_PROXY, undefined)
+  } finally {
+    if (previous === undefined) delete process.env.DSH_PLATFORM_AGENT_PROXY_URL
+    else process.env.DSH_PLATFORM_AGENT_PROXY_URL = previous
+  }
+})
 
 test('Platform Management declares a DSH web client and a platform-namespaced overlay row', async () => {
   const packageJson = JSON.parse(await readFile(new URL('package.json', root)))

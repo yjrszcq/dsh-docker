@@ -60,6 +60,7 @@ export async function createMaintenanceServer({
   report = async () => {},
   fileReport = report,
   terminalReport = report,
+  terminalEnvironment = async () => ({}),
   audit = async () => {},
 } = {}) {
   if (process.getuid?.() !== 0) throw new Error('Maintenance Broker must run as root')
@@ -141,7 +142,8 @@ export async function createMaintenanceServer({
       if (!url.pathname.startsWith(API_PREFIX)) return send(response, 404, { error: 'not found' })
       const route = url.pathname.slice(API_PREFIX.length)
       if (request.method === 'POST' && route === 'terminal/sessions') {
-        const result = terminal.create(await jsonBody(request))
+        const [body, environment] = await Promise.all([jsonBody(request), terminalEnvironment()])
+        const result = terminal.create(body, environment)
         await audit('terminal.root-session.created', { sessionId: result.sessionId })
         send(response, 201, { ...result, privileged: true })
       } else if (request.method === 'GET' && TERMINAL_SESSION_ROUTE.test(route)) {

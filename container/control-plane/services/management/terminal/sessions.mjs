@@ -235,7 +235,7 @@ export class TerminalSessionManager {
     this.webSockets = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: MAX_INPUT_BYTES + 1024 })
   }
 
-  create(value = {}) {
+  create(value = {}, environment = {}) {
     if (this.sessions.size >= MAX_SESSIONS) {
       const error = new Error('Terminal session limit reached')
       error.statusCode = 409
@@ -244,7 +244,7 @@ export class TerminalSessionManager {
     const { cols, rows } = dimensions(value)
     const sessionId = randomUUID()
     const session = new TerminalSession({
-      id: sessionId, helperPath: this.helperPath, cwd: this.cwd, env: this.env,
+      id: sessionId, helperPath: this.helperPath, cwd: this.cwd, env: { ...this.env, ...environment },
       cols, rows, reconnectMs: this.reconnectMs, report: this.report, python: this.python,
     })
     this.sessions.set(sessionId, session)

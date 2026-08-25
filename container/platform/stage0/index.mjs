@@ -33,6 +33,7 @@ import {
   createProxyLaunchServer,
   listenProxyLaunch,
 } from './lib/proxy-launch-server.mjs'
+import { outboundProxyEnvironment, parseOutboundProxyEnvironment } from '../lib/outbound-proxy.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -170,6 +171,7 @@ await startup('trust-api', () => listenUnix(trustServer, paths.trustSocket, {
 }))
 await logs.diagnostic('stage0', 'trust-api.ready')
 const management = new LocalApiClient(paths.managementSocket)
+const outboundProxy = new LocalApiClient(paths.proxyControlSocket)
 const gatewayAccess = new LocalApiClient(paths.gatewayAccessSocket)
 const gatewayPassword = createPasswordAccess(process.env.DSH_PROXY_PASSWORD ?? '', {
   username: process.env.DSH_PROXY_USERNAME ?? '',
@@ -178,6 +180,18 @@ const maintenance = await createMaintenanceServer({
   paths,
   dshHome,
   defaultWorkspace,
+  terminalEnvironment: async () => {
+    try {
+      const result = await outboundProxy.request('GET', '/v1/environment?scope=managementTerminal')
+      return parseOutboundProxyEnvironment(result.environment, 'managementTerminal')
+    } catch (error) {
+      await logs.diagnostic('stage0', 'outbound-proxy.terminal-environment.fallback', {
+        error,
+        level: 'warning',
+      })
+      return outboundProxyEnvironment('managementTerminal')
+    }
+  },
   authorize: async request => {
     if (gatewayPassword.enabled) return gatewayPassword.isAuthenticated(request)
     try {
