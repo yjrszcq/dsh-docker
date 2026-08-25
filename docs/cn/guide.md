@@ -10,6 +10,7 @@
 - [配置参考](#配置参考)
 - [平台架构](#平台架构)
 - [Gateway](#gateway)
+- [出站代理](#出站代理)
 - [在线更新](#在线更新)
 - [系统插件](#系统插件)
 - [系统技能](#系统技能)
@@ -187,6 +188,7 @@ Bootstrap Runtime（current / previous）
 ├── DSH Lifecycle Broker（单一受监督 Web 实例）
 ├── Control Plane（常驻）
 │   ├── gateway                          0.0.0.0:3080
+│   ├── outbound-proxy                   127.0.0.1:17891-17898
 │   ├── management + DSH 管理中心         Unix socket
 │   │   └── 进程内模块
 │   │       ├── updater / patch-manager
@@ -344,6 +346,45 @@ docker exec deepseek-harness dsh-platform access create
 Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill。它只在需要时运行，使用 `crypto.getRandomValues`，不会降级到 `Math.random`。客户端或后续 DSH 不再需要时，可设置 `DSH_PROXY_POLYFILL=false`。
 
 修改后的 HTML 使用 `Cache-Control: no-cache`，并删除已失效的上游校验器；未修改资源保留上游缓存行为。
+
+## 出站代理
+
+独立管理中心和 DSH“平台管理”设置中的“代理设置”用于配置用户已有的 HTTP 或 SOCKS5 代理。它只管理出站流量，不是另一个对外代理服务。Gateway 仍是浏览器入站反向代理，并最先启动，以便 Outbound Proxy 和其他 Control Plane 组件启动期间也能提供等待页。Docker 不发布任何出站代理端口。
+
+总代理开关与各来源开关相互独立。受管流量分为更新管理、平台组件、DSH 核心、DSH 插件、Agent 联网操作和管理中心容器终端。模型 API 按 Provider 配置：经过验证的 fetch 型 Provider 可单独选择；标为“**跟随 DSH**”的 Provider 因当前客户端不能端到端携带稳定 Provider 身份，使用 DSH 共享策略。本地和 loopback Provider 始终直连。
+
+| Loopback 端口 | 范围 |
+| --- | --- |
+| `17891` | 更新检查、metadata 与 Artifact 下载 |
+| `17892` | 平台组件与 DSH Docker 系统插件 |
+| `17893` | 可区分的 DSH 核心请求 |
+| `17894` | 可区分的 DSH 插件请求 |
+| `17895` | Agent 工具、命令和受管 Agent Shell |
+| `17896` | 管理中心容器终端 |
+| `17897` | 可独立分流的模型 Provider |
+| `17898` | DSH 共享兜底流量 |
+
+HTTP 与 WebSocket 使用代理 absolute-form；HTTPS 与 WSS 使用 CONNECT，平台不进行 TLS 中间人解密。外部端点支持 HTTP Basic 或 SOCKS5 用户名/密码认证，SOCKS5 可选择本地或远程 DNS。现有连接继续使用建立时的策略，配置变更立即作用于新连接。
+
+### 直连规则与环境兼容性
+
+平台始终绕过 loopback 地址和内部控制路径。可编辑的直连规则支持精确主机、`.google.com` 形式的前导点域名后缀、IP、可选端口和 CIDR；不接受 `*.google.com`。主机和域名规则进入用户 `NO_PROXY`，CIDR 由 Outbound Proxy 作为集中 bypass 规则执行。平台必需规则不可删除，可从“内置规则”弹窗查看。
+
+`HTTP_PROXY`、`HTTPS_PROXY` 和合并后的 `NO_PROXY` 会把受管进程指向对应的固定范围入口。可选 `ALL_PROXY` 默认关闭，只是兼容功能；curl、Git、npm、pnpm、Conda、语言 SDK 等工具自行决定是否以及如何使用。宿主机主动执行的 `docker exec` Shell 不属于平台代理范围，除非用户自行配置其中的命令。
+
+宿主机代理若监听 `127.0.0.1:7890`，容器内同一地址指向容器自身。应动态读取当前 Docker bridge 网关，不要硬编码：
+
+```bash
+docker exec deepseek-harness sh -lc "ip route | awk '/default/ { print \$3; exit }'"
+```
+
+默认 bridge 常见为 `172.17.0.1`，Compose 网络通常是其他地址。宿主机代理必须监听对应 bridge 地址或 `0.0.0.0`，并通过防火墙限制来源；UI 不会自动改写 `127.0.0.1`。
+
+### 凭据、测试与失败
+
+代理凭据只写不读，由专用 `dsh-proxy` 身份保存在 `/data/platform/state/proxy`。API 不回传密码，DSH 不接收外部代理凭据，平台日志也不会记录。Management 通过 Outbound Proxy 控制协议提交配置；Stage-0 只能启动固定组件，不能读取配置或凭据。
+
+“测试代理”分阶段验证未保存的候选配置，不替换当前 revision。测试包括代理端点、DNS/TCP/TLS、GitHub/npm 依赖和受支持 Provider 端点，但不会发送可能计费的模型请求。测试失败或取消不影响当前配置。后续远程更新检查失败时继续保留上次验证结果，并与“从未成功检查”明确区分。
 
 ## 在线更新
 

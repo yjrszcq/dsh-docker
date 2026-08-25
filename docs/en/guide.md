@@ -10,6 +10,7 @@ This guide expands the root [README](../../README.md) into a complete deployment
 - [Configuration](#configuration)
 - [Platform Architecture](#platform-architecture)
 - [Gateway](#gateway)
+- [Outbound Proxy](#outbound-proxy)
 - [Online Updates](#online-updates)
 - [System Plugins](#system-plugins)
 - [System Skills](#system-skills)
@@ -187,6 +188,7 @@ Bootstrap Runtime (current / previous)
 ├── DSH Lifecycle Broker (one supervised Web instance)
 ├── Control Plane (persistent)
 │   ├── gateway                                  0.0.0.0:3080
+│   ├── outbound-proxy                           127.0.0.1:17891-17898
 │   ├── management + DSH Management Console      Unix socket
 │   │   └── in-process modules
 │   │       ├── updater / patch-manager
@@ -344,6 +346,45 @@ The command returns a random temporary key and expiry. It remains usable for 10 
 Gateway injects a feature-detected `crypto.randomUUID` polyfill into HTML by default. It runs only when needed, uses `crypto.getRandomValues`, and never falls back to `Math.random`. Set `DSH_PROXY_POLYFILL=false` when clients or a future DSH version no longer need it.
 
 Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validators. Unmodified assets retain upstream caching behavior.
+
+## Outbound Proxy
+
+The **Proxy** tab in the standalone Management Console and the DSH **Platform Management** settings configures an existing HTTP or SOCKS5 proxy. This is outbound routing, not another public proxy service. Gateway remains the inbound browser reverse proxy and starts first so holding pages are available while Outbound Proxy and the rest of the Control Plane start. No outbound-proxy port is published by Docker.
+
+The master switch and each source switch are independent. Managed traffic is divided into updates, platform components, DSH core, DSH plugins, Agent network operations, and the Management container terminal. Model API routing is configured by Provider. Verified fetch-based Providers can be selected independently; a Provider marked **Follow DSH** uses the shared DSH policy because its current client cannot carry a stable Provider identity end to end. Loopback and other local Providers are always direct.
+
+| Loopback port | Scope |
+| --- | --- |
+| `17891` | update checks, metadata, and Artifact downloads |
+| `17892` | platform components and DSH Docker System Plugins |
+| `17893` | distinguishable DSH core requests |
+| `17894` | distinguishable DSH plugin requests |
+| `17895` | Agent tools, commands, and managed Agent shells |
+| `17896` | Management container terminal |
+| `17897` | independently routed model Providers |
+| `17898` | shared DSH fallback traffic |
+
+HTTP and WebSocket requests use proxy absolute form; HTTPS and WSS use CONNECT without TLS interception. The external endpoint may use HTTP Basic authentication or SOCKS5 username/password authentication. SOCKS5 can resolve names locally or through the proxy. Existing connections retain their captured policy, while a configuration change affects new connections immediately.
+
+### Direct Rules and Environment Compatibility
+
+The platform always bypasses loopback addresses and internal control paths. The editable direct-rule field accepts exact hosts, leading-dot domain suffixes such as `.google.com`, IP addresses, optional ports, and CIDR networks; `*.google.com` is not accepted. Host and domain rules become user `NO_PROXY`, while CIDR rules remain centralized Outbound Proxy bypass rules. Platform-required entries cannot be removed and are shown in the **Built-in rules** dialog.
+
+`HTTP_PROXY`, `HTTPS_PROXY`, and merged `NO_PROXY` values point managed processes at their fixed scope entry. Optional `ALL_PROXY` injection is disabled by default and is only a compatibility aid; curl, Git, npm, pnpm, Conda, language SDKs, and other tools decide whether and how they honor it. Host-side `docker exec` shells are outside platform routing unless the user configures those commands explicitly.
+
+If a proxy runs on the Docker host at `127.0.0.1:7890`, the same address inside a container refers to the container itself. Determine the active bridge gateway instead of hard-coding it:
+
+```bash
+docker exec deepseek-harness sh -lc "ip route | awk '/default/ { print \$3; exit }'"
+```
+
+The default bridge often reports `172.17.0.1`, while Compose networks commonly use another address. The host proxy must listen on that bridge address or `0.0.0.0`, with a firewall limiting access. The UI never rewrites `127.0.0.1` automatically.
+
+### Credentials, Tests, and Failures
+
+Proxy credentials are write-only. They are stored under `/data/platform/state/proxy` by the dedicated `dsh-proxy` identity and are not returned by APIs, injected into DSH, or written to platform logs. Management forwards updates through the Outbound Proxy control protocol; Stage-0 can launch the fixed component but cannot read its configuration or credentials.
+
+**Test proxy** evaluates the unsaved candidate in phases without replacing the active revision. It checks the proxy endpoint, DNS/TCP/TLS, GitHub/npm dependencies, and supported Provider endpoints without making a billable model request. A failed or cancelled test leaves the current configuration active. Update checks keep their last verified result when a later remote request fails and distinguish that case from a first check that has never succeeded.
 
 ## Online Updates
 
