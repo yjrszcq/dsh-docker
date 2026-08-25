@@ -13,7 +13,12 @@ const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
-    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
+    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
+    proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '移除已保存的代理密码', proxyPasswordConfigured: '已保存代理密码；不会从平台回传。', proxyPasswordNotConfigured: '尚未保存代理密码。', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentReady: '出站代理组件已就绪', proxyComponentUnavailable: '出站代理组件暂不可用',
+    proxyScopes: '流量范围', proxyScopesDetail: '选择哪些受管出站流量使用此代理。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '平台如何归类各类联网来源。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: 'Metadata 检查和远程 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'DSH Docker 组件与系统插件的外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: '不含模型 Provider API 的 DSH 核心流量。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 联网工具、命令及其子进程。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: '此管理中心创建的 Shell 会话。',
+    proxyRules: '路由例外', proxyRulesDetail: 'NO_PROXY 的优先级高于附加 bypass 规则。', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: '每行一个主机或域后缀；使用 .example.com，不使用 *.example.com。', proxyBypass: '附加 bypass', proxyBypassDetail: '支持主机、域后缀、IP 地址和 CIDR 网段。', proxyRulesPlaceholder: '每行一项', proxyBypassPlaceholder: '.example.com\n10.0.0.0/8', proxyAllProxy: '在已验证支持的客户端中设置 ALL_PROXY', proxyAllProxyDetail: '只向已确认支持 ALL_PROXY 的客户端注入。',
+    proxyProviders: '模型 Provider', proxyProvidersDetail: '仅已验证接入 dispatcher 的 Provider 支持独立路由。', proxyNoProviders: '没有找到模型 Provider。', proxyProviderDirect: '强制直连', proxyProviderIndependent: '可独立配置', proxyProviderShared: '使用共享 DSH 策略', proxyProviderReasonLocal: '本地 Provider 始终直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份。',
+    proxyTest: '连接测试', proxyTestDetail: '使用当前表单测试，不保存也不激活配置。', proxyTestStart: '测试连接', proxySave: '保存并应用', proxySaving: '正在保存代理设置', proxySaved: '代理设置已保存并应用', proxyTestRunning: '正在测试代理连接', proxyTestSuccess: '代理连接测试通过', proxyTestFailed: '代理连接测试失败', proxyTestCancelled: '代理连接测试已取消', proxyStageAddress: '解析代理地址', proxyStageConnect: '连接代理服务器', proxyStageHandshake: '验证代理协议与认证', proxyStageDns: '解析目标地址', proxyStageTls: '验证目标 TLS', proxyStageHttp: '请求 GitHub 与 npm', proxyStagePending: '等待', proxyStageRunning: '进行中', proxyStageSuccess: '通过', proxyStageFailed: '失败', proxyStageSkipped: '无需执行',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
     actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中',
@@ -103,7 +108,12 @@ const COPY = Object.freeze({
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
+    proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Remove the saved proxy password', proxyPasswordConfigured: 'A proxy password is saved and is never returned by the platform.', proxyPasswordNotConfigured: 'No proxy password is saved.', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentReady: 'Outbound Proxy is ready', proxyComponentUnavailable: 'Outbound Proxy is unavailable',
+    proxyScopes: 'Traffic scopes', proxyScopesDetail: 'Select which managed outbound traffic uses this proxy.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'How managed network sources are classified.', proxyScopeUpdates: 'Updates', proxyScopeUpdatesDetail: 'Metadata checks and remote Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'External requests from DSH Docker components and System Plugins.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official and user-installed DSH plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent network tools, commands, and child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'Shell sessions created by this Management Console.',
+    proxyRules: 'Routing exceptions', proxyRulesDetail: 'NO_PROXY has priority over additional bypass rules.', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: 'One hostname or domain suffix per line. Use .example.com, not *.example.com.', proxyBypass: 'Additional bypass', proxyBypassDetail: 'Supports hosts, domain suffixes, IP addresses, and CIDR ranges.', proxyRulesPlaceholder: 'One entry per line', proxyBypassPlaceholder: '.example.com\n10.0.0.0/8', proxyAllProxy: 'Set ALL_PROXY where support is verified', proxyAllProxyDetail: 'Injected only into clients with verified ALL_PROXY support.',
+    proxyProviders: 'Model Providers', proxyProvidersDetail: 'Independent routing is available only for Providers with verified dispatcher integration.', proxyNoProviders: 'No model Providers were found.', proxyProviderDirect: 'Forced direct', proxyProviderIndependent: 'Independent routing', proxyProviderShared: 'Shared DSH policy', proxyProviderReasonLocal: 'Local Providers are always direct.', proxyProviderReasonShared: 'The current client cannot carry a stable Provider identity.',
+    proxyTest: 'Connection test', proxyTestDetail: 'Tests the current form without saving or activating it.', proxyTestStart: 'Test connection', proxySave: 'Save and apply', proxySaving: 'Saving proxy settings', proxySaved: 'Proxy settings saved and applied', proxyTestRunning: 'Testing proxy connection', proxyTestSuccess: 'Proxy connection test passed', proxyTestFailed: 'Proxy connection test failed', proxyTestCancelled: 'Proxy connection test cancelled', proxyStageAddress: 'Resolve proxy address', proxyStageConnect: 'Connect to proxy server', proxyStageHandshake: 'Verify proxy protocol and authentication', proxyStageDns: 'Resolve target addresses', proxyStageTls: 'Verify target TLS', proxyStageHttp: 'Request GitHub and npm', proxyStagePending: 'Pending', proxyStageRunning: 'Running', proxyStageSuccess: 'Passed', proxyStageFailed: 'Failed', proxyStageSkipped: 'Not required',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
     actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking',
@@ -220,6 +230,12 @@ let plugins = []
 let systemSkills = []
 let userSkillInventory = { revision: null, skills: [] }
 let userPluginInventory = { revision: null, plugins: [] }
+let proxyConfiguration
+let proxyProviderInventory = { providers: [] }
+let proxyLoaded = false
+let proxyLoading
+let proxyTestTask
+let proxyTestPollTimer
 const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
 const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
 const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
@@ -1035,9 +1051,14 @@ async function api(path, { method = 'GET', body } = {}) {
   })
   const value = await response.json()
   if (!response.ok) {
-    const error = new Error(value.error ?? `HTTP ${String(response.status)}`)
+    const detail = value?.error
+    const error = new Error(typeof detail === 'object' && detail !== null
+      ? detail.message ?? `HTTP ${String(response.status)}`
+      : detail ?? `HTTP ${String(response.status)}`)
     error.statusCode = response.status
-    error.code = value.code
+    error.code = detail?.code ?? value.code
+    error.stage = detail?.stage
+    error.retryable = detail?.retryable === true
     throw error
   }
   return value
@@ -3407,6 +3428,268 @@ async function recursiveFileSearch() {
   } catch (error) { showError(error) } finally { fileActiveTask = null; elements['file-task-state'].hidden = true }
 }
 
+const PROXY_TEST_STAGE_LABELS = Object.freeze({
+  'proxy-address': 'proxyStageAddress',
+  'proxy-connect': 'proxyStageConnect',
+  'proxy-handshake': 'proxyStageHandshake',
+  'target-dns': 'proxyStageDns',
+  'target-tls': 'proxyStageTls',
+  'target-http': 'proxyStageHttp',
+})
+
+function proxyLines(value) {
+  return String(value ?? '').split(/\r?\n/u).map(entry => entry.trim()).filter(Boolean)
+}
+
+function clearProxySecrets() {
+  elements['proxy-password'].value = ''
+  elements['proxy-password'].disabled = false
+  elements['proxy-clear-password'].checked = false
+  renderProxyTransportWarning()
+}
+
+function renderProxyTransportWarning() {
+  elements['proxy-transport-warning'].hidden = location.protocol === 'https:'
+    || (elements['proxy-password'].value === '' && elements['proxy-username'].value === '')
+}
+
+function proxyCandidate() {
+  if (proxyConfiguration === undefined) throw new Error(t('proxyComponentUnavailable'))
+  const password = elements['proxy-password'].value
+  const clearPassword = elements['proxy-clear-password'].checked
+  const providerPolicies = { ...(proxyConfiguration.modelApi?.providers ?? {}) }
+  for (const select of elements['proxy-provider-list'].querySelectorAll('[data-provider-policy]')) {
+    providerPolicies[select.dataset.providerPolicy] = select.value
+  }
+  const proxy = {
+    protocol: elements['proxy-protocol'].value,
+    host: elements['proxy-host'].value.trim(),
+    port: elements['proxy-port'].value === '' ? null : Number(elements['proxy-port'].value),
+    username: elements['proxy-username'].value,
+    passwordConfigured: proxyConfiguration.proxy.passwordConfigured === true,
+    remoteDns: elements['proxy-remote-dns'].checked,
+  }
+  if (clearPassword) proxy.clearPassword = true
+  else if (password !== '') proxy.password = password
+  return {
+    schema: 1,
+    enabled: elements['proxy-enabled'].checked,
+    proxy,
+    scopes: Object.fromEntries([...document.querySelectorAll('[data-proxy-scope]')]
+      .map(input => [input.dataset.proxyScope, input.checked])),
+    environment: { allProxy: elements['proxy-all-proxy'].checked ? 'scope-proxy' : null },
+    modelApi: { default: proxyConfiguration.modelApi?.default ?? 'direct', providers: providerPolicies },
+    noProxy: { user: proxyLines(elements['proxy-no-proxy'].value) },
+    bypass: { additional: proxyLines(elements['proxy-bypass'].value) },
+  }
+}
+
+function renderProxyProviders() {
+  const container = elements['proxy-provider-list']
+  container.replaceChildren()
+  const providers = proxyProviderInventory.providers ?? []
+  elements['proxy-provider-empty'].hidden = providers.length > 0
+  container.hidden = providers.length === 0
+  for (const provider of providers) {
+    const row = document.createElement('div')
+    row.className = 'proxy-provider-item'
+    const identity = document.createElement('div')
+    const name = document.createElement('strong')
+    name.textContent = provider.displayName
+    const detail = document.createElement('small')
+    detail.textContent = provider.routingCapability === 'forced-direct'
+      ? t('proxyProviderReasonLocal')
+      : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id
+    identity.append(name, detail)
+    if (provider.routingCapability === 'provider') {
+      const select = document.createElement('select')
+      select.dataset.providerPolicy = provider.id
+      for (const policy of ['direct', 'proxy']) {
+        const option = document.createElement('option')
+        option.value = policy
+        option.textContent = policy === 'direct' ? t('proxyProviderDirect') : t('proxyProviderIndependent')
+        select.append(option)
+      }
+      select.value = provider.requestedPolicy ?? 'direct'
+      row.append(identity, select)
+    } else {
+      const badge = document.createElement('span')
+      badge.className = 'proxy-capability'
+      badge.textContent = provider.routingCapability === 'forced-direct'
+        ? t('proxyProviderDirect') : t('proxyProviderShared')
+      row.append(identity, badge)
+    }
+    container.append(row)
+  }
+}
+
+function renderProxyCatalog() {
+  const catalog = proxyConfiguration?.scopeCatalog
+  const container = elements['proxy-scope-catalog']
+  container.replaceChildren()
+  if (catalog?.entries === undefined) return
+  const groups = new Map()
+  for (const entry of catalog.entries) {
+    if (!groups.has(entry.group)) groups.set(entry.group, [])
+    groups.get(entry.group).push(entry)
+  }
+  for (const [group, entries] of groups) {
+    const section = document.createElement('section')
+    section.className = 'proxy-scope-group'
+    const heading = document.createElement('h3')
+    heading.textContent = catalog.groups?.[group]?.[locale] ?? group
+    section.append(heading)
+    for (const entry of entries) {
+      const row = document.createElement('div')
+      row.className = 'proxy-scope-entry'
+      const source = document.createElement('span')
+      source.textContent = entry.source?.[locale] ?? entry.source?.en ?? entry.id
+      const detail = document.createElement('span')
+      detail.textContent = entry.detail?.[locale] ?? entry.detail?.en ?? ''
+      row.append(source, detail)
+      section.append(row)
+    }
+    container.append(section)
+  }
+  const summaries = elements['proxy-scope-summaries']
+  summaries.replaceChildren(...(catalog.summaries ?? []).map(value => {
+    const paragraph = document.createElement('p')
+    paragraph.textContent = value?.[locale] ?? value?.en ?? ''
+    return paragraph
+  }))
+}
+
+function renderProxyConfiguration() {
+  if (proxyConfiguration === undefined) return
+  const configuration = proxyConfiguration
+  elements['proxy-enabled'].checked = configuration.enabled === true
+  elements['proxy-enabled-label'].textContent = t(configuration.enabled ? 'enabled' : 'disabled')
+  elements['proxy-protocol'].value = configuration.proxy.protocol
+  elements['proxy-host'].value = configuration.proxy.host
+  elements['proxy-port'].value = configuration.proxy.port ?? ''
+  elements['proxy-username'].value = configuration.proxy.username ?? ''
+  elements['proxy-remote-dns'].checked = configuration.proxy.remoteDns === true
+  elements['proxy-remote-dns-row'].hidden = configuration.proxy.protocol !== 'socks5'
+  elements['proxy-password-state'].textContent = t(configuration.proxy.passwordConfigured ? 'proxyPasswordConfigured' : 'proxyPasswordNotConfigured')
+  elements['proxy-clear-password-row'].hidden = configuration.proxy.passwordConfigured !== true
+  for (const input of document.querySelectorAll('[data-proxy-scope]')) input.checked = configuration.scopes?.[input.dataset.proxyScope] === true
+  elements['proxy-no-proxy'].value = (configuration.noProxy?.user ?? []).join('\n')
+  elements['proxy-bypass'].value = (configuration.bypass?.additional ?? []).join('\n')
+  elements['proxy-all-proxy'].checked = configuration.environment?.allProxy === 'scope-proxy'
+  elements['proxy-component-state'].textContent = t(configuration.componentReady ? 'proxyComponentReady' : 'proxyComponentUnavailable')
+  renderProxyProviders()
+  renderProxyCatalog()
+  renderProxyTransportWarning()
+}
+
+function renderProxyTest(task = proxyTestTask) {
+  proxyTestTask = task
+  const container = elements['proxy-test-stages']
+  container.replaceChildren()
+  for (const stage of task?.stages ?? []) {
+    const item = document.createElement('li')
+    item.className = 'proxy-test-stage'
+    item.dataset.state = stage.status
+    const marker = document.createElement('span')
+    marker.setAttribute('aria-hidden', 'true')
+    const content = document.createElement('span')
+    const label = document.createElement('strong')
+    label.textContent = t(PROXY_TEST_STAGE_LABELS[stage.stage] ?? stage.stage)
+    const detail = document.createElement('small')
+    detail.textContent = stage.detail ?? stage.errorCode ?? ''
+    content.append(label, detail)
+    const statusLabel = document.createElement('small')
+    statusLabel.textContent = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
+    item.append(marker, content, statusLabel)
+    container.append(item)
+  }
+  const running = task?.status === 'running'
+  elements['proxy-test'].disabled = running
+  elements['proxy-save'].disabled = running
+  elements['proxy-test-cancel'].hidden = !running
+  const result = elements['proxy-operation-result']
+  result.hidden = task === undefined || running
+  if (task !== undefined && !running) {
+    result.textContent = task.status === 'success' ? t('proxyTestSuccess')
+      : task.status === 'cancelled' ? t('proxyTestCancelled')
+        : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`
+  }
+}
+
+function scheduleProxyTestPoll(taskId) {
+  window.clearTimeout(proxyTestPollTimer)
+  proxyTestPollTimer = window.setTimeout(async () => {
+    try {
+      const task = await api(`proxy/test/tasks/${taskId}`)
+      renderProxyTest(task)
+      if (task.status === 'running') scheduleProxyTestPoll(taskId)
+      else clearProxySecrets()
+    } catch (error) {
+      showError(error)
+    }
+  }, 400)
+}
+
+async function loadProxy({ force = false } = {}) {
+  if (proxyLoading !== undefined) return proxyLoading
+  if (proxyLoaded && !force) return
+  proxyLoading = (async () => {
+    try {
+      const [configuration, providers] = await Promise.all([api('proxy'), api('proxy/provider-inventory')])
+      proxyConfiguration = configuration
+      proxyProviderInventory = providers
+      proxyLoaded = true
+      clearProxySecrets()
+      renderProxyConfiguration()
+      const activeTaskId = status?.proxyTestOperation?.status === 'running' ? status.proxyTestOperation.taskId : undefined
+      if (activeTaskId !== undefined) {
+        const task = await api(`proxy/test/tasks/${activeTaskId}`)
+        renderProxyTest(task)
+        scheduleProxyTestPoll(activeTaskId)
+      }
+    } catch (error) {
+      showError(error)
+    }
+  })().finally(() => { proxyLoading = undefined })
+  return proxyLoading
+}
+
+async function saveProxyConfiguration() {
+  elements['proxy-save'].disabled = true
+  elements['proxy-operation-result'].hidden = false
+  elements['proxy-operation-result'].textContent = t('proxySaving')
+  try {
+    proxyConfiguration = await api('proxy', {
+      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
+    })
+    clearProxySecrets()
+    renderProxyConfiguration()
+    elements['proxy-operation-result'].textContent = t('proxySaved')
+    clearError()
+  } catch (error) {
+    showError(error)
+    elements['proxy-operation-result'].textContent = localizedError(error)
+    if (error.statusCode === 409) await loadProxy({ force: true })
+  } finally {
+    elements['proxy-save'].disabled = false
+  }
+}
+
+async function startProxyTest() {
+  try {
+    const started = await api('proxy/test', {
+      method: 'POST', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
+    })
+    const task = await api(`proxy/test/tasks/${started.taskId}`)
+    renderProxyTest(task)
+    scheduleProxyTestPoll(started.taskId)
+    clearError()
+  } catch (error) {
+    showError(error)
+    if (error.statusCode === 409) await loadProxy({ force: true })
+  }
+}
+
 async function selectTab(tab) {
   const current = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tab
   if (current === 'files' && tab !== 'files') {
@@ -3414,6 +3697,7 @@ async function selectTab(tab) {
     fileClipboard = null
     fileSelected.clear()
   }
+  if (current === 'proxy' && tab !== 'proxy') clearProxySecrets()
   for (const button of tabButtons) {
     const active = button.dataset.tab === tab
     button.setAttribute('aria-selected', String(active))
@@ -3438,6 +3722,7 @@ async function selectTab(tab) {
   if (inventoryKey !== undefined) void loadInventory(inventoryKey)
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
+  if (tab === 'proxy') void loadProxy()
   return true
 }
 
@@ -3561,6 +3846,30 @@ for (const [key, prefix] of Object.entries({ plugins: 'plugins', systemSkills: '
     renderInventory(key)
   })
 }
+elements['proxy-enabled'].addEventListener('change', event => {
+  elements['proxy-enabled-label'].textContent = t(event.target.checked ? 'enabled' : 'disabled')
+})
+elements['proxy-protocol'].addEventListener('change', event => {
+  elements['proxy-remote-dns-row'].hidden = event.target.value !== 'socks5'
+})
+elements['proxy-password'].addEventListener('input', renderProxyTransportWarning)
+elements['proxy-username'].addEventListener('input', renderProxyTransportWarning)
+elements['proxy-clear-password'].addEventListener('change', event => {
+  if (event.target.checked) elements['proxy-password'].value = ''
+  elements['proxy-password'].disabled = event.target.checked
+  renderProxyTransportWarning()
+})
+elements['proxy-scope-help'].addEventListener('click', () => elements['proxy-scope-dialog'].showModal())
+elements['proxy-save'].addEventListener('click', () => { void saveProxyConfiguration() })
+elements['proxy-test'].addEventListener('click', () => { void startProxyTest() })
+elements['proxy-test-cancel'].addEventListener('click', async () => {
+  if (proxyTestTask?.taskId === undefined) return
+  try {
+    const task = await api(`proxy/test/tasks/${proxyTestTask.taskId}`, { method: 'DELETE' })
+    renderProxyTest(task)
+    if (task.status === 'running') scheduleProxyTestPoll(task.taskId)
+  } catch (error) { showError(error) }
+})
 for (const button of channelButtons) {
   button.addEventListener('click', async () => {
     if (await act('channel', { method: 'PUT', body: { channel: button.dataset.channel } })) await checkUpdates('channel-change')

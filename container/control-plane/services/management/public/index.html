@@ -47,11 +47,66 @@
       <button id="tab-skills" type="button" role="tab" aria-selected="false" aria-controls="panel-skills" data-tab="skills" data-i18n="skillsTab">System skills</button>
       <button id="tab-user-plugins" type="button" role="tab" aria-selected="false" aria-controls="panel-user-plugins" data-tab="user-plugins" data-i18n="userPluginsTab">User plugins</button>
       <button id="tab-user-skills" type="button" role="tab" aria-selected="false" aria-controls="panel-user-skills" data-tab="user-skills" data-i18n="userSkillsTab">User skills</button>
+      <button id="tab-proxy" type="button" role="tab" aria-selected="false" aria-controls="panel-proxy" data-tab="proxy" data-i18n="proxyTab">Proxy</button>
       <button id="tab-updates" type="button" role="tab" aria-selected="false" aria-controls="panel-updates" data-tab="updates" data-i18n="updatesTab">Updates</button>
       </nav>
     </div>
 
     <p id="error" class="message error" role="alert" hidden></p>
+
+    <div id="panel-proxy" class="tab-panel" role="tabpanel" aria-labelledby="tab-proxy" hidden>
+      <section aria-labelledby="proxy-title">
+        <div class="section-heading">
+          <div><h2 id="proxy-title" data-i18n="proxyTitle">Proxy settings</h2><p data-i18n="proxyDetail">Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.</p></div>
+          <label class="toggle"><input id="proxy-enabled" type="checkbox"><span aria-hidden="true"></span><strong id="proxy-enabled-label" data-i18n="disabled">Disabled</strong></label>
+        </div>
+        <p id="proxy-component-state" class="operation-result" role="status"></p>
+        <div class="proxy-form-grid">
+          <label><span data-i18n="proxyProtocol">Protocol</span><select id="proxy-protocol"><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
+          <label><span data-i18n="proxyHost">Host</span><input id="proxy-host" type="text" maxlength="253" autocomplete="off" spellcheck="false" placeholder="172.17.0.1"></label>
+          <label><span data-i18n="proxyPort">Port</span><input id="proxy-port" type="number" min="1" max="65535" inputmode="numeric" placeholder="7890"></label>
+          <label><span data-i18n="proxyUsername">Username</span><input id="proxy-username" type="text" maxlength="255" autocomplete="off" spellcheck="false"></label>
+          <label><span data-i18n="proxyPassword">Password</span><input id="proxy-password" type="password" maxlength="255" autocomplete="new-password" data-i18n-placeholder="proxyPasswordPlaceholder"></label>
+          <label id="proxy-remote-dns-row" class="proxy-check-row"><input id="proxy-remote-dns" type="checkbox"><span><strong data-i18n="proxyRemoteDns">Resolve target DNS through SOCKS5</strong><small data-i18n="proxyRemoteDnsDetail">Avoids resolving target names inside the container.</small></span></label>
+        </div>
+        <label id="proxy-clear-password-row" class="proxy-check-row"><input id="proxy-clear-password" type="checkbox"><span data-i18n="proxyClearPassword">Remove the saved proxy password</span></label>
+        <p id="proxy-password-state" class="proxy-hint"></p>
+        <p id="proxy-transport-warning" class="message notice" data-i18n="proxyTransportWarning" hidden>This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.</p>
+      </section>
+
+      <section aria-labelledby="proxy-scopes-title">
+        <div class="section-heading"><div><h2 id="proxy-scopes-title" data-i18n="proxyScopes">Traffic scopes</h2><p data-i18n="proxyScopesDetail">Select which managed outbound traffic uses this proxy.</p></div><button id="proxy-scope-help" type="button" class="secondary" data-i18n="proxyScopeHelp">Scope guide</button></div>
+        <div id="proxy-scope-list" class="proxy-scope-grid">
+          <label><input type="checkbox" data-proxy-scope="updates"><span><strong data-i18n="proxyScopeUpdates">Updates</strong><small data-i18n="proxyScopeUpdatesDetail">Metadata checks and remote Artifact downloads.</small></span></label>
+          <label><input type="checkbox" data-proxy-scope="platform"><span><strong data-i18n="proxyScopePlatform">Platform components</strong><small data-i18n="proxyScopePlatformDetail">External requests made by DSH Docker components and System Plugins.</small></span></label>
+          <label><input type="checkbox" data-proxy-scope="dshCore"><span><strong data-i18n="proxyScopeDshCore">DSH core</strong><small data-i18n="proxyScopeDshCoreDetail">DSH core traffic excluding model Provider APIs.</small></span></label>
+          <label><input type="checkbox" data-proxy-scope="dshPlugins"><span><strong data-i18n="proxyScopeDshPlugins">DSH plugins</strong><small data-i18n="proxyScopeDshPluginsDetail">Official and user-installed DSH plugins.</small></span></label>
+          <label><input type="checkbox" data-proxy-scope="agentNetwork"><span><strong data-i18n="proxyScopeAgent">Agent network operations</strong><small data-i18n="proxyScopeAgentDetail">Agent network tools, commands, and their child processes.</small></span></label>
+          <label><input type="checkbox" data-proxy-scope="managementTerminal"><span><strong data-i18n="proxyScopeTerminal">Container terminal</strong><small data-i18n="proxyScopeTerminalDetail">Shell sessions created by this Management Console.</small></span></label>
+        </div>
+      </section>
+
+      <section aria-labelledby="proxy-rules-title">
+        <div class="section-heading"><div><h2 id="proxy-rules-title" data-i18n="proxyRules">Routing exceptions</h2><p data-i18n="proxyRulesDetail">NO_PROXY has priority over additional bypass rules.</p></div></div>
+        <div class="proxy-rules-grid">
+          <label><span data-i18n="proxyNoProxy">NO_PROXY</span><textarea id="proxy-no-proxy" rows="4" spellcheck="false" data-i18n-placeholder="proxyRulesPlaceholder"></textarea><small data-i18n="proxyNoProxyDetail">One hostname or domain suffix per line. Use .example.com, not *.example.com.</small></label>
+          <label><span data-i18n="proxyBypass">Additional bypass</span><textarea id="proxy-bypass" rows="4" spellcheck="false" data-i18n-placeholder="proxyBypassPlaceholder"></textarea><small data-i18n="proxyBypassDetail">Supports hostnames, domain suffixes, IP addresses, and CIDR ranges.</small></label>
+        </div>
+        <label class="proxy-check-row"><input id="proxy-all-proxy" type="checkbox"><span><strong data-i18n="proxyAllProxy">Set ALL_PROXY where supported</strong><small data-i18n="proxyAllProxyDetail">Only clients with verified ALL_PROXY support receive it.</small></span></label>
+      </section>
+
+      <section aria-labelledby="proxy-providers-title">
+        <div class="section-heading"><div><h2 id="proxy-providers-title" data-i18n="proxyProviders">Model Providers</h2><p data-i18n="proxyProvidersDetail">Independent routing is available only for Providers with verified dispatcher integration.</p></div></div>
+        <div id="proxy-provider-list" class="proxy-provider-list"></div>
+        <p id="proxy-provider-empty" class="empty-state" data-i18n="proxyNoProviders" hidden>No model Providers were found.</p>
+      </section>
+
+      <section aria-labelledby="proxy-test-title">
+        <div class="section-heading"><div><h2 id="proxy-test-title" data-i18n="proxyTest">Connection test</h2><p data-i18n="proxyTestDetail">Tests the form values without saving or activating them.</p></div><div class="actions"><button id="proxy-test-cancel" type="button" class="secondary" data-i18n="cancel" hidden>Cancel</button><button id="proxy-test" type="button" class="secondary" data-i18n="proxyTestStart">Test connection</button><button id="proxy-save" type="button" class="primary" data-i18n="proxySave">Save and apply</button></div></div>
+        <ol id="proxy-test-stages" class="proxy-test-stages"></ol>
+        <p id="proxy-operation-result" class="operation-result" role="status" aria-live="polite" hidden></p>
+      </section>
+    </div>
 
     <div id="panel-updates" class="tab-panel" role="tabpanel" aria-labelledby="tab-updates" hidden>
       <section aria-labelledby="channel-title">
@@ -295,6 +350,7 @@
   <dialog id="file-editor-dialog" class="file-editor-dialog" aria-labelledby="file-editor-title"><form method="dialog"><header><div><h2 id="file-editor-title" data-i18n="editFile">Edit file</h2><p id="file-editor-path"></p></div><button id="file-editor-close" value="cancel" class="secondary" data-i18n="close">Close</button></header><div class="file-editor-frame"><pre id="file-editor-lines" aria-hidden="true">1</pre><textarea id="file-editor-content" spellcheck="false" aria-label="File content" data-i18n-aria-label="fileContent"></textarea></div><p id="file-editor-meta"></p><footer class="file-editor-footer"><span id="file-editor-status" role="status" aria-live="polite"></span><div class="dialog-actions"><button id="file-editor-reload" type="button" class="secondary" data-i18n="reload">Reload</button><button id="file-editor-save-as" type="button" class="secondary" data-i18n="saveAs">Save as</button><button id="file-editor-save" type="button" class="primary" data-i18n="save">Save</button></div></footer></form></dialog>
   <dialog id="text-input-dialog" class="page-input-dialog" aria-labelledby="text-input-dialog-title"><form id="text-input-dialog-form"><h2 id="text-input-dialog-title"></h2><p id="text-input-dialog-detail"></p><input id="text-input-dialog-value" type="text" autocomplete="off" spellcheck="false"><p id="text-input-dialog-error" class="dialog-error" role="alert" hidden></p><div class="dialog-actions"><button id="text-input-dialog-cancel" type="button" class="secondary" data-i18n="cancel">Cancel</button><button id="text-input-dialog-confirm" type="submit" class="primary" data-i18n="confirmChoice">Confirm</button></div></form></dialog>
   <dialog id="confirmation-dialog" aria-labelledby="confirmation-dialog-title"><form id="confirmation-dialog-form"><h2 id="confirmation-dialog-title"></h2><p id="confirmation-dialog-detail"></p><div class="dialog-actions"><button id="confirmation-dialog-cancel" type="button" class="secondary" data-i18n="cancel">Cancel</button><button id="confirmation-dialog-confirm" type="submit" class="primary" data-i18n="confirmChoice">Confirm</button></div></form></dialog>
+  <dialog id="proxy-scope-dialog" class="proxy-scope-dialog" aria-labelledby="proxy-scope-dialog-title"><form method="dialog"><header><div><h2 id="proxy-scope-dialog-title" data-i18n="proxyScopeGuideTitle">Proxy scope guide</h2><p data-i18n="proxyScopeGuideDetail">How managed network sources are classified.</p></div><button value="cancel" class="secondary" data-i18n="close">Close</button></header><div id="proxy-scope-catalog" class="proxy-scope-catalog"></div><div id="proxy-scope-summaries" class="proxy-scope-summaries"></div></form></dialog>
 
   <script type="module" src="./app.js"></script>
 </body>

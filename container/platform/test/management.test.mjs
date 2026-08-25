@@ -1352,12 +1352,12 @@ test('standalone console keeps localized feature parity on the shared Management
   const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const maintenanceSource = await readFile(new URL('../stage0/lib/maintenance-server.mjs', import.meta.url), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
-  for (const panel of ['updates', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
+  for (const panel of ['updates', 'proxy', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   const extensionTabs = [
     'tab-maintenance', 'tab-files', 'tab-terminal', 'tab-plugins',
-    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-updates',
+    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-proxy', 'tab-updates',
   ]
     .map(id => html.indexOf(`id="${id}"`))
   assert.deepEqual(extensionTabs, [...extensionTabs].sort((left, right) => left - right))
@@ -1371,6 +1371,7 @@ test('standalone console keeps localized feature parity on the shared Management
     'bundled-plugins/discard', 'system-skills', 'system-skills/action', 'user-skills', 'user-skills/action', 'user-plugins', 'user-plugins/apply', 'user-plugins/task/', 'logs/stream',
     'terminal/sessions',
     'files/config', 'files/list', 'files/content', 'files/upload', 'files/download', 'files/tasks',
+    'proxy/provider-inventory', 'proxy/test', 'proxy/test/tasks/',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
   assert.match(html, /<select id="language-switch"[^>]*data-i18n-aria-label="switchLanguage"/)
@@ -1380,6 +1381,11 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.equal((html.match(/class="theme-icon"[^>]*>[\s\S]*?<svg viewBox="0 0 24 24">/g) ?? []).length, 3)
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
+  assert.match(script, /function clearProxySecrets\(\)[\s\S]*elements\['proxy-password'\]\.value = ''/)
+  assert.match(script, /body: \{ baseRevision: proxyConfiguration\.revision, value: proxyCandidate\(\) \}/)
+  assert.doesNotMatch(script, /(?:localStorage|sessionStorage)\.setItem\([^\n]*proxy-password/)
+  assert.match(html, /id="proxy-transport-warning"[^>]*data-i18n="proxyTransportWarning"/)
+  assert.match(html, /id="proxy-scope-dialog"[\s\S]*id="proxy-scope-catalog"/)
   assert.match(script, /const override = storageValue\(LANGUAGE_KEY\)[\s\S]*navigator\.language[\s\S]*=== 'zh' \? 'zh' : 'en'/)
   assert.doesNotMatch(script, /name === 'dsh_locale'/)
   assert.match(script, /switchLanguage: '语言'/)
