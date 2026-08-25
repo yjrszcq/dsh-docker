@@ -15,6 +15,8 @@ For a restart failure immediately after plugin removal, first look for `cannot r
 
 For a browser plugin-load failure around a restart, correlate the current `dshLifecycle` task with `browser.plugin-load.failed` and the matching recovery event. Apply this diagnosis equally to official DSH plugins, bundled System Plugins, and User Plugins. `browser.plugin-load.recovery.completed` identifies a recovered transition race. Recovery attempt three opens Gateway's terminal plugin-failure page and records `browser.plugin-load.recovery.failed`; a failure without recovery eligibility is also persistent. Diagnose either case from the named plugin and DSH Runtime logs. Do not create a reload loop, match visible page text, or assume every plugin-load failure is transient.
 
+For an update check failure, distinguish the remote request from the cached target: a later failed check must retain the last verified Stable or upstream result and report `remote check failed`; only a first failed check has no verified result to show. Check the public update status and the structured `update.check.failed` event before changing proxy settings. When an external proxy is configured, use the Proxy tab's asynchronous test and its task result; never read `/data/platform/state/proxy`, inspect the Outbound Proxy environment, or call its control socket directly. A proxy test failure must not replace the active configuration.
+
 Stop once the cause is established. Do not enumerate Seed trees, runtime packages, sockets, process environments, or supervisor source as a substitute for trying the public operation.
 
 ## Protected trust boundary
