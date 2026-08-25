@@ -297,6 +297,9 @@ docker exec "$container" sh -c '
   [ "$(cat /data/dsh/settings.yaml)" = "{}" ]
   [ "$(stat -c %U /data/dsh/settings.yaml)" = node ]
   grep -F "@dsh-docker/settings-navigation" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
+  test -s /run/dsh-platform/views/system-plugins/packages/settings-navigation/lib/client.bundle.js
+  grep -F "data-dsh-settings-navigation-role" \
+    /run/dsh-platform/views/system-plugins/packages/settings-navigation/lib/client.bundle.js >/dev/null
   grep -F "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 '
 dsh_pid_before_plugin_changes="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
@@ -371,7 +374,7 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
-  | jq -e '.plugins[1] | .installed and (.enabled | not)' >/dev/null
+  | jq -e '.plugins[] | select(.id == "settings-document-editor") | .installed and (.enabled | not)' >/dev/null
 docker exec "$container" grep -F '@dsh-docker/settings-document-editor' \
   /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
@@ -382,7 +385,7 @@ dsh_pid_before="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/vie
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/discard \
-  | jq -e '.plugins[1] | .installed and .enabled and (.pendingRestart | not)' >/dev/null
+  | jq -e '.plugins[] | select(.id == "settings-document-editor") | .installed and .enabled and (.pendingRestart | not)' >/dev/null
 docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.systemPluginOperation.restartRequired == false' >/dev/null
