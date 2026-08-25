@@ -1755,7 +1755,9 @@ function PlatformManagement({ t }) {
             },
           })) : null),
       update.metadataUnavailable ? h('p', { className: css.notice }, t('metadataUnavailable')) : null,
-      update.remoteCheckError ? h('p', { className: css.notice, role: 'status' }, t('remoteCheckFailed')) : null,
+      update.remoteCheckError ? h('p', { className: css.notice, role: 'status' }, t(update.remoteCheckSource === 'upstream'
+        ? (update.upstream?.version ? 'upstreamCheckFailed' : 'upstreamCheckFailedNoResult')
+        : (update.checkedAt ? 'remoteCheckFailed' : 'remoteCheckFailedNoResult'))) : null,
       holds.length > 0 ? h('div', { className: css.holds },
         holds.map(hold => h('div', { className: css.hold, key: hold.id },
           h('div', null,
@@ -1883,7 +1885,7 @@ function apply(ctx) {
       statusIdle: '等待操作', statusChecking: '正在检查更新', statusPlanning: '正在准备更新', statusCheckingUpstream: '正在检查上游版本', statusDownloading: '正在下载', statusValidating: '正在验证', statusBuildingCandidate: '正在构建候选版本', statusSnapshottingData: '正在备份数据', statusSwitching: '正在切换版本', statusProbation: '正在观察运行状态', statusRestoringData: '正在恢复数据', statusRollingBack: '正在回滚', statusSuccess: '操作完成', statusFailed: '操作失败', statusUnknown: '正在处理',
       outcomeNone: '当前已是最新版本', outcomeFrozen: '等待正式支持版本追上当前版本', outcomeHeld: '此版本已暂停更新', outcomeBlocked: '当前版本组合不可用', outcomeStable: '已切换到稳定版本', outcomeExperimental: '已切换到实验版本',
       requestError: '请求失败', operationError: '操作失败，请查看容器日志。', holdVersion: '此版本更新失败，已暂停自动重试。', holdCombination: '此版本与正式环境组合不可用，已暂停自动重试。',
-      metadataUnavailable: '正式更新信息暂未发布，请稍后再试。', remoteCheckFailed: '远程检查失败，继续显示上次已验证结果。',
+      metadataUnavailable: '正式更新信息暂未发布，请稍后再试。', remoteCheckFailed: '远程检查失败，继续显示上次已验证结果。', remoteCheckFailedNoResult: '远程检查失败，暂无已验证结果。', upstreamCheckFailed: 'DSH 官方版本检查失败，继续显示上次已验证结果。', upstreamCheckFailedNoResult: 'DSH 官方版本检查失败，暂无已验证结果。',
       aheadOfStable: '当前版本领先正式支持版本，已暂停完整运行组合更新。', experimentalBlocked: '实验 DSH 与正式环境组合不可用。',
       returnStableTitle: '恢复稳定状态', returnStableWarning: '将恢复以下时间的数据快照，此后产生的数据会丢失：', confirmDataLoss: '我了解并确认丢弃更新后的数据', cancel: '取消', confirm: '确认恢复',
       standaloneManagement: 'DSH 管理中心', standaloneManagementDetail: 'DSH 不可用时仍可进行更新、插件恢复、日志查看和终端操作。', openPlatformManagement: '打开 DSH 管理中心', restartDshSection: '重启 DSH', restartDshDetail: '仅重新启动 DSH，容器和管理中心服务保持运行。', restartDsh: '重新启动 DSH', cancelRestartDsh: '取消重启 DSH', restarting: '正在重新启动 DSH', restartFailed: 'DSH 重启失败', restartTitle: '确认重新启动 DSH', restartWarning: '当前 DSH 连接会暂时中断，重启完成后页面将自动刷新。', confirmRestart: '确认重启',
@@ -1909,7 +1911,7 @@ function apply(ctx) {
       statusIdle: 'Ready', statusChecking: 'Checking for updates', statusPlanning: 'Preparing update', statusCheckingUpstream: 'Checking upstream', statusDownloading: 'Downloading', statusValidating: 'Verifying', statusBuildingCandidate: 'Building candidate', statusSnapshottingData: 'Backing up data', statusSwitching: 'Switching version', statusProbation: 'Observing runtime health', statusRestoringData: 'Restoring data', statusRollingBack: 'Rolling back', statusSuccess: 'Completed', statusFailed: 'Failed', statusUnknown: 'Working',
       outcomeNone: 'Already up to date', outcomeFrozen: 'Waiting for the supported release to catch up', outcomeHeld: 'This version is on hold', outcomeBlocked: 'This version combination is unavailable', outcomeStable: 'Switched to the Stable release', outcomeExperimental: 'Switched to the Experimental release',
       requestError: 'Request failed', operationError: 'The operation failed. Check the container logs.', holdVersion: 'This version failed and automatic retries are on hold.', holdCombination: 'This version is incompatible with the production Environment and automatic retries are on hold.',
-      metadataUnavailable: 'Signed update metadata has not been published yet. Try again later.', remoteCheckFailed: 'Remote check failed. Showing the last verified result.',
+      metadataUnavailable: 'Signed update metadata has not been published yet. Try again later.', remoteCheckFailed: 'Remote check failed. Showing the last verified result.', remoteCheckFailedNoResult: 'Remote check failed. No verified result is available yet.', upstreamCheckFailed: 'The official DSH version check failed. Showing the last verified result.', upstreamCheckFailedNoResult: 'The official DSH version check failed. No verified result is available yet.',
       aheadOfStable: 'The current version is ahead of Latest Supported; the complete deployment is frozen.', experimentalBlocked: 'The Experimental DSH and production Environment combination is unavailable.',
       returnStableTitle: 'Restore Stable state', returnStableWarning: 'The following data snapshot will be restored and newer data will be lost:', confirmDataLoss: 'I understand and confirm the loss of newer data', cancel: 'Cancel', confirm: 'Restore',
       standaloneManagement: 'DSH Management Console', standaloneManagementDetail: 'Updates, plugin recovery, logs, and terminal tools remain available when DSH is unavailable.', openPlatformManagement: 'Open DSH Management Console', restartDshSection: 'Restart DSH', restartDshDetail: 'Restart DSH only. The container and management console services remain running.', restartDsh: 'Restart DSH', cancelRestartDsh: 'Cancel DSH restart', restarting: 'Restarting DSH', restartFailed: 'DSH restart failed', restartTitle: 'Restart DSH?', restartWarning: 'The current DSH connection will be interrupted briefly. This page reloads when DSH is ready.', confirmRestart: 'Restart',

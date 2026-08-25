@@ -117,7 +117,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /localizedError\(update\.error, t\)/)
   assert.match(source, /localizedHoldReason\(hold, t\)/)
   assert.match(source, /metadataUnavailable/)
-  assert.match(source, /remoteCheckError[\s\S]*remoteCheckFailed/)
+  assert.match(source, /remoteCheckError[\s\S]*remoteCheckSource === 'upstream'[\s\S]*upstreamCheckFailedNoResult[\s\S]*remoteCheckFailedNoResult/)
   assert.match(source, /hasSupportedTarget/)
   assert.match(source, /update\.updateAvailable !== true/)
   assert.match(source, /className: css\.titleRow[\s\S]*className: css\.title[\s\S]*className: `\$\{css\.connection\}/)

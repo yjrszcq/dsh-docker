@@ -194,6 +194,7 @@ export class UpdateCoordinator extends EventEmitter {
           metadataUnavailable: false,
           remoteCheckError: null,
           remoteCheckFailedAt: null,
+          remoteCheckSource: null,
         })
         if (source === 'automatic' && this.automaticChecks !== undefined) {
           await this.automaticChecks.record({
@@ -220,6 +221,7 @@ export class UpdateCoordinator extends EventEmitter {
         metadataUnavailable: false,
         remoteCheckError: null,
         remoteCheckFailedAt: null,
+        remoteCheckSource: null,
       })
       return target
     } catch (error) {
@@ -228,6 +230,7 @@ export class UpdateCoordinator extends EventEmitter {
         error: null,
         remoteCheckError: error instanceof Error ? error.message : 'update check failed',
         remoteCheckFailedAt: this.now().toISOString(),
+        remoteCheckSource: error?.remoteCheckSource === 'upstream' ? 'upstream' : 'stable',
       })
       throw error
     }
@@ -412,7 +415,15 @@ export class UpdateCoordinator extends EventEmitter {
       && compareDshVersions(current.dsh, supported.dsh) <= 0
       && current.environment === supported.environment
     ) {
-      upstream = await this.npm.discover(stable.officialDshPolicy)
+      try {
+        upstream = await this.npm.discover(stable.officialDshPolicy)
+      } catch (error) {
+        const scoped = new Error(error instanceof Error ? error.message : 'official DSH discovery failed', { cause: error })
+        scoped.name = error instanceof Error ? error.name : 'Error'
+        scoped.code = error?.code
+        scoped.remoteCheckSource = 'upstream'
+        throw scoped
+      }
       upstreamCandidate = compareDshVersions(upstream.version, supported.dsh) > 0 ? upstream : null
     }
     return Object.freeze({

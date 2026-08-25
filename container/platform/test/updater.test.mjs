@@ -378,7 +378,36 @@ test('keeps the last verified target when a later remote check fails', async () 
   assert.equal(failed.checkedAt, verified.checkedAt)
   assert.equal(failed.remoteCheckError, 'keyring.json timed out after 2 attempts')
   assert.equal(failed.remoteCheckFailedAt, '2026-08-25T00:00:00.000Z')
+  assert.equal(failed.remoteCheckSource, 'stable')
   assert.equal(failed.error, null)
+})
+
+test('identifies an official DSH discovery failure independently from Stable metadata', async () => {
+  const state = {
+    value: { status: 'idle' },
+    async read() { return this.value },
+    async write(status, fields) { this.value = { ...this.value, ...fields, status }; return this.value },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: {
+      targetSequence: 2,
+      officialDshPolicy: {},
+      desired: { bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: '0.1.0-rc.8' } },
+    } }) },
+    npm: { discover: async () => { throw new Error('npm registry timed out') } },
+    preparer: {},
+    activator: { currentDeployment: async () => ({ targetSequence: 1, dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' }) },
+    state,
+    channelState: { read: async () => ({ updateChannel: 'experimental', holds: [], experimentalBlocked: null }) },
+  })
+  coordinator.rollbackPlan = async () => null
+
+  await assert.rejects(coordinator.check(), /npm registry timed out/)
+  assert.equal(state.value.status, 'idle')
+  assert.equal(state.value.remoteCheckError, 'npm registry timed out')
+  assert.equal(state.value.remoteCheckSource, 'upstream')
+  assert.equal(state.value.checkedAt, undefined)
+  assert.equal(state.value.upstream, undefined)
 })
 
 test('reports unpublished metadata only for development images', async () => {
