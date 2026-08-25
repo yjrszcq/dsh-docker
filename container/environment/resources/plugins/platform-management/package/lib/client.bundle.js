@@ -1467,7 +1467,7 @@ function ProxySettings({ active, t }) {
     const proxy = {
       protocol: configuration.proxy.protocol,
       host: configuration.proxy.host.trim(),
-      port: configuration.proxy.port === '' ? null : Number(configuration.proxy.port),
+      port: configuration.proxy.port === '' || configuration.proxy.port == null ? null : Number(configuration.proxy.port),
       username: configuration.proxy.username,
       passwordConfigured: configuration.proxy.passwordConfigured === true,
       remoteDns: configuration.proxy.remoteDns === true,

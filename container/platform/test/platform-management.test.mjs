@@ -244,6 +244,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /setPassword\(''\)[\s\S]*setClearPassword\(false\)/)
   assert.match(source, /proxyLines\(noProxyText\)/)
   assert.match(source, /proxyLines\(bypassText\)/)
+  assert.match(source, /configuration\.proxy\.port === '' \|\| configuration\.proxy\.port == null \? null/)
   assert.match(source, /configuration\.scopeCatalog/)
   assert.match(source, /proxyTransportWarning/)
   assert.doesNotMatch(source, /setPassword\(next\.proxy|value: configuration\.proxy\.password/)
