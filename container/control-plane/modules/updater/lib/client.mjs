@@ -47,7 +47,9 @@ export class LocalApiClient {
   importArtifact(artifactId, sourcePath, parentReceipt = null) {
     return this.request('POST', '/v1/artifacts/import', { artifactId, sourcePath, parentReceipt })
   }
-  ensureOfficialDsh(version) { return this.request('POST', '/v1/dsh/ensure', { version }) }
+  ensureOfficialDsh(version, metadataPath, tarballPath) {
+    return this.request('POST', '/v1/dsh/ensure', { version, metadataPath, tarballPath })
+  }
   acceptManifest(receipt, signatureReceipt) {
     return this.request('POST', '/v1/manifests/accept', { receipt, signatureReceipt })
   }

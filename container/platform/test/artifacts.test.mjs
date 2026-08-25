@@ -89,6 +89,14 @@ async function importSignature(store, untrustedRoot, signatureBytes) {
   return store.importFromTarget('stable-signature', path)
 }
 
+async function officialSources(untrustedRoot, candidate, content, suffix = '') {
+  const metadataPath = join(untrustedRoot, `official-dsh${suffix}.json`)
+  const tarballPath = join(untrustedRoot, `official-dsh${suffix}.tgz`)
+  await writeFile(metadataPath, JSON.stringify({ versions: { [candidate.version]: candidate } }))
+  await writeFile(tarballPath, content)
+  return { metadataPath, tarballPath }
+}
+
 test('imports only target-authorized bytes from the untrusted directory', async () => {
   const content = Buffer.from('verified artifact')
   const expected = descriptor('gateway', content)
@@ -115,110 +123,62 @@ test('treats receipts written before authority typing as Stable receipts', async
   assert.equal((await store.readReceipt(receipt.token)).authorityType, 'stable')
 })
 
-test('imports official DSH from Stage-0-owned metadata and tarball requests', async () => {
+test('verifies updater-downloaded official DSH metadata and tarball without networking', async () => {
   const content = Buffer.from('official tarball')
   const registry = registryKeyPair()
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
   const policy = officialDshPolicy(registry)
-  const requests = []
   const { current, ledger, untrustedRoot, directory } = await fixture(
     [descriptor('stable-only', Buffer.alloc(0))],
     policy,
   )
-  const store = new VerifiedObjectStore({
-    root: join(directory, 'trust'),
-    untrustedRoot,
-    ledger,
-    fetchImpl: async (url, options) => {
-      requests.push({ url: url.href, options })
-      if (requests.length === 1) {
-        const advanced = document(releaseTarget(1, 2, [descriptor('stable-only', Buffer.alloc(0))], policy))
-        await ledger.acceptTarget(advanced, signature(advanced, current))
-        return new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
-      }
-      return new Response(content)
-    },
-  })
-  const receipt = await store.ensureOfficialDsh(candidate.version)
+  const store = new VerifiedObjectStore({ root: join(directory, 'trust'), untrustedRoot, ledger })
+  const advanced = document(releaseTarget(1, 2, [descriptor('stable-only', Buffer.alloc(0))], policy))
+  await ledger.acceptTarget(advanced, signature(advanced, current))
+  const sources = await officialSources(untrustedRoot, candidate, content)
+  const receipt = await store.ensureOfficialDsh(candidate.version, sources.metadataPath, sources.tarballPath)
   assert.equal(receipt.authorityType, 'official-dsh')
   assert.equal(receipt.authorityVersion, candidate.version)
   assert.equal(receipt.targetSequence, 2)
   assert.deepEqual(await readFile(receipt.path), content)
-  assert.equal(requests.length, 2)
-  assert.equal(requests[0].url, 'https://registry.npmjs.org/%40deepseek-ai%2Fdsh')
-  assert.equal(requests[1].url, candidate.dist.tarball)
-  assert.ok(requests.every(request => request.options.redirect === 'error'))
   await store.activate([receipt.token])
   assert.equal((await store.readReceipt(receipt.token)).status, 'active')
 })
 
-test('retries transient official DSH metadata and tarball connection failures', async () => {
-  const content = Buffer.from('official tarball after retry')
-  const registry = registryKeyPair()
-  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
-  const { ledger, untrustedRoot, directory } = await fixture(
-    [descriptor('stable-only', Buffer.alloc(0))],
-    officialDshPolicy(registry),
-  )
-  let request = 0
-  const store = new VerifiedObjectStore({
-    root: join(directory, 'trust'), untrustedRoot, ledger, requestAttempts: 3, retryMs: 1,
-    fetchImpl: async () => {
-      request += 1
-      if (request === 1 || request === 3) throw new TypeError('fetch failed')
-      return request === 2
-        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
-        : new Response(content)
-    },
-  })
-  const receipt = await store.ensureOfficialDsh(candidate.version)
-  assert.equal(request, 4)
-  assert.deepEqual(await readFile(receipt.path), content)
-})
-
-test('official DSH import rejects redirects and mismatched bytes', async () => {
+test('official DSH import accepts only regular files inside the untrusted directory', async () => {
   const content = Buffer.from('official tarball')
   const registry = registryKeyPair()
   const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
-  const { ledger, untrustedRoot, directory } = await fixture(
+  const { store, untrustedRoot, directory } = await fixture(
     [descriptor('stable-only', Buffer.alloc(0))],
     officialDshPolicy(registry),
   )
-  const redirected = new VerifiedObjectStore({
-    root: join(directory, 'trust'), untrustedRoot, ledger,
-    fetchImpl: async () => ({
-      ok: true, redirected: true, url: 'https://mirror.example/', headers: new Headers(), body: new Response('{}').body,
-    }),
-  })
-  await assert.rejects(redirected.ensureOfficialDsh(candidate.version), /redirected/)
+  const outside = await officialSources(directory, candidate, content)
+  await assert.rejects(store.ensureOfficialDsh(candidate.version, outside.metadataPath, outside.tarballPath), /untrusted/)
+  const sources = await officialSources(untrustedRoot, candidate, content)
+  const metadataLink = join(untrustedRoot, 'metadata-link.json')
+  await symlink(sources.metadataPath, metadataLink)
+  await assert.rejects(store.ensureOfficialDsh(candidate.version, metadataLink, sources.tarballPath), /ELOOP|symbolic/i)
+})
 
-  let redirectedRequest = 0
-  const tarballRedirected = new VerifiedObjectStore({
-    root: join(directory, 'trust'), untrustedRoot, ledger,
-    fetchImpl: async () => {
-      redirectedRequest += 1
-      if (redirectedRequest === 1) {
-        return new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
-      }
-      return {
-        ok: true, redirected: true, url: 'https://cdn.example/dsh.tgz',
-        headers: new Headers(), body: new Response(content).body,
-      }
-    },
-  })
-  await assert.rejects(tarballRedirected.ensureOfficialDsh(candidate.version), /redirected/)
-
-  let request = 0
-  const mismatched = new VerifiedObjectStore({
-    root: join(directory, 'trust'), untrustedRoot, ledger,
-    fetchImpl: async () => {
-      request += 1
-      return request === 1
-        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
-        : new Response('different bytes')
-    },
-  })
-  await assert.rejects(mismatched.ensureOfficialDsh(candidate.version), { code: 'TRUST_ARTIFACT_MISMATCH' })
+test('official DSH import rejects malformed metadata and mismatched tarball bytes', async () => {
+  const content = Buffer.from('official tarball')
+  const registry = registryKeyPair()
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const { store, untrustedRoot } = await fixture(
+    [descriptor('stable-only', Buffer.alloc(0))],
+    officialDshPolicy(registry),
+  )
+  const malformed = join(untrustedRoot, 'malformed.json')
+  const tarball = join(untrustedRoot, 'official.tgz')
+  await writeFile(malformed, '{')
+  await writeFile(tarball, content)
+  await assert.rejects(store.ensureOfficialDsh(candidate.version, malformed, tarball), /valid JSON/)
+  const sources = await officialSources(untrustedRoot, candidate, Buffer.from('different bytes'), '-mismatch')
+  await assert.rejects(
+    store.ensureOfficialDsh(candidate.version, sources.metadataPath, sources.tarballPath),
+    { code: 'TRUST_ARTIFACT_MISMATCH' },
+  )
 })
 
 test('revokes staged official DSH receipts after Registry delegation changes but retains active objects', async () => {
@@ -230,19 +190,12 @@ test('revokes staged official DSH receipts after Registry delegation changes but
     [descriptor('stable-only', Buffer.alloc(0))],
     officialDshPolicy(registry),
   )
-  let request = 0
-  const store = new VerifiedObjectStore({
-    root: join(directory, 'trust'), untrustedRoot, ledger,
-    fetchImpl: async () => {
-      request += 1
-      return request % 2 === 1
-        ? new Response(JSON.stringify({ versions: { [candidate.version]: candidate } }))
-        : new Response(content)
-    },
-  })
-  const active = await store.ensureOfficialDsh(candidate.version)
+  const store = new VerifiedObjectStore({ root: join(directory, 'trust'), untrustedRoot, ledger })
+  const first = await officialSources(untrustedRoot, candidate, content, '-active')
+  const active = await store.ensureOfficialDsh(candidate.version, first.metadataPath, first.tarballPath)
   await store.activate([active.token])
-  const staged = await store.ensureOfficialDsh(candidate.version)
+  const second = await officialSources(untrustedRoot, candidate, content, '-staged')
+  const staged = await store.ensureOfficialDsh(candidate.version, second.metadataPath, second.tarballPath)
 
   const advanced = document(releaseTarget(
     1,

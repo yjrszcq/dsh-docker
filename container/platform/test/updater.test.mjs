@@ -11,6 +11,7 @@ import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { UpdateConflictError, UpdateCoordinator } from '../../control-plane/modules/updater/lib/coordinator.mjs'
 import { MetadataClient, MetadataUnavailableError, NpmRegistryClient } from '../../control-plane/modules/updater/lib/metadata.mjs'
 import { TargetPreparer } from '../../control-plane/modules/updater/lib/preparer.mjs'
+import { OfficialDshDownloader } from '../../control-plane/modules/updater/lib/official-dsh-download.mjs'
 import { UpdateStateStore } from '../../control-plane/modules/updater/lib/state.mjs'
 import { UpdateJournal } from '../../control-plane/modules/updater/lib/journal.mjs'
 import {
@@ -126,7 +127,7 @@ async function system() {
     const bytes = fixture.files.get(String(url))
     return bytes === undefined ? response('missing', 404) : response(bytes)
   }
-  const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot, ledger, fetchImpl })
+  const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot, ledger })
   const trust = {
     acceptKeyring: (bytes, value) => ledger.acceptKeyring(bytes, value),
     acceptTarget: (bytes, value) => ledger.acceptTarget(bytes, value),
@@ -134,7 +135,9 @@ async function system() {
       ? objects.importFromTarget(id, path)
       : objects.importFromManifest(parent, id, path),
     acceptManifest: (token, signatureToken) => objects.acceptManifest(token, signatureToken),
-    ensureOfficialDsh: version => objects.ensureOfficialDsh(version),
+    ensureOfficialDsh: (version, metadataPath, tarballPath) => (
+      objects.ensureOfficialDsh(version, metadataPath, tarballPath)
+    ),
     activate: tokens => objects.activate(tokens),
   }
   const metadata = new MetadataClient({ baseUrl: 'https://metadata.example/', trust, fetchImpl, retryMs: 1 })
@@ -148,9 +151,9 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   assert.equal(checked.value.targetSequence, 1)
   let requestedVersion
   const ensureOfficialDsh = preparer.trust.ensureOfficialDsh
-  preparer.trust.ensureOfficialDsh = version => {
+  preparer.trust.ensureOfficialDsh = (version, metadataPath, tarballPath) => {
     requestedVersion = version
-    return ensureOfficialDsh(version)
+    return ensureOfficialDsh(version, metadataPath, tarballPath)
   }
   const progress = []
   const prepared = await preparer.prepare(checked.value, { onProgress: value => { progress.push(value) } })
@@ -161,11 +164,60 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   assert.equal([...prepared.paths.values()].every(path => path.includes('/trust/objects/')), true)
   assert.equal((await ledger.currentKeyring()).value.generation, 1)
   assert.equal((await objects.readReceipt(prepared.environment.manifestReceipt.token)).authoritySignature.keyId.length, 64)
-  assert.equal(progress.at(-1).processedBytes, progress.at(-1).totalBytes)
+  assert.ok(progress.at(-1).processedBytes > 0)
+  assert.equal(progress.at(-1).totalBytes, null)
   assert.equal(progress.at(-1).processedItems, progress.at(-1).totalItems)
   for (let index = 1; index < progress.length; index += 1) {
     assert.ok(progress[index].processedBytes >= progress[index - 1].processedBytes)
   }
+})
+
+test('downloads official DSH metadata and tarball with bounded retry and measurable progress', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-official-downloader-'))
+  const registry = registryKeyPair()
+  const content = Buffer.alloc(2 * 1024 * 1024, 0x61)
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const metadata = JSON.stringify({ versions: { [candidate.version]: candidate } })
+  let request = 0
+  const progress = []
+  const downloader = new OfficialDshDownloader({
+    attempts: 3,
+    retryMs: 1,
+    fetchImpl: async () => {
+      request += 1
+      if (request === 1 || request === 3) throw new TypeError('temporary connection failure')
+      return request === 2
+        ? new Response(metadata, { headers: { 'content-length': String(Buffer.byteLength(metadata)) } })
+        : new Response(content, { headers: { 'content-length': String(content.byteLength) } })
+    },
+  })
+  const downloaded = await downloader.download(candidate.version, root, {
+    onProgress: value => { progress.push(value) },
+  })
+  assert.equal(request, 4)
+  assert.deepEqual(await readFile(downloaded.metadataPath), Buffer.from(metadata))
+  assert.deepEqual(await readFile(downloaded.tarballPath), content)
+  assert.equal(progress.at(-1).processedBytes, progress.at(-1).totalBytes)
+  assert.equal(progress.at(-1).processedItems, 2)
+  assert.equal(progress.at(-1).totalItems, 2)
+  for (let index = 1; index < progress.length; index += 1) {
+    assert.ok(progress[index].processedBytes >= progress[index - 1].processedBytes)
+  }
+})
+
+test('does not follow an untrusted official DSH metadata redirect', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-official-redirect-'))
+  const downloader = new OfficialDshDownloader({
+    attempts: 1,
+    fetchImpl: async () => ({
+      ok: true,
+      redirected: true,
+      url: 'https://mirror.example/packument',
+      headers: new Headers(),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }),
+  })
+  await assert.rejects(downloader.download('0.1.0-rc.8', root), /changed origin or redirected/)
 })
 
 test('constructs Pristine DSH only from a receipt-backed archive', async () => {

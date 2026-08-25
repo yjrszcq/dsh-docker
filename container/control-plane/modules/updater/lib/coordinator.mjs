@@ -520,9 +520,14 @@ export class UpdateCoordinator extends EventEmitter {
       let previousDownloadKey
       const prepared = await this.preparer.prepare(target.value, {
         onProgress: metrics => {
-          const progress = artifacts.length === 0 || metrics.totalBytes === 0
-            ? 10
-            : 10 + Math.round((metrics.processedBytes / metrics.totalBytes) * 55)
+          const byteRatio = Number.isFinite(metrics.totalBytes) && metrics.totalBytes > 0
+            ? metrics.processedBytes / metrics.totalBytes
+            : null
+          const itemRatio = Number.isFinite(metrics.totalItems) && metrics.totalItems > 0
+            ? metrics.processedItems / metrics.totalItems
+            : null
+          const ratio = byteRatio ?? itemRatio
+          const progress = ratio === null ? 10 : 10 + Math.round(Math.max(0, Math.min(1, ratio)) * 55)
           const key = `${progress}:${metrics.processedItems}:${metrics.totalItems}`
           if (key === previousDownloadKey) return undefined
           previousDownloadKey = key
@@ -533,6 +538,7 @@ export class UpdateCoordinator extends EventEmitter {
             totalBytes: metrics.totalBytes,
             processedItems: metrics.processedItems,
             totalItems: metrics.totalItems,
+            detail: metrics.detail ?? null,
           })
         },
       })
@@ -604,7 +610,25 @@ export class UpdateCoordinator extends EventEmitter {
 
       await this.transition('downloading', { taskId, progress: 10 })
       failureClass = 'candidate'
-      const prepared = await this.preparer.prepareExperimental(candidate)
+      let previousDownloadProgress = 10
+      const prepared = await this.preparer.prepareExperimental(candidate, {
+        onProgress: metrics => {
+          const ratio = Number.isFinite(metrics.totalBytes) && metrics.totalBytes > 0
+            ? metrics.processedBytes / metrics.totalBytes
+            : metrics.processedItems / metrics.totalItems
+          const progress = Math.max(previousDownloadProgress, 10 + Math.round(Math.max(0, Math.min(1, ratio)) * 20))
+          previousDownloadProgress = progress
+          return this.transition('downloading', {
+            taskId,
+            progress,
+            processedBytes: metrics.processedBytes,
+            totalBytes: metrics.totalBytes,
+            processedItems: metrics.processedItems,
+            totalItems: metrics.totalItems,
+            detail: metrics.detail ?? null,
+          })
+        },
+      })
       await this.transition('building-candidate', { taskId, progress: 35 })
       const built = await this.activator.prepareExperimental(prepared, { targetSequence: stable.targetSequence })
       const previousJournal = await this.journal.read()

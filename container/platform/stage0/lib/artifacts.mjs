@@ -3,8 +3,7 @@ import { link, mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { Readable, Transform } from 'node:stream'
-import { setTimeout as delay } from 'node:timers/promises'
+import { Transform } from 'node:stream'
 import { durableReplace } from '../../lib/atomic.mjs'
 import {
   MANIFEST_MEDIA_TYPE,
@@ -14,11 +13,8 @@ import {
 } from '../../lib/artifact-contracts.mjs'
 import { exactKeys, isoTimestamp, plainObject, positiveSafeInteger, TrustError } from '../../lib/validation.mjs'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
-import {
-  fetchOfficialDshCandidate,
-  fetchOfficialDshTarball,
-  OFFICIAL_DSH_TARBALL_LIMIT,
-} from './official-dsh.mjs'
+import { OFFICIAL_DSH_METADATA_LIMIT, OFFICIAL_DSH_TARBALL_LIMIT } from '../../lib/official-dsh-contracts.mjs'
+import { candidateFromPackument, verifyOfficialDshCandidate } from './official-dsh.mjs'
 import { verifyDetached } from './signature.mjs'
 
 export {
@@ -127,8 +123,7 @@ function validateReceipt(value) {
 
 export class VerifiedObjectStore {
   constructor({
-    root, objectRoot, receiptRoot, untrustedRoot, ledger, now = () => new Date(), fetchImpl = fetch,
-    requestTimeoutMs = 30_000, requestAttempts = 3, retryMs = 250,
+    root, objectRoot, receiptRoot, untrustedRoot, ledger, now = () => new Date(),
   }) {
     if (root === undefined && (objectRoot === undefined || receiptRoot === undefined)) {
       throw new TypeError('VerifiedObjectStore requires root or explicit objectRoot and receiptRoot')
@@ -138,25 +133,7 @@ export class VerifiedObjectStore {
     this.untrustedRoot = resolve(untrustedRoot)
     this.ledger = ledger
     this.now = now
-    this.fetchImpl = fetchImpl
-    this.requestTimeoutMs = requestTimeoutMs
-    this.requestAttempts = requestAttempts
-    this.retryMs = retryMs
     this.queue = Promise.resolve()
-  }
-
-  async retryOfficialRequest(operation) {
-    let lastError
-    for (let attempt = 1; attempt <= this.requestAttempts; attempt += 1) {
-      try {
-        return await operation(AbortSignal.timeout(this.requestTimeoutMs))
-      } catch (error) {
-        if (error instanceof TrustError || attempt === this.requestAttempts) throw error
-        lastError = error
-        await delay(this.retryMs)
-      }
-    }
-    throw lastError
   }
 
   exclusive(operation) {
@@ -171,6 +148,17 @@ export class VerifiedObjectStore {
 
   receiptPath(token) {
     return join(this.receiptRoot, `${token}.json`)
+  }
+
+  resolveUntrustedSource(sourcePath) {
+    if (typeof sourcePath !== 'string' || sourcePath === '') {
+      throw new TrustError('artifact source path is invalid')
+    }
+    const source = resolve(sourcePath)
+    if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
+      throw new TrustError('artifact source must be inside the untrusted download directory')
+    }
+    return source
   }
 
   async readReceipt(token) {
@@ -251,10 +239,7 @@ export class VerifiedObjectStore {
       || authority.signerKeyId !== currentKeyring.current.keyId
       || authority.targetSequence !== currentTarget.targetSequence
     ) throw new TrustError('artifact authority is no longer current', 'TRUST_REVOKED')
-    const source = resolve(sourcePath)
-    if (source !== this.untrustedRoot && !source.startsWith(`${this.untrustedRoot}/`)) {
-      throw new TrustError('artifact source must be inside the untrusted download directory')
-    }
+    const source = this.resolveUntrustedSource(sourcePath)
     await mkdir(this.objectRoot, { recursive: true })
     await mkdir(this.receiptRoot, { recursive: true })
     const destination = this.objectPath(authority.descriptor.sha256)
@@ -315,7 +300,7 @@ export class VerifiedObjectStore {
     }
   }
 
-  ensureOfficialDsh(requestedVersion) {
+  ensureOfficialDsh(requestedVersion, metadataPath, tarballPath) {
     return this.exclusive(async () => {
       compareDshVersions(requestedVersion, requestedVersion)
       const target = (await this.ledger.currentTarget())?.value
@@ -325,24 +310,39 @@ export class VerifiedObjectStore {
       if (compareDshVersions(requestedVersion, target.desired.dsh.version) < 0) {
         throw new TrustError('official DSH version is older than the current supported target', 'TRUST_ROLLBACK')
       }
-      const candidate = await this.retryOfficialRequest(signal => fetchOfficialDshCandidate({
+      const metadataSource = this.resolveUntrustedSource(metadataPath)
+      const tarballSource = this.resolveUntrustedSource(tarballPath)
+      const metadataHandle = await open(metadataSource, constants.O_RDONLY | constants.O_NOFOLLOW)
+      let metadata
+      try {
+        const stat = await metadataHandle.stat()
+        if (!stat.isFile()) throw new TrustError('official DSH metadata source must be a regular file')
+        if (stat.size > OFFICIAL_DSH_METADATA_LIMIT) throw new TrustError('official DSH metadata exceeds the download limit')
+        metadata = await metadataHandle.readFile()
+        if (metadata.byteLength > OFFICIAL_DSH_METADATA_LIMIT) {
+          throw new TrustError('official DSH metadata exceeds the download limit')
+        }
+      } finally {
+        await metadataHandle.close()
+      }
+      let packument
+      try { packument = JSON.parse(metadata.toString('utf8')) } catch { throw new TrustError('official DSH metadata is not valid JSON') }
+      const candidate = verifyOfficialDshCandidate(
+        candidateFromPackument(packument, requestedVersion),
         requestedVersion,
-        policy: target.officialDshPolicy,
-        fetchImpl: this.fetchImpl,
-        now: this.now(),
-        signal,
-      }))
+        target.officialDshPolicy,
+        this.now(),
+      )
       if (requestedVersion === target.desired.dsh.version && candidate.dist.integrity !== target.desired.dsh.integrity) {
         throw new TrustError('official DSH metadata does not match the supported target integrity', 'TRUST_ARTIFACT_MISMATCH')
       }
-      const body = await this.retryOfficialRequest(signal => fetchOfficialDshTarball({
-        candidate, fetchImpl: this.fetchImpl, signal,
-      }))
       await mkdir(this.objectRoot, { recursive: true })
       await mkdir(this.receiptRoot, { recursive: true })
       const temporary = join(this.objectRoot, `.${randomUUID()}.tmp`)
+      const sourceHandle = await open(tarballSource, constants.O_RDONLY | constants.O_NOFOLLOW)
       let destinationHandle
       try {
+        if (!(await sourceHandle.stat()).isFile()) throw new TrustError('official DSH tarball source must be a regular file')
         destinationHandle = await open(temporary, 'wx', 0o444)
         const sha256 = createHash('sha256')
         const sha512 = createHash('sha512')
@@ -359,7 +359,7 @@ export class VerifiedObjectStore {
             callback(null, chunk)
           },
         })
-        await pipeline(Readable.fromWeb(body), meter, destinationHandle.createWriteStream())
+        await pipeline(sourceHandle.createReadStream({ autoClose: false }), meter, destinationHandle.createWriteStream())
         destinationHandle = undefined
         const objectSha256 = sha256.digest('hex')
         const integrity = `sha512-${sha512.digest('base64')}`
@@ -401,6 +401,7 @@ export class VerifiedObjectStore {
         await atomicJson(this.receiptPath(receipt.token), receipt)
         return Object.freeze({ ...receipt, path: destination })
       } finally {
+        await sourceHandle.close().catch(() => {})
         await destinationHandle?.close().catch(() => {})
         await rm(temporary, { force: true }).catch(() => {})
       }

@@ -111,7 +111,7 @@ const proxyBroker = new ProxyLaunchBroker({
   token: proxyLaunchToken,
   dataRoot,
   runRoot,
-  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'proxy', 'index.mjs'),
+  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'outbound-proxy', 'index.mjs'),
   controlSocket: paths.proxyControlSocket,
   uid: proxyUid,
   gid: proxyGid,

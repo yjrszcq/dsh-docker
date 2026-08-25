@@ -65,11 +65,14 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
       } else if (url.pathname === '/v1/dsh/ensure') {
         if (
           body === null || typeof body !== 'object' || Array.isArray(body)
-          || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'version')
+          || Object.keys(body).length !== 3
+          || !Object.hasOwn(body, 'version')
+          || !Object.hasOwn(body, 'metadataPath')
+          || !Object.hasOwn(body, 'tarballPath')
         ) {
-          throw new Error('official DSH import accepts only version')
+          throw new Error('official DSH import requires fixed untrusted sources')
         }
-        const receipt = await objects.ensureOfficialDsh(body.version)
+        const receipt = await objects.ensureOfficialDsh(body.version, body.metadataPath, body.tarballPath)
         await record('official-dsh.imported', { dshVersion: body.version, objectSha256: receipt.objectSha256 })
         send(response, 200, receipt)
       } else if (url.pathname === '/v1/manifests/accept') {

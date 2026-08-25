@@ -1,11 +1,11 @@
 import { createPublicKey, verify } from 'node:crypto'
 import { compareDshVersions } from '../../lib/supported-target.mjs'
 import { exactKeys, plainObject, TrustError } from '../../lib/validation.mjs'
-
-export const OFFICIAL_DSH_PACKAGE = '@deepseek-ai/dsh'
-export const OFFICIAL_NPM_REGISTRY = 'https://registry.npmjs.org/'
-export const OFFICIAL_DSH_METADATA_LIMIT = 20 * 1024 * 1024
-export const OFFICIAL_DSH_TARBALL_LIMIT = 512 * 1024 * 1024
+import {
+  OFFICIAL_DSH_PACKAGE,
+  OFFICIAL_NPM_REGISTRY,
+  officialDshTarballUrl,
+} from '../../lib/official-dsh-contracts.mjs'
 
 function registrySignature(value, label) {
   const object = plainObject(value, label)
@@ -63,9 +63,10 @@ export function candidateFromPackument(value, requestedVersion) {
 
 export function verifyOfficialDshCandidate(value, requestedVersion, policy, now = new Date()) {
   const candidate = parseOfficialDshCandidate(value)
+  if (policy.registry !== OFFICIAL_NPM_REGISTRY) throw new TrustError('official DSH policy registry is invalid')
   if (candidate.version !== requestedVersion) throw new TrustError('official DSH metadata returned a different version')
   if (candidate.name !== policy.packageName) throw new TrustError('official DSH candidate is outside the trusted policy')
-  const expectedTarball = new URL(`${candidate.name}/-/dsh-${candidate.version}.tgz`, policy.registry).href
+  const expectedTarball = officialDshTarballUrl(candidate.version).href
   if (candidate.dist.tarball !== expectedTarball) throw new TrustError('official DSH tarball URL is not canonical')
   const message = `${candidate.name}@${candidate.version}:${candidate.dist.integrity}`
   for (const candidateSignature of candidate.dist.signatures) {
@@ -85,60 +86,4 @@ export function verifyOfficialDshCandidate(value, requestedVersion, policy, now 
     }
   }
   throw new TrustError('official DSH candidate has no valid delegated registry signature', 'TRUST_UNKNOWN_KEY')
-}
-
-async function boundedResponseBytes(response, label, maxBytes) {
-  if (!response.ok) throw new TrustError(`${label} returned HTTP ${String(response.status)}`)
-  const declaredLength = Number(response.headers?.get?.('content-length'))
-  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new TrustError(`${label} exceeds the download limit`)
-  if (response.body === null || response.body === undefined) return Buffer.alloc(0)
-  const chunks = []
-  let size = 0
-  for await (const chunk of response.body) {
-    const bytes = Buffer.from(chunk)
-    size += bytes.byteLength
-    if (size > maxBytes) throw new TrustError(`${label} exceeds the download limit`)
-    chunks.push(bytes)
-  }
-  return Buffer.concat(chunks, size)
-}
-
-async function exactFetch(fetchImpl, url, label, options = {}) {
-  const response = await fetchImpl(url, { ...options, redirect: 'error' })
-  if (response.redirected || (response.url !== undefined && response.url !== '' && response.url !== url.href)) {
-    throw new TrustError(`${label} changed origin or redirected`)
-  }
-  return response
-}
-
-export async function fetchOfficialDshCandidate({ requestedVersion, policy, fetchImpl, now, signal }) {
-  if (policy.registry !== OFFICIAL_NPM_REGISTRY || policy.packageName !== OFFICIAL_DSH_PACKAGE) {
-    throw new TrustError('official DSH policy does not identify the fixed npm source')
-  }
-  const metadataUrl = new URL(encodeURIComponent(OFFICIAL_DSH_PACKAGE), OFFICIAL_NPM_REGISTRY)
-  const response = await exactFetch(fetchImpl, metadataUrl, 'official DSH metadata', {
-    headers: { accept: 'application/vnd.npm.install-v1+json', 'accept-encoding': 'identity' },
-    signal,
-  })
-  const bytes = await boundedResponseBytes(response, 'official DSH metadata', OFFICIAL_DSH_METADATA_LIMIT)
-  let packument
-  try { packument = JSON.parse(bytes.toString('utf8')) } catch { throw new TrustError('official DSH metadata is not valid JSON') }
-  return verifyOfficialDshCandidate(candidateFromPackument(packument, requestedVersion), requestedVersion, policy, now)
-}
-
-export async function fetchOfficialDshTarball({ candidate, fetchImpl, signal }) {
-  const url = new URL(candidate.dist.tarball)
-  if (url.origin !== new URL(OFFICIAL_NPM_REGISTRY).origin) throw new TrustError('official DSH tarball origin is invalid')
-  const response = await exactFetch(fetchImpl, url, 'official DSH tarball', {
-    headers: { accept: 'application/octet-stream', 'accept-encoding': 'identity' },
-    signal,
-  })
-  if (response.headers?.get?.('content-encoding')) throw new TrustError('official DSH tarball must not use content encoding')
-  if (!response.ok) throw new TrustError(`official DSH tarball returned HTTP ${String(response.status)}`)
-  const declaredLength = Number(response.headers?.get?.('content-length'))
-  if (Number.isFinite(declaredLength) && declaredLength > OFFICIAL_DSH_TARBALL_LIMIT) {
-    throw new TrustError('official DSH tarball exceeds the download limit')
-  }
-  if (response.body === null || response.body === undefined) throw new TrustError('official DSH tarball has no response body')
-  return response.body
 }

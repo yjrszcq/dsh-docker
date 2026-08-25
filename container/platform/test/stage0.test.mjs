@@ -562,14 +562,14 @@ test('exposes only an injected Stage-0 Bootstrap staging operation', async () =>
   }
 })
 
-test('official DSH Trust API accepts only a requested version', async () => {
+test('official DSH Trust API accepts only a version and two untrusted source paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-official-api-'))
   const recovery = keyPair()
   const ledger = new TrustLedger(join(root, 'trust'), recovery.publicKey)
   const calls = []
   const objects = {
-    ensureOfficialDsh: async version => {
-      calls.push(version)
+    ensureOfficialDsh: async (version, metadataPath, tarballPath) => {
+      calls.push({ version, metadataPath, tarballPath })
       return { authorityType: 'official-dsh', authorityVersion: version }
     },
     reconcileRevocations: async () => [],
@@ -579,21 +579,26 @@ test('official DSH Trust API accepts only a requested version', async () => {
   const socketPath = join(root, 'run', 'trust.sock')
   await listenUnix(server, socketPath)
   try {
-    const accepted = await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', { version: '0.1.0-rc.8' })
+    const request = {
+      version: '0.1.0-rc.8',
+      metadataPath: '/data/platform/cache/downloads/official.json',
+      tarballPath: '/data/platform/cache/downloads/official.tgz',
+    }
+    const accepted = await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', request)
     assert.equal(accepted.status, 200)
-    assert.deepEqual(calls, ['0.1.0-rc.8'])
+    assert.deepEqual(calls, [request])
     for (const extra of [
-      { version: '0.1.0-rc.8', url: 'https://mirror.example/dsh.tgz' },
-      { version: '0.1.0-rc.8', expectedHash: '0'.repeat(64) },
-      { version: '0.1.0-rc.8', sourcePath: '/data/platform/downloads/untrusted/dsh.tgz' },
-      { version: '0.1.0-rc.8', candidate: {} },
+      { ...request, url: 'https://mirror.example/dsh.tgz' },
+      { ...request, expectedHash: '0'.repeat(64) },
+      { ...request, candidate: {} },
+      { version: request.version, metadataPath: request.metadataPath },
     ]) {
       assert.equal((await unixRequest(socketPath, 'POST', '/v1/dsh/ensure', extra)).status, 400)
     }
     assert.equal((await unixRequest(socketPath, 'POST', '/v1/artifacts/import-experimental', {
       candidate: {}, sourcePath: '/data/platform/downloads/untrusted/dsh.tgz',
     })).status, 404)
-    assert.deepEqual(calls, ['0.1.0-rc.8'])
+    assert.deepEqual(calls, [request])
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const EXPECTED = Object.freeze({
   '@xterm/addon-fit': '0.11.0',
   '@xterm/xterm': '6.0.0',
+  undici: '8.10.0',
   ws: '8.21.3',
 })
 
@@ -27,6 +28,7 @@ export async function verifyManagementDependencies(rootArg) {
   }
   for (const path of [
     'node_modules/ws/index.js',
+    'node_modules/undici/index.js',
     'node_modules/@xterm/xterm/lib/xterm.mjs',
     'node_modules/@xterm/xterm/css/xterm.css',
     'node_modules/@xterm/addon-fit/lib/addon-fit.mjs',

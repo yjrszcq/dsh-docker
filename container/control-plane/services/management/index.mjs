@@ -27,6 +27,7 @@ import { UserPluginJournal } from '../../modules/plugin-manager/user-journal.mjs
 import { UserPluginSelectionStore } from '../../modules/plugin-manager/user-state.mjs'
 import { UserPluginTransactionManager } from '../../modules/plugin-manager/user-transaction.mjs'
 import { UserSkillManager } from './user-skills.mjs'
+import { createScopedFetch } from './scoped-fetch.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -43,6 +44,7 @@ const logs = new JsonlLogManager({
   retentionDays: Number(process.env.DSH_LOG_RETENTION_DAYS ?? 14),
   output: { stdout: process.stdout, stderr: process.stderr },
 })
+const updateFetch = createScopedFetch('updates')
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 await logs.diagnostic('platform-management', 'management.starting', {
   imageBuildId: imageInventory.imageBuildId,
@@ -51,9 +53,10 @@ await logs.diagnostic('platform-management', 'management.starting', {
 const metadata = new MetadataClient({
   baseUrl: process.env.DSH_UPDATE_METADATA_URL,
   trust,
+  fetchImpl: updateFetch,
   retryRequestTimeoutMs: 15_000,
 })
-const preparer = new TargetPreparer({ untrustedRoot: paths.downloadsRoot, trust })
+const preparer = new TargetPreparer({ untrustedRoot: paths.downloadsRoot, trust, fetchImpl: updateFetch })
 const activator = new PlatformActivator({ dataRoot, runRoot, stage0: trust })
 const journal = new UpdateJournal(join(paths.updaterStateRoot, 'transaction.json'))
 const snapshots = new SnapshotClient(snapshotApi, 'dsh')
@@ -64,7 +67,7 @@ const coordinator = new UpdateCoordinator({
   preparer,
   activator,
   state: new UpdateStateStore(join(paths.updaterStateRoot, 'status.json')),
-  npm: new NpmRegistryClient({ retryRequestTimeoutMs: 15_000 }),
+  npm: new NpmRegistryClient({ fetchImpl: updateFetch, retryRequestTimeoutMs: 15_000 }),
   journal,
   snapshots,
   probationSeconds: Number(process.env.DSH_EXPERIMENTAL_PROBATION_SECONDS ?? 120),
@@ -218,6 +221,7 @@ const stop = signal => {
   stopping = true
   scheduler.stop()
   void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(async () => {
+    await updateFetch.close().catch(error => logs.diagnostic('platform-management', 'proxy.dispatcher.close.failed', { error }))
     server.close(() => {
       void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
     })

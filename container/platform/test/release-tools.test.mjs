@@ -19,6 +19,12 @@ const environmentDefinitionUrl = new URL('../../environment/definition.json', im
 const supportedDshVersion = JSON.parse(await readFile(supportedTargetUrl, 'utf8')).latestSupportedDsh
 const environmentVersion = JSON.parse(await readFile(environmentDefinitionUrl, 'utf8')).version
 
+test('Stage-0 launches the packaged outbound proxy entrypoint', async () => {
+  const source = await readFile(new URL('../stage0/index.mjs', import.meta.url), 'utf8')
+  assert.match(source, /'services', 'outbound-proxy', 'index\.mjs'/)
+  assert.doesNotMatch(source, /'services', 'proxy', 'index\.mjs'/)
+})
+
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
   const privatePath = join(root, `${name}-private.pem`)
@@ -93,7 +99,7 @@ test('Management terminal dependencies are exact, licensed, and architecture-neu
   assert.equal(Object.hasOwn(lock.packages[''], 'version'), false)
   const result = await verifyManagementDependencies(root)
   assert.deepEqual(result.packages, {
-    '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', ws: '8.21.3',
+    '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', undici: '8.10.0', ws: '8.21.3',
   })
   assert.equal(result.nativeModules, 0)
 })
@@ -214,6 +220,8 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/services/management/package-lock.json',
     'control-plane/services/management/node_modules/ws/index.js',
     'control-plane/services/management/node_modules/ws/LICENSE',
+    'control-plane/services/management/node_modules/undici/index.js',
+    'control-plane/services/management/node_modules/undici/LICENSE',
     'control-plane/services/management/node_modules/@xterm/xterm/lib/xterm.mjs',
     'control-plane/services/management/node_modules/@xterm/xterm/css/xterm.css',
     'control-plane/services/management/node_modules/@xterm/addon-fit/lib/addon-fit.mjs',
