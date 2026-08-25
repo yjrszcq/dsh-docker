@@ -32,7 +32,7 @@ Do not send signals to DSH, kill its PID, invoke Bootstrap sockets, or restart t
 
 Do not diagnose these classified holding responses as Gateway outages. An explicit start, stop, restart, switch, or recovery does not emit `gateway.upstream.failed` or `gateway.upstream.recovered`; those records are reserved for an unclassified upstream outage and its recovery.
 
-Plugin bundle requests are held while a registered lifecycle transition makes DSH temporarily unavailable. The same guard covers official DSH plugins, bundled System Plugins, and User Plugins. If a browser still receives a transient bundle failure, including a dynamic-import failure already rendered by DSH, the injected guard may enter the holding page once for that lifecycle. It deliberately does not loop: a second failure exposes the real DSH plugin-load error. Do not advise repeated manual refreshes before checking lifecycle state and the browser recovery events in platform logs.
+Plugin bundle requests are held while a registered lifecycle transition makes DSH temporarily unavailable. The same guard covers official DSH plugins, bundled System Plugins, and User Plugins. A failed bundle request or structured dynamic-import error may enter the holding page twice for the same running Deployment. A third structured failure opens Gateway's terminal plugin-failure page and links to the standalone Management Console; it never starts an unbounded reload loop. Detection uses the plugin request or module error URL, not visible page text. Do not advise repeated manual refreshes before checking lifecycle state, recovery-attempt fields, and browser recovery events in platform logs.
 
 Docker health probes the DSH HTTP listener directly at loopback `127.0.0.1:3079`. It represents DSH readiness; Stage-0, Gateway, or Management being alive is not sufficient for a healthy container. An intentional DSH stop therefore makes Docker report the container as unhealthy even though the standalone Management Console remains available.
 
@@ -50,7 +50,7 @@ The standalone Management Console and Platform Management plugin provide filteri
 
 When reporting a failure, include the operation/task ID, source, timestamp, complete error, and the smallest relevant surrounding entries. Do not include credentials, terminal contents, or unrelated user data.
 
-For a browser plugin-load failure, correlate `browser.plugin-load.failed` with `browser.plugin-load.recovery.started`, `browser.plugin-load.recovery.completed`, or `browser.plugin-load.recovery.failed`. A completed recovery confirms a transient lifecycle race; a final failure or a failure without a registered lifecycle requires investigation of the named plugin bundle and DSH Runtime logs.
+For a browser plugin-load failure, correlate `browser.plugin-load.failed` with `browser.plugin-load.recovery.started`, `browser.plugin-load.recovery.completed`, or `browser.plugin-load.recovery.failed`. A completed recovery confirms a transient lifecycle race. Attempt three and the terminal Gateway page identify a persistent failure; a failure without recovery eligibility also requires investigation of the named plugin bundle and DSH Runtime logs.
 
 Logs rotate automatically according to the platform size and retention settings. Clearing the UI display is a local display cutoff and does not delete the persisted platform log files.
 

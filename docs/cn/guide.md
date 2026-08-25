@@ -365,7 +365,7 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。Gateway readiness 同时要求 DSH HTTP 上游可以响应，并且平台生命周期已经离开启动、重启、恢复和切换状态；因此，即使 DSH 已开始监听，只要 Bootstrap 仍在完成插件健康检查，浏览器就不会提前返回。短暂连接中断会先通过这项组合 readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，这些已分类的生命周期响应不会记录成上游故障或故障恢复。未分类代理故障仍返回 `502` 并保留错误日志。
 
-如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready。该保护覆盖 DSH 加载的所有客户端 Bundle，包括 DSH 官方插件、内置系统插件和用户插件。前端仍遇到短暂 `502`、`503`、网络失败，或 DSH 的动态导入器已经显示 `Failed to load plugins` 时，守卫会先确认平台生命周期状态，再最多自动转入等待页一次。相同生命周期内再次加载失败时不再循环刷新，而是保留 DSH 的真实插件加载错误页。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务和失败原因。
+如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready。该保护覆盖 DSH 加载的所有客户端 Bundle，包括 DSH 官方插件、内置系统插件和用户插件。Bundle 请求仍返回 `502` 或 `503`、网络失败进入动态导入器，或导入器抛出结构化模块加载错误时，守卫会先确认平台 Ready 状态；同一运行中 Deployment 最多可两次自动转入等待页。第三次结构化失败会打开 Gateway 提供的“DeepSeek Harness 插件持续加载失败”终态页，并提供独立管理中心入口，不会形成无限刷新。检测依据是失败的插件请求或模块错误 URL，绝不匹配页面可见文字。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务、恢复次数和失败原因。
 
 `dsh-runtime` 在没有平台操作登记时意外退出，Bootstrap 最多恢复三次，间隔依次为立即、2 秒和 5 秒。更新、回滚、重置或 probation 已持有生命周期时不会并行恢复。三次均失败后进入 recovery mode，Gateway 和独立管理中心继续可用。
 
