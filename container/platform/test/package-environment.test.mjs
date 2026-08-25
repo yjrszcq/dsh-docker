@@ -31,7 +31,9 @@ test('packages the initial Environment deterministically from real resources', a
   assert.deepEqual(manifest.patches.map(patch => patch.id), [
     'directory-picker', 'browser-loopback', 'managed-lifecycle',
   ])
-  assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), ['platform-management', 'settings-document-editor'])
+  assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), [
+    'platform-management', 'settings-navigation', 'settings-document-editor',
+  ])
   for (const reference of [...manifest.components, ...manifest.patches, ...manifest.systemPlugins]) {
     assert.deepEqual(Object.keys(reference).sort(), ['id', 'sha256'])
   }

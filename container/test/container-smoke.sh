@@ -125,9 +125,21 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "protected":true,
     "reason":null
   },{
+    "id":"settings-navigation",
+    "artifactId":"system-plugin-settings-navigation",
+    "sha256":.plugins[1].sha256,
+    "description":{"zh":"优化 DSH 设置目录滚动和窄屏分级导航。","en":"Improve DSH Settings directory scrolling and compact navigation."},
+    "installed":true,
+    "enabled":true,
+    "activeInstalled":true,
+    "activeEnabled":true,
+    "pendingRestart":false,
+    "protected":false,
+    "reason":null
+  },{
     "id":"settings-document-editor",
     "artifactId":"system-plugin-settings-document-editor",
-    "sha256":.plugins[1].sha256,
+    "sha256":.plugins[2].sha256,
     "description":{"zh":"在浏览器中查看和编辑 DSH 配置文件。","en":"View and edit the DSH settings document in the browser."},
     "installed":true,
     "enabled":true,
@@ -284,6 +296,7 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
 docker exec "$container" sh -c '
   [ "$(cat /data/dsh/settings.yaml)" = "{}" ]
   [ "$(stat -c %U /data/dsh/settings.yaml)" = node ]
+  grep -F "@dsh-docker/settings-navigation" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
   grep -F "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 '
 dsh_pid_before_plugin_changes="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"

@@ -37,6 +37,12 @@
       "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
     },
     {
+      "id": "settings-navigation",
+      "artifactId": "system-plugin-settings-navigation",
+      "source": "resources/plugins/settings-navigation/package",
+      "mediaType": "application/vnd.dsh-platform.system-plugin.v1+tar+gzip"
+    },
+    {
       "id": "settings-document-editor",
       "artifactId": "system-plugin-settings-document-editor",
       "source": "resources/plugins/settings-document-editor/package",
