@@ -16,6 +16,7 @@ test('creates state, store, cache, and logs without persistent runtime views', a
   const paths = new PlatformPaths(join(root, 'platform'), join(root, 'run'))
   await preparePersistentLayout(paths)
   assert.equal(paths.developmentTrustStateRoot, join(paths.trustStateRoot, 'development'))
+  assert.equal(paths.proxyStateRoot, join(paths.stateRoot, 'proxy'))
   for (const path of [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,
     paths.managementStateRoot,
@@ -62,6 +63,8 @@ test('rebuilds only the ephemeral run directory', async () => {
   assert.equal(await readlink(join(paths.viewsRoot, 'system-plugins')), join('..', 'system-plugin-views', 'current'))
   assert.equal((await lstat(paths.systemPluginViewsRoot)).isDirectory(), true)
   assert.equal(paths.dshLifecycleSocket, join(paths.runRoot, 'dsh-lifecycle.sock'))
+  assert.equal(paths.proxyControlSocket, join(paths.runRoot, 'proxy-manager.sock'))
+  assert.equal(paths.proxyLaunchSocket, join(paths.runRoot, 'proxy-launch.sock'))
   assert.equal(
     await readlink(join(paths.systemPluginViewsRoot, 'current')),
     join('..', 'deployment', 'system-plugins'),

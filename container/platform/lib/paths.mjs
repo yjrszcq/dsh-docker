@@ -25,6 +25,7 @@ export class PlatformPaths {
     this.deploymentStatusPath = join(this.deploymentStateRoot, 'status.json')
     this.systemSkillStatePath = join(this.deploymentStateRoot, 'skills.json')
     this.updaterStateRoot = join(this.stateRoot, 'updater')
+    this.proxyStateRoot = join(this.stateRoot, 'proxy')
     this.managementStateRoot = join(this.stateRoot, 'management')
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
     this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
@@ -52,6 +53,8 @@ export class PlatformPaths {
     this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
     this.snapshotSocket = join(this.runRoot, 'snapshot.sock')
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
+    this.proxyControlSocket = join(this.runRoot, 'proxy-manager.sock')
+    this.proxyLaunchSocket = join(this.runRoot, 'proxy-launch.sock')
     this.recoverySocket = join(this.runRoot, 'recovery.sock')
   }
 }
