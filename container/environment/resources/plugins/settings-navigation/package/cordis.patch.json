@@ -1,0 +1,10 @@
+[
+  {
+    "insert": [
+      {
+        "id": "dsh-docker.settings-navigation.plugin",
+        "name": "@dsh-docker/settings-navigation"
+      }
+    ]
+  }
+]

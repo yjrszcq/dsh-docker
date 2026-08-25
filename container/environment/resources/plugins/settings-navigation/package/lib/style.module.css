@@ -1,0 +1,108 @@
+.panel {
+  --dsh-settings-navigation-header-height: 54px;
+}
+
+.nav,
+.navList,
+.content,
+.options {
+  min-height: 0;
+}
+
+.navList {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 18px;
+}
+
+.backMount {
+  display: none;
+  flex: none;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.backButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] {
+  display: grid;
+  grid-template: var(--dsh-settings-navigation-header-height) minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .nav,
+.panel[data-dsh-settings-navigation-mode='compact'] .content {
+  grid-area: 1 / 1 / 3 / 2;
+  width: auto;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .nav {
+  padding-right: 16px;
+  padding-left: 16px;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .navTitle {
+  padding-left: 0;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .navList {
+  padding-right: 0;
+  padding-bottom: 22px;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .content {
+  pointer-events: none;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .header {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'] .header > * {
+  pointer-events: auto;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'][data-dsh-settings-navigation-view='directory'] .options {
+  display: none;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'][data-dsh-settings-navigation-view='detail'] .nav {
+  display: none;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'][data-dsh-settings-navigation-view='detail'] .content {
+  pointer-events: auto;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'][data-dsh-settings-navigation-view='detail'] .backMount {
+  display: inline-flex;
+  align-items: center;
+  margin-right: auto;
+}
+
+.panel[data-dsh-settings-navigation-mode='compact'][data-dsh-settings-navigation-view='detail'] .options {
+  display: block;
+}
