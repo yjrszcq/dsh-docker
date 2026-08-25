@@ -347,6 +347,40 @@ test('only an automatic check records update notification candidates', async () 
   assert.equal(recorded[0].upstream.version, '0.1.0-rc.10')
 })
 
+test('keeps the last verified target when a later remote check fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-check-last-verified-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const plan = {
+    action: 'experimental', updateChannel: 'experimental', aheadOfStable: false, experimentalBlocked: null, holds: [],
+    current: { targetSequence: 1, dsh: '0.1.0-rc.7', environment: 'env-1', runtime: 'runtime-a' },
+    supported: { dsh: '0.1.0-rc.8', environment: 'env-1' }, upstream: { version: '0.1.0-rc.10' },
+    target: { targetSequence: 2, desired: {
+      bootstrap: { version: '1.0.0' }, environment: { version: 'env-1' }, dsh: { version: '0.1.0-rc.8' },
+    } },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, activator: {}, state, channelState: {},
+    now: () => new Date('2026-08-25T00:00:00.000Z'),
+  })
+  coordinator.rollbackPlan = async () => null
+  coordinator.desiredState = async () => plan
+  await coordinator.check()
+  const verified = await state.read()
+
+  coordinator.desiredState = async () => { throw new Error('keyring.json timed out after 2 attempts') }
+  await assert.rejects(coordinator.check(), /timed out/)
+  const failed = await state.read()
+  assert.equal(failed.status, 'idle')
+  assert.deepEqual(failed.supported, verified.supported)
+  assert.deepEqual(failed.upstream, verified.upstream)
+  assert.deepEqual(failed.available, verified.available)
+  assert.equal(failed.updateAvailable, verified.updateAvailable)
+  assert.equal(failed.checkedAt, verified.checkedAt)
+  assert.equal(failed.remoteCheckError, 'keyring.json timed out after 2 attempts')
+  assert.equal(failed.remoteCheckFailedAt, '2026-08-25T00:00:00.000Z')
+  assert.equal(failed.error, null)
+})
+
 test('reports unpublished metadata only for development images', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-development-metadata-'))
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
@@ -407,7 +441,7 @@ test('development images skip foreign Recovery roots while formal images reject 
   await assert.rejects(formal.check(), /keyring signature key is not trusted/)
 })
 
-test('treats unpublished metadata as a formal image failure by default', async () => {
+test('records unpublished formal metadata as a remote check failure', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-formal-metadata-'))
   const state = new UpdateStateStore(join(root, 'state', 'update.json'))
   const coordinator = new UpdateCoordinator({
@@ -416,7 +450,9 @@ test('treats unpublished metadata as a formal image failure by default', async (
   })
 
   await assert.rejects(coordinator.check(), MetadataUnavailableError)
-  assert.equal((await state.read()).status, 'failed')
+  const failed = await state.read()
+  assert.equal(failed.status, 'idle')
+  assert.equal(failed.remoteCheckError, 'signed update metadata has not been published')
 })
 
 test('does not retry missing signed metadata files', async () => {

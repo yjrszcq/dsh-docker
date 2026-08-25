@@ -192,6 +192,8 @@ export class UpdateCoordinator extends EventEmitter {
           updateAvailable,
           checkedAt: this.now().toISOString(),
           metadataUnavailable: false,
+          remoteCheckError: null,
+          remoteCheckFailedAt: null,
         })
         if (source === 'automatic' && this.automaticChecks !== undefined) {
           await this.automaticChecks.record({
@@ -216,11 +218,17 @@ export class UpdateCoordinator extends EventEmitter {
         },
         checkedAt: new Date().toISOString(),
         metadataUnavailable: false,
+        remoteCheckError: null,
+        remoteCheckFailedAt: null,
       })
       return target
     } catch (error) {
       await this.record('update.check.failed', { error, checkSource: source })
-      await this.transition('failed', { error: error instanceof Error ? error.message : 'update check failed' })
+      await this.transition('idle', {
+        error: null,
+        remoteCheckError: error instanceof Error ? error.message : 'update check failed',
+        remoteCheckFailedAt: this.now().toISOString(),
+      })
       throw error
     }
   }
