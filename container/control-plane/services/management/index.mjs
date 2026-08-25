@@ -218,6 +218,9 @@ server = createManagementServer({
     const configuration = await outboundProxy.configuration()
     return providerInventory.list(proxySnapshot(configuration))
   },
+  startProxyTest: value => outboundProxy.startTest(value),
+  getProxyTest: taskId => outboundProxy.test(taskId),
+  cancelProxyTest: taskId => outboundProxy.cancelTest(taskId),
 })
 await listenManagement(server, paths.managementSocket)
 void waitForBootstrapStartup()

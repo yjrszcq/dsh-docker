@@ -12,6 +12,7 @@ const MAX_PROXY_BODY_BYTES = 64 * 1024
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
 const FILE_TASK_ROUTE = /^files\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
+const PROXY_TEST_TASK_ROUTE = /^proxy\/test\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const CONSOLE_ASSETS = new Map([
   ['', ['public', 'index.html', 'text/html; charset=utf-8']],
   ['app.js', ['public', 'app.js', 'text/javascript; charset=utf-8']],
@@ -123,6 +124,9 @@ export function createManagementServer({
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   listProxyProviders = async () => ({ schema: 1, source: 'unavailable', providers: [] }),
+  startProxyTest = async () => { throw new Error('outbound proxy tests are not configured') },
+  getProxyTest = async () => { throw new Error('outbound proxy tests are not configured') },
+  cancelProxyTest = async () => { throw new Error('outbound proxy tests are not configured') },
   terminalSessions = {
     create: () => { throw new Error('terminal sessions are not configured') },
     status: () => { throw new Error('terminal sessions are not configured') },
@@ -146,6 +150,8 @@ export function createManagementServer({
   let systemSkillTask
   let userSkillTask
   let userPluginTask
+  let proxyTestState = Object.freeze({ status: 'idle', taskId: null, currentStage: null, error: null, updatedAt: null })
+  let proxyWatchClosed = false
   let lifecycleState = Object.freeze({
     state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
     error: null, updatedAt: null,
@@ -223,6 +229,44 @@ export function createManagementServer({
       while (userPluginTasks.size > 32) userPluginTasks.delete(userPluginTasks.keys().next().value)
     }
     server.emit('management-state', userPluginState)
+  }
+
+  const publishProxyTest = value => {
+    proxyTestState = Object.freeze({ ...value, updatedAt: value.updatedAt ?? new Date().toISOString() })
+    server.emit('management-state', { proxyTestOperation: proxyTestState })
+  }
+
+  const watchProxyTest = taskId => {
+    void (async () => {
+      let lastIdentity = ''
+      while (!proxyWatchClosed) {
+        let state
+        try { state = await getProxyTest(taskId) } catch (error) {
+          publishProxyTest({
+            status: 'failed', taskId, currentStage: null,
+            error: error?.proxyError ?? {
+              code: error?.code ?? 'PROXY_MANAGER_UNAVAILABLE',
+              message: error instanceof Error ? error.message : 'proxy test state is unavailable',
+              stage: error?.stage ?? 'test', retryable: error?.retryable === true,
+            },
+          })
+          await recordAudit('proxy.test.failed', { taskId, code: error?.code ?? 'PROXY_MANAGER_UNAVAILABLE' })
+          return
+        }
+        const identity = JSON.stringify(state)
+        if (identity !== lastIdentity) {
+          lastIdentity = identity
+          publishProxyTest(state)
+        }
+        if (state.status !== 'running') {
+          await recordAudit(`proxy.test.${state.status}`, {
+            taskId, mode: state.mode, errorCode: state.error?.errorCode ?? null,
+          })
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 250))
+      }
+    })().catch(error => recordAudit('proxy.test.watch.failed', { error, taskId }))
   }
 
   const requireRuntimeIdle = () => {
@@ -451,6 +495,7 @@ export function createManagementServer({
           systemSkillOperation: systemSkillState,
           userSkillOperation: userSkillState,
           userPluginOperation: userPluginState,
+          proxyTestOperation: proxyTestState,
         })
       } else if (request.method === 'GET' && route === 'bundled-plugins') {
         send(response, 200, { plugins: await listBundledPlugins() })
@@ -489,6 +534,21 @@ export function createManagementServer({
         }
       } else if (request.method === 'GET' && route === 'proxy/provider-inventory') {
         send(response, 200, await listProxyProviders())
+      } else if (request.method === 'POST' && route === 'proxy/test') {
+        await recordAudit('proxy.test.started')
+        const task = await startProxyTest(await jsonBody(request, MAX_PROXY_BODY_BYTES))
+        publishProxyTest(task)
+        watchProxyTest(task.taskId)
+        send(response, 202, { taskId: task.taskId })
+      } else if (request.method === 'GET' && PROXY_TEST_TASK_ROUTE.test(route)) {
+        const state = await getProxyTest(PROXY_TEST_TASK_ROUTE.exec(route)[1])
+        publishProxyTest(state)
+        send(response, 200, state)
+      } else if (request.method === 'DELETE' && PROXY_TEST_TASK_ROUTE.test(route)) {
+        const state = await cancelProxyTest(PROXY_TEST_TASK_ROUTE.exec(route)[1])
+        publishProxyTest(state)
+        await recordAudit('proxy.test.cancel-requested', { taskId: state.taskId })
+        send(response, 202, state)
       } else if (request.method === 'POST' && route === 'user-plugins/apply') {
         send(response, 202, await startUserPluginAction(await jsonBody(request)))
       } else if (request.method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) {
@@ -818,6 +878,7 @@ export function createManagementServer({
       if (!socket.destroyed) socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
     }
   })
+  server.once('close', () => { proxyWatchClosed = true })
   if (recoverUserPluginTransaction !== undefined) server.once('listening', () => {
     userPluginTask = Promise.resolve()
       .then(() => recoverUserPluginTransaction())

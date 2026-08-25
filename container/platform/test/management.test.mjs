@@ -189,6 +189,53 @@ test('management proxies sanitized outbound configuration, Provider inventory, a
   }
 })
 
+test('management exposes one reconnectable and cancellable outbound proxy test task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-proxy-test-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const taskId = '123e4567-e89b-42d3-a456-426614174000'
+  let status = 'running'
+  let cancelled = false
+  const state = () => ({
+    schema: 1, taskId, status, baseRevision: 'revision-one', candidateHash: `sha256:${'a'.repeat(64)}`,
+    mode: 'proxy', currentStage: status === 'running' ? 'proxy-connect' : null,
+    stages: [{ stage: 'proxy-connect', status: status === 'running' ? 'running' : 'success', durationMs: 5, errorCode: null, detail: null }],
+    error: null, createdAt: '2026-08-25T00:00:00.000Z', updatedAt: new Date().toISOString(),
+  })
+  const server = createManagementServer({
+    coordinator: new Coordinator(), logs,
+    startProxyTest: async () => state(),
+    getProxyTest: async requested => {
+      assert.equal(requested, taskId)
+      return state()
+    },
+    cancelProxyTest: async requested => {
+      assert.equal(requested, taskId)
+      cancelled = true
+      status = 'cancelled'
+      return state()
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    assert.deepEqual(await client.request('POST', `${API_PREFIX}proxy/test`, {
+      baseRevision: 'revision-one', value: {},
+    }), { taskId })
+    assert.equal((await client.request('GET', `${API_PREFIX}status`)).proxyTestOperation.taskId, taskId)
+    assert.equal((await client.request('GET', `${API_PREFIX}proxy/test/tasks/${taskId}`)).status, 'running')
+    assert.equal((await client.request('DELETE', `${API_PREFIX}proxy/test/tasks/${taskId}`)).status, 'cancelled')
+    assert.equal(cancelled, true)
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.started'), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.cancel-requested' && entry.taskId === taskId), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.cancelled' && entry.taskId === taskId), true)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management exposes audited System Skill tasks through the shared runtime mutex', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-system-skills-'))
   const logs = new JsonlLogManager({ root: join(root, 'logs') })

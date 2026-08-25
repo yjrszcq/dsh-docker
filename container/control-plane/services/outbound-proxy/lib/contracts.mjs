@@ -67,6 +67,21 @@ export function validProviderId(value) {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,127}$/.test(value)
 }
 
+export function assertSupportedProviderPolicies(value, supportedProviderIds = new Set()) {
+  if (value?.modelApi?.default !== 'direct') {
+    throw new ProxyConfigurationError('model API default proxy policy is not supported', {
+      code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
+    })
+  }
+  for (const id of Object.keys(value?.modelApi?.providers ?? {})) {
+    if (!supportedProviderIds.has(id)) {
+      throw new ProxyConfigurationError(`model API provider ${id} cannot use an independent proxy route`, {
+        code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
+      })
+    }
+  }
+}
+
 function normalizeModelApi(value) {
   object(value, 'model API proxy policy')
   requiredKeys(value, ['default', 'providers'], 'model API proxy policy')

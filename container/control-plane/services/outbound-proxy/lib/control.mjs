@@ -1,10 +1,11 @@
 import { createServer } from 'node:http'
 import { outboundProxyEnvironment } from '../../../../platform/lib/outbound-proxy.mjs'
-import { sanitizedProxyConfiguration } from './contracts.mjs'
+import { assertSupportedProviderPolicies, sanitizedProxyConfiguration } from './contracts.mjs'
 import { ProxyConfigurationError, proxyErrorBody } from './errors.mjs'
 
 const MAX_CONTROL_BODY_BYTES = 64 * 1024
 const MAX_PROVIDER_HANDLE_BODY_BYTES = 4096
+const TEST_TASK_ROUTE = /^\/v1\/test\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 
 async function jsonBody(request, maximum = MAX_CONTROL_BODY_BYTES) {
   const chunks = []
@@ -24,21 +25,6 @@ function send(response, status, value) {
   response.end(`${JSON.stringify(value)}\n`)
 }
 
-function assertSupportedProviderPolicies(value, supportedProviderIds) {
-  if (value?.modelApi?.default !== 'direct') {
-    throw new ProxyConfigurationError('model API default proxy policy is not supported', {
-      code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
-    })
-  }
-  for (const id of Object.keys(value?.modelApi?.providers ?? {})) {
-    if (!supportedProviderIds.has(id)) {
-      throw new ProxyConfigurationError(`model API provider ${id} cannot use an independent proxy route`, {
-        code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
-      })
-    }
-  }
-}
-
 function configurationView(snapshot, routeHealth, state = {}) {
   return sanitizedProxyConfiguration(snapshot.configuration, snapshot.revision, {
     componentReady: true,
@@ -51,6 +37,7 @@ export function createOutboundProxyControl({
   getSnapshot,
   routeHealth,
   providerHandles,
+  proxyTests,
   commitConfiguration,
   supportedProviderIds = new Set(),
   getTestState = () => ({ lastTest: null }),
@@ -88,6 +75,33 @@ export function createOutboundProxyControl({
       }
       return
     }
+    if (request.method === 'POST' && url.pathname === '/v1/test') {
+      try {
+        if (proxyTests === undefined) throw new Error('proxy connection tests are unavailable')
+        send(response, 202, await proxyTests.start(await jsonBody(request), snapshot))
+      } catch (error) {
+        send(response, error?.statusCode ?? 400, proxyErrorBody(error))
+      }
+      return
+    }
+    if (request.method === 'GET' && TEST_TASK_ROUTE.test(url.pathname)) {
+      try {
+        if (proxyTests === undefined) throw new Error('proxy connection tests are unavailable')
+        send(response, 200, proxyTests.get(TEST_TASK_ROUTE.exec(url.pathname)[1]))
+      } catch (error) {
+        send(response, error?.statusCode ?? 400, proxyErrorBody(error))
+      }
+      return
+    }
+    if (request.method === 'DELETE' && TEST_TASK_ROUTE.test(url.pathname)) {
+      try {
+        if (proxyTests === undefined) throw new Error('proxy connection tests are unavailable')
+        send(response, 202, await proxyTests.cancel(TEST_TASK_ROUTE.exec(url.pathname)[1]))
+      } catch (error) {
+        send(response, error?.statusCode ?? 400, proxyErrorBody(error))
+      }
+      return
+    }
     if (request.method === 'GET' && url.pathname === '/v1/environment') {
       try {
         const scope = url.searchParams.get('scope')
@@ -114,4 +128,4 @@ export function createOutboundProxyControl({
   })
 }
 
-export const outboundProxyControlInternals = Object.freeze({ assertSupportedProviderPolicies, configurationView })
+export const outboundProxyControlInternals = Object.freeze({ configurationView })

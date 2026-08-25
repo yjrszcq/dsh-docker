@@ -64,5 +64,8 @@ export class OutboundProxyControlClient {
 
   configuration() { return this.request('GET', '/v1/configuration') }
   updateConfiguration(value) { return this.request('PUT', '/v1/configuration', value) }
+  startTest(value) { return this.request('POST', '/v1/test', value) }
+  test(taskId) { return this.request('GET', `/v1/test/tasks/${encodeURIComponent(taskId)}`) }
+  cancelTest(taskId) { return this.request('DELETE', `/v1/test/tasks/${encodeURIComponent(taskId)}`) }
   status() { return this.request('GET', '/v1/status') }
 }

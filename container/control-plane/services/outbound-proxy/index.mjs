@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { chmod, mkdir, unlink } from 'node:fs/promises'
+import { chmod, mkdir, readFile, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { PROXY_PORTS } from './lib/contracts.mjs'
@@ -11,6 +11,7 @@ import { probeProxyEntry } from './lib/readiness.mjs'
 import { ProxyRouteHealth } from './lib/route-health.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
 import { ProviderHandleStore } from './lib/provider-handles.mjs'
+import { ProxyTestManager } from './lib/test-manager.mjs'
 
 const paths = new PlatformPaths(
   process.env.DSH_PLATFORM_DATA ?? '/data/platform',
@@ -23,6 +24,8 @@ const dnsCache = new ProxyDnsCache()
 const agentPool = new ProxyAgentPool()
 const routeHealth = new ProxyRouteHealth()
 const providerHandles = new ProviderHandleStore()
+const proxyTests = new ProxyTestManager({ statePath: paths.proxyTestStatePath })
+await proxyTests.initialize(async path => JSON.parse(await readFile(path, 'utf8')))
 
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
   const server = createScopedProxyServer({
@@ -40,6 +43,8 @@ const control = createOutboundProxyControl({
   getSnapshot: () => snapshot,
   routeHealth,
   providerHandles,
+  proxyTests,
+  getTestState: () => proxyTests.getState(),
   commitConfiguration: async request => {
     const activated = await store.commit(request)
     snapshot = Object.freeze({ ...activated, recovery: 'none' })

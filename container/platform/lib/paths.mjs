@@ -26,6 +26,7 @@ export class PlatformPaths {
     this.systemSkillStatePath = join(this.deploymentStateRoot, 'skills.json')
     this.updaterStateRoot = join(this.stateRoot, 'updater')
     this.proxyStateRoot = join(this.stateRoot, 'proxy')
+    this.proxyTestStatePath = join(this.proxyStateRoot, 'test-tasks.json')
     this.managementStateRoot = join(this.stateRoot, 'management')
     this.userPluginStatePath = join(this.managementStateRoot, 'user-plugins.json')
     this.userPluginJournalPath = join(this.managementStateRoot, 'user-plugin-transaction.json')
