@@ -36,7 +36,16 @@ for (const [scope, port] of Object.entries(PROXY_PORTS)) {
 }
 await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))
 
-const control = createOutboundProxyControl({ getSnapshot: () => snapshot, routeHealth, providerHandles })
+const control = createOutboundProxyControl({
+  getSnapshot: () => snapshot,
+  routeHealth,
+  providerHandles,
+  commitConfiguration: async request => {
+    const activated = await store.commit(request)
+    snapshot = Object.freeze({ ...activated, recovery: 'none' })
+    return snapshot
+  },
+})
 await mkdir(dirname(paths.proxyControlSocket), { recursive: true })
 await unlink(paths.proxyControlSocket).catch(error => {
   if (error?.code !== 'ENOENT') throw error

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { createServer } from 'node:http'
+import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -20,6 +20,8 @@ import {
 } from '../../control-plane/services/outbound-proxy/lib/rules.mjs'
 import { ProxyConfigurationStore } from '../../control-plane/services/outbound-proxy/lib/store.mjs'
 import { PROXY_SCOPE_CATALOG } from '../../control-plane/services/outbound-proxy/lib/scope-catalog.mjs'
+import { createOutboundProxyControl } from '../../control-plane/services/outbound-proxy/lib/control.mjs'
+import { OutboundProxyControlClient } from '../../control-plane/services/management/outbound-proxy-client.mjs'
 
 function configured(overrides = {}) {
   const defaults = defaultProxyConfiguration()
@@ -40,6 +42,33 @@ function configured(overrides = {}) {
     noProxy: { user: ['GOOGLE.com.', '.Example.COM', 'google.com'], ...overrides.noProxy },
     bypass: { additional: ['192.168.1.0/24', '[::1]:8443'], ...overrides.bypass },
   }
+}
+
+async function listen(server) {
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  return server.address().port
+}
+
+function exchange(port, method, path, body) {
+  return new Promise((resolve, reject) => {
+    const bytes = body === undefined ? undefined : Buffer.from(JSON.stringify(body))
+    const outgoing = request({
+      host: '127.0.0.1', port, method, path,
+      headers: bytes === undefined ? {} : { 'content-type': 'application/json', 'content-length': bytes.byteLength },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+      }))
+    })
+    outgoing.once('error', reject)
+    outgoing.end(bytes)
+  })
 }
 
 test('normalizes strict proxy configuration without exposing a password', () => {
@@ -123,6 +152,91 @@ test('atomically stores revisions, preserves and clears write-only credentials, 
   assert.equal(cleared.configuration.proxy.passwordConfigured, false)
   await assert.rejects(store.commit({ baseRevision: saved.revision, value: configured() }), error => (
     error.code === 'REVISION_CONFLICT' && error.statusCode === 409
+  ))
+})
+
+test('control API returns only sanitized configuration and hot-activates one current revision', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-control-'))
+  const store = new ProxyConfigurationStore(root)
+  let snapshot = Object.freeze({ ...await store.load(), recovery: 'none' })
+  let handlesCleared = 0
+  const server = createOutboundProxyControl({
+    getSnapshot: () => snapshot,
+    routeHealth: { status: current => ({ updates: current.configuration.scopes.updates ? 'unknown' : 'direct' }) },
+    providerHandles: { clear: () => { handlesCleared += 1 } },
+    commitConfiguration: async update => {
+      snapshot = Object.freeze({ ...await store.commit(update), recovery: 'none' })
+      return snapshot
+    },
+  })
+  const port = await listen(server)
+  t.after(() => new Promise(resolve => server.close(resolve)))
+
+  const initial = await exchange(port, 'GET', '/v1/configuration')
+  assert.equal(initial.status, 200)
+  assert.equal(initial.body.componentReady, true)
+  assert.equal(initial.body.enabled, false)
+  assert.equal('credentials' in initial.body, false)
+
+  const activated = await exchange(port, 'PUT', '/v1/configuration', {
+    baseRevision: initial.body.revision,
+    value: configured(),
+  })
+  assert.equal(activated.status, 200)
+  assert.equal(activated.body.enabled, true)
+  assert.equal(activated.body.proxy.passwordConfigured, true)
+  assert.equal(JSON.stringify(activated.body).includes('secret:@/'), false)
+  assert.equal(snapshot.credentials.password, 'secret:@/')
+  assert.equal(handlesCleared, 1)
+
+  const stale = await exchange(port, 'PUT', '/v1/configuration', {
+    baseRevision: initial.body.revision,
+    value: configured(),
+  })
+  assert.equal(stale.status, 409)
+  assert.equal(stale.body.error.code, 'REVISION_CONFLICT')
+  assert.equal(snapshot.revision, activated.body.revision)
+})
+
+test('control API rejects unsupported model Provider routing before persistence', async t => {
+  const current = Object.freeze({
+    revision: 'revision-one', recovery: 'none',
+    ...validateProxyConfiguration(defaultProxyConfiguration()),
+  })
+  let committed = false
+  const server = createOutboundProxyControl({
+    getSnapshot: () => current,
+    routeHealth: { status: () => ({}) },
+    supportedProviderIds: new Set(['adapted']),
+    commitConfiguration: async () => { committed = true },
+  })
+  const port = await listen(server)
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const value = configured({ modelApi: { providers: { unsupported: 'proxy' } } })
+  const result = await exchange(port, 'PUT', '/v1/configuration', { baseRevision: current.revision, value })
+  assert.equal(result.status, 400)
+  assert.equal(result.body.error.code, 'PROVIDER_POLICY_UNSUPPORTED')
+  assert.equal(committed, false)
+})
+
+test('Management outbound proxy client preserves structured control errors', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-client-'))
+  const socket = join(root, 'control.sock')
+  const server = createServer((_request, response) => {
+    response.writeHead(409, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ error: {
+      code: 'REVISION_CONFLICT', message: 'proxy configuration changed', stage: 'activate', retryable: true,
+    } }))
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socket, resolve)
+  })
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const client = new OutboundProxyControlClient(socket)
+  await assert.rejects(client.updateConfiguration({}), error => (
+    error.statusCode === 409 && error.code === 'REVISION_CONFLICT'
+      && error.stage === 'activate' && error.retryable === true
   ))
 })
 

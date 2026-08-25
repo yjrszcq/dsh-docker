@@ -8,6 +8,7 @@ import { MAX_SETTINGS_DOCUMENT_BYTES, SettingsDocumentConflictError } from './se
 export const API_PREFIX = '/_dsh_platform/api/v1/'
 export const CONSOLE_PREFIX = '/_dsh_platform/console/'
 const MAX_BODY_BYTES = 16 * 1024
+const MAX_PROXY_BODY_BYTES = 64 * 1024
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
 const TERMINAL_STREAM_ROUTE = /^terminal\/sessions\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/stream$/
 const FILE_TASK_ROUTE = /^files\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/
@@ -119,6 +120,9 @@ export function createManagementServer({
   initialUserPluginTransaction,
   settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
+  getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
+  updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
+  listProxyProviders = async () => ({ schema: 1, source: 'unavailable', providers: [] }),
   terminalSessions = {
     create: () => { throw new Error('terminal sessions are not configured') },
     status: () => { throw new Error('terminal sessions are not configured') },
@@ -465,6 +469,26 @@ export function createManagementServer({
         send(response, 200, await listUserSkills())
       } else if (request.method === 'GET' && route === 'user-plugins') {
         send(response, 200, await listUserPlugins())
+      } else if (request.method === 'GET' && route === 'proxy') {
+        send(response, 200, await getProxyConfiguration())
+      } else if (request.method === 'PUT' && route === 'proxy') {
+        const body = await jsonBody(request, MAX_PROXY_BODY_BYTES)
+        await recordAudit('proxy.configuration.update.started', {
+          baseRevision: typeof body?.baseRevision === 'string' ? body.baseRevision : null,
+        })
+        try {
+          const configured = await updateProxyConfiguration(body)
+          await recordAudit('proxy.configuration.update.completed', { revision: configured.revision })
+          send(response, 200, configured)
+        } catch (error) {
+          await recordAudit('proxy.configuration.update.failed', {
+            code: error?.code ?? 'PROXY_MANAGER_UNAVAILABLE',
+            stage: error?.stage ?? 'unknown',
+          })
+          throw error
+        }
+      } else if (request.method === 'GET' && route === 'proxy/provider-inventory') {
+        send(response, 200, await listProxyProviders())
       } else if (request.method === 'POST' && route === 'user-plugins/apply') {
         send(response, 202, await startUserPluginAction(await jsonBody(request)))
       } else if (request.method === 'GET' && /^user-plugins\/task\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(route)) {
@@ -767,10 +791,14 @@ export function createManagementServer({
         method: request.method ?? null,
         pathname,
       })
-      send(response, conflict ? 409 : (error?.statusCode ?? 400), {
-        error: error instanceof Error ? error.message : 'management request failed',
-        code: error?.code ?? 'MANAGEMENT_ERROR',
-      })
+      if (error?.proxyError !== undefined) {
+        send(response, error.statusCode ?? 400, { error: error.proxyError })
+      } else {
+        send(response, conflict ? 409 : (error?.statusCode ?? 400), {
+          error: error instanceof Error ? error.message : 'management request failed',
+          code: error?.code ?? 'MANAGEMENT_ERROR',
+        })
+      }
     }
   })
   server.on('upgrade', (request, socket, head) => {

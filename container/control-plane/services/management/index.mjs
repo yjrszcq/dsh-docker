@@ -28,6 +28,9 @@ import { UserPluginSelectionStore } from '../../modules/plugin-manager/user-stat
 import { UserPluginTransactionManager } from '../../modules/plugin-manager/user-transaction.mjs'
 import { UserSkillManager } from './user-skills.mjs'
 import { createScopedFetch } from './scoped-fetch.mjs'
+import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
+import { ProviderInventory } from './provider-inventory.mjs'
+import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -37,6 +40,7 @@ const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'invent
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
 const snapshotApi = new LocalApiClient(paths.snapshotSocket)
+const outboundProxy = new OutboundProxyControlClient(paths.proxyControlSocket)
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
@@ -45,6 +49,28 @@ const logs = new JsonlLogManager({
   output: { stdout: process.stdout, stderr: process.stderr },
 })
 const updateFetch = createScopedFetch('updates')
+const providerInventory = new ProviderInventory({ cachePath: paths.proxyProviderInventoryPath })
+
+function proxySnapshot(view) {
+  return Object.freeze({
+    revision: view.revision,
+    configuration: Object.freeze({
+      schema: view.schema,
+      enabled: view.enabled,
+      proxy: view.proxy,
+      scopes: view.scopes,
+      environment: view.environment,
+      modelApi: view.modelApi,
+      noProxy: view.noProxy,
+      bypass: view.bypass,
+    }),
+  })
+}
+
+const proxyConfiguration = async () => Object.freeze({
+  ...await outboundProxy.configuration(),
+  scopeCatalog: PROXY_SCOPE_CATALOG,
+})
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 await logs.diagnostic('platform-management', 'management.starting', {
   imageBuildId: imageInventory.imageBuildId,
@@ -182,6 +208,15 @@ server = createManagementServer({
     const state = await automaticChecks.configure(value)
     scheduler.configure(state.automaticCheck)
     return state.automaticCheck
+  },
+  getProxyConfiguration: proxyConfiguration,
+  updateProxyConfiguration: async value => Object.freeze({
+    ...await outboundProxy.updateConfiguration(value),
+    scopeCatalog: PROXY_SCOPE_CATALOG,
+  }),
+  listProxyProviders: async () => {
+    const configuration = await outboundProxy.configuration()
+    return providerInventory.list(proxySnapshot(configuration))
   },
 })
 await listenManagement(server, paths.managementSocket)

@@ -118,6 +118,77 @@ test('management socket exposes status, check, update, logs, and local rollback'
   }
 })
 
+test('management proxies sanitized outbound configuration, Provider inventory, and structured conflicts', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-outbound-proxy-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const view = {
+    schema: 1, enabled: false, revision: 'revision-one', componentReady: true,
+    proxy: { protocol: 'http', host: '', port: null, username: '', passwordConfigured: false, remoteDns: true },
+    scopes: {}, environment: { allProxy: null }, modelApi: { default: 'direct', providers: {} },
+    noProxy: { system: ['localhost'], user: [] }, bypass: { additional: [] },
+    routeHealth: {}, lastTest: null, scopeCatalog: { schema: 1, entries: [] },
+  }
+  const providers = { schema: 1, source: 'live', providers: [{ id: 'deepseek', routingCapability: 'shared-dsh' }] }
+  const updates = []
+  const server = createManagementServer({
+    coordinator: new Coordinator(), logs,
+    getProxyConfiguration: async () => view,
+    listProxyProviders: async () => providers,
+    updateProxyConfiguration: async value => {
+      updates.push(value)
+      if (value.baseRevision !== view.revision) {
+        const error = new Error('proxy configuration changed')
+        error.statusCode = 409
+        error.code = 'REVISION_CONFLICT'
+        error.stage = 'activate'
+        error.retryable = true
+        error.proxyError = {
+          code: error.code, message: error.message, stage: error.stage, retryable: error.retryable,
+        }
+        throw error
+      }
+      return { ...view, revision: 'revision-two' }
+    },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    assert.deepEqual(await client.request('GET', `${API_PREFIX}proxy`), view)
+    assert.deepEqual(await client.request('GET', `${API_PREFIX}proxy/provider-inventory`), providers)
+    const configured = await client.request('PUT', `${API_PREFIX}proxy`, {
+      baseRevision: view.revision,
+      value: { password: 'must-not-log' },
+    })
+    assert.equal(configured.revision, 'revision-two')
+    assert.deepEqual(updates, [{ baseRevision: view.revision, value: { password: 'must-not-log' } }])
+
+    const bytes = Buffer.from(JSON.stringify({ baseRevision: 'stale', value: {} }))
+    const conflict = await new Promise((resolve, reject) => {
+      const outgoing = httpRequest({
+        socketPath, method: 'PUT', path: `${API_PREFIX}proxy`,
+        headers: { 'content-type': 'application/json', 'content-length': bytes.byteLength },
+      }, response => {
+        const chunks = []
+        response.on('data', chunk => chunks.push(chunk))
+        response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString()) }))
+      })
+      outgoing.once('error', reject)
+      outgoing.end(bytes)
+    })
+    assert.equal(conflict.status, 409)
+    assert.deepEqual(conflict.body, { error: {
+      code: 'REVISION_CONFLICT', message: 'proxy configuration changed', stage: 'activate', retryable: true,
+    } })
+    const audit = await logs.query({ sources: ['audit'] })
+    assert.equal(audit.some(entry => entry.message === 'proxy.configuration.update.completed' && entry.revision === 'revision-two'), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.configuration.update.failed' && entry.code === 'REVISION_CONFLICT'), true)
+    assert.equal(JSON.stringify(audit).includes('must-not-log'), false)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management exposes audited System Skill tasks through the shared runtime mutex', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-system-skills-'))
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
