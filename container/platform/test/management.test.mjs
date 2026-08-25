@@ -1333,6 +1333,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /fileDropTarget\.addEventListener\('drop'/)
   assert.match(html, /class="file-drop-overlay"/)
   assert.match(style, /\.file-main\.file-dragging \.file-drop-overlay\s*\{[^}]*display:\s*grid;/)
+  assert.match(style, /\.proxy-provider-list \{[^}]*max-height: 320px;[^}]*overflow-y: auto;/)
   assert.match(html, /class="log-summary-row"><p id="log-summary"[\s\S]*id="auto-scroll" type="checkbox" checked/)
   assert.match(style, /\.log-auto-scroll \{[^}]*margin-left: auto;/)
   assert.match(script, /operationState === 'success' \|\| operation\?\.state === 'running'/)

@@ -481,7 +481,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-scope-grid strong, .proxy-scope-grid small { display: block; }
 .proxy-scope-grid strong { font-size: 13px; line-height: 20px; }
 .proxy-scope-grid small { color: var(--muted); font-size: 11px; line-height: 17px; }
-.proxy-provider-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.proxy-provider-list { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; scrollbar-gutter: stable; }
 .proxy-provider-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--border); }
 .proxy-provider-item:last-child { border-bottom: 0; }
 .proxy-provider-item strong, .proxy-provider-item small { display: block; overflow-wrap: anywhere; }

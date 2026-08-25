@@ -527,7 +527,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeGrid b, .proxyScopeGrid small { display: block; }
 .proxyScopeGrid b { font-size: 13px; line-height: 20px; }
 .proxyScopeGrid small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
-.proxyProviderList { overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; }
+.proxyProviderList { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; scrollbar-gutter: stable; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyProvider:last-child { border-bottom: 0; }
 .proxyProvider b, .proxyProvider small { display: block; overflow-wrap: anywhere; }
@@ -912,6 +912,7 @@ a.secondaryButton { text-decoration: none; }
   .resourceSearch { width: 100%; margin-left: 0; }
   .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { grid-template-columns: 1fr; }
   .proxyProvider { align-items: start; }
+  .proxyProviderList { max-height: 280px; }
   .proxyScopeCatalog section > div { grid-template-columns: 1fr; gap: 2px; }
   .proxyScopeDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .actionHeading { align-items: flex-start; }
