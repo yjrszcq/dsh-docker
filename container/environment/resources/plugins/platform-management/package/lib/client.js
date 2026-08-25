@@ -492,8 +492,13 @@ async function request(path, { method = 'GET', body } = {}) {
   })
   const value = await response.json()
   if (!response.ok) {
-    const error = new Error(value.error ?? `HTTP ${String(response.status)}`)
+    const detail = value?.error
+    const error = new Error(typeof detail === 'object' && detail !== null
+      ? detail.message ?? `HTTP ${String(response.status)}`
+      : detail ?? `HTTP ${String(response.status)}`)
     error.statusCode = response.status
+    error.code = detail?.code ?? value.code
+    error.stage = detail?.stage
     throw error
   }
   return value
@@ -1358,6 +1363,211 @@ function TransactionStageLogs({ update, visible, t, onViewFullLog }) {
     h('button', { type: 'button', className: css.progressFullLog, onClick: onViewFullLog }, t('viewFullTransactionLog')))
 }
 
+const PROXY_SCOPES = Object.freeze([
+  ['updates', 'proxyScopeUpdates', 'proxyScopeUpdatesDetail'],
+  ['platform', 'proxyScopePlatform', 'proxyScopePlatformDetail'],
+  ['dshCore', 'proxyScopeDshCore', 'proxyScopeDshCoreDetail'],
+  ['dshPlugins', 'proxyScopeDshPlugins', 'proxyScopeDshPluginsDetail'],
+  ['agentNetwork', 'proxyScopeAgent', 'proxyScopeAgentDetail'],
+  ['managementTerminal', 'proxyScopeTerminal', 'proxyScopeTerminalDetail'],
+])
+const PROXY_TEST_LABELS = Object.freeze({
+  'proxy-address': 'proxyStageAddress', 'proxy-connect': 'proxyStageConnect',
+  'proxy-handshake': 'proxyStageHandshake', 'target-dns': 'proxyStageDns',
+  'target-tls': 'proxyStageTls', 'target-http': 'proxyStageHttp',
+})
+
+function proxyLines(value) {
+  return String(value ?? '').split(/\r?\n/u).map(entry => entry.trim()).filter(Boolean)
+}
+
+function ProxySettings({ active, t }) {
+  const [configuration, setConfiguration] = useState(null)
+  const [providers, setProviders] = useState([])
+  const [noProxyText, setNoProxyText] = useState('')
+  const [bypassText, setBypassText] = useState('')
+  const [password, setPassword] = useState('')
+  const [clearPassword, setClearPassword] = useState(false)
+  const [task, setTask] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState('')
+  const scopeDialog = useRef(null)
+
+  const load = useCallback(async () => {
+    try {
+      const [next, inventory, platformStatus] = await Promise.all([
+        request('proxy'), request('proxy/provider-inventory'), request('status'),
+      ])
+      setConfiguration(next)
+      setNoProxyText((next.noProxy?.user ?? []).join('\n'))
+      setBypassText((next.bypass?.additional ?? []).join('\n'))
+      setProviders(inventory.providers ?? [])
+      setError('')
+      const activeTask = platformStatus?.proxyTestOperation
+      if (activeTask?.status === 'running' && activeTask.taskId) {
+        setTask(await request(`proxy/test/tasks/${activeTask.taskId}`))
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (active) void load()
+    else {
+      setPassword('')
+      setClearPassword(false)
+    }
+  }, [active, load])
+
+  useEffect(() => {
+    if (task?.status !== 'running') return undefined
+    const timer = window.setTimeout(async () => {
+      try { setTask(await request(`proxy/test/tasks/${task.taskId}`)) } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : String(nextError))
+      }
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [task])
+
+  useEffect(() => {
+    if (task && task.status !== 'running') {
+      setPassword('')
+      setClearPassword(false)
+    }
+  }, [task])
+
+  const patch = useCallback((path, value) => {
+    setConfiguration(current => {
+      const next = structuredClone(current)
+      let target = next
+      for (const part of path.slice(0, -1)) target = target[part]
+      target[path.at(-1)] = value
+      return next
+    })
+  }, [])
+
+  if (configuration === null) return h('section', { className: css.section },
+    h('h3', null, t('proxyTitle')),
+    h('p', { className: error ? css.error : undefined }, error || t('proxyLoading')))
+
+  const candidate = () => {
+    const proxy = {
+      protocol: configuration.proxy.protocol,
+      host: configuration.proxy.host.trim(),
+      port: configuration.proxy.port === '' ? null : Number(configuration.proxy.port),
+      username: configuration.proxy.username,
+      passwordConfigured: configuration.proxy.passwordConfigured === true,
+      remoteDns: configuration.proxy.remoteDns === true,
+    }
+    if (clearPassword) proxy.clearPassword = true
+    else if (password !== '') proxy.password = password
+    return {
+      schema: 1, enabled: configuration.enabled === true, proxy,
+      scopes: Object.fromEntries(PROXY_SCOPES.map(([id]) => [id, configuration.scopes[id] === true])),
+      environment: { allProxy: configuration.environment.allProxy },
+      modelApi: configuration.modelApi,
+      noProxy: { user: proxyLines(noProxyText) },
+      bypass: { additional: proxyLines(bypassText) },
+    }
+  }
+
+  const save = async () => {
+    setBusy(true); setError(''); setResult(t('proxySaving'))
+    try {
+      const next = await request('proxy', { method: 'PUT', body: { baseRevision: configuration.revision, value: candidate() } })
+      setConfiguration(next)
+      setNoProxyText((next.noProxy?.user ?? []).join('\n'))
+      setBypassText((next.bypass?.additional ?? []).join('\n'))
+      setPassword('')
+      setClearPassword(false)
+      setResult(t('proxySaved'))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError)); setResult('')
+      if (nextError?.statusCode === 409) await load()
+    } finally { setBusy(false) }
+  }
+
+  const startTest = async () => {
+    setBusy(true); setError(''); setResult('')
+    try {
+      const started = await request('proxy/test', { method: 'POST', body: { baseRevision: configuration.revision, value: candidate() } })
+      setTask(await request(`proxy/test/tasks/${started.taskId}`))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+      if (nextError?.statusCode === 409) await load()
+    } finally { setBusy(false) }
+  }
+
+  const cancelTest = async () => {
+    if (!task?.taskId) return
+    try { setTask(await request(`proxy/test/tasks/${task.taskId}`, { method: 'DELETE' })) } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    }
+  }
+
+  const taskRunning = task?.status === 'running'
+  const localize = value => value?.[t('localeCode')] ?? value?.en ?? ''
+  const catalog = configuration.scopeCatalog
+  const catalogGroups = Object.entries(catalog?.groups ?? {})
+  const catalogNodes = catalogGroups.map(([group, groupValue]) => h('section', { key: group },
+    h('h4', null, localize(groupValue)),
+    ...(catalog?.entries ?? []).filter(entry => entry.group === group).map(entry => h('div', { key: entry.id },
+      h('span', null, localize(entry.source)), h('span', null, localize(entry.detail))))))
+  const summaryNodes = (catalog?.summaries ?? []).map((summary, index) => h('p', { key: index }, localize(summary)))
+  return h(React.Fragment, null,
+    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-title' },
+      h('div', { className: css.sectionHeading },
+        h('div', null, h('h3', { id: 'platform-proxy-title' }, t('proxyTitle')), h('p', null, t('proxyDetail'))),
+        h('label', { className: css.toggle },
+          h('input', { type: 'checkbox', checked: configuration.enabled, onChange: event => patch(['enabled'], event.target.checked) }),
+          h('span', { 'aria-hidden': 'true' }), h('b', null, t(configuration.enabled ? 'enabled' : 'disabled')))),
+      h('p', { className: css.proxyHint }, t(configuration.componentReady ? 'proxyComponentReady' : 'proxyComponentUnavailable')),
+      h('div', { className: css.proxyFormGrid },
+        h('label', null, h('span', null, t('proxyProtocol')), h('select', { value: configuration.proxy.protocol, onChange: event => patch(['proxy', 'protocol'], event.target.value) }, h('option', { value: 'http' }, 'HTTP'), h('option', { value: 'socks5' }, 'SOCKS5'))),
+        h('label', null, h('span', null, t('proxyHost')), h('input', { value: configuration.proxy.host, maxLength: 253, spellCheck: false, placeholder: '172.17.0.1', onChange: event => patch(['proxy', 'host'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyPort')), h('input', { type: 'number', min: 1, max: 65535, value: configuration.proxy.port ?? '', placeholder: '7890', onChange: event => patch(['proxy', 'port'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyUsername')), h('input', { value: configuration.proxy.username, maxLength: 255, autoComplete: 'off', onChange: event => patch(['proxy', 'username'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyPassword')), h('input', { type: 'password', value: password, disabled: clearPassword, maxLength: 255, autoComplete: 'new-password', placeholder: t('proxyPasswordPlaceholder'), onChange: event => setPassword(event.target.value) })),
+        configuration.proxy.protocol === 'socks5' ? h('label', { className: css.proxyCheckRow }, h('input', { type: 'checkbox', checked: configuration.proxy.remoteDns, onChange: event => patch(['proxy', 'remoteDns'], event.target.checked) }), h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail')))) : null),
+      configuration.proxy.passwordConfigured ? h('label', { className: css.proxyCheckRow }, h('input', { type: 'checkbox', checked: clearPassword, onChange: event => { setClearPassword(event.target.checked); if (event.target.checked) setPassword('') } }), h('span', null, t('proxyClearPassword'))) : null,
+      h('p', { className: css.proxyHint }, t(configuration.proxy.passwordConfigured ? 'proxyPasswordConfigured' : 'proxyPasswordNotConfigured')),
+      location.protocol !== 'https:' && (password !== '' || configuration.proxy.username !== '') ? h('p', { className: css.notice }, t('proxyTransportWarning')) : null),
+
+    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-scopes-title' },
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-scopes-title' }, t('proxyScopes')), h('p', null, t('proxyScopesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => scopeDialog.current?.showModal() }, t('proxyScopeHelp'))),
+      h('div', { className: css.proxyScopeGrid }, PROXY_SCOPES.map(([id, title, detail]) => h('label', { key: id }, h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }), h('span', null, h('b', null, t(title)), h('small', null, t(detail))))))),
+
+    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-rules-title' },
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail')))),
+      h('div', { className: css.proxyRulesGrid },
+        h('label', null, h('span', null, t('proxyNoProxy')), h('textarea', { rows: 4, value: noProxyText, spellCheck: false, onChange: event => setNoProxyText(event.target.value) }), h('small', null, t('proxyNoProxyDetail'))),
+        h('label', null, h('span', null, t('proxyBypass')), h('textarea', { rows: 4, value: bypassText, spellCheck: false, onChange: event => setBypassText(event.target.value) }), h('small', null, t('proxyBypassDetail')))),
+      h('label', { className: css.proxyCheckRow }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', onChange: event => patch(['environment', 'allProxy'], event.target.checked ? 'scope-proxy' : null) }), h('span', null, h('b', null, t('proxyAllProxy')), h('small', null, t('proxyAllProxyDetail'))))),
+
+    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-providers-title' }, t('proxyProviders')), h('p', null, t('proxyProvidersDetail')))),
+      providers.length === 0 ? h('p', { className: css.emptyPlugins }, t('proxyNoProviders')) : h('div', { className: css.proxyProviderList }, providers.map(provider => h('div', { className: css.proxyProvider, key: provider.id },
+        h('div', null, h('b', null, provider.displayName), h('small', null, provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : provider.id)),
+        provider.routingCapability === 'provider' ? h('select', { value: configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default, onChange: event => patch(['modelApi', 'providers', provider.id], event.target.value) }, h('option', { value: 'direct' }, t('proxyProviderDirect')), h('option', { value: 'proxy' }, t('proxyProviderIndependent'))) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))))),
+
+    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-test-title' },
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-test-title' }, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('div', { className: css.actions }, taskRunning ? h('button', { type: 'button', className: css.secondaryButton, onClick: () => { void cancelTest() } }, t('cancel')) : null, h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning, onClick: () => { void startTest() } }, t('proxyTestStart')), h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void save() } }, t('proxySave')))),
+      task ? h('ol', { className: css.proxyTestStages }, task.stages.map(stage => h('li', { key: stage.stage, 'data-state': stage.status }, h('span', { 'aria-hidden': 'true' }), h('span', null, h('b', null, t(PROXY_TEST_LABELS[stage.stage])), h('small', null, stage.detail ?? stage.errorCode ?? '')), h('small', null, t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`))))) : null,
+      result ? h('p', { className: css.proxyHint, role: 'status' }, result) : null,
+      task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
+      error ? h('p', { className: css.error, role: 'alert' }, error) : null),
+
+    h('dialog', { ref: scopeDialog, className: css.proxyScopeDialog },
+      h('form', { method: 'dialog' },
+        h('header', null,
+          h('div', null, h('h3', null, t('proxyScopeGuideTitle')), h('p', null, t('proxyScopeGuideDetail'))),
+          h('button', { value: 'cancel', className: css.secondaryButton }, t('close'))),
+        h('div', { className: css.proxyScopeCatalog }, catalogNodes),
+        h('div', { className: css.proxyScopeSummaries }, summaryNodes))))
+}
+
 function PlatformManagement({ t }) {
   const [activeTab, setActiveTab] = useState('maintenance')
   const [status, setStatus] = useState(null)
@@ -1671,7 +1881,7 @@ function PlatformManagement({ t }) {
         h('p', { className: css.intro }, t('intro'))),
 
       h('div', { ref: tabsRef, className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
-        ['maintenance', 'plugins', 'skills', 'updates'].map(tab => h('button', {
+        ['maintenance', 'plugins', 'skills', 'proxy', 'updates'].map(tab => h('button', {
           key: tab,
           id: `platform-tab-${tab}-button`,
           type: 'button',
@@ -1681,6 +1891,14 @@ function PlatformManagement({ t }) {
           tabIndex: activeTab === tab ? 0 : -1,
           onClick: () => setActiveTab(tab),
         }, t(`${tab}Tab`))))),
+
+    h('div', {
+      id: 'platform-tab-proxy',
+      className: css.tabPanel,
+      role: 'tabpanel',
+      'aria-labelledby': 'platform-tab-proxy-button',
+      hidden: activeTab !== 'proxy',
+    }, h(ProxySettings, { active: activeTab === 'proxy', t })),
 
     h('div', {
       id: 'platform-tab-updates',
@@ -1863,7 +2081,11 @@ export function apply(ctx) {
     zh: {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
-      managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能',
+      managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', proxyTab: '代理设置',
+      proxyTitle: '代理设置', proxyDetail: '配置由 DSH Docker 使用的外部 HTTP 或 SOCKS5 代理。', proxyLoading: '正在加载代理配置…', proxyProtocol: '代理协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空则保持当前密码', proxyRemoteDns: '通过代理解析域名', proxyRemoteDnsDetail: '仅适用于 SOCKS5；关闭时由容器本地解析。', proxyClearPassword: '清除已保存的密码', proxyPasswordConfigured: '已保存代理密码；密码不会从平台读取或回显。', proxyPasswordNotConfigured: '尚未保存代理密码。', proxyTransportWarning: '当前页面未使用 HTTPS。代理凭据会受到传输链路保护能力的限制。', proxyComponentReady: '出站代理组件已就绪。配置只影响新建立的连接。', proxyComponentUnavailable: '出站代理组件当前不可用；可以保存配置，但连接测试可能失败。',
+      proxyScopes: '代理范围', proxyScopesDetail: '仅勾选需要通过外部代理访问网络的来源。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '此表由管理后端提供，两套管理界面使用相同分类。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: '更新检查、npm metadata 与 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'Management、Updater 等平台组件的非本地外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: 'DSH 核心联网，不包括模型 Provider API。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: '官方、第三方及 DSH Docker 系统插件的联网。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 工具、命令与其子进程的联网。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: 'DSH 管理中心提供的容器终端。',
+      proxyRules: '直连与兼容规则', proxyRulesDetail: '强制本地直连始终优先；NO_PROXY 优先于 bypass。', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: '每行一项；使用 .google.com 表示域后缀，不使用 *.google.com。', proxyBypass: '额外 bypass', proxyBypassDetail: '平台代理可识别的精确主机、域后缀、IP 或 CIDR。', proxyAllProxy: '为兼容客户端注入 ALL_PROXY', proxyAllProxyDetail: '仅对明确支持 ALL_PROXY 的客户端有效；默认关闭。', proxyProviders: '模型 Provider', proxyProvidersDetail: '本地 Provider 强制直连；只有具备稳定独立路由能力的 Provider 才可单独选择。', proxyNoProviders: '当前没有可识别的模型 Provider。', proxyProviderDirect: '直连', proxyProviderIndependent: '独立代理', proxyProviderShared: '跟随 DSH', proxyProviderReasonLocal: '本地 Provider 强制直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此跟随 DSH 共享流量策略。',
+      proxyTest: '代理连接测试', proxyTestDetail: '测试当前表单，不会覆盖已保存配置。', proxyTestStart: '测试连接', proxySave: '保存并应用', proxySaving: '正在保存代理设置', proxySaved: '代理设置已保存', proxyTestSuccess: '代理连接测试通过。', proxyTestFailed: '代理连接测试失败', proxyTestCancelled: '代理连接测试已取消。', proxyStageAddress: '解析代理地址', proxyStageConnect: '连接代理', proxyStageHandshake: '代理握手', proxyStageDns: '解析目标域名', proxyStageTls: '建立目标 TLS', proxyStageHttp: '请求目标服务', proxyStagePending: '待测试', proxyStageRunning: '测试中', proxyStageSuccess: '已通过', proxyStageFailed: '失败', proxyStageSkipped: '已跳过',
       channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。', returnStableProgress: '返回稳定通道',
       stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
       actions: '更新操作', lastChecked: '上次检查', notChecked: '尚未检查', check: '检查更新', checking: '检查中', updateSupported: '更新到最新支持版本', updateUpstream: '更新到最新上游版本', rollback: '回滚到上一版本', returnStable: '立即返回稳定通道', retry: '重试', progress: '更新进度',
@@ -1889,7 +2111,11 @@ export function apply(ctx) {
     en: {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
-      managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills',
+      managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', proxyTab: 'Proxy',
+      proxyTitle: 'Proxy settings', proxyDetail: 'Configure an external HTTP or SOCKS5 proxy used by DSH Docker.', proxyLoading: 'Loading proxy configuration…', proxyProtocol: 'Proxy protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the current password', proxyRemoteDns: 'Resolve names through the proxy', proxyRemoteDnsDetail: 'SOCKS5 only. When off, names are resolved locally in the container.', proxyClearPassword: 'Clear the saved password', proxyPasswordConfigured: 'A proxy password is saved. It cannot be read back or displayed.', proxyPasswordNotConfigured: 'No proxy password is saved.', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are limited by the protection of the transport path.', proxyComponentReady: 'The outbound proxy component is ready. Changes affect new connections only.', proxyComponentUnavailable: 'The outbound proxy component is unavailable. Settings can be saved, but connection tests may fail.',
+      proxyScopes: 'Proxy scopes', proxyScopesDetail: 'Enable the external proxy only for sources that need it.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'The Management backend supplies this table to both management interfaces.', proxyScopeUpdates: 'Update management', proxyScopeUpdatesDetail: 'Update checks, npm metadata, and Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'Non-local external requests from Management, Updater, and other platform components.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic, excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official, third-party, and DSH Docker System Plugin traffic.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent tools, commands, and their child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'The container terminal provided by DSH Management Console.',
+      proxyRules: 'Direct and compatibility rules', proxyRulesDetail: 'Forced local direct routes always win; NO_PROXY takes priority over bypass.', proxyNoProxy: 'NO_PROXY', proxyNoProxyDetail: 'One entry per line. Use .google.com for a domain suffix, not *.google.com.', proxyBypass: 'Additional bypass', proxyBypassDetail: 'Exact hosts, domain suffixes, IP addresses, or CIDRs understood by the platform proxy.', proxyAllProxy: 'Inject ALL_PROXY for compatible clients', proxyAllProxyDetail: 'Only affects clients known to support ALL_PROXY. Off by default.', proxyProviders: 'Model Providers', proxyProvidersDetail: 'Local Providers are forced direct. Independent selection is available only when Provider identity is stable end to end.', proxyNoProviders: 'No model Providers are currently discoverable.', proxyProviderDirect: 'Direct', proxyProviderIndependent: 'Independent proxy', proxyProviderShared: 'Follow DSH', proxyProviderReasonLocal: 'Local Provider; forced direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so this Provider follows shared DSH routing.',
+      proxyTest: 'Proxy connection test', proxyTestDetail: 'Tests the current form without replacing saved settings.', proxyTestStart: 'Test connection', proxySave: 'Save and apply', proxySaving: 'Saving proxy settings', proxySaved: 'Proxy settings saved', proxyTestSuccess: 'Proxy connection test passed.', proxyTestFailed: 'Proxy connection test failed', proxyTestCancelled: 'Proxy connection test cancelled.', proxyStageAddress: 'Resolve proxy address', proxyStageConnect: 'Connect to proxy', proxyStageHandshake: 'Proxy handshake', proxyStageDns: 'Resolve target name', proxyStageTls: 'Establish target TLS', proxyStageHttp: 'Request target service', proxyStagePending: 'Pending', proxyStageRunning: 'Testing', proxyStageSuccess: 'Passed', proxyStageFailed: 'Failed', proxyStageSkipped: 'Skipped',
       channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.', returnStableProgress: 'Return to Stable',
       stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
       actions: 'Update actions', lastChecked: 'Last checked', notChecked: 'Not checked yet', check: 'Check for updates', checking: 'Checking', updateSupported: 'Update to latest supported', updateUpstream: 'Update to latest upstream', rollback: 'Roll back previous', returnStable: 'Return to Stable now', retry: 'Retry', progress: 'Update progress',
