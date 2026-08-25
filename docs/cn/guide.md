@@ -351,7 +351,7 @@ Gateway 默认向 HTML 注入经过特性检测的 `crypto.randomUUID` polyfill�
 
 独立管理中心和 DSH“平台管理”设置中的“代理设置”用于配置用户已有的 HTTP 或 SOCKS5 代理。它只管理出站流量，不是另一个对外代理服务。Gateway 仍是浏览器入站反向代理，并最先启动，以便 Outbound Proxy 和其他 Control Plane 组件启动期间也能提供等待页。Docker 不发布任何出站代理端口。
 
-总代理开关与各来源开关相互独立。受管流量分为更新管理、平台组件、DSH 核心、DSH 插件、Agent 联网操作和管理中心容器终端。模型 API 按 Provider 配置：经过验证的 fetch 型 Provider 可单独选择；标为“**跟随 DSH**”的 Provider 因当前客户端不能端到端携带稳定 Provider 身份，使用 DSH 共享策略。本地和 loopback Provider 始终直连。
+总代理开关与各来源开关相互独立。受管流量分为更新管理、平台组件、DSH 核心、DSH 插件、Agent 联网操作和管理中心容器终端。模型 API 按 Provider 配置：经过验证的 fetch 型 Provider 可单独选择；标为“**跟随 DSH**”的 Provider 因当前客户端不能端到端携带稳定 Provider 身份，使用 DSH 共享流量策略，即 DSH 核心或 DSH 插件任一范围启用时使用代理。本地和 loopback Provider 始终直连。
 
 | Loopback 端口 | 范围 |
 | --- | --- |

@@ -38,13 +38,15 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
       const body = JSON.parse(init.body)
       calls.push({ url, method: body.method })
       if (body.method === 'llm.providers') return response({ providers: [
+        { provider: 'dormant', displayName: 'Dormant', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'dormant'], active: false },
         { provider: 'shared', displayName: 'Shared', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared'], active: true },
+        { provider: 'custom', displayName: 'Custom route', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'custom'], active: true, declared: true },
         { provider: 'adapted', displayName: 'Adapted', settingsNs: 'adapted', settingsPath: [], active: true },
         { provider: 'local', displayName: 'Local', settingsNs: 'local', settingsPath: [], active: true },
         { provider: '../invalid', displayName: 'Invalid', settingsNs: 'invalid', settingsPath: [], active: true },
       ] })
       return response({ namespaces: [
-        { ns: 'llm-pi-ai', value: { providers: { shared: { baseURL: 'https://api.example.test' } } }, base: {} },
+        { ns: 'llm-pi-ai', value: { providers: { shared: { baseURL: 'https://api.example.test' }, custom: { baseURL: 'https://custom.example.test' } } }, base: {} },
         { ns: 'adapted', value: {}, base: {} },
         { ns: 'local', value: { baseURL: 'http://127.0.0.1:11434/v1' }, base: {} },
       ] })
@@ -62,10 +64,12 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
     reason: provider.reason,
   })), [
     { id: 'adapted', capability: 'provider', requested: 'proxy', effective: 'proxy', reason: null },
+    { id: 'custom', capability: 'shared-dsh', requested: null, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
     { id: 'local', capability: 'forced-direct', requested: null, effective: 'direct', reason: 'local-provider' },
     { id: 'shared', capability: 'shared-dsh', requested: null, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
   ])
   assert.deepEqual(calls.map(call => call.method).sort(), ['llm.providers', 'settings.describe'])
+  assert.equal(result.providers.some(provider => provider.id === 'dormant'), false)
   const cache = JSON.parse(await readFile(join(root, 'providers.json'), 'utf8'))
   assert.doesNotMatch(JSON.stringify(cache), /api\.example|127\.0\.0\.1|baseURL|secret/i)
 })

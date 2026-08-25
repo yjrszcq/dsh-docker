@@ -1338,9 +1338,15 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(style, /\.proxy-scope-description \{[^}]*-webkit-line-clamp: 1;/)
   assert.match(script, /function refreshProxyDescriptions\(\)[\s\S]*preserveScrollableAncestors/)
   assert.match(script, /function renderProxyProviders\(\)[\s\S]*displayName[\s\S]*info\.className = 'proxy-provider-info'/)
+  assert.match(script, /proxy-provider-search[\s\S]*addEventListener\('input', renderProxyProviders\)/)
+  assert.match(script, /proxy-clear-password[\s\S]*getAttribute\('aria-pressed'\) === 'true'/)
   assert.match(script, /toggle\.className = 'toggle'[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = provider\.requestedPolicy === 'proxy'/)
   assert.match(html, /class="proxy-scope-card"[\s\S]*class="toggle"[\s\S]*data-proxy-scope="updates"/)
+  assert.match(html, /id="proxy-clear-password"[^>]*aria-pressed="false"/)
+  assert.match(html, /class="proxy-setting-row"[\s\S]*class="toggle"[\s\S]*id="proxy-all-proxy"/)
+  assert.match(html, /id="proxy-provider-search"[^>]*type="search"/)
   assert.match(html, /id="proxy-provider-info-dialog"[\s\S]*id="proxy-provider-info-detail"/)
+  assert.match(script, /proxy-provider-info-dialog[\s\S]*event\.target === event\.currentTarget[\s\S]*\.close\(\)/)
   assert.match(script, /function splitDirectRules\(value\)[\s\S]*noProxy:[\s\S]*bypass:/)
   assert.match(html, /id="proxy-direct-rules"/)
   assert.match(html, /id="proxy-system-rules-dialog"[\s\S]*id="proxy-system-rules-list"/)
@@ -1355,6 +1361,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /function renderFileEditorState\(\)[\s\S]*fileEditorSaving[\s\S]*fileEditorDirty/)
   assert.match(script, /const content = elements\['file-editor-content'\]\.value[\s\S]*body: \{ path, content, revision, create \}[\s\S]*fileEditorDirty = elements\['file-editor-content'\]\.value !== fileEditorOriginal/)
   assert.match(style, /\.file-editor-footer \{[^}]*justify-content: space-between;/)
+  assert.match(style, /@media \(max-width: 640px\)[\s\S]*\.plugin-draft-actions \{ display: grid; width: 100%; grid-template-columns: 1fr; \}/)
 })
 
 test('standalone console keeps localized feature parity on the shared Management API', async () => {

@@ -57,6 +57,13 @@ function baseUrlFor(provider, namespaces) {
   return undefined
 }
 
+function configuredProvider(provider, namespaces) {
+  const namespace = namespaces.get(provider.settingsNs)
+  if (namespace === undefined) return false
+  const path = Array.isArray(provider.settingsPath) ? provider.settingsPath : []
+  return path.length === 0 || nestedValue(namespace.value, path) !== undefined
+}
+
 function loopbackUrl(value) {
   if (value === undefined) return false
   let parsed
@@ -72,6 +79,7 @@ function loopbackUrl(value) {
 
 function sanitizeProvider(provider, namespaces, adaptedProviders) {
   if (!object(provider) || !validProviderId(provider.provider)) return undefined
+  if (!configuredProvider(provider, namespaces)) return undefined
   const local = loopbackUrl(baseUrlFor(provider, namespaces))
   const routingCapability = local
     ? 'forced-direct'
@@ -84,6 +92,7 @@ function sanitizeProvider(provider, namespaces, adaptedProviders) {
     type: provider.provider,
     active: provider.active === true,
     declared: provider.declared !== false,
+    configured: true,
     routingCapability,
     reason: routingCapability === 'forced-direct'
       ? 'local-provider'
@@ -111,6 +120,7 @@ function validateCache(value) {
   const providers = value.providers.map(provider => {
     if (!object(provider) || !validProviderId(provider.id) || typeof provider.displayName !== 'string'
       || typeof provider.type !== 'string' || typeof provider.active !== 'boolean' || typeof provider.declared !== 'boolean'
+      || provider.configured !== true
       || !['provider', 'shared-dsh', 'forced-direct'].includes(provider.routingCapability)
       || !(provider.reason === null || typeof provider.reason === 'string')) {
       throw new Error('cached Provider inventory entry is invalid')
@@ -199,4 +209,4 @@ export class ProviderInventory {
   }
 }
 
-export const providerInventoryInternals = Object.freeze({ baseUrlFor, loopbackUrl, validateCache })
+export const providerInventoryInternals = Object.freeze({ baseUrlFor, configuredProvider, loopbackUrl, validateCache })

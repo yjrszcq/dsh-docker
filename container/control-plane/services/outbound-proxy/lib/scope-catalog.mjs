@@ -38,7 +38,7 @@ export const PROXY_SCOPE_CATALOG = Object.freeze({
     entry('management-terminal', 'agent', 'managementTerminal', '管理中心容器终端', 'Management container terminal', '独立于 Agent 和插件终端。', 'Independent from Agent and plugin terminals.'),
     entry('docker-exec', 'direct', 'unmanaged', '宿主机执行的 docker exec Shell', 'Host-created docker exec Shell', '不受平台管理，用户自行设置代理环境。', 'Not managed by the platform; users configure its environment.'),
     entry('provider-dispatcher', 'models', 'modelApi', '已接入 dispatcher 的模型 API', 'Model APIs with dispatcher integration', '按 Provider 分别选择直连或代理。', 'Direct or proxy policy is selected per Provider.'),
-    entry('provider-shared', 'models', 'sharedDsh', '未接入 dispatcher 的模型 API', 'Model APIs without dispatcher integration', '使用共享 DSH 策略，不提供虚假的独立开关。', 'Uses shared DSH policy without a misleading independent switch.'),
+    entry('provider-shared', 'models', 'sharedDsh', '未接入 dispatcher 的模型 API', 'Model APIs without dispatcher integration', '使用 DSH 共享流量策略；DSH 核心或 DSH 插件任一范围启用时即使用代理。', 'Uses the shared DSH traffic policy; the proxy is used when either DSH Core or DSH Plugins is enabled.'),
     entry('provider-local', 'direct', 'forcedDirect', '本地模型 Provider', 'Local model Providers', '本地地址强制直连。', 'Local addresses are always direct.'),
     entry('gateway-dsh', 'direct', 'direct', 'Gateway 到 DSH 的本地转发', 'Local Gateway-to-DSH forwarding', '容器内部 loopback 通信。', 'Container-internal loopback communication.'),
     entry('platform-sockets', 'direct', 'direct', 'Management、Bootstrap、Stage-0 的 Unix socket', 'Management, Bootstrap, and Stage-0 Unix sockets', '本地控制协议不使用代理。', 'Local control protocols do not use the proxy.'),
@@ -46,7 +46,7 @@ export const PROXY_SCOPE_CATALOG = Object.freeze({
   ]),
   summaries: Object.freeze([
     Object.freeze({ zh: '本地平台通信始终直连。', en: 'Local platform communication is always direct.' }),
-    Object.freeze({ zh: '已接入 dispatcher 的模型 API 按 Provider 配置；其他模型请求使用共享 DSH 策略。', en: 'Dispatcher-integrated model APIs use per-Provider policy; other model requests use shared DSH policy.' }),
+    Object.freeze({ zh: '已接入 dispatcher 的模型 API 按 Provider 配置；其他模型请求使用 DSH 共享流量策略（DSH 核心或 DSH 插件任一启用即代理）。', en: 'Dispatcher-integrated model APIs use per-Provider policy; other model requests use the shared DSH policy (proxy when either DSH Core or DSH Plugins is enabled).' }),
     Object.freeze({ zh: 'docker exec 创建的 Shell 不受平台代理设置管理。', en: 'Shells created with docker exec are not managed by platform proxy settings.' }),
   ]),
 })

@@ -472,6 +472,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-direct-rules-field textarea { box-sizing: border-box; width: 100%; min-height: 92px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxy-direct-rules-field small { color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-form-grid > label, .proxy-rules-grid > label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
+.proxy-password-field { display: flex; min-width: 0; align-items: end; gap: 8px; }
+.proxy-password-field > label { display: grid; min-width: 0; flex: 1; gap: 6px; color: var(--muted); font-size: 12px; }
+.proxy-password-field > label > span { color: var(--text); font-weight: 500; }
+.proxy-clear-password { flex: none; min-height: 36px; }
+.proxy-clear-password[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .proxy-form-grid input, .proxy-form-grid select, .proxy-rules-grid textarea { width: 100%; }
 .proxy-form-grid input, .proxy-form-grid select { min-height: 36px; }
 .proxy-rules-grid textarea { resize: vertical; min-height: 92px; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -480,6 +485,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-check-row { display: flex !important; align-items: flex-start; gap: 9px; margin-top: 12px; color: var(--text) !important; }
 .proxy-check-row[hidden] { display: none !important; }
 .proxy-check-row input { width: auto !important; min-height: 0 !important; margin-top: 3px; }
+.proxy-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; color: var(--text); }
+.proxy-setting-row > span { min-width: 0; }
+.proxy-setting-row strong, .proxy-setting-row small { display: block; }
+.proxy-setting-row small { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 17px; }
+.proxy-setting-row > .toggle { width: auto; justify-self: end; }
 .proxy-hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-scope-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .proxy-scope-copy { min-width: 0; }
@@ -491,6 +501,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-scope-description.expandable { cursor: pointer; }
 .proxy-scope-description.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxy-provider-list { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; scrollbar-gutter: stable; }
+.proxy-provider-heading > h2 { margin-bottom: 2px; }
+.proxy-provider-heading > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.proxy-provider-heading p { min-width: 0; flex: 1; margin: 0; color: var(--muted); font-size: 13px; line-height: 20px; }
+.proxy-provider-heading input { box-sizing: border-box; width: min(320px, 45%); height: 34px; flex: none; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 12px; }
 .proxy-provider-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--border); }
 .proxy-provider-item > .toggle { justify-self: end; }
 .proxy-provider-item:last-child { border-bottom: 0; }
@@ -827,8 +841,12 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .plugin-actions { justify-content: space-between; }
   .plugin-actions .toggle { width: auto; }
   .plugin-restart-notice { align-items: stretch; flex-direction: column; }
-  .plugin-draft-actions { width: 100%; }
-  .plugin-draft-actions button { flex: 1; }
+  .plugin-draft-actions { display: grid; width: 100%; grid-template-columns: 1fr; }
+  .plugin-draft-actions button { width: 100%; }
+  .proxy-password-field { align-items: stretch; flex-direction: column; }
+  .proxy-clear-password { width: 100%; }
+  .proxy-provider-heading > div { align-items: stretch; flex-direction: column; gap: 8px; }
+  .proxy-provider-heading input { width: 100%; }
   .list-pagination { justify-content: space-between; flex-wrap: wrap; }
   .user-plugin-row { grid-template-columns: 1fr; align-items: stretch; }
   .user-plugin-controls { justify-content: space-between; align-self: stretch; }

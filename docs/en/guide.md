@@ -351,7 +351,7 @@ Modified HTML uses `Cache-Control: no-cache` and drops invalid upstream validato
 
 The **Proxy** tab in the standalone Management Console and the DSH **Platform Management** settings configures an existing HTTP or SOCKS5 proxy. This is outbound routing, not another public proxy service. Gateway remains the inbound browser reverse proxy and starts first so holding pages are available while Outbound Proxy and the rest of the Control Plane start. No outbound-proxy port is published by Docker.
 
-The master switch and each source switch are independent. Managed traffic is divided into updates, platform components, DSH core, DSH plugins, Agent network operations, and the Management container terminal. Model API routing is configured by Provider. Verified fetch-based Providers can be selected independently; a Provider marked **Follow DSH** uses the shared DSH policy because its current client cannot carry a stable Provider identity end to end. Loopback and other local Providers are always direct.
+The master switch and each source switch are independent. Managed traffic is divided into updates, platform components, DSH core, DSH plugins, Agent network operations, and the Management container terminal. Model API routing is configured by Provider. Verified fetch-based Providers can be selected independently; a Provider marked **Follow DSH** uses shared DSH traffic because its current client cannot carry a stable Provider identity end to end, so it uses the proxy when either DSH Core or DSH Plugins is enabled. Loopback and other local Providers are always direct.
 
 | Loopback port | Scope |
 | --- | --- |

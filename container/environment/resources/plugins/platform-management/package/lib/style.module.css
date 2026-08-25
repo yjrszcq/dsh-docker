@@ -519,12 +519,22 @@ a.secondaryButton { text-decoration: none; }
 .proxyDirectRulesField textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 6px 9px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyDirectRulesField small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyFormGrid > label, .proxyRulesGrid > label { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.proxyPasswordField { display: flex; min-width: 0; align-items: end; gap: 8px; }
+.proxyPasswordField > label { display: grid; min-width: 0; flex: 1; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.proxyPasswordField > label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
+.proxyClearPassword { min-height: 34px; flex: none; padding: 5px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.proxyClearPassword[aria-pressed='true'] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent); }
 .proxyFormGrid input, .proxyFormGrid select, .proxyRulesGrid textarea { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
 .proxyRulesGrid textarea { min-height: 88px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyFormGrid label > span, .proxyRulesGrid label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyRulesGrid small, .proxyCheckRow small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyCheckRow { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
 .proxyCheckRow input { flex: none; margin-top: 3px; }
+.proxySettingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
+.proxySettingRow > span { min-width: 0; }
+.proxySettingRow b, .proxySettingRow small { display: block; }
+.proxySettingRow small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
+.proxySettingRow > .toggle { width: auto; justify-self: end; }
 .proxyHint { margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
 .proxyScopeCopy { min-width: 0; }
@@ -536,6 +546,9 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeDescription.expandable { cursor: pointer; }
 .proxyScopeDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxyProviderList { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; scrollbar-gutter: stable; }
+.proxyProviderHeading > h3 { margin: 0 0 2px; font-size: 16px; line-height: 24px; font-weight: 500; }
+.proxyProviderHeading > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.proxyProviderHeading p { min-width: 0; flex: 1; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyProvider > .toggle { justify-self: end; }
 .proxyProvider:last-child { border-bottom: 0; }
@@ -957,8 +970,12 @@ a.secondaryButton { text-decoration: none; }
   .pluginActions { justify-content: space-between; }
   .pluginActions .toggle { width: auto; }
   .pluginRestartNotice { align-items: stretch; flex-direction: column; }
-  .pluginDraftActions { width: 100%; }
-  .pluginDraftActions button { flex: 1; }
+  .pluginDraftActions { display: grid; width: 100%; grid-template-columns: 1fr; }
+  .pluginDraftActions button { width: 100%; }
+  .proxyPasswordField { align-items: stretch; flex-direction: column; }
+  .proxyClearPassword { width: 100%; }
+  .proxyProviderHeading > div { align-items: stretch; flex-direction: column; gap: 8px; }
+  .proxyProviderHeading .resourceSearch { width: 100%; margin-left: 0; }
   .managedBadge { justify-self: start; }
   .listPagination { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
   .listPagination > span { grid-column: 1; grid-row: 1; }

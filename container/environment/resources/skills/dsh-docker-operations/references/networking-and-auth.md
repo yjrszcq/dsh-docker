@@ -14,7 +14,7 @@ Do not weaken Host/Origin checks to work around a reverse-proxy error. Diagnose 
 
 Configure an existing HTTP or SOCKS5 proxy through the **Proxy** tab in the DSH Management Console or Platform Management. Do not edit `/data/platform/state/proxy`, read the Outbound Proxy process environment, or call `/run/dsh-platform/outbound-proxy.sock` directly. Proxy credentials are write-only and must never be recovered from files or logs.
 
-The UI can route updates, platform components, DSH core/plugins, Agent network operations, the Management container terminal, and verified model Providers independently. A model Provider marked **Follow DSH** uses the shared DSH policy; do not claim that it has independent routing. Local Providers remain direct. Host-side `docker exec` commands are not classified by the platform.
+The UI can route updates, platform components, DSH core/plugins, Agent network operations, the Management container terminal, and verified model Providers independently. A model Provider marked **Follow DSH** uses shared DSH traffic, which is proxied when either DSH Core or DSH Plugins is enabled; do not claim that it has independent routing. Local Providers remain direct. Host-side `docker exec` commands are not classified by the platform.
 
 For Agent-issued `curl`, Git, npm, pnpm, and similar commands, preserve the injected `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and optional `ALL_PROXY` environment. Do not replace these with the external proxy URL or expose its credentials. Tool support for `ALL_PROXY` varies; inspect the tool's current documentation or behavior before relying on it.
 
