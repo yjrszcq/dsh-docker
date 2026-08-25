@@ -162,13 +162,13 @@ const controlPlane = new EnvironmentRunner({
   environmentRoot: join(import.meta.dirname, '..', '..', 'control-plane'),
   loader: loadControlPlane,
   capture,
-  prepareService: component => component.id === 'proxy-manager'
+  prepareService: component => component.id === 'outbound-proxy'
     ? {
         environment: { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken },
         release: () => {},
       }
     : { environment: {}, release: () => {} },
-  recoverableComponents: ['proxy-manager'],
+  recoverableComponents: ['outbound-proxy'],
   report: reportLifecycle,
 })
 const environment = new EnvironmentRunner({

@@ -53,7 +53,7 @@ export class PlatformPaths {
     this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
     this.snapshotSocket = join(this.runRoot, 'snapshot.sock')
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
-    this.proxyControlSocket = join(this.runRoot, 'proxy-manager.sock')
+    this.proxyControlSocket = join(this.runRoot, 'outbound-proxy.sock')
     this.proxyLaunchSocket = join(this.runRoot, 'proxy-launch.sock')
     this.recoverySocket = join(this.runRoot, 'recovery.sock')
   }

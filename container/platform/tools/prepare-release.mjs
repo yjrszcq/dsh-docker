@@ -151,7 +151,7 @@ try {
     'platform/bootstrap', 'platform/lib',
     'control-plane/definition.json', 'control-plane/hooks/recovery', 'control-plane/hooks/dsh-web-ready.mjs',
     'environment/resources/skills',
-    'control-plane/services/gateway', 'control-plane/services/proxy-manager', 'control-plane/modules/log-manager',
+    'control-plane/services/gateway', 'control-plane/services/proxy', 'control-plane/modules/log-manager',
     'control-plane/services/management', 'control-plane/modules/patch-manager',
     'control-plane/modules/plugin-manager', 'control-plane/modules/skill-manager',
     'control-plane/modules/updater', 'control-plane/modules/file-manager',

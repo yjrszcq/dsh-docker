@@ -111,13 +111,13 @@ const proxyBroker = new ProxyLaunchBroker({
   token: proxyLaunchToken,
   dataRoot,
   runRoot,
-  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'proxy-manager', 'index.mjs'),
+  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'proxy', 'index.mjs'),
   controlSocket: paths.proxyControlSocket,
   uid: proxyUid,
   gid: proxyGid,
   platformGid,
   capture: (child, source, declaration) => logs.capture(child, source, declaration),
-  report: (message, fields) => logs.diagnostic('proxy-manager', message, fields),
+  report: (message, fields) => logs.diagnostic('outbound-proxy', message, fields),
 })
 const proxyLaunchServer = createProxyLaunchServer({
   broker: proxyBroker,

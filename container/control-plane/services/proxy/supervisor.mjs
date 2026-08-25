@@ -16,7 +16,7 @@ if (process.argv[2] === 'health') {
 
 const token = process.env.DSH_PROXY_LAUNCH_TOKEN
 delete process.env.DSH_PROXY_LAUNCH_TOKEN
-if (typeof token !== 'string' || token.length < 32) throw new Error('Proxy Manager launch token is unavailable')
+if (typeof token !== 'string' || token.length < 32) throw new Error('Proxy launch token is unavailable')
 await launch.request('POST', '/v1/start', { token })
 
 let stopping = false

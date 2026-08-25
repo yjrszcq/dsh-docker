@@ -133,7 +133,7 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   assert.equal(inventory.deployment.dshVersion, '0.1.0-rc.fixture')
   assert.equal((await lstat(join(output, 'bootstrap/1.0.0/control-plane/services/management/node_modules/ws/index.js'))).isFile(), true)
   assert.equal((await lstat(join(output, 'bootstrap/1.0.0/control-plane/services/management/node_modules/@xterm/xterm/css/xterm.css'))).isFile(), true)
-  assert.equal((await lstat(join(output, 'bootstrap/1.0.0/control-plane/services/proxy-manager/index.mjs'))).isFile(), true)
+  assert.equal((await lstat(join(output, 'bootstrap/1.0.0/control-plane/services/proxy/index.mjs'))).isFile(), true)
   assert.equal((await lstat(join(output, 'bootstrap/1.0.0/control-plane/skills/dsh-docker-operations/SKILL.md'))).isFile(), true)
   assert.equal(await readlink(join(output, 'pristine/0.1.0-rc.fixture/node_modules/.bin/tool')), '../tool/bin.js')
   assert.equal(await readlink(join(output, 'runtime/0.1.0-rc.fixture/package/node_modules/.bin/tool')), '../tool/bin.js')

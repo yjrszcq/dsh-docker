@@ -122,7 +122,7 @@ export class ProxyLaunchBroker {
     })
     this.child = child
     this.ready = undefined
-    this.capture(child, 'proxy-manager', { stdout: true, stderr: true })
+    this.capture(child, 'outbound-proxy', { stdout: true, stderr: true })
     const ready = new Promise((resolve, reject) => {
       child.once('error', reject)
       child.once('exit', (code, signal) => reject(new Error(
@@ -150,12 +150,12 @@ export class ProxyLaunchBroker {
         await chown(this.controlSocket, this.uid, this.platformGid)
         await chmod(this.controlSocket, 0o660)
       }
-      await this.report('proxy-manager.launch.completed', { pid: child.pid ?? null })
+      await this.report('outbound-proxy.launch.completed', { pid: child.pid ?? null })
       child.once('exit', (code, signal) => {
         if (this.child !== child) return
         this.child = undefined
         this.ready = undefined
-        void this.report('proxy-manager.exited', {
+        void this.report('outbound-proxy.exited', {
           level: code === 0 || signal === 'SIGTERM' ? 'info' : 'error', code, signal,
         })
       })
@@ -168,7 +168,7 @@ export class ProxyLaunchBroker {
       }
       if (this.child === child) this.child = undefined
       this.ready = undefined
-      await this.report('proxy-manager.launch.failed', { error })
+      await this.report('outbound-proxy.launch.failed', { error })
       throw error
     } finally {
       clearTimeout(timer)
@@ -194,7 +194,7 @@ export class ProxyLaunchBroker {
     }
     if (this.child === child) this.child = undefined
     this.ready = undefined
-    await this.report('proxy-manager.stop.completed')
+    await this.report('outbound-proxy.stop.completed')
     return this.status()
   }
 }

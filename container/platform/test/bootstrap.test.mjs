@@ -296,13 +296,13 @@ test('recovers an opted-in service exit without stopping sibling services', asyn
   const sibling = join(temp, 'sibling.mjs')
   await writeFile(recoverable, `import { existsSync, writeFileSync } from 'node:fs'; if (!existsSync(process.argv[2])) { writeFileSync(process.argv[2], '1'); setTimeout(() => process.exit(7), 20) } else setInterval(() => {}, 1000)`)
   await writeFile(sibling, 'setInterval(() => {}, 1000)')
-  const candidate = component('proxy-manager', recoverable, 'service')
+  const candidate = component('outbound-proxy', recoverable, 'service')
   candidate.command = command(recoverable, [counter])
   const reports = []
   const runner = new EnvironmentRunner({
     environmentRoot: await environment([candidate, component('management', sibling, 'service')]),
     capture: () => {},
-    recoverableComponents: ['proxy-manager'],
+    recoverableComponents: ['outbound-proxy'],
     recoveryDelaysMs: [0, 0, 0],
     report: (message, fields) => { reports.push({ message, fields }) },
   })
@@ -312,7 +312,7 @@ test('recovers an opted-in service exit without stopping sibling services', asyn
     if (Date.now() >= deadline) throw new Error('recoverable component did not restart')
     await new Promise(resolve => setTimeout(resolve, 10))
   }
-  assert.deepEqual(runner.status().components.map(value => value.id), ['proxy-manager', 'management'])
+  assert.deepEqual(runner.status().components.map(value => value.id), ['outbound-proxy', 'management'])
   assert.equal(reports.some(report => report.message === 'component.exited'), true)
   assert.equal(await Promise.race([
     runner.fatal.then(() => 'fatal'),
@@ -328,16 +328,16 @@ test('isolates a persistently failing opted-in component and starts later servic
   const reports = []
   const runner = new EnvironmentRunner({
     environmentRoot: await environment([
-      component('proxy-manager', service, 'service'),
+      component('outbound-proxy', service, 'service'),
       component('management', service, 'service'),
     ]),
     capture: () => {},
-    recoverableComponents: ['proxy-manager'],
+    recoverableComponents: ['outbound-proxy'],
     recoveryDelaysMs: [0, 0, 0],
     report: (message, fields) => { reports.push({ message, fields }) },
   })
   const start = runner.startComponentUnlocked.bind(runner)
-  runner.startComponentUnlocked = (candidate, prepare) => candidate.id === 'proxy-manager'
+  runner.startComponentUnlocked = (candidate, prepare) => candidate.id === 'outbound-proxy'
     ? Promise.reject(new Error('proxy port conflict'))
     : start(candidate, prepare)
   await runner.start()
@@ -609,7 +609,7 @@ test('loads the checked-in Control Plane independently from an Environment manif
   ))
   assert.equal(controlPlane.manifest.version, null)
   assert.deepEqual(controlPlane.components.map(component => component.id), [
-    'gateway', 'proxy-manager', 'platform-recovery', 'platform-management',
+    'gateway', 'outbound-proxy', 'platform-recovery', 'platform-management',
   ])
 })
 

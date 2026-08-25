@@ -6,8 +6,8 @@
       "source": "services/gateway/component.json"
     },
     {
-      "id": "proxy-manager",
-      "source": "services/proxy-manager/component.json"
+      "id": "outbound-proxy",
+      "source": "services/proxy/component.json"
     },
     {
       "id": "platform-recovery",
