@@ -2,6 +2,7 @@ import { Agent, createServer, request as httpRequest } from 'node:http'
 import { ProxyDnsCache } from './dns-cache.mjs'
 import { connectTcp, basicProxyAuthorization, connectThroughHttpProxy, connectThroughSocks5, PROXY_TIMEOUTS, ProxyTransportError } from './transport.mjs'
 import { selectProxyRoute } from './policy.mjs'
+import { ProxyRouteHealth } from './route-health.mjs'
 
 const MAX_HEADER_LINE_BYTES = 64 * 1024
 const MAX_CONNECT_AUTHORITY_BYTES = 1024
@@ -42,6 +43,12 @@ function errorFields(error) {
     return { statusCode: error.statusCode, code: error.code, message: error.message }
   }
   return { statusCode: 502, code: 'UPSTREAM_CONNECT_FAILED', message: 'upstream connection failed' }
+}
+
+function observeRouteHealth(context, snapshot, outcome) {
+  if (context.getSnapshot().revision === snapshot.revision) {
+    context.routeHealth.observe(snapshot, context.scope, outcome)
+  }
 }
 
 function checkHeaderLimits(request) {
@@ -240,6 +247,8 @@ async function handleHttp(request, response, context) {
     return proxyError(response, invalid ? 400 : 501, invalid ? 'INVALID_PROXY_REQUEST' : 'UNSUPPORTED_TARGET_SCHEME', invalid ? 'absolute-form HTTP target required' : 'target scheme is not supported')
   }
   let upstream
+  let route
+  let snapshot
   const cancellation = new AbortController()
   request.once('aborted', () => cancellation.abort())
   response.once('close', () => {
@@ -247,8 +256,8 @@ async function handleHttp(request, response, context) {
   })
   try {
     request.pause()
-    const snapshot = context.getSnapshot()
-    const route = await selectProxyRoute({
+    snapshot = context.getSnapshot()
+    route = await selectProxyRoute({
       snapshot, scope: context.scope, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
@@ -266,6 +275,7 @@ async function handleHttp(request, response, context) {
       headers,
       agent,
       signal: cancellation.signal,
+      maxHeaderSize: 256 * 1024,
       dshProxyTargetHost: target.host,
       dshProxyTargetPort: target.port,
       dshProxySignal: cancellation.signal,
@@ -276,9 +286,11 @@ async function handleHttp(request, response, context) {
     request.once('aborted', () => upstream.destroy())
     upstream.once('response', incoming => {
       if (proxied && incoming.statusCode === 407) {
+        observeRouteHealth(context, snapshot, 'degraded')
         incoming.socket.destroy()
         return proxyError(response, 502, 'UPSTREAM_PROXY_AUTH_FAILED', 'upstream proxy authentication failed')
       }
+      if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
       incoming.socket.setTimeout(PROXY_TIMEOUTS.streamIdleMs, () => incoming.destroy(new ProxyTransportError('upstream response timed out', {
         code: 'UPSTREAM_TIMEOUT', statusCode: 504,
       })))
@@ -291,6 +303,7 @@ async function handleHttp(request, response, context) {
       incoming.once('error', error => response.destroy(error))
     })
     upstream.once('error', error => {
+      if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
       const fields = errorFields(error)
       proxyError(response, fields.statusCode, fields.code, fields.message)
     })
@@ -302,6 +315,7 @@ async function handleHttp(request, response, context) {
     request.resume()
   } catch (error) {
     upstream?.destroy()
+    if (route?.mode !== undefined && route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
     const fields = errorFields(error)
     proxyError(response, fields.statusCode, fields.code, fields.message)
   }
@@ -325,14 +339,18 @@ async function handleUpgrade(request, socket, head, context) {
     return socketError(socket, invalid ? 400 : 501, invalid ? 'INVALID_PROXY_REQUEST' : 'UNSUPPORTED_TARGET_SCHEME', invalid ? 'absolute-form WS target required' : 'target scheme is not supported')
   }
   const cancellation = new AbortController()
+  let route
+  let snapshot
   socket.once('close', () => cancellation.abort())
   try {
-    const route = await selectProxyRoute({
-      snapshot: context.getSnapshot(), scope: context.scope, host: target.host, port: target.port,
+    snapshot = context.getSnapshot()
+    route = await selectProxyRoute({
+      snapshot, scope: context.scope, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     if (!['direct', 'http', 'socks5'].includes(route.mode)) throw new ProxyTransportError('configured proxy protocol is not available', { code: 'PROXY_PROTOCOL_UNAVAILABLE' })
     const connected = await httpConnection(route, target, cancellation.signal)
+    if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
     const authorization = route.mode === 'http' ? basicProxyAuthorization(route.endpoint.username, route.endpoint.password) : null
     const preface = rawRequest(request, target, { absolute: route.mode === 'http', authorization })
     bridge(socket, connected.socket, {
@@ -341,6 +359,7 @@ async function handleUpgrade(request, socket, head, context) {
       timeoutMs: PROXY_TIMEOUTS.streamIdleMs,
     })
   } catch (error) {
+    if (route?.mode !== undefined && route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
     const fields = errorFields(error)
     socketError(socket, fields.statusCode, fields.code, fields.message)
   }
@@ -351,13 +370,17 @@ async function handleConnect(request, socket, head, context) {
   const target = parseAuthority(request.url ?? '')
   if (target === null) return socketError(socket, 400, 'INVALID_CONNECT_AUTHORITY', 'CONNECT authority is invalid')
   const cancellation = new AbortController()
+  let route
+  let snapshot
   socket.once('close', () => cancellation.abort())
   try {
-    const route = await selectProxyRoute({
-      snapshot: context.getSnapshot(), scope: context.scope, host: target.host, port: target.port,
+    snapshot = context.getSnapshot()
+    route = await selectProxyRoute({
+      snapshot, scope: context.scope, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     const connected = await routeSocket(route, target, cancellation.signal)
+    if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
     socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
     bridge(socket, connected.socket, {
       leftHead: head,
@@ -365,13 +388,21 @@ async function handleConnect(request, socket, head, context) {
       timeoutMs: PROXY_TIMEOUTS.tunnelIdleMs,
     })
   } catch (error) {
+    if (route?.mode !== undefined && route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
     const fields = errorFields(error)
     socketError(socket, fields.statusCode, fields.code, fields.message)
   }
 }
 
-export function createScopedProxyServer({ scope, getSnapshot, resolver, dnsCache = new ProxyDnsCache({ resolver }), agentPool = new ProxyAgentPool() }) {
-  const context = Object.freeze({ scope, getSnapshot, dnsCache, agentPool })
+export function createScopedProxyServer({
+  scope,
+  getSnapshot,
+  resolver,
+  dnsCache = new ProxyDnsCache({ resolver }),
+  agentPool = new ProxyAgentPool(),
+  routeHealth = new ProxyRouteHealth(),
+}) {
+  const context = Object.freeze({ scope, getSnapshot, dnsCache, agentPool, routeHealth })
   const server = createServer({ maxHeaderSize: 256 * 1024, allowHalfOpen: true }, (request, response) => {
     void handleHttp(request, response, context)
   })

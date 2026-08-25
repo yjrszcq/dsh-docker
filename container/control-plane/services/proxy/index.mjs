@@ -8,6 +8,7 @@ import { PROXY_PORTS } from './lib/contracts.mjs'
 import { createScopedProxyServer, ProxyAgentPool } from './lib/data-plane.mjs'
 import { ProxyDnsCache } from './lib/dns-cache.mjs'
 import { probeProxyEntry } from './lib/readiness.mjs'
+import { ProxyRouteHealth } from './lib/route-health.mjs'
 import { ProxyConfigurationStore } from './lib/store.mjs'
 
 const paths = new PlatformPaths(
@@ -19,9 +20,10 @@ let snapshot = await store.load()
 const listeners = []
 const dnsCache = new ProxyDnsCache()
 const agentPool = new ProxyAgentPool()
+const routeHealth = new ProxyRouteHealth()
 
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
-  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot, dnsCache, agentPool })
+  const server = createScopedProxyServer({ scope, getSnapshot: () => snapshot, dnsCache, agentPool, routeHealth })
   await new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, '127.0.0.1', resolve)
@@ -29,7 +31,6 @@ for (const [scope, port] of Object.entries(PROXY_PORTS)) {
   listeners.push(server)
 }
 await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))
-const routeHealth = Object.freeze(Object.fromEntries(Object.keys(PROXY_PORTS).map(scope => [scope, 'ready'])))
 
 const control = createHttpServer((request, response) => {
   if (request.method === 'GET' && request.url === '/v1/status') {
@@ -38,7 +39,7 @@ const control = createHttpServer((request, response) => {
       componentReady: true,
       revision: snapshot.revision,
       recovery: snapshot.recovery,
-      routeHealth,
+      routeHealth: routeHealth.status(snapshot),
     })}\n`)
     return
   }

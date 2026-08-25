@@ -7,6 +7,7 @@ import test from 'node:test'
 import { defaultProxyConfiguration, validateProxyConfiguration } from '../../control-plane/services/proxy/lib/contracts.mjs'
 import { createScopedProxyServer } from '../../control-plane/services/proxy/lib/data-plane.mjs'
 import { probeProxyEntry } from '../../control-plane/services/proxy/lib/readiness.mjs'
+import { ProxyRouteHealth } from '../../control-plane/services/proxy/lib/route-health.mjs'
 import { ProxyDnsCache } from '../../control-plane/services/proxy/lib/dns-cache.mjs'
 import { selectProxyRoute } from '../../control-plane/services/proxy/lib/policy.mjs'
 import { connectThroughSocks5 } from '../../control-plane/services/proxy/lib/transport.mjs'
@@ -164,6 +165,20 @@ test('readiness probes one local proxy entry without contacting an upstream', as
   await probeProxyEntry(port)
 })
 
+test('keeps local readiness separate from revision-scoped external route health', async () => {
+  const health = new ProxyRouteHealth()
+  const direct = Object.freeze({ ...snapshot(), revision: 'direct-revision' })
+  assert.equal(health.status(direct).updates, 'direct')
+  const enabled = Object.freeze({ ...snapshot({ proxyPort: 65534 }), revision: 'enabled-revision' })
+  assert.equal(health.status(enabled).updates, 'unknown')
+  health.observe(enabled, 'updates', 'degraded')
+  assert.equal(health.status(enabled).updates, 'degraded')
+  health.observe(enabled, 'updates', 'ready')
+  assert.equal(health.status(enabled).updates, 'ready')
+  const next = Object.freeze({ ...enabled, revision: 'next-revision' })
+  assert.equal(health.status(next).updates, 'unknown')
+})
+
 function socksFixture({ username = null, password = null, rejectAuth = false, rejectConnect = false, connectTarget = true, sticky = '' } = {}) {
   const observations = []
   const server = createNetServer({ allowHalfOpen: true }, socket => {
@@ -310,7 +325,8 @@ test('forwards HTTP through an external proxy with in-memory Basic authenticatio
   })
   const upstreamPort = await listen(upstreamProxy)
   const state = snapshot({ proxyPort: upstreamPort })
-  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const routeHealth = new ProxyRouteHealth()
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state, routeHealth })
   const proxyPort = await listen(proxy)
   try {
     const result = await proxyRequest({ proxyPort, target: 'http://example.invalid/resource?q=1' })
@@ -321,6 +337,7 @@ test('forwards HTTP through an external proxy with in-memory Basic authenticatio
       authorization: `Basic ${Buffer.from('proxy-user:proxy-password').toString('base64')}`,
       host: 'example.invalid',
     })
+    assert.equal(routeHealth.status(state).updates, 'ready')
   } finally {
     await close(proxy)
     await close(upstreamProxy)
@@ -334,7 +351,8 @@ test('maps external HTTP proxy authentication failures to a redacted local 502',
   })
   const upstreamPort = await listen(upstreamProxy)
   const state = snapshot({ proxyPort: upstreamPort })
-  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const routeHealth = new ProxyRouteHealth()
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state, routeHealth })
   const proxyPort = await listen(proxy)
   try {
     const result = await proxyRequest({ proxyPort, target: 'http://example.invalid/' })
@@ -342,6 +360,7 @@ test('maps external HTTP proxy authentication failures to a redacted local 502',
     assert.equal(result.headers['x-dsh-proxy-error'], 'UPSTREAM_PROXY_AUTH_FAILED')
     assert.equal(result.headers['proxy-authenticate'], undefined)
     assert.equal(result.body.toString().includes('credential details'), false)
+    assert.equal(routeHealth.status(state).updates, 'degraded')
   } finally {
     await close(proxy)
     await close(upstreamProxy)
@@ -406,6 +425,28 @@ test('establishes authenticated CONNECT through an external HTTP proxy and prese
     socket.write('echo')
     const [chunk] = await once(socket, 'data')
     assert.equal(chunk.toString(), 'echo')
+  } finally {
+    socket?.destroy()
+    await close(proxy)
+    await close(upstreamProxy)
+  }
+})
+
+test('rejects an oversized external HTTP proxy handshake line', async () => {
+  const upstreamProxy = createNetServer(socket => {
+    socket.once('data', () => socket.write(`HTTP/1.1 200 Connection Established\r\nX-Oversized: ${'x'.repeat(64 * 1024)}\r\n\r\n`))
+  })
+  const upstreamPort = await listen(upstreamProxy)
+  const state = snapshot({ proxyPort: upstreamPort })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  let socket
+  try {
+    const exchange = await rawExchange(proxyPort, 'CONNECT target.example:443 HTTP/1.1\r\nHost: target.example:443\r\n\r\n', {
+      waitFor: 'UPSTREAM_HEADERS_TOO_LARGE',
+    })
+    socket = exchange.socket
+    assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 502 /)
   } finally {
     socket?.destroy()
     await close(proxy)
@@ -733,7 +774,7 @@ test('times out a silent SOCKS5 handshake and closes its transport', async () =>
     await assert.rejects(connectThroughSocks5({
       endpoint: { host: '127.0.0.1', port, username: '', password: null, remoteDns: true },
       targetHost: 'timeout.invalid', targetPort: 443, timeoutMs: 30,
-    }), error => error.code === 'UPSTREAM_TIMEOUT' && error.statusCode === 504)
+    }), error => error.code === 'PROXY_CONNECT_TIMEOUT' && error.statusCode === 504)
     await upstreamClosed
   } finally {
     await close(hanging)

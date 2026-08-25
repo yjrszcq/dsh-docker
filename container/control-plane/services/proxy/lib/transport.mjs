@@ -21,7 +21,7 @@ export class ProxyTransportError extends Error {
 
 function timeoutError(stage) {
   return new ProxyTransportError(`${stage} timed out`, {
-    code: 'UPSTREAM_TIMEOUT',
+    code: 'PROXY_CONNECT_TIMEOUT',
     statusCode: 504,
   })
 }
@@ -70,6 +70,15 @@ export function basicProxyAuthorization(username, password) {
   return `Basic ${Buffer.from(`${username}:${password ?? ''}`, 'utf8').toString('base64')}`
 }
 
+function validateHttpHeadLimits(head) {
+  const lines = head.toString('latin1').split('\r\n')
+  if (lines.length - 2 > 256 || lines.some(line => Buffer.byteLength(line, 'latin1') > 64 * 1024)) {
+    throw new ProxyTransportError('upstream response headers are too large', {
+      code: 'UPSTREAM_HEADERS_TOO_LARGE',
+    })
+  }
+}
+
 export async function readHttpHead(socket, {
   maxBytes = 256 * 1024,
   timeoutMs = PROXY_TIMEOUTS.handshakeMs,
@@ -106,6 +115,7 @@ export async function connectThroughHttpProxy({ endpoint, targetHost, targetPort
   ].join('\r\n'))
   try {
     const result = await readHttpHead(socket, { signal })
+    validateHttpHeadLimits(result.head)
     const first = result.head.subarray(0, result.head.indexOf('\r\n')).toString('latin1')
     const match = /^HTTP\/1\.[01] ([0-9]{3})(?: |$)/.exec(first)
     if (match === null) throw new ProxyTransportError('upstream proxy returned an invalid response')
