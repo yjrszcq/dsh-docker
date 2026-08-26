@@ -1686,7 +1686,7 @@ function ProxySettings({ active, t }) {
               onClick: () => componentDialog.current?.showModal(),
             }, h('svg', { viewBox: '0 0 24 24', 'aria-hidden': true },
               h('circle', { cx: '12', cy: '12', r: '10' }),
-              h('path', { d: 'M12 8v4' }), h('path', { d: 'M12 16h.01' }))) : null),
+              h('path', { d: 'M12 6.5v7' }), h('path', { d: 'M12 17.5h.01' }))) : null),
           h('small', null, t('proxyMasterDetail'))),
         h('label', { className: css.toggle, 'aria-label': t('proxyMaster'), ...toggleScrollHandlers },
           h('input', { type: 'checkbox', checked: configuration.enabled === true, disabled: busy, onChange: event => preserveToggleScroll(event.currentTarget, () => { void saveImmediate(next => { next.enabled = event.target.checked }) }) }),

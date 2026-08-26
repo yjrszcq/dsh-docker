@@ -177,7 +177,7 @@ section {
 .proxy-component-alert:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .proxy-component-alert svg { width: 17px; height: 17px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .proxy-component-alert circle { fill: var(--danger); stroke: var(--danger); }
-.proxy-component-alert path { stroke: #fff; }
+.proxy-component-alert path { stroke: #fff; stroke-width: 2.8; }
 .lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 button.primary, button.secondary, button.danger, button.danger-text, button.compact {

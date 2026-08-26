@@ -527,7 +527,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyComponentAlert:hover { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
 .proxyComponentAlert svg { width: 16px; height: 16px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .proxyComponentAlert circle { fill: var(--dsw-alias-state-error-primary); stroke: var(--dsw-alias-state-error-primary); }
-.proxyComponentAlert path { stroke: var(--dsw-alias-label-primary-foreground); }
+.proxyComponentAlert path { stroke: var(--dsw-alias-label-primary-foreground); stroke-width: 2.8; }
 .proxyPasswordRow { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; }
 .proxyPasswordRow > .secondaryButton { justify-self: end; }
 .proxyPasswordField { display: flex; min-width: 0; align-items: end; gap: 8px; }

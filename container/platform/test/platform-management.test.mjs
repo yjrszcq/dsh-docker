@@ -565,6 +565,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /proxyMasterDetail[\s\S]*saveImmediate\(next => \{ next\.enabled = event\.target\.checked \}\)/)
   assert.ok(source.indexOf("'platform-proxy-master-title'") < source.indexOf("'platform-proxy-title'"))
   assert.match(source, /h\('h3', \{ id: 'platform-proxy-master-title' \}[\s\S]*configuration\.componentReady === false[\s\S]*proxyComponentAlert/)
+  assert.match(source, /M12 6\.5v7[\s\S]*M12 17\.5h\.01/)
   assert.match(source, /ref: componentDialog[\s\S]*proxyComponentIssueTitle[\s\S]*proxyComponentIssueDetail/)
   assert.doesNotMatch(source, /proxyReadyShort|proxyUnavailableShort|proxyComponentState/)
   assert.match(style, /\.proxyComponentAlert circle \{[^}]*fill: var\(--dsw-alias-state-error-primary\)/)
