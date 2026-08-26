@@ -173,6 +173,8 @@ section {
 .proxy-save-state { padding: 2px 7px; border-radius: 999px; font-size: 11px; line-height: 17px; }
 .proxy-save-state[data-state="unsaved"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
 .proxy-save-state[data-state="saved"] { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.proxy-component-state { padding: 2px 7px; border-radius: 999px; color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); font-size: 11px; line-height: 17px; }
+.proxy-component-state[data-state="unavailable"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 button.primary, button.secondary, button.danger, button.danger-text, button.compact {
@@ -472,7 +474,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .setting-rows, .plugin-list, .user-plugin-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
 .proxy-form-grid, .proxy-rules-grid, .proxy-scope-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .proxy-direct-rules-field { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
-.proxy-direct-rules-field > span { color: var(--text); font-weight: 500; }
 .proxy-direct-rules-field textarea { box-sizing: border-box; width: 100%; min-height: 92px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxy-direct-rules-field small { color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-form-grid > label, .proxy-rules-grid > label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
@@ -493,13 +494,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-check-row[hidden] { display: none !important; }
 .proxy-check-row input { width: auto !important; min-height: 0 !important; margin-top: 3px; }
 .proxy-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; color: var(--text); }
-.proxy-setting-row > span { min-width: 0; }
+.proxy-setting-row > span, .proxy-setting-row > div { min-width: 0; }
 .proxy-setting-row strong, .proxy-setting-row small { display: block; }
 .proxy-setting-row small { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-setting-row > .toggle { width: auto; justify-self: end; }
+.proxy-master-row { margin-top: 0; }
+.proxy-master-row h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0; }
 .proxy-advanced { display: grid; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .proxy-advanced[hidden] { display: none; }
 .proxy-advanced h3 { margin: 0; font-size: 14px; line-height: 21px; font-weight: 500; }
+.proxy-advanced-setting { margin-top: 0; }
 .proxy-hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-scope-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
 .proxy-scope-copy { min-width: 0; }

@@ -515,7 +515,6 @@ a.secondaryButton { text-decoration: none; }
 .settingRows { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; overflow: hidden; }
 .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .proxyDirectRulesField { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.proxyDirectRulesField > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyDirectRulesField textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 6px 9px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyDirectRulesField small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyFormGrid > label, .proxyRulesGrid > label { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
@@ -524,6 +523,8 @@ a.secondaryButton { text-decoration: none; }
 .proxySaveState { padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 16px; }
 .proxySaveState[data-state='unsaved'] { color: var(--dsw-alias-state-warn-label); background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 10%, transparent); }
 .proxySaveState[data-state='saved'] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); }
+.proxyComponentState { padding: 1px 6px; border-radius: 999px; color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); font-size: 10px; line-height: 16px; }
+.proxyComponentState[data-state='unavailable'] { color: var(--dsw-alias-state-danger-primary); background: color-mix(in srgb, var(--dsw-alias-state-danger-primary) 10%, transparent); }
 .proxyPasswordRow { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; }
 .proxyPasswordRow > .secondaryButton { justify-self: end; }
 .proxyPasswordField { display: flex; min-width: 0; align-items: end; gap: 8px; }
@@ -537,12 +538,15 @@ a.secondaryButton { text-decoration: none; }
 .proxyFormGrid label > span, .proxyRulesGrid label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyRulesGrid small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxySettingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
-.proxySettingRow > span { min-width: 0; }
+.proxySettingRow > span, .proxySettingRow > div { min-width: 0; }
 .proxySettingRow b, .proxySettingRow small { display: block; }
 .proxySettingRow small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxySettingRow > .toggle { width: auto; justify-self: end; }
+.proxyMasterRow { margin-top: 0; }
+.proxyMasterRow h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 500; }
 .proxyAdvanced { display: grid; gap: 11px; margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-module-platform); }
 .proxyAdvanced h4 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 500; }
+.proxyAdvancedSetting { margin-top: 0; }
 .proxyHint { margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
 .proxyScopeCopy { min-width: 0; }

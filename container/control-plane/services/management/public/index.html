@@ -56,7 +56,7 @@
 
     <div id="panel-proxy" class="tab-panel" role="tabpanel" aria-labelledby="tab-proxy" hidden>
       <section aria-labelledby="proxy-master-title">
-        <div class="proxy-setting-row"><span><strong id="proxy-master-title" data-i18n="proxyMaster">Use proxy</strong><small data-i18n="proxyMasterDetail">When off, all managed scopes connect directly.</small></span><label class="toggle" data-i18n-aria-label="proxyMaster"><input id="proxy-enabled" type="checkbox"><span aria-hidden="true"></span></label></div>
+        <div class="proxy-setting-row proxy-master-row"><div><div class="proxy-title-line"><h2 id="proxy-master-title" data-i18n="proxyMaster">Use proxy</h2><span id="proxy-component-state" class="proxy-component-state" role="status"></span></div><small data-i18n="proxyMasterDetail">When off, all managed scopes connect directly.</small></div><label class="toggle" data-i18n-aria-label="proxyMaster"><input id="proxy-enabled" type="checkbox"><span aria-hidden="true"></span></label></div>
       </section>
 
       <section aria-labelledby="proxy-title">
@@ -64,7 +64,6 @@
           <div><div class="proxy-title-line"><h2 id="proxy-title" data-i18n="proxyTitle">Proxy settings</h2><span id="proxy-save-state" class="proxy-save-state" role="status" aria-live="polite" hidden></span></div><p data-i18n="proxyDetail">Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.</p></div>
           <div class="actions"><button id="proxy-test" type="button" class="secondary" data-i18n="proxyTestStart">Test connection</button><button id="proxy-save" type="button" class="primary" data-i18n="proxySave">Save and apply</button></div>
         </div>
-        <p id="proxy-component-state" class="operation-result" role="status"></p>
         <div class="proxy-form-grid">
           <label><span data-i18n="proxyProtocol">Protocol</span><select id="proxy-protocol"><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
           <label><span data-i18n="proxyHost">Host</span><input id="proxy-host" type="text" maxlength="253" autocomplete="off" spellcheck="false" placeholder="172.17.0.1"></label>
@@ -75,8 +74,8 @@
         </div>
         <div id="proxy-advanced" class="proxy-advanced" hidden>
           <div class="section-heading"><div><h3 data-i18n="proxyRules">Direct rules</h3><p data-i18n="proxyRulesDetail">Destinations listed here bypass the external proxy.</p></div><button id="proxy-system-rules" type="button" class="secondary" data-i18n="proxySystemRules">Built-in rules</button></div>
-          <label class="proxy-direct-rules-field"><span data-i18n="proxyDirectRules">Additional direct rules</span><textarea id="proxy-direct-rules" rows="5" spellcheck="false" data-i18n-placeholder="proxyDirectRulesPlaceholder"></textarea><small data-i18n="proxyDirectRulesDetail">One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.</small></label>
-          <div class="proxy-setting-row"><span><strong data-i18n="proxyAllProxy">Set ALL_PROXY where supported</strong><small data-i18n="proxyAllProxyDetail">Only clients with verified ALL_PROXY support receive it.</small></span><label class="toggle" data-i18n-aria-label="proxyAllProxy"><input id="proxy-all-proxy" type="checkbox"><span aria-hidden="true"></span></label></div>
+          <label class="proxy-direct-rules-field"><textarea id="proxy-direct-rules" rows="5" spellcheck="false" data-i18n-aria-label="proxyDirectRules" data-i18n-placeholder="proxyDirectRulesPlaceholder"></textarea><small data-i18n="proxyDirectRulesDetail">One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.</small></label>
+          <div class="proxy-setting-row proxy-advanced-setting"><div><h3 data-i18n="proxyAllProxy">Set ALL_PROXY where supported</h3><small data-i18n="proxyAllProxyDetail">Only clients with verified ALL_PROXY support receive it.</small></div><label class="toggle" data-i18n-aria-label="proxyAllProxy"><input id="proxy-all-proxy" type="checkbox"><span aria-hidden="true"></span></label></div>
         </div>
         <p id="proxy-transport-warning" class="message notice" data-i18n="proxyTransportWarning" hidden>This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.</p>
       </section>
