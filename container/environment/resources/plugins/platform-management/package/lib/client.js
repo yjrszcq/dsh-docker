@@ -1756,7 +1756,7 @@ function ProxySettings({ active, t }) {
             h('input', { type: 'checkbox', checked: configuration.scopes[id], disabled: busy, onChange: event => preserveToggleScroll(event.currentTarget, () => { void saveImmediate(next => { next.scopes[id] = event.target.checked }) }) }),
             h('span', { 'aria-hidden': true })))))),
 
-    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
+    h('section', { className: `${css.section} ${css.proxyProviderSection}`, 'aria-labelledby': 'platform-proxy-providers-title' },
       h('div', { className: css.proxyProviderHeading },
         h('h3', { id: 'platform-proxy-providers-title' }, t('proxyProviders')),
         h('div', null,

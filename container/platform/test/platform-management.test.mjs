@@ -546,6 +546,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /className: css\.proxyClearPassword[\s\S]*'aria-pressed': clearPassword/)
   assert.match(source, /className: `\$\{css\.proxySettingRow\} \$\{css\.proxyAdvancedSetting\}`[\s\S]*className: css\.toggle[\s\S]*checked: connection\.allProxy/)
   assert.match(source, /const \[providerQuery, setProviderQuery\] = useState\(''\)/)
+  assert.match(source, /className: `\$\{css\.section\} \$\{css\.proxyProviderSection\}`/)
+  assert.match(style, /\.proxyProviderSection \{ padding-bottom: 0; border-bottom: 0; \}/)
   assert.match(source, /visibleProviders = providers\.filter[\s\S]*proxyProviderSearch/)
   assert.match(source, /providerInfoDialog[\s\S]*event\.target === event\.currentTarget[\s\S]*\.close\(\)/)
   assert.match(source, /function splitDirectRules\(value\)[\s\S]*noProxy:[\s\S]*bypass:/)

@@ -563,6 +563,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyScopeDescription.expandable { cursor: pointer; }
 .proxyScopeDescription.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxyProviderList { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; scrollbar-gutter: stable; }
+.proxyProviderSection { padding-bottom: 0; border-bottom: 0; }
 .proxyProviderHeading > h3 { margin: 0 0 2px; font-size: 16px; line-height: 24px; font-weight: 500; }
 .proxyProviderHeading > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .proxyProviderHeading p { min-width: 0; flex: 1; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
