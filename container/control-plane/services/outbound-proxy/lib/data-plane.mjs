@@ -149,9 +149,12 @@ function bridge(left, right, { leftHead = Buffer.alloc(0), rightHead = Buffer.al
   if (rightHead.byteLength > 0) left.write(rightHead)
   left.pipe(right)
   right.pipe(left)
-  const close = error => {
-    if (!left.destroyed) left.destroy(error)
-    if (!right.destroyed) right.destroy(error)
+  let closing = false
+  const close = () => {
+    if (closing) return
+    closing = true
+    if (!left.destroyed) left.destroy()
+    if (!right.destroyed) right.destroy()
   }
   left.once('error', close)
   right.once('error', close)

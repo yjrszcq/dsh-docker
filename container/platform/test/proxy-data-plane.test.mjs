@@ -10,7 +10,7 @@ import { probeProxyEntry } from '../../control-plane/services/outbound-proxy/lib
 import { ProxyRouteHealth } from '../../control-plane/services/outbound-proxy/lib/route-health.mjs'
 import { ProxyDnsCache } from '../../control-plane/services/outbound-proxy/lib/dns-cache.mjs'
 import { selectProxyRoute } from '../../control-plane/services/outbound-proxy/lib/policy.mjs'
-import { connectThroughSocks5 } from '../../control-plane/services/outbound-proxy/lib/transport.mjs'
+import { connectTcp, connectThroughSocks5 } from '../../control-plane/services/outbound-proxy/lib/transport.mjs'
 
 const connections = new WeakMap()
 
@@ -163,6 +163,47 @@ test('readiness probes one local proxy entry without contacting an upstream', as
   const port = await listen(proxy)
   t.after(() => close(proxy))
   await probeProxyEntry(port)
+})
+
+test('survives a peer reset while an established socket changes owners', async t => {
+  const target = createNetServer(socket => setImmediate(() => socket.resetAndDestroy()))
+  const port = await listen(target)
+  t.after(() => close(target))
+
+  const socket = await connectTcp({ host: '127.0.0.1', port })
+  await new Promise(resolve => socket.once('close', resolve))
+  assert.equal(socket.destroyed, true)
+})
+
+test('survives a reset CONNECT tunnel and keeps direct routing available', async t => {
+  const resetTarget = createNetServer(socket => socket.resume())
+  const resetPort = await listen(resetTarget)
+  t.after(() => close(resetTarget))
+
+  const healthyTarget = createServer((_request, response) => response.end('ready'))
+  const healthyPort = await listen(healthyTarget)
+  t.after(() => close(healthyTarget))
+
+  const proxy = createScopedProxyServer({ scope: 'agentNetwork', getSnapshot: () => snapshot() })
+  const proxyPort = await listen(proxy)
+  t.after(() => close(proxy))
+
+  const tunnel = await rawExchange(proxyPort, [
+    `CONNECT 127.0.0.1:${resetPort} HTTP/1.1`,
+    `Host: 127.0.0.1:${resetPort}`,
+    '',
+    '',
+  ].join('\r\n'), { keepOpen: true })
+  const tunnelClosed = once(tunnel.socket, 'close')
+  tunnel.socket.resetAndDestroy()
+  await tunnelClosed
+
+  const response = await proxyRequest({
+    proxyPort,
+    target: `http://127.0.0.1:${healthyPort}/health`,
+  })
+  assert.equal(response.statusCode, 200)
+  assert.equal(response.body.toString('utf8'), 'ready')
 })
 
 test('keeps local readiness separate from revision-scoped external route health', async () => {

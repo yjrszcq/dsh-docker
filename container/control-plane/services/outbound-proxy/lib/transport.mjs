@@ -33,6 +33,10 @@ export async function connectTcp({ host, port, timeoutMs = PROXY_TIMEOUTS.connec
     })
   }
   const socket = connect({ host, port, allowHalfOpen: true })
+  // The socket passes through async handshake and Agent/tunnel owners. Keep a
+  // baseline listener so a peer reset during an ownership handoff cannot exit
+  // the Proxy Manager; each active owner still installs its own error handler.
+  socket.on('error', () => {})
   try {
     await new Promise((resolve, reject) => {
       const cleanup = () => {
