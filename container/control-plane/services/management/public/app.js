@@ -236,6 +236,7 @@ let proxyConfiguration
 let proxyProviderInventory = { providers: [] }
 let proxyLoaded = false
 let proxyLoading
+let proxyProviderLoading
 let proxyTestTask
 let proxyTestPollTimer
 const expandedProxyTestStages = new Set()
@@ -3793,12 +3794,11 @@ async function loadProxy({ force = false } = {}) {
   if (proxyLoaded && !force) return
   proxyLoading = (async () => {
     try {
-      const [configuration, providers] = await Promise.all([api('proxy'), api('proxy/provider-inventory')])
-      proxyConfiguration = configuration
-      proxyProviderInventory = providers
+      proxyConfiguration = await api('proxy')
       proxyLoaded = true
       clearProxySecrets()
       renderProxyConfiguration()
+      void refreshProxyProviders()
       const activeTaskId = status?.proxyTestOperation?.status === 'running' ? status.proxyTestOperation.taskId : undefined
       if (activeTaskId !== undefined) {
         const task = await api(`proxy/test/tasks/${activeTaskId}`)
@@ -3810,6 +3810,17 @@ async function loadProxy({ force = false } = {}) {
     }
   })().finally(() => { proxyLoading = undefined })
   return proxyLoading
+}
+
+async function refreshProxyProviders() {
+  if (proxyProviderLoading !== undefined) return proxyProviderLoading
+  proxyProviderLoading = api('proxy/provider-inventory').then(providers => {
+    proxyProviderInventory = providers
+    renderProxyProviders()
+  }).catch(error => {
+    if (!elements['panel-proxy'].hidden) showError(error)
+  }).finally(() => { proxyProviderLoading = undefined })
+  return proxyProviderLoading
 }
 
 async function saveProxyConfiguration() {
@@ -4444,6 +4455,7 @@ renderLogs()
 connectEvents()
 void (async () => {
   const initial = await loadStatus()
+  void loadProxy()
   await discardSystemPluginDraft()
   if (initial !== undefined && UPDATE_TERMINAL_STATES.has(initial.update?.status ?? 'idle')) void checkUpdates('page-open')
 })()

@@ -1479,34 +1479,53 @@ function ProxySettings({ active, t }) {
   const testDialog = useRef(null)
   const saveStateTimer = useRef(null)
   const toggleScrollPositions = useRef(null)
+  const proxyLoad = useRef(null)
+  const providerLoad = useRef(null)
   const [providerInfo, setProviderInfo] = useState(null)
 
-  const load = useCallback(async () => {
-    try {
-      const [next, inventory, platformStatus] = await Promise.all([
-        request('proxy'), request('proxy/provider-inventory'), request('status'),
+  const refreshProviders = useCallback(async () => {
+    if (providerLoad.current !== null) return providerLoad.current
+    providerLoad.current = (async () => {
+      const [inventory, platformStatus] = await Promise.all([
+        request('proxy/provider-inventory'), request('status'),
       ])
-      setConfiguration(next)
-      setConnection(proxyConnectionDraft(next))
-      setDirectRulesText(directRuleText(next))
       setProviders(inventory.providers ?? [])
-      setError('')
       const activeTask = platformStatus?.proxyTestOperation
       if (activeTask?.status === 'running' && activeTask.taskId) {
         setTask(await request(`proxy/test/tasks/${activeTask.taskId}`))
       }
-    } catch (nextError) {
+    })().catch(nextError => {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
-    }
+    }).finally(() => { providerLoad.current = null })
+    return providerLoad.current
   }, [])
 
+  const load = useCallback(async () => {
+    if (proxyLoad.current !== null) return proxyLoad.current
+    proxyLoad.current = (async () => {
+      const next = await request('proxy')
+      setConfiguration(next)
+      setConnection(proxyConnectionDraft(next))
+      setDirectRulesText(directRuleText(next))
+      setError('')
+      void refreshProviders()
+    })().catch(nextError => {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    }).finally(() => { proxyLoad.current = null })
+    return proxyLoad.current
+  }, [refreshProviders])
+
   useEffect(() => {
-    if (active) void load()
+    void load()
+  }, [load])
+
+  useEffect(() => {
+    if (active) void refreshProviders()
     else {
       setPassword('')
       setClearPassword(false)
     }
-  }, [active, load])
+  }, [active, refreshProviders])
 
   useEffect(() => {
     if (task?.status !== 'running') return undefined

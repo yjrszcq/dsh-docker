@@ -1339,6 +1339,8 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(style, /\.proxy-scope-description \{[^}]*-webkit-line-clamp: 1;/)
   assert.match(script, /function refreshProxyDescriptions\(\)[\s\S]*preserveScrollableAncestors/)
   assert.match(script, /function renderProxyProviders\(\)[\s\S]*displayName[\s\S]*info\.className = 'proxy-provider-info'/)
+  assert.match(script, /proxyConfiguration = await api\('proxy'\)[\s\S]*renderProxyConfiguration\(\)[\s\S]*void refreshProxyProviders\(\)/)
+  assert.doesNotMatch(script, /Promise\.all\(\[api\('proxy'\), api\('proxy\/provider-inventory'\)\]\)/)
   assert.match(script, /proxy-provider-search[\s\S]*addEventListener\('input', renderProxyProviders\)/)
   assert.match(script, /proxy-clear-password[\s\S]*getAttribute\('aria-pressed'\) === 'true'/)
   assert.match(script, /route\.className = 'proxy-provider-route'[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = policy\.proxyEnabled === true/)
