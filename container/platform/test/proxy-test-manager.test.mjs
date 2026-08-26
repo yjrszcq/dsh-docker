@@ -71,6 +71,21 @@ test('proxy tests list target DNS only when SOCKS5 resolves names locally', () =
   assert.equal(proxyTestInternals.stagesFor(local).includes('target-dns'), true)
 })
 
+test('proxy test details carry locale-independent result data', () => {
+  assert.deepEqual(
+    proxyTestInternals.stageDetail(
+      'resolved 2 proxy address record(s)',
+      'proxy-addresses-resolved',
+      { count: 2 },
+    ),
+    {
+      detail: 'resolved 2 proxy address record(s)',
+      detailCode: 'proxy-addresses-resolved',
+      detailData: { count: 2 },
+    },
+  )
+})
+
 test('proxy tests allow one in-memory candidate, persist no credentials, and cancel safely', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-test-cancel-'))
   const statePath = join(root, 'tasks.json')

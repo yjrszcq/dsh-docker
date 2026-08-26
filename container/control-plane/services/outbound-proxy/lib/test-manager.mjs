@@ -35,7 +35,19 @@ function safeError(error) {
 }
 
 function pendingStage(stage) {
-  return { stage, status: 'pending', durationMs: null, errorCode: null, detail: null }
+  return {
+    stage,
+    status: 'pending',
+    durationMs: null,
+    errorCode: null,
+    detail: null,
+    detailCode: null,
+    detailData: null,
+  }
+}
+
+function stageDetail(detail, detailCode, detailData = {}) {
+  return Object.freeze({ detail, detailCode, detailData: Object.freeze(detailData) })
 }
 
 function stagesFor(configuration) {
@@ -293,10 +305,12 @@ export class ProxyTestManager {
     const started = Date.now()
     const signal = AbortSignal.any([task.controller.signal, AbortSignal.timeout(this.phaseTimeoutMs)])
     try {
-      const detail = await operation(signal)
+      const result = await operation(signal)
       Object.assign(entry, {
         status: 'success', durationMs: Date.now() - started, errorCode: null,
-        detail: typeof detail === 'string' ? detail : null,
+        detail: typeof result === 'string' ? result : result?.detail ?? null,
+        detailCode: typeof result === 'object' ? result?.detailCode ?? null : null,
+        detailData: typeof result === 'object' ? result?.detailData ?? null : null,
       })
       await this.update(task, {})
     } catch (error) {
@@ -325,25 +339,33 @@ export class ProxyTestManager {
       if (proxied === undefined) {
         for (const name of ['proxy-address', 'proxy-connect', 'proxy-handshake']) {
           const stage = task.stages.find(value => value.stage === name)
-          Object.assign(stage, { status: 'skipped', durationMs: 0, detail: 'candidate route is direct' })
+          Object.assign(stage, {
+            status: 'skipped', durationMs: 0, detail: 'candidate route is direct',
+            detailCode: 'route-direct', detailData: {},
+          })
         }
         await this.update(task, {})
       } else {
         await this.stage(task, 'proxy-address', async () => {
           const records = await this.lookup(proxied.endpoint.host, task.controller.signal)
           if (!Array.isArray(records) || records.length === 0) throw new ProxyTransportError('proxy address resolution returned no records', { code: 'PROXY_DNS_FAILED' })
-          return `resolved ${String(records.length)} proxy address record(s)`
+          return stageDetail(
+            `resolved ${String(records.length)} proxy address record(s)`,
+            'proxy-addresses-resolved',
+            { count: records.length },
+          )
         })
         await this.stage(task, 'proxy-connect', async signal => {
           const socket = await connectTcp({ host: proxied.endpoint.host, port: proxied.endpoint.port, signal })
           socket.destroy()
-          return 'proxy TCP connection succeeded'
+          return stageDetail('proxy TCP connection succeeded', 'proxy-connected')
         })
         await this.stage(task, 'proxy-handshake', async signal => {
           const target = this.targets[routes.indexOf(proxied)]
           const connection = await firstConnection(proxied, target, signal)
           connection.socket.destroy()
-          return `${snapshot.configuration.proxy.protocol.toUpperCase()} proxy authentication succeeded`
+          const protocol = snapshot.configuration.proxy.protocol.toUpperCase()
+          return stageDetail(`${protocol} proxy authentication succeeded`, 'proxy-handshake-completed', { protocol })
         })
       }
       if (task.stages.some(stage => stage.stage === 'target-dns')) {
@@ -352,7 +374,11 @@ export class ProxyTestManager {
             const records = await this.lookup(target.host, task.controller.signal)
             if (!Array.isArray(records) || records.length === 0) throw new ProxyTransportError('target DNS returned no records', { code: 'TARGET_DNS_FAILED' })
           }
-          return `resolved ${String(this.targets.length)} target(s)`
+          return stageDetail(
+            `resolved ${String(this.targets.length)} target(s)`,
+            'target-addresses-resolved',
+            { count: this.targets.length },
+          )
         })
       }
       await this.stage(task, 'target-tls', async signal => {
@@ -360,15 +386,23 @@ export class ProxyTestManager {
           const socket = await secureConnection(routes[index], this.targets[index], signal)
           socket.destroy()
         }
-        return `TLS verified for ${String(this.targets.length)} target(s)`
+        return stageDetail(
+          `TLS verified for ${String(this.targets.length)} target(s)`,
+          'target-tls-verified',
+          { count: this.targets.length },
+        )
       })
       await this.stage(task, 'target-http', async signal => {
         const results = []
         for (let index = 0; index < this.targets.length; index += 1) {
           const status = await targetHttp(routes[index], this.targets[index], signal)
-          results.push(`${this.targets[index].id}=HTTP ${String(status)}`)
+          results.push({ id: this.targets[index].id, status })
         }
-        return results.join(', ')
+        return stageDetail(
+          results.map(result => `${result.id}=HTTP ${String(result.status)}`).join(', '),
+          'target-http-completed',
+          { results },
+        )
       })
       await this.update(task, { status: 'success', currentStage: null, error: null })
     } catch (error) {
@@ -410,4 +444,4 @@ export class ProxyTestManager {
   }
 }
 
-export const proxyTestInternals = Object.freeze({ STAGES, TARGETS, modeFor, publicTask, stagesFor })
+export const proxyTestInternals = Object.freeze({ STAGES, TARGETS, modeFor, publicTask, stageDetail, stagesFor })
