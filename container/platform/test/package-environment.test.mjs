@@ -91,6 +91,15 @@ test('container images opt into the managed DSH lifecycle without exposing a use
   assert.match(dockerfile, /ENV DSH_PLATFORM_DATA=\/data\/platform \\\n+    DSH_PLATFORM_MANAGED=1 \\\n+    DSH_PLATFORM_RUN=\/run\/dsh-platform \\/)
 })
 
+test('platform CLI shim follows the current verified Bootstrap view', async () => {
+  const dockerfile = await readFile(join(dirname(containerRoot), 'Dockerfile'), 'utf8')
+  const shim = await readFile(join(platformRoot, 'tools', 'dsh-platform-shim.sh'), 'utf8')
+  assert.match(dockerfile, /COPY container\/platform\/tools\/dsh-platform-shim\.sh \/usr\/local\/bin\/dsh-platform/)
+  assert.match(shim, /views\/bootstrap\/control-plane\/services\/management\/dsh-platform\.mjs/)
+  assert.match(shim, /opt\/dsh-platform\/runtime\/control-plane\/services\/management\/dsh-platform\.mjs/)
+  assert.ok(shim.indexOf('managed_cli') < shim.indexOf('image_cli'))
+})
+
 test('packager rejects source escapes and duplicate Artifact IDs without publishing output', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-environment-invalid-'))
   const original = JSON.parse(await readFile(definition, 'utf8'))
