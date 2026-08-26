@@ -123,9 +123,16 @@ async function system() {
   const untrustedRoot = join(root, 'downloads', 'untrusted')
   await mkdir(untrustedRoot, { recursive: true })
   const ledger = new TrustLedger(join(root, 'trust'), fixture.recovery.publicKey)
-  const fetchImpl = async url => {
+  const fetchImpl = async (url, options = {}) => {
     const bytes = fixture.files.get(String(url))
-    return bytes === undefined ? response('missing', 404) : response(bytes)
+    if (bytes === undefined) return response('missing', 404)
+    if (String(url).startsWith('https://release.example/')) {
+      const headers = new Headers(options.headers)
+      if (headers.get('accept-encoding') !== 'identity') {
+        return new Response(bytes, { headers: { 'content-encoding': 'gzip', 'content-length': '1' } })
+      }
+    }
+    return response(bytes)
   }
   const objects = new VerifiedObjectStore({ root: join(root, 'trust'), untrustedRoot, ledger })
   const trust = {
@@ -170,6 +177,20 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   for (let index = 1; index < progress.length; index += 1) {
     assert.ok(progress[index].processedBytes >= progress[index - 1].processedBytes)
   }
+})
+
+test('rejects encoded signed Artifact responses without retrying transformed bytes', async () => {
+  const { fixture, metadata, preparer } = await system()
+  const checked = await metadata.check()
+  let requests = 0
+  preparer.fetchImpl = async url => {
+    requests += 1
+    return new Response(fixture.files.get(String(url)), {
+      headers: { 'content-encoding': 'gzip', 'content-length': '1' },
+    })
+  }
+  await assert.rejects(preparer.prepare(checked.value), /must not use content encoding/)
+  assert.equal(requests, 1)
 })
 
 test('downloads official DSH metadata and tarball with bounded retry and measurable progress', async () => {

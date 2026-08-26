@@ -30,13 +30,21 @@ async function download(descriptor, destination, fetchImpl, onChunk) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const temporary = `${destination}.${randomUUID()}.tmp`
     try {
-      const response = await fetchImpl(descriptor.url)
+      const response = await fetchImpl(descriptor.url, {
+        headers: { 'accept-encoding': 'identity' },
+      })
       if (!response.ok) {
         const error = new Error(`Artifact ${descriptor.id} returned HTTP ${String(response.status)}`)
         error.status = response.status
         throw error
       }
       if (response.body === null || response.body === undefined) throw new Error(`Artifact ${descriptor.id} has no response body`)
+      const contentEncoding = response.headers?.get?.('content-encoding')
+      if (contentEncoding !== null && contentEncoding !== undefined && contentEncoding !== '') {
+        const error = new Error(`Artifact ${descriptor.id} must not use content encoding`)
+        error.retryable = false
+        throw error
+      }
       const declaredHeader = response.headers?.get?.('content-length')
       if (declaredHeader !== null && declaredHeader !== undefined && declaredHeader !== '') {
         const declared = Number(declaredHeader)
@@ -79,7 +87,7 @@ async function download(descriptor, destination, fetchImpl, onChunk) {
       await rm(temporary, { force: true }).catch(() => {})
       lastError = error
       const status = error?.status
-      if ((Number.isInteger(status) && status < 500 && status !== 408 && status !== 429) || attempt === 3) throw error
+      if (error?.retryable === false || (Number.isInteger(status) && status < 500 && status !== 408 && status !== 429) || attempt === 3) throw error
       await delay(250)
     }
   }
