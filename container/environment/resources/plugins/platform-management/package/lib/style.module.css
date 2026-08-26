@@ -527,9 +527,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyFormGrid input, .proxyFormGrid select, .proxyRulesGrid textarea { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
 .proxyRulesGrid textarea { min-height: 88px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyFormGrid label > span, .proxyRulesGrid label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
-.proxyRulesGrid small, .proxyCheckRow small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
-.proxyCheckRow { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
-.proxyCheckRow input { flex: none; margin-top: 3px; }
+.proxyRulesGrid small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxySettingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; color: var(--dsw-alias-label-primary); font-size: 12px; }
 .proxySettingRow > span { min-width: 0; }
 .proxySettingRow b, .proxySettingRow small { display: block; }
