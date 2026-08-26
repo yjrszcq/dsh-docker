@@ -236,6 +236,7 @@ let proxyLoaded = false
 let proxyLoading
 let proxyTestTask
 let proxyTestPollTimer
+const expandedProxyTestStages = new Set()
 let proxyImmediateSave = Promise.resolve()
 const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
 const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
@@ -3705,6 +3706,9 @@ function renderProxyTest(task = proxyTestTask) {
     const item = document.createElement('li')
     item.className = 'proxy-test-stage'
     item.dataset.state = stage.status
+    item.tabIndex = 0
+    item.setAttribute('role', 'button')
+    item.setAttribute('aria-expanded', String(expandedProxyTestStages.has(stage.stage)))
     const marker = document.createElement('span')
     marker.setAttribute('aria-hidden', 'true')
     const content = document.createElement('span')
@@ -3713,11 +3717,25 @@ function renderProxyTest(task = proxyTestTask) {
     const detail = document.createElement('small')
     const status = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
     detail.textContent = stage.detail ?? stage.errorCode ?? status
+    detail.hidden = !expandedProxyTestStages.has(stage.stage)
+    const toggleDetails = () => {
+      preserveScrollableAncestors(item, () => {
+        if (expandedProxyTestStages.has(stage.stage)) expandedProxyTestStages.delete(stage.stage)
+        else expandedProxyTestStages.add(stage.stage)
+        const expanded = expandedProxyTestStages.has(stage.stage)
+        item.setAttribute('aria-expanded', String(expanded))
+        detail.hidden = !expanded
+      })
+    }
+    item.addEventListener('click', toggleDetails)
+    item.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      toggleDetails()
+    })
     content.append(label, detail)
     const statusLabel = document.createElement('small')
-    const finalStatus = stage.status === 'success' || stage.status === 'failed' || stage.status === 'skipped'
-    statusLabel.textContent = finalStatus ? status : ''
-    statusLabel.hidden = !finalStatus
+    statusLabel.textContent = status
     item.append(marker, content, statusLabel)
     container.append(item)
   }
@@ -3866,6 +3884,7 @@ function saveProxyImmediate(mutate) {
 }
 
 async function startProxyTest() {
+  expandedProxyTestStages.clear()
   proxyTestTask = { status: 'starting', stages: pendingProxyTestStages() }
   elements['proxy-test-dialog'].showModal()
   renderProxyTest(proxyTestTask)

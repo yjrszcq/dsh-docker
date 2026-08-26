@@ -1466,6 +1466,7 @@ function ProxySettings({ active, t }) {
   const [password, setPassword] = useState('')
   const [clearPassword, setClearPassword] = useState(false)
   const [task, setTask] = useState(null)
+  const [expandedTestStages, setExpandedTestStages] = useState(() => new Set())
   const [testError, setTestError] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1632,6 +1633,7 @@ function ProxySettings({ active, t }) {
 
   const startTest = async () => {
     setBusy(true); setTestError(''); setResult('')
+    setExpandedTestStages(new Set())
     setTask({ status: 'starting', stages: pendingProxyTestStages() })
     requestAnimationFrame(() => testDialog.current?.showModal())
     try {
@@ -1763,8 +1765,29 @@ function ProxySettings({ active, t }) {
         h('header', null, h('div', null, h('h3', null, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('button', { type: 'button', className: css.secondaryButton, disabled: taskRunning, onClick: () => testDialog.current?.close() }, t('close'))),
       task ? h('ol', { className: css.proxyTestStages }, task.stages.map(stage => {
         const status = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
-        const finalStatus = stage.status === 'success' || stage.status === 'failed' || stage.status === 'skipped'
-        return h('li', { key: stage.stage, 'data-state': stage.status }, h('span', { 'aria-hidden': 'true' }), h('span', null, h('b', null, t(PROXY_TEST_LABELS[stage.stage])), h('small', null, stage.detail ?? stage.errorCode ?? status)), finalStatus ? h('small', null, status) : null)
+        const expanded = expandedTestStages.has(stage.stage)
+        const toggleDetails = element => preserveScrollableAncestors(element, () => setExpandedTestStages(current => {
+              const next = new Set(current)
+              if (next.has(stage.stage)) next.delete(stage.stage)
+              else next.add(stage.stage)
+              return next
+            }))
+        return h('li', {
+          key: stage.stage,
+          'data-state': stage.status,
+          role: 'button',
+          tabIndex: 0,
+          'aria-expanded': expanded,
+          onClick: event => toggleDetails(event.currentTarget),
+          onKeyDown: event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            toggleDetails(event.currentTarget)
+          },
+        }, h('span', { 'aria-hidden': 'true' }), h('span', null,
+          h('b', null, t(PROXY_TEST_LABELS[stage.stage])),
+          expanded ? h('small', null, stage.detail ?? stage.errorCode ?? status) : null),
+        h('small', null, status))
       })) : null,
       task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
       task === null && testError ? h('p', { className: css.error, role: 'alert' }, testError) : null,

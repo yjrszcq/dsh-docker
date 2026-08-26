@@ -525,16 +525,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-dialog header h2, .proxy-test-dialog header p { margin: 0; }
 .proxy-test-dialog header p { margin-top: 4px; color: var(--muted); }
 .proxy-test-dialog footer { justify-content: flex-end; }
-.proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer; }
+.proxy-test-stage:hover, .proxy-test-stage:focus-visible { background: var(--surface-soft); outline: none; }
 .proxy-test-stage:last-child { border-bottom: 0; }
 .proxy-test-stage > span:first-child { width: 9px; height: 9px; margin-top: 4px; border: 1.5px solid var(--muted); border-radius: 50%; }
 .proxy-test-stage > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
-.proxy-test-stage > span:nth-child(2) strong, .proxy-test-stage > span:nth-child(2) small { display: block; }
+.proxy-test-stage > span:nth-child(2) small { display: block; }
 .proxy-test-stage[data-state="running"] > span:first-child { border-color: var(--accent); border-top-color: transparent; animation: spin .7s linear infinite; }
 .proxy-test-stage[data-state="success"] > span:first-child { border-color: var(--success); background: var(--success); }
 .proxy-test-stage[data-state="failed"] > span:first-child { border-color: var(--danger); background: var(--danger); }
 .proxy-test-stage[data-state="skipped"] { color: var(--muted); }
 .proxy-test-stage small { color: var(--muted); font-size: 10px; }
+.proxy-test-stage small[hidden] { display: none; }
 .proxy-scope-dialog { width: min(820px, calc(100% - 32px)); max-height: min(760px, calc(100dvh - 32px)); padding: 0; overflow: hidden; }
 .proxy-scope-dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: inherit; }
 .proxy-provider-info-dialog { box-sizing: border-box; width: min(460px, calc(100% - 32px)); padding: 0; }
