@@ -173,8 +173,11 @@ section {
 .proxy-save-state { padding: 2px 7px; border-radius: 999px; font-size: 11px; line-height: 17px; }
 .proxy-save-state[data-state="unsaved"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
 .proxy-save-state[data-state="saved"] { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
-.proxy-component-state { padding: 2px 7px; border-radius: 999px; color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); font-size: 11px; line-height: 17px; }
-.proxy-component-state[data-state="unavailable"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.proxy-component-alert { display: inline-grid; width: 22px; height: 22px; padding: 2px; place-items: center; border: 0; background: transparent; }
+.proxy-component-alert:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.proxy-component-alert svg { width: 17px; height: 17px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.proxy-component-alert circle { fill: var(--danger); stroke: var(--danger); }
+.proxy-component-alert path { stroke: #fff; }
 .lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 button.primary, button.secondary, button.danger, button.danger-text, button.compact {

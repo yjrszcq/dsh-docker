@@ -523,8 +523,11 @@ a.secondaryButton { text-decoration: none; }
 .proxySaveState { padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 16px; }
 .proxySaveState[data-state='unsaved'] { color: var(--dsw-alias-state-warn-label); background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 10%, transparent); }
 .proxySaveState[data-state='saved'] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); }
-.proxyComponentState { padding: 1px 6px; border-radius: 999px; color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); font-size: 10px; line-height: 16px; }
-.proxyComponentState[data-state='unavailable'] { color: var(--dsw-alias-state-danger-primary); background: color-mix(in srgb, var(--dsw-alias-state-danger-primary) 10%, transparent); }
+.proxyComponentAlert { display: inline-grid; width: 21px; height: 21px; padding: 2px; place-items: center; border: 0; border-radius: 5px; background: transparent; }
+.proxyComponentAlert:hover { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
+.proxyComponentAlert svg { width: 16px; height: 16px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.proxyComponentAlert circle { fill: var(--dsw-alias-state-error-primary); stroke: var(--dsw-alias-state-error-primary); }
+.proxyComponentAlert path { stroke: var(--dsw-alias-label-primary-foreground); }
 .proxyPasswordRow { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; }
 .proxyPasswordRow > .secondaryButton { justify-self: end; }
 .proxyPasswordField { display: flex; min-width: 0; align-items: end; gap: 8px; }
