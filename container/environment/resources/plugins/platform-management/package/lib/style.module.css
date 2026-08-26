@@ -588,16 +588,16 @@ a.secondaryButton { text-decoration: none; }
 .proxyTestStages > li small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
 .proxyTestDialog { box-sizing: border-box; width: min(620px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
 .proxyTestDialog::backdrop { background: rgb(0 0 0 / 50%); }
-.proxyTestDialog > div { display: grid; gap: 14px; padding: 16px; }
+.proxyTestDialog > div { display: grid; max-height: inherit; gap: 14px; padding: 16px; overflow: auto; }
 .proxyTestDialog header, .proxyTestDialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .proxyTestDialog header h3, .proxyTestDialog header p { margin: 0; }
 .proxyTestDialog header p { margin-top: 4px; color: var(--dsw-alias-label-tertiary); }
 .proxyTestDialog footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 .proxyTestDialog footer > .proxyHint, .proxyTestDialog footer > .error { min-width: 0; margin: 0; }
 .proxyTestDialog footer > button { grid-column: 2; margin-left: 0; }
-.proxyScopeDialog { box-sizing: border-box; width: min(760px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.proxyScopeDialog { box-sizing: border-box; width: min(760px, calc(100vw - 40px)); height: min(720px, calc(100dvh - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
 .proxyScopeDialog::backdrop { background: rgb(0 0 0 / 50%); }
-.proxyScopeDialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: inherit; }
+.proxyScopeDialog form { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
 .proxyScopeDialog header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyScopeDialog h3, .proxyScopeDialog h4 { margin: 0; }
 .proxyScopeDialog header p { margin: 2px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
@@ -610,11 +610,10 @@ a.secondaryButton { text-decoration: none; }
 .proxySystemRulesBody { padding: 0 16px 16px; }
 .proxySystemRulesBody p { padding: 0; }
 .proxySystemRulesBody pre { margin: 12px 0 0; padding: 9px 11px; overflow: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.proxyScopeCatalog { overflow: auto; padding: 8px 16px; }
+.proxyScopeCatalog { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px; }
 .proxyScopeCatalog section { margin: 10px 0; }
 .proxyScopeCatalog h4 { margin-bottom: 5px; font-size: 13px; }
-.proxyScopeCatalog section > div { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(0, 1.2fr); gap: 10px; padding: 6px 0; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 11px; line-height: 17px; }
-.proxyScopeCatalog section > div span:last-child { color: var(--dsw-alias-label-tertiary); }
+.proxyScopeCatalog section > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 6px 0; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 11px; line-height: 17px; }
 .proxyScopeSummaries { padding: 9px 16px 14px; border-top: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeSummaries p { margin: 3px 0; }
 .settingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 8px 12px; font-size: 13px; }
@@ -969,7 +968,6 @@ a.secondaryButton { text-decoration: none; }
 .reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 @media (max-width: 640px) {
-  .proxyTestDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .progressLogGroupListPopulated { height: 180px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }
@@ -977,7 +975,6 @@ a.secondaryButton { text-decoration: none; }
   .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { grid-template-columns: 1fr; }
   .proxyProvider { align-items: center; }
   .proxyProviderList { max-height: 280px; }
-  .proxyScopeCatalog section > div { grid-template-columns: 1fr; gap: 2px; }
   .proxyScopeDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .actionHeading { align-items: flex-start; }
   .versions { grid-template-columns: 1fr; }

@@ -3684,7 +3684,9 @@ function renderProxyCatalog() {
       row.className = 'proxy-scope-entry'
       const source = document.createElement('span')
       source.textContent = entry.source?.[locale] ?? entry.source?.en ?? entry.id
-      const detail = document.createElement('span')
+      const detail = document.createElement('button')
+      detail.type = 'button'
+      detail.className = 'proxy-scope-description'
       detail.textContent = entry.detail?.[locale] ?? entry.detail?.en ?? ''
       row.append(source, detail)
       section.append(row)
@@ -3697,6 +3699,7 @@ function renderProxyCatalog() {
     paragraph.textContent = value?.[locale] ?? value?.en ?? ''
     return paragraph
   }))
+  refreshProxyDescriptions()
 }
 
 function renderProxyConfiguration() {

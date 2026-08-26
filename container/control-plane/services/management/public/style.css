@@ -533,7 +533,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-stages:empty { display: none; }
 .proxy-test-dialog { box-sizing: border-box; width: min(620px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
 .proxy-test-dialog::backdrop { background: rgb(0 0 0 / 50%); }
-.proxy-test-dialog > div { display: grid; gap: 14px; padding: 16px; }
+.proxy-test-dialog > div { display: grid; max-height: inherit; gap: 14px; padding: 16px; overflow: auto; }
 .proxy-test-dialog header, .proxy-test-dialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .proxy-test-dialog header h2, .proxy-test-dialog header p { margin: 0; }
 .proxy-test-dialog header p { margin-top: 4px; color: var(--muted); }
@@ -552,8 +552,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-stage[data-state="skipped"] { color: var(--muted); }
 .proxy-test-stage small { color: var(--muted); font-size: 10px; }
 .proxy-test-stage small[hidden] { display: none; }
-.proxy-scope-dialog { width: min(820px, calc(100% - 32px)); max-height: min(760px, calc(100dvh - 32px)); padding: 0; overflow: hidden; }
-.proxy-scope-dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: inherit; }
+.proxy-scope-dialog { width: min(820px, calc(100% - 32px)); height: min(760px, calc(100dvh - 32px)); max-height: min(760px, calc(100dvh - 32px)); padding: 0; overflow: hidden; }
+.proxy-scope-dialog form { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
 .proxy-provider-info-dialog { box-sizing: border-box; width: min(460px, calc(100% - 32px)); padding: 0; }
 .proxy-provider-info-dialog form { display: grid; gap: 16px; }
 .proxy-provider-info-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 0; }
@@ -564,11 +564,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-system-rules-body pre { margin: 12px 0 0; padding: 10px 12px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-soft); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxy-scope-dialog header { display: flex; justify-content: space-between; gap: 12px; align-items: start; padding: 16px 18px; border-bottom: 1px solid var(--border); }
 .proxy-scope-dialog header p { margin-bottom: 0; }
-.proxy-scope-catalog { overflow: auto; padding: 8px 18px; }
+.proxy-scope-catalog { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 18px; }
 .proxy-scope-group { margin: 12px 0; }
 .proxy-scope-group h3 { margin: 0 0 6px; font-size: 13px; }
-.proxy-scope-entry { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 1.2fr); gap: 12px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 11px; line-height: 17px; }
-.proxy-scope-entry span:last-child { color: var(--muted); }
+.proxy-scope-entry { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 11px; line-height: 17px; }
+.proxy-scope-description { display: -webkit-box; width: 100%; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; border: 0; color: var(--muted); background: transparent; font: inherit; text-align: left; cursor: default; }
+.proxy-scope-description.expandable { cursor: pointer; }
+.proxy-scope-description.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxy-scope-summaries { padding: 10px 18px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-scope-summaries p { margin: 3px 0; font-size: inherit; line-height: inherit; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 48px; padding: 8px 12px; font-size: 13px; }
@@ -833,7 +835,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
 }
 
 @media (max-width: 640px) {
-  .proxy-test-dialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .progress-log-group-list.populated { height: 180px; }
   .topbar-inner, main { width: calc(100% - 28px); }
   .topbar-actions { gap: 7px; }
@@ -846,7 +847,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .resource-search { width: 100%; margin-left: 0; }
   .proxy-form-grid, .proxy-rules-grid, .proxy-scope-grid { grid-template-columns: 1fr; }
   .proxy-provider-item { align-items: center; }
-  .proxy-scope-entry { grid-template-columns: 1fr; gap: 2px; }
   .proxy-scope-dialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .lifecycle-actions { width: 100%; }
   .lifecycle-actions button { flex: 1; }

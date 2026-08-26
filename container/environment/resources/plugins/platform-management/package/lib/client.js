@@ -1692,7 +1692,8 @@ function ProxySettings({ active, t }) {
   const catalogNodes = catalogGroups.map(([group, groupValue]) => h('section', { key: group },
     h('h4', null, localize(groupValue)),
     ...(catalog?.entries ?? []).filter(entry => entry.group === group).map(entry => h('div', { key: entry.id },
-      h('span', null, localize(entry.source)), h('span', null, localize(entry.detail))))))
+      h('span', null, localize(entry.source)),
+      h(ExpandableProxyDescription, { text: localize(entry.detail), identity: entry.id })))))
   const summaryNodes = (catalog?.summaries ?? []).map((summary, index) => h('p', { key: index }, localize(summary)))
   return h(React.Fragment, null,
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-master-title' },
