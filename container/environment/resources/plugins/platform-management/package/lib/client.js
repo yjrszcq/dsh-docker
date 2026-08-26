@@ -1423,6 +1423,10 @@ const PROXY_TEST_LABELS = Object.freeze({
   'target-tls': 'proxyStageTls', 'target-http': 'proxyStageHttp',
 })
 
+function pendingProxyTestStages() {
+  return Object.keys(PROXY_TEST_LABELS).map(stage => ({ stage, status: 'pending' }))
+}
+
 function proxyLines(value) {
   return String(value ?? '').split(/\r?\n/u).map(entry => entry.trim()).filter(Boolean)
 }
@@ -1442,20 +1446,34 @@ function splitDirectRules(value) {
   }
 }
 
+function proxyConnectionDraft(configuration) {
+  return {
+    enabled: configuration.enabled === true,
+    protocol: configuration.proxy.protocol,
+    host: configuration.proxy.host,
+    port: configuration.proxy.port,
+    username: configuration.proxy.username,
+    remoteDns: configuration.proxy.remoteDns === true,
+  }
+}
+
 function ProxySettings({ active, t }) {
   const [configuration, setConfiguration] = useState(null)
+  const [connection, setConnection] = useState(null)
   const [providers, setProviders] = useState([])
   const [providerQuery, setProviderQuery] = useState('')
   const [directRulesText, setDirectRulesText] = useState('')
   const [password, setPassword] = useState('')
   const [clearPassword, setClearPassword] = useState(false)
   const [task, setTask] = useState(null)
+  const [testError, setTestError] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
   const scopeDialog = useRef(null)
   const systemRulesDialog = useRef(null)
   const providerInfoDialog = useRef(null)
+  const testDialog = useRef(null)
   const toggleScrollPositions = useRef(null)
   const [providerInfo, setProviderInfo] = useState(null)
 
@@ -1465,6 +1483,7 @@ function ProxySettings({ active, t }) {
         request('proxy'), request('proxy/provider-inventory'), request('status'),
       ])
       setConfiguration(next)
+      setConnection(proxyConnectionDraft(next))
       setDirectRulesText(directRuleText(next))
       setProviders(inventory.providers ?? [])
       setError('')
@@ -1489,7 +1508,7 @@ function ProxySettings({ active, t }) {
     if (task?.status !== 'running') return undefined
     const timer = window.setTimeout(async () => {
       try { setTask(await request(`proxy/test/tasks/${task.taskId}`)) } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : String(nextError))
+        setTestError(nextError instanceof Error ? nextError.message : String(nextError))
       }
     }, 400)
     return () => window.clearTimeout(timer)
@@ -1502,8 +1521,8 @@ function ProxySettings({ active, t }) {
     }
   }, [task])
 
-  const patch = useCallback((path, value) => {
-    setConfiguration(current => {
+  const patchConnection = useCallback((path, value) => {
+    setConnection(current => {
       const next = structuredClone(current)
       let target = next
       for (const part of path.slice(0, -1)) target = target[part]
@@ -1518,12 +1537,12 @@ function ProxySettings({ active, t }) {
     toggleScrollPositions.current = scrollableAncestorPositions(event.currentTarget)
   }, [])
 
-  const patchToggle = useCallback((element, path, value) => {
+  const preserveToggleScroll = useCallback((element, update) => {
     const positions = toggleScrollPositions.current ?? scrollableAncestorPositions(element)
     toggleScrollPositions.current = null
-    patch(path, value)
+    update()
     restoreScrollableAncestors(positions)
-  }, [patch])
+  }, [])
 
   const toggleScrollHandlers = {
     onPointerDown: rememberToggleScroll,
@@ -1531,38 +1550,42 @@ function ProxySettings({ active, t }) {
     onKeyDown: rememberToggleScroll,
   }
 
-  if (configuration === null) return h('section', { className: css.section },
+  if (configuration === null || connection === null) return h('section', { className: css.section },
     h('h3', null, t('proxyTitle')),
     h('p', { className: error ? css.error : undefined }, error || t('proxyLoading')))
 
-  const candidate = () => {
-    const directRules = splitDirectRules(directRulesText)
-    const proxy = {
-      protocol: configuration.proxy.protocol,
-      host: configuration.proxy.host.trim(),
-      port: configuration.proxy.port === '' || configuration.proxy.port == null ? null : Number(configuration.proxy.port),
-      username: configuration.proxy.username,
-      passwordConfigured: configuration.proxy.passwordConfigured === true,
-      remoteDns: configuration.proxy.remoteDns === true,
+  const candidate = ({ source = configuration, connectionSource = connection, rules = 'form', includeSecret = true } = {}) => {
+    const directRules = rules === 'form' ? splitDirectRules(directRulesText) : {
+      noProxy: source.noProxy?.user ?? [], bypass: source.bypass?.additional ?? [],
     }
-    if (clearPassword) proxy.clearPassword = true
-    else if (password !== '') proxy.password = password
+    const proxy = {
+      protocol: connectionSource.protocol,
+      host: connectionSource.host.trim(),
+      port: connectionSource.port === '' || connectionSource.port == null ? null : Number(connectionSource.port),
+      username: connectionSource.username,
+      passwordConfigured: source.proxy.passwordConfigured === true,
+      remoteDns: connectionSource.remoteDns === true,
+    }
+    if (includeSecret) {
+      if (clearPassword) proxy.clearPassword = true
+      else if (password !== '') proxy.password = password
+    }
     return {
-      schema: 1, enabled: configuration.enabled === true, proxy,
-      scopes: Object.fromEntries(PROXY_SCOPES.map(([id]) => [id, configuration.scopes[id] === true])),
-      environment: { allProxy: configuration.environment.allProxy },
-      modelApi: configuration.modelApi,
+      schema: 1, enabled: connectionSource.enabled === true, proxy,
+      scopes: Object.fromEntries(PROXY_SCOPES.map(([id]) => [id, source.scopes[id] === true])),
+      environment: { allProxy: source.environment.allProxy },
+      modelApi: source.modelApi,
       noProxy: { user: directRules.noProxy },
       bypass: { additional: directRules.bypass },
     }
   }
 
-  const save = async () => {
+  const saveConnection = async () => {
     setBusy(true); setError(''); setResult(t('proxySaving'))
     try {
-      const next = await request('proxy', { method: 'PUT', body: { baseRevision: configuration.revision, value: candidate() } })
+      const next = await request('proxy', { method: 'PUT', body: { baseRevision: configuration.revision, value: candidate({ rules: 'saved' }) } })
       setConfiguration(next)
-      setDirectRulesText(directRuleText(next))
+      setConnection(proxyConnectionDraft(next))
       setPassword('')
       setClearPassword(false)
       setResult(t('proxySaved'))
@@ -1572,13 +1595,56 @@ function ProxySettings({ active, t }) {
     } finally { setBusy(false) }
   }
 
-  const startTest = async () => {
-    setBusy(true); setError(''); setResult('')
+  const saveRules = async () => {
+    setBusy(true); setError(''); setResult(t('proxySaving'))
     try {
-      const started = await request('proxy/test', { method: 'POST', body: { baseRevision: configuration.revision, value: candidate() } })
-      setTask(await request(`proxy/test/tasks/${started.taskId}`))
+      const next = await request('proxy', {
+        method: 'PUT', body: { baseRevision: configuration.revision, value: candidate({ connectionSource: proxyConnectionDraft(configuration), includeSecret: false }) },
+      })
+      setConfiguration(next)
+      setDirectRulesText(directRuleText(next))
+      setResult(t('proxySaved'))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError)); setResult('')
+      if (nextError?.statusCode === 409) await load()
+    } finally { setBusy(false) }
+  }
+
+  const saveImmediate = async mutate => {
+    if (busy) return
+    const nextSource = structuredClone(configuration)
+    mutate(nextSource)
+    setConfiguration(nextSource)
+    setBusy(true); setError('')
+    try {
+      const saved = await request('proxy', {
+        method: 'PUT', body: {
+          baseRevision: configuration.revision,
+          value: candidate({ source: nextSource, connectionSource: proxyConnectionDraft(nextSource), rules: 'saved', includeSecret: false }),
+        },
+      })
+      setConfiguration(saved)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
+      await load()
+    } finally { setBusy(false) }
+  }
+
+  const startTest = async () => {
+    setBusy(true); setTestError(''); setResult('')
+    setTask({ status: 'starting', stages: pendingProxyTestStages() })
+    requestAnimationFrame(() => testDialog.current?.showModal())
+    try {
+      const started = await request('proxy/test', { method: 'POST', body: { baseRevision: configuration.revision, value: candidate({ rules: 'saved' }) } })
+      setTask(await request(`proxy/test/tasks/${started.taskId}`))
+    } catch (nextError) {
+      const detail = nextError instanceof Error ? nextError.message : String(nextError)
+      setTask(current => ({
+        status: 'failed',
+        stages: current?.stages?.length > 0 ? current.stages : pendingProxyTestStages(),
+        error: { detail },
+      }))
+      setTestError(detail)
       if (nextError?.statusCode === 409) await load()
     } finally { setBusy(false) }
   }
@@ -1586,13 +1652,16 @@ function ProxySettings({ active, t }) {
   const cancelTest = async () => {
     if (!task?.taskId) return
     try { setTask(await request(`proxy/test/tasks/${task.taskId}`, { method: 'DELETE' })) } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
+      setTestError(nextError instanceof Error ? nextError.message : String(nextError))
     }
   }
 
-  const taskRunning = task?.status === 'running'
+  const taskRunning = task?.status === 'starting' || task?.status === 'running'
   const sharedDshProxyEnabled = configuration.scopes.dshCore || configuration.scopes.dshPlugins
-  const visibleProviders = providers.filter(provider => matchesResourceSearch(providerQuery, [provider.displayName, provider.id, provider.type]))
+  const visibleProviders = providers.filter(provider => {
+    const displayName = typeof provider.displayName === 'string' && provider.displayName.trim() !== '' ? provider.displayName : provider.id
+    return matchesResourceSearch(providerQuery, [displayName])
+  })
   const localize = value => value?.[t('localeCode')] ?? value?.en ?? ''
   const catalog = configuration.scopeCatalog
   const catalogGroups = Object.entries(catalog?.groups ?? {})
@@ -1605,21 +1674,26 @@ function ProxySettings({ active, t }) {
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-title' },
       h('div', { className: css.sectionHeading },
         h('div', null, h('h3', { id: 'platform-proxy-title' }, t('proxyTitle')), h('p', null, t('proxyDetail'))),
-        h('label', { className: css.toggle, ...toggleScrollHandlers },
-          h('input', { type: 'checkbox', checked: configuration.enabled, onChange: event => patchToggle(event.currentTarget, ['enabled'], event.target.checked) }),
-          h('span', { 'aria-hidden': 'true' }), h('b', null, t(configuration.enabled ? 'enabled' : 'disabled')))),
+        h('div', { className: css.actions },
+          h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning, onClick: () => { void startTest() } }, t('proxyTestStart')),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void saveConnection() } }, t('proxySave')),
+          h('label', { className: css.toggle, ...toggleScrollHandlers },
+            h('input', { type: 'checkbox', checked: connection.enabled, onChange: event => preserveToggleScroll(event.currentTarget, () => patchConnection(['enabled'], event.target.checked)) }),
+            h('span', { 'aria-hidden': 'true' }), h('b', null, t(connection.enabled ? 'enabled' : 'disabled'))))),
       h('p', { className: css.proxyHint }, t(configuration.componentReady ? 'proxyComponentReady' : 'proxyComponentUnavailable')),
       h('div', { className: css.proxyFormGrid },
-        h('label', null, h('span', null, t('proxyProtocol')), h('select', { value: configuration.proxy.protocol, onChange: event => patch(['proxy', 'protocol'], event.target.value) }, h('option', { value: 'http' }, 'HTTP'), h('option', { value: 'socks5' }, 'SOCKS5'))),
-        h('label', null, h('span', null, t('proxyHost')), h('input', { value: configuration.proxy.host, maxLength: 253, spellCheck: false, placeholder: '172.17.0.1', onChange: event => patch(['proxy', 'host'], event.target.value) })),
-        h('label', null, h('span', null, t('proxyPort')), h('input', { type: 'number', min: 1, max: 65535, value: configuration.proxy.port ?? '', placeholder: '7890', onChange: event => patch(['proxy', 'port'], event.target.value) })),
-        h('label', null, h('span', null, t('proxyUsername')), h('input', { value: configuration.proxy.username, maxLength: 255, autoComplete: 'off', onChange: event => patch(['proxy', 'username'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyProtocol')), h('select', { value: connection.protocol, onChange: event => patchConnection(['protocol'], event.target.value) }, h('option', { value: 'http' }, 'HTTP'), h('option', { value: 'socks5' }, 'SOCKS5'))),
+        h('label', null, h('span', null, t('proxyHost')), h('input', { value: connection.host, maxLength: 253, spellCheck: false, placeholder: '172.17.0.1', onChange: event => patchConnection(['host'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyPort')), h('input', { type: 'number', min: 1, max: 65535, value: connection.port ?? '', placeholder: '7890', onChange: event => patchConnection(['port'], event.target.value) })),
+        h('label', null, h('span', null, t('proxyUsername')), h('input', { value: connection.username, maxLength: 255, autoComplete: 'off', onChange: event => patchConnection(['username'], event.target.value) })),
         h('div', { className: css.proxyPasswordField },
           h('label', null, h('span', null, t('proxyPassword')), h('input', { type: 'password', value: password, disabled: clearPassword, maxLength: 255, autoComplete: 'new-password', placeholder: t('proxyPasswordPlaceholder'), onChange: event => { setPassword(event.target.value); if (event.target.value !== '') setClearPassword(false) } })),
           configuration.proxy.passwordConfigured ? h('button', { type: 'button', className: css.proxyClearPassword, 'aria-pressed': clearPassword, onClick: () => { setClearPassword(value => !value); setPassword('') } }, t('proxyClearPassword')) : null),
-        configuration.proxy.protocol === 'socks5' ? h('div', { className: css.proxySettingRow }, h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail'))), h('label', { className: css.toggle, 'aria-label': t('proxyRemoteDns'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: configuration.proxy.remoteDns, onChange: event => patchToggle(event.currentTarget, ['proxy', 'remoteDns'], event.target.checked) }), h('span', { 'aria-hidden': true }))) : null),
+        connection.protocol === 'socks5' ? h('div', { className: css.proxySettingRow }, h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail'))), h('label', { className: css.toggle, 'aria-label': t('proxyRemoteDns'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: connection.remoteDns, onChange: event => preserveToggleScroll(event.currentTarget, () => patchConnection(['remoteDns'], event.target.checked)) }), h('span', { 'aria-hidden': true }))) : null),
       h('p', { className: css.proxyHint }, t(configuration.proxy.passwordConfigured ? 'proxyPasswordConfigured' : 'proxyPasswordNotConfigured')),
-      location.protocol !== 'https:' && (password !== '' || configuration.proxy.username !== '') ? h('p', { className: css.notice }, t('proxyTransportWarning')) : null),
+      location.protocol !== 'https:' && (password !== '' || connection.username !== '') ? h('p', { className: css.notice }, t('proxyTransportWarning')) : null,
+      result ? h('p', { className: css.proxyHint, role: 'status' }, result) : null,
+      error ? h('p', { className: css.error, role: 'alert' }, error) : null),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-scopes-title' },
       h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-scopes-title' }, t('proxyScopes')), h('p', null, t('proxyScopesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => scopeDialog.current?.showModal() }, t('proxyScopeHelp'))),
@@ -1629,15 +1703,15 @@ function ProxySettings({ active, t }) {
             h('b', null, t(title)),
             h(ExpandableProxyDescription, { text: t(detail), identity: `scope:${id}` })),
           h('label', { className: css.toggle, 'aria-label': t(title), ...toggleScrollHandlers },
-            h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patchToggle(event.currentTarget, ['scopes', id], event.target.checked) }),
+            h('input', { type: 'checkbox', checked: configuration.scopes[id], disabled: busy, onChange: event => preserveToggleScroll(event.currentTarget, () => { void saveImmediate(next => { next.scopes[id] = event.target.checked }) }) }),
             h('span', { 'aria-hidden': true })))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-rules-title' },
-      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail'))), h('button', { type: 'button', className: css.secondaryButton, onClick: () => systemRulesDialog.current?.showModal() }, t('proxySystemRules'))),
+      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-rules-title' }, t('proxyRules')), h('p', null, t('proxyRulesDetail'))), h('div', { className: css.actions }, h('button', { type: 'button', className: css.secondaryButton, onClick: () => systemRulesDialog.current?.showModal() }, t('proxySystemRules')), h('button', { type: 'button', className: css.primaryButton, disabled: busy, onClick: () => { void saveRules() } }, t('proxySave')))),
       h('label', { className: css.proxyDirectRulesField }, h('span', null, t('proxyDirectRules')), h('textarea', { rows: 5, value: directRulesText, spellCheck: false, placeholder: t('proxyDirectRulesPlaceholder'), onChange: event => setDirectRulesText(event.target.value) }), h('small', null, t('proxyDirectRulesDetail'))),
       h('div', { className: css.proxySettingRow },
         h('span', null, h('b', null, t('proxyAllProxy')), h('small', null, t('proxyAllProxyDetail'))),
-        h('label', { className: css.toggle, 'aria-label': t('proxyAllProxy'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', onChange: event => patchToggle(event.currentTarget, ['environment', 'allProxy'], event.target.checked ? 'scope-proxy' : null) }), h('span', { 'aria-hidden': true })))),
+        h('label', { className: css.toggle, 'aria-label': t('proxyAllProxy'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', disabled: busy, onChange: event => preserveToggleScroll(event.currentTarget, () => { void saveImmediate(next => { next.environment.allProxy = event.target.checked ? 'scope-proxy' : null }) }) }), h('span', { 'aria-hidden': true })))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
       h('div', { className: css.proxyProviderHeading },
@@ -1651,7 +1725,7 @@ function ProxySettings({ active, t }) {
         const policy = configuration.modelApi.providers[provider.id]
           ?? provider.requestedPolicy
           ?? { followDsh: true, proxyEnabled: false }
-        const setPolicy = (element, value) => patchToggle(element, ['modelApi', 'providers', provider.id], value)
+        const setPolicy = (element, value) => preserveToggleScroll(element, () => { void saveImmediate(next => { next.modelApi.providers[provider.id] = value }) })
         return h('div', { className: css.proxyProvider, key: provider.id },
           h('div', { className: css.proxyProviderIdentity },
             h('b', null, displayName),
@@ -1684,15 +1758,16 @@ function ProxySettings({ active, t }) {
               h('span', { 'aria-hidden': true }))))
       }))),
 
-    h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-test-title' },
-      h('div', { className: css.sectionHeading }, h('div', null, h('h3', { id: 'platform-proxy-test-title' }, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('div', { className: css.actions }, taskRunning ? h('button', { type: 'button', className: css.secondaryButton, onClick: () => { void cancelTest() } }, t('cancel')) : null, h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning, onClick: () => { void startTest() } }, t('proxyTestStart')), h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void save() } }, t('proxySave')))),
+    h('dialog', { ref: testDialog, className: css.proxyTestDialog },
+      h('div', null,
+        h('header', null, h('div', null, h('h3', null, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('button', { type: 'button', className: css.secondaryButton, disabled: taskRunning, onClick: () => testDialog.current?.close() }, t('close'))),
       task ? h('ol', { className: css.proxyTestStages }, task.stages.map(stage => {
         const status = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
         return h('li', { key: stage.stage, 'data-state': stage.status }, h('span', { 'aria-hidden': 'true' }), h('span', null, h('b', null, t(PROXY_TEST_LABELS[stage.stage])), h('small', null, stage.detail ?? stage.errorCode ?? status)), h('small', null, status))
       })) : null,
-      result ? h('p', { className: css.proxyHint, role: 'status' }, result) : null,
       task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
-      error ? h('p', { className: css.error, role: 'alert' }, error) : null),
+      task === null && testError ? h('p', { className: css.error, role: 'alert' }, testError) : null,
+      taskRunning && task?.taskId ? h('footer', null, h('button', { type: 'button', className: css.secondaryButton, onClick: () => { void cancelTest() } }, t('cancel'))) : null)),
 
     h('dialog', { ref: scopeDialog, className: css.proxyScopeDialog },
       h('form', { method: 'dialog' },

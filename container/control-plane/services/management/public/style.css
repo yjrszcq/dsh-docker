@@ -518,6 +518,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-provider-info:hover, .proxy-provider-info:focus-visible { border-color: var(--accent); color: var(--accent); }
 .proxy-test-stages { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
 .proxy-test-stages:empty { display: none; }
+.proxy-test-dialog { box-sizing: border-box; width: min(620px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
+.proxy-test-dialog::backdrop { background: rgb(0 0 0 / 50%); }
+.proxy-test-dialog > div { display: grid; gap: 14px; padding: 16px; }
+.proxy-test-dialog header, .proxy-test-dialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.proxy-test-dialog header h2, .proxy-test-dialog header p { margin: 0; }
+.proxy-test-dialog header p { margin-top: 4px; color: var(--muted); }
+.proxy-test-dialog footer { justify-content: flex-end; }
 .proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .proxy-test-stage:last-child { border-bottom: 0; }
 .proxy-test-stage > span:first-child { width: 9px; height: 9px; margin-top: 4px; border: 1.5px solid var(--muted); border-radius: 50%; }
@@ -807,6 +814,7 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
 }
 
 @media (max-width: 640px) {
+  .proxy-test-dialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .progress-log-group-list.populated { height: 180px; }
   .topbar-inner, main { width: calc(100% - 28px); }
   .topbar-actions { gap: 7px; }

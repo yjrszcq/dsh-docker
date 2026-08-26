@@ -236,6 +236,7 @@ let proxyLoaded = false
 let proxyLoading
 let proxyTestTask
 let proxyTestPollTimer
+let proxyImmediateSave = Promise.resolve()
 const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
 const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
 const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
@@ -3469,6 +3470,18 @@ const PROXY_TEST_STAGE_LABELS = Object.freeze({
   'target-http': 'proxyStageHttp',
 })
 
+function pendingProxyTestStages() {
+  return Object.keys(PROXY_TEST_STAGE_LABELS).map(stage => ({ stage, status: 'pending' }))
+}
+
+function failedProxyTest(error, stages = proxyTestTask?.stages) {
+  return {
+    status: 'failed',
+    stages: stages?.length > 0 ? stages : pendingProxyTestStages(),
+    error: { detail: localizedError(error) },
+  }
+}
+
 function proxyLines(value) {
   return String(value ?? '').split(/\r?\n/u).map(entry => entry.trim()).filter(Boolean)
 }
@@ -3500,39 +3513,34 @@ function renderProxyTransportWarning() {
     || (elements['proxy-password'].value === '' && elements['proxy-username'].value === '')
 }
 
-function proxyCandidate() {
+function proxyCandidate({ connection = 'form', rules = 'form', configuration = proxyConfiguration } = {}) {
   if (proxyConfiguration === undefined) throw new Error(t('proxyComponentUnavailable'))
-  const directRules = splitDirectRules(elements['proxy-direct-rules'].value)
+  const directRules = rules === 'form'
+    ? splitDirectRules(elements['proxy-direct-rules'].value)
+    : { noProxy: configuration.noProxy?.user ?? [], bypass: configuration.bypass?.additional ?? [] }
   const password = elements['proxy-password'].value
   const clearPassword = elements['proxy-clear-password'].getAttribute('aria-pressed') === 'true'
-  const providerPolicies = { ...(proxyConfiguration.modelApi?.providers ?? {}) }
-  for (const input of elements['proxy-provider-list'].querySelectorAll('[data-provider-policy]')) {
-    const follow = input.closest('.proxy-provider-controls')?.querySelector('[data-provider-follow]')
-    providerPolicies[input.dataset.providerPolicy] = {
-      followDsh: follow?.getAttribute('aria-pressed') === 'true',
-      proxyEnabled: input.checked,
-    }
-  }
-  const proxy = {
+  const proxy = connection === 'form' ? {
     protocol: elements['proxy-protocol'].value,
     host: elements['proxy-host'].value.trim(),
     port: elements['proxy-port'].value === '' ? null : Number(elements['proxy-port'].value),
     username: elements['proxy-username'].value,
-    passwordConfigured: proxyConfiguration.proxy.passwordConfigured === true,
+    passwordConfigured: configuration.proxy.passwordConfigured === true,
     remoteDns: elements['proxy-remote-dns'].checked,
+  } : { ...configuration.proxy }
+  if (connection === 'form') {
+    if (clearPassword) proxy.clearPassword = true
+    else if (password !== '') proxy.password = password
   }
-  if (clearPassword) proxy.clearPassword = true
-  else if (password !== '') proxy.password = password
   return {
     schema: 1,
-    enabled: elements['proxy-enabled'].checked,
+    enabled: connection === 'form' ? elements['proxy-enabled'].checked : configuration.enabled === true,
     proxy,
-    scopes: Object.fromEntries([...document.querySelectorAll('[data-proxy-scope]')]
-      .map(input => [input.dataset.proxyScope, input.checked])),
-    environment: { allProxy: elements['proxy-all-proxy'].checked ? 'scope-proxy' : null },
+    scopes: { ...configuration.scopes },
+    environment: { allProxy: configuration.environment?.allProxy ?? null },
     modelApi: {
-      default: proxyConfiguration.modelApi?.default ?? { followDsh: true, proxyEnabled: false },
-      providers: providerPolicies,
+      default: configuration.modelApi?.default ?? { followDsh: true, proxyEnabled: false },
+      providers: { ...(configuration.modelApi?.providers ?? {}) },
     },
     noProxy: { user: directRules.noProxy },
     bypass: { additional: directRules.bypass },
@@ -3543,8 +3551,11 @@ function renderProxyProviders() {
   const container = elements['proxy-provider-list']
   container.replaceChildren()
   const query = elements['proxy-provider-search'].value.trim().toLocaleLowerCase()
-  const providers = (proxyProviderInventory.providers ?? []).filter(provider => query === '' || [provider.displayName, provider.id, provider.type]
-    .some(value => String(value ?? '').toLocaleLowerCase().includes(query)))
+  const providers = (proxyProviderInventory.providers ?? []).filter(provider => {
+    const displayName = typeof provider.displayName === 'string' && provider.displayName.trim() !== ''
+      ? provider.displayName : provider.id
+    return query === '' || displayName.toLocaleLowerCase().includes(query)
+  })
   elements['proxy-provider-empty'].hidden = providers.length > 0
   container.hidden = providers.length === 0
   for (const provider of providers) {
@@ -3586,8 +3597,11 @@ function renderProxyProviders() {
     follow.setAttribute('aria-pressed', String(provider.routingCapability === 'shared-dsh' || policy.followDsh === true))
     follow.dataset.sharedRoute = sharedDshProxyEnabled() ? 'proxy' : 'direct'
     follow.disabled = provider.routingCapability !== 'provider'
-    follow.addEventListener('click', () => {
-      follow.setAttribute('aria-pressed', String(follow.getAttribute('aria-pressed') !== 'true'))
+    follow.addEventListener('click', async () => {
+      const next = follow.getAttribute('aria-pressed') !== 'true'
+      await saveProxyImmediate(configuration => {
+        configuration.modelApi.providers[provider.id] = { ...policy, followDsh: next }
+      })
     })
     const toggle = document.createElement('label')
     toggle.className = 'toggle'
@@ -3597,6 +3611,12 @@ function renderProxyProviders() {
     input.dataset.providerPolicy = provider.id
     input.checked = policy.proxyEnabled === true
     input.disabled = provider.routingCapability !== 'provider'
+    input.addEventListener('change', async event => {
+      const next = event.target.checked
+      await saveProxyImmediate(configuration => {
+        configuration.modelApi.providers[provider.id] = { ...policy, proxyEnabled: next }
+      })
+    })
     const track = document.createElement('span')
     track.setAttribute('aria-hidden', 'true')
     toggle.append(input, track)
@@ -3699,11 +3719,12 @@ function renderProxyTest(task = proxyTestTask) {
     item.append(marker, content, statusLabel)
     container.append(item)
   }
-  const running = task?.status === 'running'
+  const running = task?.status === 'starting' || task?.status === 'running'
   elements['proxy-test'].disabled = running
   elements['proxy-save'].disabled = running
-  elements['proxy-test-cancel'].hidden = !running
-  const result = elements['proxy-operation-result']
+  elements['proxy-test-close'].disabled = running
+  elements['proxy-test-cancel'].hidden = !running || task?.taskId === undefined
+  const result = elements['proxy-test-result']
   result.hidden = task === undefined || running
   if (task !== undefined && !running) {
     result.textContent = task.status === 'success' ? t('proxyTestSuccess')
@@ -3721,7 +3742,7 @@ function scheduleProxyTestPoll(taskId) {
       if (task.status === 'running') scheduleProxyTestPoll(taskId)
       else clearProxySecrets()
     } catch (error) {
-      showError(error)
+      renderProxyTest(failedProxyTest(error))
     }
   }, 400)
 }
@@ -3756,7 +3777,7 @@ async function saveProxyConfiguration() {
   elements['proxy-operation-result'].textContent = t('proxySaving')
   try {
     proxyConfiguration = await api('proxy', {
-      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
+      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ rules: 'saved' }) },
     })
     clearProxySecrets()
     renderProxyConfiguration()
@@ -3771,17 +3792,91 @@ async function saveProxyConfiguration() {
   }
 }
 
+async function saveProxyRules() {
+  elements['proxy-rules-save'].disabled = true
+  elements['proxy-operation-result'].hidden = false
+  elements['proxy-operation-result'].textContent = t('proxySaving')
+  try {
+    proxyConfiguration = await api('proxy', {
+      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ connection: 'saved' }) },
+    })
+    renderProxyConfiguration()
+    elements['proxy-operation-result'].textContent = t('proxySaved')
+    clearError()
+  } catch (error) {
+    showError(error)
+    elements['proxy-operation-result'].textContent = localizedError(error)
+    if (error.statusCode === 409) await loadProxy({ force: true })
+  } finally {
+    elements['proxy-rules-save'].disabled = false
+  }
+}
+
+function captureProxyDraft() {
+  return {
+    enabled: elements['proxy-enabled'].checked,
+    protocol: elements['proxy-protocol'].value,
+    host: elements['proxy-host'].value,
+    port: elements['proxy-port'].value,
+    username: elements['proxy-username'].value,
+    password: elements['proxy-password'].value,
+    clearPassword: elements['proxy-clear-password'].getAttribute('aria-pressed'),
+    remoteDns: elements['proxy-remote-dns'].checked,
+    directRules: elements['proxy-direct-rules'].value,
+  }
+}
+
+function restoreProxyDraft(draft) {
+  elements['proxy-enabled'].checked = draft.enabled
+  elements['proxy-enabled-label'].textContent = t(draft.enabled ? 'enabled' : 'disabled')
+  elements['proxy-protocol'].value = draft.protocol
+  elements['proxy-host'].value = draft.host
+  elements['proxy-port'].value = draft.port
+  elements['proxy-username'].value = draft.username
+  elements['proxy-password'].value = draft.password
+  elements['proxy-clear-password'].setAttribute('aria-pressed', draft.clearPassword)
+  elements['proxy-password'].disabled = draft.clearPassword === 'true'
+  elements['proxy-remote-dns'].checked = draft.remoteDns
+  elements['proxy-remote-dns-row'].hidden = draft.protocol !== 'socks5'
+  elements['proxy-direct-rules'].value = draft.directRules
+  renderProxyTransportWarning()
+}
+
+function saveProxyImmediate(mutate) {
+  proxyImmediateSave = proxyImmediateSave.then(async () => {
+    const draft = captureProxyDraft()
+    const next = structuredClone(proxyConfiguration)
+    mutate(next)
+    try {
+      proxyConfiguration = await api('proxy', {
+        method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ connection: 'saved', rules: 'saved', configuration: next }) },
+      })
+      renderProxyConfiguration()
+      restoreProxyDraft(draft)
+      clearError()
+    } catch (error) {
+      showError(error)
+      if (error.statusCode === 409) await loadProxy({ force: true })
+      else renderProxyConfiguration()
+    }
+  })
+  return proxyImmediateSave
+}
+
 async function startProxyTest() {
+  proxyTestTask = { status: 'starting', stages: pendingProxyTestStages() }
+  elements['proxy-test-dialog'].showModal()
+  renderProxyTest(proxyTestTask)
   try {
     const started = await api('proxy/test', {
-      method: 'POST', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
+      method: 'POST', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ rules: 'saved' }) },
     })
     const task = await api(`proxy/test/tasks/${started.taskId}`)
     renderProxyTest(task)
     scheduleProxyTestPoll(started.taskId)
     clearError()
   } catch (error) {
-    showError(error)
+    renderProxyTest(failedProxyTest(error))
     if (error.statusCode === 409) await loadProxy({ force: true })
   }
 }
@@ -3948,6 +4043,11 @@ elements['proxy-enabled'].addEventListener('change', event => {
 for (const input of document.querySelectorAll('[data-proxy-scope="dshCore"], [data-proxy-scope="dshPlugins"]')) {
   input.addEventListener('change', renderSharedDshRouteState)
 }
+for (const input of document.querySelectorAll('[data-proxy-scope]')) {
+  input.addEventListener('change', event => {
+    void saveProxyImmediate(configuration => { configuration.scopes[event.target.dataset.proxyScope] = event.target.checked })
+  })
+}
 elements['proxy-protocol'].addEventListener('change', event => {
   elements['proxy-remote-dns-row'].hidden = event.target.value !== 'socks5'
 })
@@ -3972,14 +4072,21 @@ elements['proxy-provider-info-dialog'].addEventListener('click', event => {
   if (event.target === event.currentTarget) event.currentTarget.close()
 })
 elements['proxy-save'].addEventListener('click', () => { void saveProxyConfiguration() })
+elements['proxy-rules-save'].addEventListener('click', () => { void saveProxyRules() })
+elements['proxy-all-proxy'].addEventListener('change', event => {
+  void saveProxyImmediate(configuration => { configuration.environment.allProxy = event.target.checked ? 'scope-proxy' : null })
+})
 elements['proxy-test'].addEventListener('click', () => { void startProxyTest() })
+elements['proxy-test-close'].addEventListener('click', () => elements['proxy-test-dialog'].close())
 elements['proxy-test-cancel'].addEventListener('click', async () => {
   if (proxyTestTask?.taskId === undefined) return
   try {
     const task = await api(`proxy/test/tasks/${proxyTestTask.taskId}`, { method: 'DELETE' })
     renderProxyTest(task)
     if (task.status === 'running') scheduleProxyTestPoll(task.taskId)
-  } catch (error) { showError(error) }
+  } catch (error) {
+    renderProxyTest(failedProxyTest(error))
+  }
 })
 for (const button of channelButtons) {
   button.addEventListener('click', async () => {

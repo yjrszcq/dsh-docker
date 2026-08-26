@@ -566,6 +566,13 @@ a.secondaryButton { text-decoration: none; }
 .proxyTestStages > li[data-state='success'] > span:first-child { border-color: var(--dsw-alias-state-success-primary); background: var(--dsw-alias-state-success-primary); }
 .proxyTestStages > li[data-state='failed'] > span:first-child { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-state-error-primary); }
 .proxyTestStages > li small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
+.proxyTestDialog { box-sizing: border-box; width: min(620px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.proxyTestDialog::backdrop { background: rgb(0 0 0 / 50%); }
+.proxyTestDialog > div { display: grid; gap: 14px; padding: 16px; }
+.proxyTestDialog header, .proxyTestDialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.proxyTestDialog header h3, .proxyTestDialog header p { margin: 0; }
+.proxyTestDialog header p { margin-top: 4px; color: var(--dsw-alias-label-tertiary); }
+.proxyTestDialog footer { justify-content: flex-end; }
 .proxyScopeDialog { box-sizing: border-box; width: min(760px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
 .proxyScopeDialog::backdrop { background: rgb(0 0 0 / 50%); }
 .proxyScopeDialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: inherit; }
@@ -940,6 +947,7 @@ a.secondaryButton { text-decoration: none; }
 .reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 @media (max-width: 640px) {
+  .proxyTestDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .progressLogGroupListPopulated { height: 180px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }

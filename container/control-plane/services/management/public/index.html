@@ -58,7 +58,7 @@
       <section aria-labelledby="proxy-title">
         <div class="section-heading">
           <div><h2 id="proxy-title" data-i18n="proxyTitle">Proxy settings</h2><p data-i18n="proxyDetail">Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.</p></div>
-          <label class="toggle"><input id="proxy-enabled" type="checkbox"><span aria-hidden="true"></span><strong id="proxy-enabled-label" data-i18n="disabled">Disabled</strong></label>
+          <div class="actions"><button id="proxy-test" type="button" class="secondary" data-i18n="proxyTestStart">Test connection</button><button id="proxy-save" type="button" class="primary" data-i18n="proxySave">Save and apply</button><label class="toggle"><input id="proxy-enabled" type="checkbox"><span aria-hidden="true"></span><strong id="proxy-enabled-label" data-i18n="disabled">Disabled</strong></label></div>
         </div>
         <p id="proxy-component-state" class="operation-result" role="status"></p>
         <div class="proxy-form-grid">
@@ -86,7 +86,7 @@
       </section>
 
       <section aria-labelledby="proxy-rules-title">
-        <div class="section-heading"><div><h2 id="proxy-rules-title" data-i18n="proxyRules">Direct rules</h2><p data-i18n="proxyRulesDetail">Destinations listed here bypass the external proxy.</p></div><button id="proxy-system-rules" type="button" class="secondary" data-i18n="proxySystemRules">Built-in rules</button></div>
+        <div class="section-heading"><div><h2 id="proxy-rules-title" data-i18n="proxyRules">Direct rules</h2><p data-i18n="proxyRulesDetail">Destinations listed here bypass the external proxy.</p></div><div class="actions"><button id="proxy-system-rules" type="button" class="secondary" data-i18n="proxySystemRules">Built-in rules</button><button id="proxy-rules-save" type="button" class="primary" data-i18n="proxySave">Save and apply</button></div></div>
         <label class="proxy-direct-rules-field"><span data-i18n="proxyDirectRules">Additional direct rules</span><textarea id="proxy-direct-rules" rows="5" spellcheck="false" data-i18n-placeholder="proxyDirectRulesPlaceholder"></textarea><small data-i18n="proxyDirectRulesDetail">One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.</small></label>
         <div class="proxy-setting-row"><span><strong data-i18n="proxyAllProxy">Set ALL_PROXY where supported</strong><small data-i18n="proxyAllProxyDetail">Only clients with verified ALL_PROXY support receive it.</small></span><label class="toggle" data-i18n-aria-label="proxyAllProxy"><input id="proxy-all-proxy" type="checkbox"><span aria-hidden="true"></span></label></div>
       </section>
@@ -97,11 +97,7 @@
         <p id="proxy-provider-empty" class="empty-state" data-i18n="proxyNoProviders" hidden>No model Providers were found.</p>
       </section>
 
-      <section aria-labelledby="proxy-test-title">
-        <div class="section-heading"><div><h2 id="proxy-test-title" data-i18n="proxyTest">Connection test</h2><p data-i18n="proxyTestDetail">Tests the form values without saving or activating them.</p></div><div class="actions"><button id="proxy-test-cancel" type="button" class="secondary" data-i18n="cancel" hidden>Cancel</button><button id="proxy-test" type="button" class="secondary" data-i18n="proxyTestStart">Test connection</button><button id="proxy-save" type="button" class="primary" data-i18n="proxySave">Save and apply</button></div></div>
-        <ol id="proxy-test-stages" class="proxy-test-stages"></ol>
-        <p id="proxy-operation-result" class="operation-result" role="status" aria-live="polite" hidden></p>
-      </section>
+      <p id="proxy-operation-result" class="operation-result" role="status" aria-live="polite" hidden></p>
     </div>
 
     <div id="panel-updates" class="tab-panel" role="tabpanel" aria-labelledby="tab-updates" hidden>
@@ -349,6 +345,7 @@
   <dialog id="proxy-scope-dialog" class="proxy-scope-dialog" aria-labelledby="proxy-scope-dialog-title"><form method="dialog"><header><div><h2 id="proxy-scope-dialog-title" data-i18n="proxyScopeGuideTitle">Proxy scope guide</h2><p data-i18n="proxyScopeGuideDetail">How managed network sources are classified.</p></div><button value="cancel" class="secondary" data-i18n="close">Close</button></header><div id="proxy-scope-catalog" class="proxy-scope-catalog"></div><div id="proxy-scope-summaries" class="proxy-scope-summaries"></div></form></dialog>
   <dialog id="proxy-provider-info-dialog" class="proxy-provider-info-dialog" aria-labelledby="proxy-provider-info-title"><form method="dialog"><header><h2 id="proxy-provider-info-title"></h2><button value="cancel" class="secondary" data-i18n="close">Close</button></header><p id="proxy-provider-info-detail"></p></form></dialog>
   <dialog id="proxy-system-rules-dialog" class="proxy-provider-info-dialog" aria-labelledby="proxy-system-rules-title"><form method="dialog"><header><h2 id="proxy-system-rules-title" data-i18n="proxySystemRulesTitle">Built-in direct rules</h2><button value="cancel" class="secondary" data-i18n="close">Close</button></header><div class="proxy-system-rules-body"><p data-i18n="proxySystemRulesDetail">These platform-managed local destinations are always direct and do not need to be entered again.</p><pre id="proxy-system-rules-list"></pre></div></form></dialog>
+  <dialog id="proxy-test-dialog" class="proxy-test-dialog" aria-labelledby="proxy-test-dialog-title"><div><header><div><h2 id="proxy-test-dialog-title" data-i18n="proxyTest">Connection test</h2><p data-i18n="proxyTestDetail">Tests the form values without saving or activating them.</p></div><button id="proxy-test-close" type="button" class="secondary" data-i18n="close">Close</button></header><ol id="proxy-test-stages" class="proxy-test-stages"></ol><p id="proxy-test-result" class="operation-result" role="status" aria-live="polite" hidden></p><footer><button id="proxy-test-cancel" type="button" class="secondary" data-i18n="cancel" hidden>Cancel</button></footer></div></dialog>
 
   <script type="module" src="./app.js"></script>
 </body>
