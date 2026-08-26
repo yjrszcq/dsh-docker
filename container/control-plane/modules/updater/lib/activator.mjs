@@ -107,15 +107,15 @@ export class PlatformActivator {
   }
 
   async activate(prepared, { onProgress = async () => {}, onSwitching = async () => {} } = {}) {
-    const bootstrapStatus = await this.bootstrap.status()
     const desiredBootstrap = prepared.stable.desired.bootstrap.version
-    if (bootstrapStatus.bootstrapVersion !== undefined && bootstrapStatus.bootstrapVersion !== desiredBootstrap) {
-      const artifacts = prepared.bootstrap.manifest.artifacts
-      if (artifacts.length !== 1) throw new Error('Bootstrap manifest must contain exactly one package')
-      const receipt = prepared.receipts.get(artifacts[0].id)
-      await this.stage0.stageBootstrap(receipt.token, desiredBootstrap)
-      await new Promise(() => {})
-    }
+    const artifacts = prepared.bootstrap.manifest.artifacts
+    if (artifacts.length !== 1) throw new Error('Bootstrap manifest must contain exactly one package')
+    const receipt = prepared.receipts.get(artifacts[0].id)
+    if (receipt === undefined) throw new Error('Bootstrap package receipt is required')
+    const staged = await this.stage0.stageBootstrap(receipt.token, desiredBootstrap)
+    // Older Stage-0 responses have only status=switching. Preserve that handoff
+    // contract while allowing content-identical targets to continue in place.
+    if (staged.restartRequired === true || staged.status === 'switching') await new Promise(() => {})
     const managed = await this.prepareManaged(prepared, { onProgress })
     await onSwitching()
     await this.bootstrap.request('POST', '/v1/deployments/activate', { record: managed.record })

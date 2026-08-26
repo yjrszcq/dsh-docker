@@ -88,8 +88,12 @@ export function createTrustServer({ ledger, objects, stageBootstrap, collectBoot
         await record('objects.collected', { removedCount: removed.length })
         send(response, 200, { removed })
       } else if (url.pathname === '/v1/bootstrap/stage' && stageBootstrap !== undefined) {
-        await stageBootstrap(body.receipt, body.version)
-        send(response, 202, { status: 'switching', version: body.version })
+        const result = await stageBootstrap(body.receipt, body.version)
+        send(response, 202, {
+          status: result?.restartRequired === false ? 'staged' : 'switching',
+          version: body.version,
+          ...(result ?? {}),
+        })
       } else if (url.pathname === '/v1/bootstrap/collect' && collectBootstrap !== undefined) {
         send(response, 200, await collectBootstrap())
       } else {

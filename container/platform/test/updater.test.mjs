@@ -259,6 +259,7 @@ test('constructs Pristine DSH only from a receipt-backed archive', async () => {
 test('reports Stable switching only after the Managed Deployment is prepared', async () => {
   const calls = []
   const record = { id: 'managed-record' }
+  const receipt = { token: 'bootstrap-receipt' }
   const activator = new PlatformActivator({
     dataRoot: '/unused',
     builder: { buildStable: async (prepared, { onProgress }) => {
@@ -267,7 +268,6 @@ test('reports Stable switching only after the Managed Deployment is prepared', a
       return { record }
     } },
     bootstrap: {
-      status: async () => ({ bootstrapVersion: '1.0.0' }),
       request: async (method, path, body) => {
         calls.push('activate')
         assert.equal(method, 'POST')
@@ -275,13 +275,48 @@ test('reports Stable switching only after the Managed Deployment is prepared', a
         assert.equal(body.record, record)
       },
     },
-    stage0: {},
+    stage0: {
+      stageBootstrap: async (token, version) => {
+        calls.push('stage-bootstrap')
+        assert.equal(token, receipt.token)
+        assert.equal(version, '1.0.0')
+        return { status: 'staged', restartRequired: false }
+      },
+    },
   })
-  await activator.activate({ stable: { desired: { bootstrap: { version: '1.0.0' } } } }, {
+  await activator.activate({
+    stable: { desired: { bootstrap: { version: '1.0.0' } } },
+    bootstrap: { manifest: { artifacts: [{ id: 'bootstrap-package' }] } },
+    receipts: new Map([['bootstrap-package', receipt]]),
+  }, {
     onProgress: async progress => { calls.push(`progress:${progress}`) },
     onSwitching: async () => { calls.push('switching') },
   })
-  assert.deepEqual(calls, ['build', 'progress:87', 'switching', 'activate'])
+  assert.deepEqual(calls, ['stage-bootstrap', 'build', 'progress:87', 'switching', 'activate'])
+})
+
+test('hands Stable activation to Stage-0 when same-version Bootstrap content changes', async () => {
+  const receipt = { token: 'bootstrap-receipt' }
+  let built = false
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    builder: { buildStable: async () => { built = true; return { record: { id: 'unexpected' } } } },
+    bootstrap: {},
+    stage0: {
+      stageBootstrap: async () => ({ status: 'switching', restartRequired: true }),
+    },
+  })
+  const activation = activator.activate({
+    stable: { desired: { bootstrap: { version: '1.0.0' } } },
+    bootstrap: { manifest: { artifacts: [{ id: 'bootstrap-package' }] } },
+    receipts: new Map([['bootstrap-package', receipt]]),
+  })
+  const outcome = await Promise.race([
+    activation.then(() => 'completed'),
+    new Promise(resolve => setTimeout(() => resolve('handoff'), 25)),
+  ])
+  assert.equal(outcome, 'handoff')
+  assert.equal(built, false)
 })
 
 test('coalesces overlapping metadata checks into one request', async () => {

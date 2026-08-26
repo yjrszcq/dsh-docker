@@ -154,16 +154,28 @@ const trustServer = createTrustServer({
   objects,
   stageBootstrap: async (receipt, version) => {
     const packageObject = await objects.bootstrapPackage(receipt, version)
-    const record = await slots.installArchive(packageObject.path, {
+    const staged = await slots.stageArchive(packageObject.path, {
       version,
       targetSequence: packageObject.receipt.targetSequence,
     })
-    await slots.promote(record.id)
-    setImmediate(() => {
+    await logs.diagnostic('stage0', 'bootstrap.staged', {
+      bootstrapVersion: version,
+      recordId: staged.record.id,
+      targetSequence: staged.record.targetSequence,
+      recordChanged: staged.recordChanged,
+      restartRequired: staged.restartRequired,
+    })
+    if (staged.restartRequired) setImmediate(() => {
       void supervisor.restart().catch(error => logs.diagnostic('stage0', 'bootstrap.activation.failed', {
         error,
         bootstrapVersion: version,
       }))
+    })
+    return Object.freeze({
+      recordId: staged.record.id,
+      targetSequence: staged.record.targetSequence,
+      recordChanged: staged.recordChanged,
+      restartRequired: staged.restartRequired,
     })
   },
   collectBootstrap: () => slots.collectGarbage(),

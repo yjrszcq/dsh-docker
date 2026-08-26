@@ -554,14 +554,27 @@ test('exposes only an injected Stage-0 Bootstrap staging operation', async () =>
   const server = createTrustServer({
     ledger,
     objects,
-    stageBootstrap: async (receipt, version) => { staged = { receipt, version } },
+    stageBootstrap: async (receipt, version) => {
+      staged = { receipt, version }
+      return { recordId: 'bootstrap-record-one', targetSequence: 2, recordChanged: false, restartRequired: false }
+    },
   })
   const socketPath = join(root, 'run', 'trust.sock')
   await listenUnix(server, socketPath)
   try {
-    assert.equal((await unixRequest(socketPath, 'POST', '/v1/bootstrap/stage', {
+    assert.deepEqual(await unixRequest(socketPath, 'POST', '/v1/bootstrap/stage', {
       receipt: 'receipt-token', version: '2.0.0',
-    })).status, 202)
+    }), {
+      status: 202,
+      body: {
+        status: 'staged',
+        version: '2.0.0',
+        recordId: 'bootstrap-record-one',
+        targetSequence: 2,
+        recordChanged: false,
+        restartRequired: false,
+      },
+    })
     assert.deepEqual(staged, { receipt: 'receipt-token', version: '2.0.0' })
   } finally {
     await new Promise(resolve => server.close(resolve))
@@ -627,4 +640,40 @@ test('Bootstrap archive installation rejects traversal before extraction', async
   const unsafe = join(root, 'unsafe.tgz')
   assert.equal(spawnSync('tar', ['-czf', unsafe, '--transform=s,^,../,', '-C', source, 'platform']).status, 0)
   await assert.rejects(slots.installArchive(unsafe, { version: '3.0.0', targetSequence: 3 }), /unsafe path/)
+})
+
+test('stages Bootstrap by content identity even when its version does not change', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-content-stage-'))
+  const image = await imageBootstrap(root, '1.0.0', 1)
+  const slots = bootstrapManager(root, image)
+  await slots.reconcileImage(image.record)
+
+  const archive = async (name, behavior) => {
+    const source = join(root, `source-${name}`)
+    await mkdir(join(source, 'platform', 'bootstrap'), { recursive: true })
+    await writeFile(join(source, 'platform', 'bootstrap', 'index.mjs'), behavior)
+    const destination = join(root, `${name}.tgz`)
+    assert.equal(spawnSync('tar', ['-czf', destination, '-C', source, 'platform']).status, 0)
+    return destination
+  }
+
+  const first = await slots.stageArchive(await archive('first', 'console.log("first")'), {
+    version: '1.0.0', targetSequence: 2,
+  })
+  assert.equal(first.recordChanged, true)
+  assert.equal(first.restartRequired, true)
+
+  const identical = await slots.stageArchive(join(root, 'first.tgz'), {
+    version: '1.0.0', targetSequence: 3,
+  })
+  assert.equal(identical.recordChanged, true)
+  assert.equal(identical.restartRequired, false)
+  assert.equal((await slots.state()).current, identical.record.id)
+
+  const changed = await slots.stageArchive(await archive('changed', 'console.log("changed")'), {
+    version: '1.0.0', targetSequence: 4,
+  })
+  assert.equal(changed.recordChanged, true)
+  assert.equal(changed.restartRequired, true)
+  assert.equal((await slots.state()).previous, identical.record.id)
 })

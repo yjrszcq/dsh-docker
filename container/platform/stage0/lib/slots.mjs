@@ -194,6 +194,20 @@ export class BootstrapManager {
     }
   }
 
+  async stageArchive(archive, { version, targetSequence }) {
+    const record = await this.installArchive(archive, { version, targetSequence })
+    return this.exclusive(async () => {
+      const state = await this.state()
+      if (state.current === null) throw new TrustError('no current Bootstrap exists')
+      const current = await this.record(state.current)
+      const recordChanged = current.id !== record.id
+      const restartRequired = current.version !== record.version
+        || current.artifact.sha256 !== record.artifact.sha256
+      if (recordChanged) await this.commit(record.id, state.current)
+      return Object.freeze({ record, recordChanged, restartRequired })
+    })
+  }
+
   async collectGarbage() {
     const state = await this.state()
     const retainedRecords = new Set([state.current, state.previous].filter(Boolean))
