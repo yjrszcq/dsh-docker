@@ -1375,7 +1375,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /proxy-enabled'[\s\S]*saveProxyImmediate\(configuration => \{ configuration\.enabled = event\.target\.checked \}\)/)
   assert.doesNotMatch(script, /proxy-enabled-label|proxy-test-close/)
   assert.match(html, /id="proxy-title"[\s\S]*id="proxy-test"[\s\S]*id="proxy-save"/)
-  assert.match(html, /id="proxy-advanced-toggle"[^>]*aria-controls="proxy-advanced"[\s\S]*id="proxy-advanced"[\s\S]*id="proxy-remote-dns-row"[\s\S]*id="proxy-system-rules"[\s\S]*id="proxy-direct-rules"[\s\S]*id="proxy-all-proxy"/)
+  assert.match(html, /id="proxy-advanced-toggle"[^>]*aria-controls="proxy-advanced"[\s\S]*id="proxy-advanced"[\s\S]*id="proxy-system-rules"[\s\S]*id="proxy-direct-rules"[\s\S]*id="proxy-all-proxy"[\s\S]*id="proxy-remote-dns-row"/)
   assert.doesNotMatch(html, /id="proxy-rules-save"|id="proxy-password-state"|id="proxy-operation-result"/)
   assert.doesNotMatch(html, /<section aria-labelledby="proxy-test-title">/)
   assert.match(html, /id="proxy-provider-info-dialog"[\s\S]*id="proxy-provider-info-detail"/)

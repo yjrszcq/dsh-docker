@@ -585,7 +585,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(proxySettings, /useEffect\(\(\) => \{\s*void load\(\)\s*\}, \[load\]\)/)
   assert.match(proxySettings, /const next = await request\('proxy'\)[\s\S]*setConfiguration\(next\)[\s\S]*void refreshProviders\(\)/)
   assert.doesNotMatch(proxySettings, /if \(active\) void load\(\)/)
-  assert.match(proxySettings, /advanced \? h\('div', \{ className: css\.proxyAdvanced \},\s*connection\.protocol === 'socks5'/)
+  assert.match(proxySettings, /advanced \? h\('div', \{ className: css\.proxyAdvanced \},[\s\S]*t\('proxyRules'\)[\s\S]*t\('proxyAllProxy'\)[\s\S]*connection\.protocol === 'socks5'[\s\S]*t\('proxyRemoteDns'\)/)
   assert.match(source, /configuration\.scopeCatalog/)
   assert.match(source, /proxyTransportWarning/)
   assert.doesNotMatch(source, /setPassword\(next\.proxy|value: configuration\.proxy\.password/)
