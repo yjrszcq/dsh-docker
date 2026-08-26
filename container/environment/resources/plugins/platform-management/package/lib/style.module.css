@@ -519,7 +519,14 @@ a.secondaryButton { text-decoration: none; }
 .proxyDirectRulesField textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 6px 9px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyDirectRulesField small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyFormGrid > label, .proxyRulesGrid > label { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.proxyTitleLine { display: flex; align-items: center; gap: 7px; }
+.proxyTitleLine h3 { margin: 0; }
+.proxySaveState { padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 16px; }
+.proxySaveState[data-state='unsaved'] { color: var(--dsw-alias-state-warn-label); background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 10%, transparent); }
+.proxySaveState[data-state='saved'] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); }
+.proxyPasswordRow { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
 .proxyPasswordField { display: flex; min-width: 0; align-items: end; gap: 8px; }
+.proxyPasswordRow > .proxyPasswordField { min-width: 0; }
 .proxyPasswordField > label { display: grid; min-width: 0; flex: 1; gap: 5px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .proxyPasswordField > label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyClearPassword { min-height: 34px; flex: none; padding: 5px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
@@ -533,6 +540,8 @@ a.secondaryButton { text-decoration: none; }
 .proxySettingRow b, .proxySettingRow small { display: block; }
 .proxySettingRow small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxySettingRow > .toggle { width: auto; justify-self: end; }
+.proxyAdvanced { display: grid; gap: 11px; margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-module-platform); }
+.proxyAdvanced h4 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 500; }
 .proxyHint { margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
 .proxyScopeCopy { min-width: 0; }
@@ -987,6 +996,7 @@ a.secondaryButton { text-decoration: none; }
   .pluginDraftActions { display: grid; width: 100%; grid-template-columns: 1fr; }
   .pluginDraftActions button { width: 100%; }
   .proxyPasswordField { align-items: stretch; flex-direction: column; }
+  .proxyPasswordRow { align-items: end; }
   .proxyClearPassword { width: 100%; }
   .proxyProviderHeading > div { align-items: stretch; flex-direction: column; gap: 8px; }
   .proxyProviderHeading .resourceSearch { width: 100%; margin-left: 0; }

@@ -15,7 +15,7 @@ const COPY = Object.freeze({
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
-    proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyPasswordConfigured: '已保存代理密码；不会从平台回传。', proxyPasswordNotConfigured: '尚未保存代理密码。', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentReady: '出站代理组件已就绪', proxyComponentUnavailable: '出站代理组件暂不可用',
+    proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentReady: '出站代理组件已就绪', proxyComponentUnavailable: '出站代理组件暂不可用',
     proxyScopes: '流量范围', proxyScopesDetail: '选择哪些受管出站流量使用此代理。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '平台如何归类各类联网来源。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: 'Metadata 检查和远程 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'DSH Docker 组件与系统插件的外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: '不含模型 Provider API 的 DSH 核心流量。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 联网工具、命令及其子进程。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: '此管理中心创建的 Shell 会话。',
     proxyRules: '直连规则', proxyRulesDetail: '列出的目标不会使用外部代理。', proxyDirectRules: '附加直连规则', proxyDirectRulesDetail: '每行一个主机、域后缀、IP 地址或 CIDR；使用 .example.com，不使用 *.example.com。', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: '内置规则', proxySystemRulesTitle: '内置直连规则', proxySystemRulesDetail: '以下平台托管的本地目标始终直连，无需重复填写。', proxyAllProxy: '在已验证支持的客户端中设置 ALL_PROXY', proxyAllProxyDetail: '只向已确认支持 ALL_PROXY 的客户端注入。',
     proxyProviders: '模型 Provider', proxyProvidersDetail: '所有可识别的 DSH llm/stream Provider 均可选择跟随 DSH、直连或独立代理。', proxyProviderSearch: '搜索已配置的 Provider', proxyNoProviders: '没有符合条件的已配置 Provider。', proxyProviderDirect: '强制直连', proxyProviderIndependent: '可独立配置', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 始终直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此只能跟随 DSH 共享流量策略。',
@@ -111,7 +111,7 @@ const COPY = Object.freeze({
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
     managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
-    proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyPasswordConfigured: 'A proxy password is saved and is never returned by the platform.', proxyPasswordNotConfigured: 'No proxy password is saved.', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentReady: 'Outbound Proxy is ready', proxyComponentUnavailable: 'Outbound Proxy is unavailable',
+    proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentReady: 'Outbound Proxy is ready', proxyComponentUnavailable: 'Outbound Proxy is unavailable',
     proxyScopes: 'Traffic scopes', proxyScopesDetail: 'Select which managed outbound traffic uses this proxy.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'How managed network sources are classified.', proxyScopeUpdates: 'Updates', proxyScopeUpdatesDetail: 'Metadata checks and remote Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'External requests from DSH Docker components and System Plugins.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official and user-installed DSH plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent network tools, commands, and child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'Shell sessions created by this Management Console.',
     proxyRules: 'Direct rules', proxyRulesDetail: 'Listed destinations bypass the external proxy.', proxyDirectRules: 'Additional direct rules', proxyDirectRulesDetail: 'One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: 'Built-in rules', proxySystemRulesTitle: 'Built-in direct rules', proxySystemRulesDetail: 'These platform-managed local destinations are always direct and do not need to be entered again.', proxyAllProxy: 'Set ALL_PROXY where support is verified', proxyAllProxyDetail: 'Injected only into clients with verified ALL_PROXY support.',
     proxyProviders: 'Model Providers', proxyProvidersDetail: 'Every identifiable DSH llm/stream Provider can follow DSH, connect directly, or use an independent proxy.', proxyProviderSearch: 'Search configured Providers', proxyNoProviders: 'No configured Providers match the current search.', proxyProviderDirect: 'Forced direct', proxyProviderIndependent: 'Independent routing', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Providers are always direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so it can only follow shared DSH traffic.',
@@ -240,6 +240,7 @@ let proxyTestTask
 let proxyTestPollTimer
 const expandedProxyTestStages = new Set()
 let proxyImmediateSave = Promise.resolve()
+let proxySaveStateTimer
 const inventoriesLoaded = { plugins: false, systemSkills: false, userSkills: false, userPlugins: false }
 const inventoryLoadRevisions = { plugins: 0, systemSkills: 0, userSkills: 0, userPlugins: 0 }
 const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
@@ -3516,6 +3517,44 @@ function renderProxyTransportWarning() {
     || (elements['proxy-password'].value === '' && elements['proxy-username'].value === '')
 }
 
+function proxyFormDirty() {
+  if (proxyConfiguration === undefined) return false
+  return elements['proxy-protocol'].value !== proxyConfiguration.proxy.protocol
+    || elements['proxy-host'].value.trim() !== proxyConfiguration.proxy.host
+    || (elements['proxy-port'].value === '' ? null : Number(elements['proxy-port'].value)) !== proxyConfiguration.proxy.port
+    || elements['proxy-username'].value !== (proxyConfiguration.proxy.username ?? '')
+    || elements['proxy-password'].value !== ''
+    || elements['proxy-clear-password'].getAttribute('aria-pressed') === 'true'
+    || elements['proxy-remote-dns'].checked !== (proxyConfiguration.proxy.remoteDns === true)
+    || elements['proxy-direct-rules'].value !== directRuleText(proxyConfiguration)
+    || elements['proxy-all-proxy'].checked !== (proxyConfiguration.environment?.allProxy === 'scope-proxy')
+}
+
+function renderProxySaveState({ saved = false } = {}) {
+  window.clearTimeout(proxySaveStateTimer)
+  const indicator = elements['proxy-save-state']
+  if (proxyFormDirty()) {
+    indicator.hidden = false
+    indicator.dataset.state = 'unsaved'
+    indicator.textContent = t('proxyUnsaved')
+    return
+  }
+  if (!saved) {
+    indicator.hidden = true
+    indicator.textContent = ''
+    delete indicator.dataset.state
+    return
+  }
+  indicator.hidden = false
+  indicator.dataset.state = 'saved'
+  indicator.textContent = t('proxySavedShort')
+  proxySaveStateTimer = window.setTimeout(() => {
+    indicator.hidden = true
+    indicator.textContent = ''
+    delete indicator.dataset.state
+  }, 3000)
+}
+
 function proxyCandidate({ connection = 'form', rules = 'form', configuration = proxyConfiguration } = {}) {
   if (proxyConfiguration === undefined) throw new Error(t('proxyComponentUnavailable'))
   const directRules = rules === 'form'
@@ -3540,7 +3579,7 @@ function proxyCandidate({ connection = 'form', rules = 'form', configuration = p
     enabled: configuration.enabled === true,
     proxy,
     scopes: { ...configuration.scopes },
-    environment: { allProxy: configuration.environment?.allProxy ?? null },
+    environment: { allProxy: rules === 'form' ? (elements['proxy-all-proxy'].checked ? 'scope-proxy' : null) : configuration.environment?.allProxy ?? null },
     modelApi: {
       default: configuration.modelApi?.default ?? { followDsh: true, proxyEnabled: false },
       providers: { ...(configuration.modelApi?.providers ?? {}) },
@@ -3687,7 +3726,6 @@ function renderProxyConfiguration() {
   elements['proxy-username'].value = configuration.proxy.username ?? ''
   elements['proxy-remote-dns'].checked = configuration.proxy.remoteDns === true
   elements['proxy-remote-dns-row'].hidden = configuration.proxy.protocol !== 'socks5'
-  elements['proxy-password-state'].textContent = t(configuration.proxy.passwordConfigured ? 'proxyPasswordConfigured' : 'proxyPasswordNotConfigured')
   elements['proxy-clear-password'].hidden = configuration.proxy.passwordConfigured !== true
   for (const input of document.querySelectorAll('[data-proxy-scope]')) input.checked = configuration.scopes?.[input.dataset.proxyScope] === true
   elements['proxy-direct-rules'].value = directRuleText(configuration)
@@ -3697,6 +3735,7 @@ function renderProxyConfiguration() {
   renderProxyProviders()
   renderProxyCatalog()
   renderProxyTransportWarning()
+  renderProxySaveState()
 }
 
 function renderProxyTest(task = proxyTestTask) {
@@ -3795,42 +3834,20 @@ async function loadProxy({ force = false } = {}) {
 
 async function saveProxyConfiguration() {
   elements['proxy-save'].disabled = true
-  elements['proxy-operation-result'].hidden = false
-  elements['proxy-operation-result'].textContent = t('proxySaving')
   try {
     proxyConfiguration = await api('proxy', {
-      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ rules: 'saved' }) },
+      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
     })
     clearProxySecrets()
     renderProxyConfiguration()
-    elements['proxy-operation-result'].textContent = t('proxySaved')
+    renderProxySaveState({ saved: true })
     clearError()
   } catch (error) {
     showError(error)
-    elements['proxy-operation-result'].textContent = localizedError(error)
+    renderProxySaveState()
     if (error.statusCode === 409) await loadProxy({ force: true })
   } finally {
     elements['proxy-save'].disabled = false
-  }
-}
-
-async function saveProxyRules() {
-  elements['proxy-rules-save'].disabled = true
-  elements['proxy-operation-result'].hidden = false
-  elements['proxy-operation-result'].textContent = t('proxySaving')
-  try {
-    proxyConfiguration = await api('proxy', {
-      method: 'PUT', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ connection: 'saved' }) },
-    })
-    renderProxyConfiguration()
-    elements['proxy-operation-result'].textContent = t('proxySaved')
-    clearError()
-  } catch (error) {
-    showError(error)
-    elements['proxy-operation-result'].textContent = localizedError(error)
-    if (error.statusCode === 409) await loadProxy({ force: true })
-  } finally {
-    elements['proxy-rules-save'].disabled = false
   }
 }
 
@@ -3844,6 +3861,7 @@ function captureProxyDraft() {
     clearPassword: elements['proxy-clear-password'].getAttribute('aria-pressed'),
     remoteDns: elements['proxy-remote-dns'].checked,
     directRules: elements['proxy-direct-rules'].value,
+    allProxy: elements['proxy-all-proxy'].checked,
   }
 }
 
@@ -3858,7 +3876,9 @@ function restoreProxyDraft(draft) {
   elements['proxy-remote-dns'].checked = draft.remoteDns
   elements['proxy-remote-dns-row'].hidden = draft.protocol !== 'socks5'
   elements['proxy-direct-rules'].value = draft.directRules
+  elements['proxy-all-proxy'].checked = draft.allProxy
   renderProxyTransportWarning()
+  renderProxySaveState()
 }
 
 function saveProxyImmediate(mutate) {
@@ -3889,7 +3909,7 @@ async function startProxyTest() {
   renderProxyTest(proxyTestTask)
   try {
     const started = await api('proxy/test', {
-      method: 'POST', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate({ rules: 'saved' }) },
+      method: 'POST', body: { baseRevision: proxyConfiguration.revision, value: proxyCandidate() },
     })
     const task = await api(`proxy/test/tasks/${started.taskId}`)
     renderProxyTest(task)
@@ -4070,6 +4090,7 @@ for (const input of document.querySelectorAll('[data-proxy-scope]')) {
 }
 elements['proxy-protocol'].addEventListener('change', event => {
   elements['proxy-remote-dns-row'].hidden = event.target.value !== 'socks5'
+  renderProxySaveState()
 })
 elements['proxy-password'].addEventListener('input', () => {
   if (elements['proxy-password'].value !== '') {
@@ -4077,14 +4098,27 @@ elements['proxy-password'].addEventListener('input', () => {
     elements['proxy-password'].disabled = false
   }
   renderProxyTransportWarning()
+  renderProxySaveState()
 })
-elements['proxy-username'].addEventListener('input', renderProxyTransportWarning)
+elements['proxy-username'].addEventListener('input', () => {
+  renderProxyTransportWarning()
+  renderProxySaveState()
+})
 elements['proxy-clear-password'].addEventListener('click', event => {
   const selected = event.currentTarget.getAttribute('aria-pressed') !== 'true'
   event.currentTarget.setAttribute('aria-pressed', String(selected))
   if (selected) elements['proxy-password'].value = ''
   elements['proxy-password'].disabled = selected
   renderProxyTransportWarning()
+  renderProxySaveState()
+})
+for (const id of ['proxy-host', 'proxy-port', 'proxy-direct-rules']) elements[id].addEventListener('input', renderProxySaveState)
+elements['proxy-remote-dns'].addEventListener('change', renderProxySaveState)
+elements['proxy-all-proxy'].addEventListener('change', renderProxySaveState)
+elements['proxy-advanced-toggle'].addEventListener('click', event => {
+  const expanded = event.currentTarget.getAttribute('aria-expanded') !== 'true'
+  event.currentTarget.setAttribute('aria-expanded', String(expanded))
+  elements['proxy-advanced'].hidden = !expanded
 })
 elements['proxy-provider-search'].addEventListener('input', renderProxyProviders)
 elements['proxy-scope-help'].addEventListener('click', () => elements['proxy-scope-dialog'].showModal())
@@ -4092,10 +4126,6 @@ elements['proxy-provider-info-dialog'].addEventListener('click', event => {
   if (event.target === event.currentTarget) event.currentTarget.close()
 })
 elements['proxy-save'].addEventListener('click', () => { void saveProxyConfiguration() })
-elements['proxy-rules-save'].addEventListener('click', () => { void saveProxyRules() })
-elements['proxy-all-proxy'].addEventListener('change', event => {
-  void saveProxyImmediate(configuration => { configuration.environment.allProxy = event.target.checked ? 'scope-proxy' : null })
-})
 elements['proxy-test'].addEventListener('click', () => { void startProxyTest() })
 elements['proxy-test-cancel'].addEventListener('click', async () => {
   const running = proxyTestTask?.status === 'starting' || proxyTestTask?.status === 'running'
