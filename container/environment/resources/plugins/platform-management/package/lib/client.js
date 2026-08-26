@@ -1448,7 +1448,6 @@ function splitDirectRules(value) {
 
 function proxyConnectionDraft(configuration) {
   return {
-    enabled: configuration.enabled === true,
     protocol: configuration.proxy.protocol,
     host: configuration.proxy.host,
     port: configuration.proxy.port,
@@ -1572,7 +1571,7 @@ function ProxySettings({ active, t }) {
       else if (password !== '') proxy.password = password
     }
     return {
-      schema: 1, enabled: connectionSource.enabled === true, proxy,
+      schema: 1, enabled: source.enabled === true, proxy,
       scopes: Object.fromEntries(PROXY_SCOPES.map(([id]) => [id, source.scopes[id] === true])),
       environment: { allProxy: source.environment.allProxy },
       modelApi: source.modelApi,
@@ -1678,10 +1677,12 @@ function ProxySettings({ active, t }) {
         h('div', null, h('h3', { id: 'platform-proxy-title' }, t('proxyTitle')), h('p', null, t('proxyDetail'))),
         h('div', { className: css.actions },
           h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning, onClick: () => { void startTest() } }, t('proxyTestStart')),
-          h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void saveConnection() } }, t('proxySave')),
-          h('label', { className: css.toggle, ...toggleScrollHandlers },
-            h('input', { type: 'checkbox', checked: connection.enabled, onChange: event => preserveToggleScroll(event.currentTarget, () => patchConnection(['enabled'], event.target.checked)) }),
-            h('span', { 'aria-hidden': 'true' }), h('b', null, t(connection.enabled ? 'enabled' : 'disabled'))))),
+          h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning, onClick: () => { void saveConnection() } }, t('proxySave')))),
+      h('div', { className: css.proxySettingRow },
+        h('span', null, h('b', null, t('proxyMaster')), h('small', null, t('proxyMasterDetail'))),
+        h('label', { className: css.toggle, 'aria-label': t('proxyMaster'), ...toggleScrollHandlers },
+          h('input', { type: 'checkbox', checked: configuration.enabled === true, disabled: busy, onChange: event => preserveToggleScroll(event.currentTarget, () => { void saveImmediate(next => { next.enabled = event.target.checked }) }) }),
+          h('span', { 'aria-hidden': 'true' }))),
       h('p', { className: css.proxyHint }, t(configuration.componentReady ? 'proxyComponentReady' : 'proxyComponentUnavailable')),
       h('div', { className: css.proxyFormGrid },
         h('label', null, h('span', null, t('proxyProtocol')), h('select', { value: connection.protocol, onChange: event => patchConnection(['protocol'], event.target.value) }, h('option', { value: 'http' }, 'HTTP'), h('option', { value: 'socks5' }, 'SOCKS5'))),
@@ -1762,7 +1763,7 @@ function ProxySettings({ active, t }) {
 
     h('dialog', { ref: testDialog, className: css.proxyTestDialog },
       h('div', null,
-        h('header', null, h('div', null, h('h3', null, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('button', { type: 'button', className: css.secondaryButton, disabled: taskRunning, onClick: () => testDialog.current?.close() }, t('close'))),
+        h('header', null, h('div', null, h('h3', null, t('proxyTest')), h('p', null, t('proxyTestDetail')))),
       task ? h('ol', { className: css.proxyTestStages }, task.stages.map(stage => {
         const status = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
         const expanded = expandedTestStages.has(stage.stage)
@@ -1789,9 +1790,12 @@ function ProxySettings({ active, t }) {
           expanded ? h('small', null, stage.detail ?? stage.errorCode ?? status) : null),
         h('small', null, status))
       })) : null,
-      task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
       task === null && testError ? h('p', { className: css.error, role: 'alert' }, testError) : null,
-      taskRunning && task?.taskId ? h('footer', null, h('button', { type: 'button', className: css.secondaryButton, onClick: () => { void cancelTest() } }, t('cancel'))) : null)),
+      task !== null || testError ? h('footer', null,
+        task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
+        taskRunning
+          ? h('button', { type: 'button', className: css.secondaryButton, disabled: !task?.taskId, onClick: () => { void cancelTest() } }, t('cancel'))
+          : h('button', { type: 'button', className: css.secondaryButton, onClick: () => testDialog.current?.close() }, t('close'))) : null)),
 
     h('dialog', { ref: scopeDialog, className: css.proxyScopeDialog },
       h('form', { method: 'dialog' },
@@ -2330,6 +2334,7 @@ export function apply(ctx) {
       localeCode: 'zh',
       nav: '平台管理', title: '平台管理', intro: 'DSH Docker 运行、更新与恢复',
       managementSections: '平台管理功能', updatesTab: '更新管理', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', proxyTab: '代理设置',
+      proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
       proxyTitle: '代理设置', proxyDetail: '配置由 DSH Docker 使用的外部 HTTP 或 SOCKS5 代理。', proxyLoading: '正在加载代理配置…', proxyProtocol: '代理协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空则保持当前密码', proxyRemoteDns: '通过代理解析域名', proxyRemoteDnsDetail: '仅适用于 SOCKS5；关闭时由容器本地解析。', proxyClearPassword: '清除密码', proxyPasswordConfigured: '已保存代理密码；密码不会从平台读取或回显。', proxyPasswordNotConfigured: '尚未保存代理密码。', proxyTransportWarning: '当前页面未使用 HTTPS。代理凭据会受到传输链路保护能力的限制。', proxyComponentReady: '出站代理组件已就绪。配置只影响新建立的连接。', proxyComponentUnavailable: '出站代理组件当前不可用；可以保存配置，但连接测试可能失败。',
       proxyScopes: '代理范围', proxyScopesDetail: '仅勾选需要通过外部代理访问网络的来源。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '此表由管理后端提供，两套管理界面使用相同分类。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: '更新检查、npm metadata 与 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'Management、Updater 和 DSH Docker 系统插件等的非本地外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: 'DSH 核心联网，不包括模型 Provider API。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件联网。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 工具、命令与其子进程的联网。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: 'DSH 管理中心提供的容器终端。',
       proxyRules: '直连规则', proxyRulesDetail: '列出的目标不会使用外部代理。', proxyDirectRules: '附加直连规则', proxyDirectRulesDetail: '每行一个主机、域后缀、IP 地址或 CIDR；使用 .google.com，不使用 *.google.com。', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: '内置规则', proxySystemRulesTitle: '内置直连规则', proxySystemRulesDetail: '以下平台托管的本地目标始终直连，无需重复填写。', proxyAllProxy: '为兼容客户端注入 ALL_PROXY', proxyAllProxyDetail: '仅对明确支持 ALL_PROXY 的客户端有效；默认关闭。', proxyProviders: '模型 Provider', proxyProvidersDetail: '所有可识别的 DSH llm/stream Provider 均可选择跟随 DSH、直连或独立代理。', proxyProviderSearch: '搜索已配置的 Provider', proxyNoProviders: '没有符合条件的已配置 Provider。', proxyProviderDirect: '直连', proxyProviderIndependent: '独立代理', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 强制直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此只能跟随 DSH 共享流量策略。',
@@ -2360,6 +2365,7 @@ export function apply(ctx) {
       localeCode: 'en',
       nav: 'Platform Management', title: 'Platform Management', intro: 'DSH Docker runtime, updates, and recovery',
       managementSections: 'Platform management sections', updatesTab: 'Updates', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', proxyTab: 'Proxy',
+      proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
       proxyTitle: 'Proxy settings', proxyDetail: 'Configure an external HTTP or SOCKS5 proxy used by DSH Docker.', proxyLoading: 'Loading proxy configuration…', proxyProtocol: 'Proxy protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the current password', proxyRemoteDns: 'Resolve names through the proxy', proxyRemoteDnsDetail: 'SOCKS5 only. When off, names are resolved locally in the container.', proxyClearPassword: 'Clear password', proxyPasswordConfigured: 'A proxy password is saved. It cannot be read back or displayed.', proxyPasswordNotConfigured: 'No proxy password is saved.', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are limited by the protection of the transport path.', proxyComponentReady: 'The outbound proxy component is ready. Changes affect new connections only.', proxyComponentUnavailable: 'The outbound proxy component is unavailable. Settings can be saved, but connection tests may fail.',
       proxyScopes: 'Proxy scopes', proxyScopesDetail: 'Enable the external proxy only for sources that need it.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'The Management backend supplies this table to both management interfaces.', proxyScopeUpdates: 'Update management', proxyScopeUpdatesDetail: 'Update checks, npm metadata, and Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'Non-local external requests from Management, Updater, DSH Docker System Plugins, and other platform components.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic, excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official DSH plugins and user-installed third-party plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent tools, commands, and their child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'The container terminal provided by DSH Management Console.',
       proxyRules: 'Direct rules', proxyRulesDetail: 'Listed destinations bypass the external proxy.', proxyDirectRules: 'Additional direct rules', proxyDirectRulesDetail: 'One host, domain suffix, IP address, or CIDR per line. Use .google.com, not *.google.com.', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: 'Built-in rules', proxySystemRulesTitle: 'Built-in direct rules', proxySystemRulesDetail: 'These platform-managed local destinations are always direct and do not need to be entered again.', proxyAllProxy: 'Inject ALL_PROXY for compatible clients', proxyAllProxyDetail: 'Only affects clients known to support ALL_PROXY. Off by default.', proxyProviders: 'Model Providers', proxyProvidersDetail: 'Every identifiable DSH llm/stream Provider can follow DSH, connect directly, or use an independent proxy.', proxyProviderSearch: 'Search configured Providers', proxyNoProviders: 'No configured Providers match the current search.', proxyProviderDirect: 'Direct', proxyProviderIndependent: 'Independent proxy', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Provider; forced direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so it can only follow shared DSH traffic.',

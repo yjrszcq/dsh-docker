@@ -524,7 +524,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-dialog header, .proxy-test-dialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .proxy-test-dialog header h2, .proxy-test-dialog header p { margin: 0; }
 .proxy-test-dialog header p { margin-top: 4px; color: var(--muted); }
-.proxy-test-dialog footer { justify-content: flex-end; }
+.proxy-test-dialog footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.proxy-test-dialog footer > .operation-result { min-width: 0; margin: 0; }
+.proxy-test-dialog footer > button { grid-column: 2; margin-left: 0; }
 .proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer; }
 .proxy-test-stage:hover, .proxy-test-stage:focus-visible { background: var(--surface-soft); outline: none; }
 .proxy-test-stage:last-child { border-bottom: 0; }

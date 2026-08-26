@@ -575,7 +575,9 @@ a.secondaryButton { text-decoration: none; }
 .proxyTestDialog header, .proxyTestDialog footer { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .proxyTestDialog header h3, .proxyTestDialog header p { margin: 0; }
 .proxyTestDialog header p { margin-top: 4px; color: var(--dsw-alias-label-tertiary); }
-.proxyTestDialog footer { justify-content: flex-end; }
+.proxyTestDialog footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.proxyTestDialog footer > .proxyHint, .proxyTestDialog footer > .error { min-width: 0; margin: 0; }
+.proxyTestDialog footer > button { grid-column: 2; margin-left: 0; }
 .proxyScopeDialog { box-sizing: border-box; width: min(760px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
 .proxyScopeDialog::backdrop { background: rgb(0 0 0 / 50%); }
 .proxyScopeDialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: inherit; }
