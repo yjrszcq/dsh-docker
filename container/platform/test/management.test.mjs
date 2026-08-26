@@ -1256,6 +1256,42 @@ test('management records a completion audit for a successful update task', async
   }
 })
 
+test('management records correlated rollback and return-stable audit lifecycles', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-rollback-audit-'))
+  const coordinator = new Coordinator()
+  coordinator.startCompleteRollback = (planId, options) => {
+    assert.equal(planId, 'plan-a')
+    if (options.requireConfirmation) {
+      return { taskId: 'return-stable-failure', completion: Promise.reject(new Error('restore failed')) }
+    }
+    return { taskId: 'rollback-success', completion: Promise.resolve() }
+  }
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const server = createManagementServer({ coordinator, logs })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    const client = new LocalApiClient(socketPath)
+    await client.request('POST', `${API_PREFIX}rollback`, { planId: 'plan-a' })
+    await client.request('POST', `${API_PREFIX}return-stable`, {
+      planId: 'plan-a', confirmDataLoss: true,
+    })
+    await new Promise(resolve => setImmediate(resolve))
+    await logs.queue
+    assert.deepEqual(
+      (await logs.query({ sources: ['audit'] })).map(entry => [entry.message, entry.taskId]),
+      [
+        ['rollback.started', 'rollback-success'],
+        ['rollback.completed', 'rollback-success'],
+        ['return-stable.started', 'return-stable-failure'],
+        ['return-stable.failed', 'return-stable-failure'],
+      ],
+    )
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management serves only the fixed persistent Platform Management assets', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-console-'))
   const coordinator = new Coordinator()

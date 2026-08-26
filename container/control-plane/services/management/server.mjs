@@ -765,6 +765,7 @@ export function createManagementServer({
           })
           .catch(error => audit(`${route}.failed`, { error, taskId: task.taskId }))
           .catch(() => {})
+        await audit(`${route}.started`, { taskId: task.taskId })
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && route === 'events') {
         let heartbeat
