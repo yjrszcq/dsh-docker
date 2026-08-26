@@ -25,7 +25,9 @@ import { SystemSkillManager } from '../../control-plane/modules/skill-manager/in
 import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
 import {
   outboundProxyEnvironment,
+  outboundProxyScopeEnabled,
   outboundProxyUrl,
+  clearOutboundProxyEnvironment,
   parseOutboundProxyEnvironment,
 } from '../lib/outbound-proxy.mjs'
 
@@ -157,14 +159,19 @@ const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId 
 const managedNetworkEnvironment = async scope => {
   try {
     const result = await outboundProxy.request('GET', `/v1/environment?scope=${encodeURIComponent(scope)}`)
-    return parseOutboundProxyEnvironment(result.environment, scope)
+    return clearOutboundProxyEnvironment(parseOutboundProxyEnvironment(result.environment, scope))
   } catch (error) {
     await logs.diagnostic('bootstrap', 'outbound-proxy.environment.fallback', {
       scope,
       error,
       level: 'warning',
     })
-    return outboundProxyEnvironment(scope)
+    try {
+      const state = JSON.parse(await readFile(paths.proxyRoutingStatePath, 'utf8'))
+      return outboundProxyEnvironment(scope, { enabled: outboundProxyScopeEnabled(state, scope) })
+    } catch {
+      return outboundProxyEnvironment(scope)
+    }
   }
 }
 let runtime
@@ -187,7 +194,7 @@ const controlPlane = new EnvironmentRunner({
         release: () => {},
       }
     const environment = component.id === 'gateway'
-      ? outboundProxyEnvironment('platform')
+      ? outboundProxyEnvironment('platform', { enabled: false })
       : await managedNetworkEnvironment('platform')
     return { environment: { ...environment, NODE_USE_ENV_PROXY: '1' }, release: () => {} }
   },

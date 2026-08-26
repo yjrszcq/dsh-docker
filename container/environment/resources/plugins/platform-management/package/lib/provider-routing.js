@@ -8,6 +8,7 @@ const FETCH_ROUTER = Symbol.for('dsh-docker.platform-management.provider-fetch-r
 const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 const DEFAULT_SOCKET = '/run/dsh-platform/outbound-proxy.sock'
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:17897'
+const DEFAULT_SHARED_PROXY_URL = 'http://127.0.0.1:17898'
 const DEFAULT_ROUTING_STATE = '/run/dsh-platform/outbound-proxy-routing.json'
 
 function routingState(path) {
@@ -25,6 +26,11 @@ function providerProxyEnabled(state, providerId) {
   const policy = state.modelApi.providers?.[providerId] ?? state.modelApi.default
   if (policy?.proxyEnabled !== true) return false
   return policy.followDsh !== true || state.scopes?.dshCore === true || state.scopes?.dshPlugins === true
+}
+
+function sharedDshProxyEnabled(state) {
+  return state !== null && state.enabled
+    && (state.scopes?.dshCore === true || state.scopes?.dshPlugins === true)
 }
 
 function controlRequest(socketPath, method, path, body) {
@@ -81,14 +87,14 @@ async function issueProviderHandle(providerId, socketPath) {
   throw new Error('Provider policy changed repeatedly')
 }
 
-function installFetchRouter(store, routedFetch = proxyFetch) {
+function installFetchRouter(store, routedFetch = proxyFetch, resolveDefaultRoute = () => undefined) {
   const owner = Object.freeze({})
   let registry = globalThis[FETCH_ROUTER]
   if (registry === undefined) {
     const original = globalThis.fetch
-    registry = { original, owner, store, routedFetch }
+    registry = { original, owner, store, routedFetch, resolveDefaultRoute }
     const wrapper = function (input, init) {
-      const route = registry.store.getStore()
+      const route = registry.store.getStore() ?? registry.resolveDefaultRoute()
       if (route === undefined || (init !== undefined && Object.hasOwn(init, 'dispatcher'))) {
         return registry.original.call(this, input, init)
       }
@@ -101,6 +107,7 @@ function installFetchRouter(store, routedFetch = proxyFetch) {
     registry.owner = owner
     registry.store = store
     registry.routedFetch = routedFetch
+    registry.resolveDefaultRoute = resolveDefaultRoute
   }
   return () => {
     if (registry.owner !== owner) return
@@ -162,12 +169,19 @@ export function installProviderRouting(ctx, {
     ? DEFAULT_ROUTING_STATE
     : `${process.env.DSH_PLATFORM_RUN}/outbound-proxy-routing.json`,
   createDispatcher = options => new ProxyAgent(options),
+  createSharedDispatcher = options => new ProxyAgent(options),
   createDirectDispatcher = () => new Agent(),
   routedFetch = proxyFetch,
 } = {}) {
   const store = new AsyncLocalStorage()
   const directDispatcher = createDirectDispatcher()
-  const removeFetchRouter = installFetchRouter(store, routedFetch)
+  const sharedDispatcher = createSharedDispatcher({ uri: DEFAULT_SHARED_PROXY_URL })
+  const resolveDefaultRoute = () => {
+    const state = routingState(routingStatePath)
+    if (state === null) return undefined
+    return { dispatcher: sharedDshProxyEnabled(state) ? sharedDispatcher : directDispatcher }
+  }
+  const removeFetchRouter = installFetchRouter(store, routedFetch, resolveDefaultRoute)
   const disposeStream = ctx.on('llm/stream', (options, next) => {
     if (!PROVIDER_ID_PATTERN.test(options.provider)) return next()
     return routedIterator(next, options.provider, store, {
@@ -188,6 +202,7 @@ export function installProviderRouting(ctx, {
     disposeStream?.()
     removeFetchRouter()
     void directDispatcher.close()
+    void sharedDispatcher.close()
   }
 }
 
@@ -197,6 +212,7 @@ export const providerRoutingInternals = Object.freeze({
   installFetchRouter,
   issueProviderHandle,
   providerProxyEnabled,
+  sharedDshProxyEnabled,
   routingState,
   routedIterator,
 })

@@ -5,6 +5,7 @@ import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { WebSocketServer } from 'ws'
+import { OUTBOUND_PROXY_ENVIRONMENT_KEYS } from '../../../../platform/lib/outbound-proxy.mjs'
 
 const SESSION_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const MAX_INPUT_BYTES = 64 * 1024
@@ -228,6 +229,7 @@ export class TerminalSessionManager {
     this.helperPath = resolve(helperPath)
     this.cwd = resolve(cwd)
     this.env = { ...env, HOME: userInfo().homedir, DSH_HOME: dshHome }
+    for (const key of OUTBOUND_PROXY_ENVIRONMENT_KEYS) delete this.env[key]
     this.python = python
     this.reconnectMs = reconnectMs
     this.report = (message, fields) => Promise.resolve().then(() => report(message, fields)).catch(() => {})

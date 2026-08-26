@@ -106,13 +106,15 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
       },
     })
     try {
+      await fetch('https://ordinary-dsh.invalid')
+      assert.deepEqual(observed, [directDispatcher])
       const stream = listener({ provider: 'deepseek-official' }, () => (async function* () {
         await fetch('https://provider.invalid')
         yield 'direct'
       })())
       assert.deepEqual(await stream.next(), { value: 'direct', done: false })
       assert.deepEqual(await stream.next(), { value: undefined, done: true })
-      assert.deepEqual(observed, [directDispatcher])
+      assert.deepEqual(observed, [directDispatcher, directDispatcher])
 
       await writeFile(routingStatePath, JSON.stringify({
         schema: 1,
@@ -137,6 +139,38 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('Platform Management removes stale shared DSH proxy variables when routing becomes direct', () => {
+  const environment = {
+    HTTP_PROXY: 'http://127.0.0.1:17898',
+    HTTPS_PROXY: 'http://127.0.0.1:17898',
+    ALL_PROXY: 'http://127.0.0.1:17898',
+    NO_PROXY: 'stale.invalid',
+  }
+  managedNetworkInternals.synchronizeSharedDshEnvironment(environment, {
+    schema: 1,
+    enabled: false,
+    scopes: { dshCore: true, dshPlugins: true },
+    environment: { allProxy: 'scope-proxy' },
+    noProxy: { system: ['localhost', '127.0.0.1'], user: ['.example.com'] },
+  })
+  assert.equal(environment.HTTP_PROXY, undefined)
+  assert.equal(environment.HTTPS_PROXY, undefined)
+  assert.equal(environment.ALL_PROXY, undefined)
+  assert.equal(environment.NO_PROXY, 'localhost,127.0.0.1,.example.com')
+  assert.equal(environment.no_proxy, environment.NO_PROXY)
+
+  managedNetworkInternals.synchronizeSharedDshEnvironment(environment, {
+    schema: 1,
+    enabled: true,
+    scopes: { dshCore: false, dshPlugins: true },
+    environment: { allProxy: 'scope-proxy' },
+    noProxy: { system: ['localhost'], user: [] },
+  })
+  assert.equal(environment.HTTP_PROXY, 'http://127.0.0.1:17898')
+  assert.equal(environment.HTTPS_PROXY, 'http://127.0.0.1:17898')
+  assert.equal(environment.ALL_PROXY, 'http://127.0.0.1:17898')
 })
 
 test('Platform Management routes every valid llm/stream Provider through opaque handles', async () => {

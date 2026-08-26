@@ -37,6 +37,9 @@ async function publishRoutingState(current) {
     enabled: current.configuration.enabled,
     scopes: current.configuration.scopes,
     modelApi: current.configuration.modelApi,
+    environment: current.configuration.environment,
+    noProxy: current.configuration.noProxy,
+    bypass: current.configuration.bypass,
   }
   await writeFile(staging, `${JSON.stringify(value)}\n`, { mode: 0o644 })
   await chmod(staging, 0o644)

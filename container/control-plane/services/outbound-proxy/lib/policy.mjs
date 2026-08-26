@@ -1,21 +1,11 @@
 import { isIP } from 'node:net'
 import { matchesProxyRules, normalizeProxyRules } from './rules.mjs'
+import { outboundProxyScopeEnabled } from '../../../../platform/lib/outbound-proxy.mjs'
 
 const PLATFORM_RULES = normalizeProxyRules(['localhost', '127.0.0.1', '::1'], { label: 'platform NO_PROXY' })
 
 export function providerPolicy(configuration, providerId) {
   return configuration.modelApi.providers[providerId] ?? configuration.modelApi.default
-}
-
-function scopeEnabled(configuration, scope, providerId) {
-  if (scope === 'sharedDsh') return configuration.scopes.dshCore || configuration.scopes.dshPlugins
-  if (scope === 'modelApi') {
-    if (providerId === undefined) return false
-    const policy = providerPolicy(configuration, providerId)
-    if (!policy.proxyEnabled) return false
-    return !policy.followDsh || configuration.scopes.dshCore || configuration.scopes.dshPlugins
-  }
-  return configuration.scopes[scope] === true
 }
 
 function route(mode, reason, snapshot, fields = {}) {
@@ -38,7 +28,7 @@ export async function selectProxyRoute({ snapshot, scope, providerId, host, port
   if (matchesProxyRules(userNoProxy, host, port)) return route('direct', 'no-proxy', snapshot)
   if (matchesProxyRules(bypassHosts, host, port)) return route('direct', 'bypass', snapshot)
   if (isIP(host) !== 0 && matchesProxyRules(bypassCidrs, host, port)) return route('direct', 'bypass', snapshot)
-  if (!configuration.enabled || !scopeEnabled(configuration, scope, providerId)) {
+  if (!outboundProxyScopeEnabled(configuration, scope, providerId)) {
     return route('direct', scope === 'modelApi' ? 'provider-direct' : 'scope-direct', snapshot)
   }
   const endpoint = Object.freeze({

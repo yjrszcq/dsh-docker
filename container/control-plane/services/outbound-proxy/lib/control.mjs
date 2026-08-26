@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { outboundProxyEnvironment } from '../../../../platform/lib/outbound-proxy.mjs'
+import { outboundProxyEnvironment, outboundProxyScopeEnabled } from '../../../../platform/lib/outbound-proxy.mjs'
 import { sanitizedProxyConfiguration } from './contracts.mjs'
 import { ProxyConfigurationError, proxyErrorBody } from './errors.mjs'
 
@@ -106,6 +106,7 @@ export function createOutboundProxyControl({
         const environment = outboundProxyEnvironment(scope, {
           noProxy: [...snapshot.configuration.noProxy.system, ...snapshot.configuration.noProxy.user],
           allProxy: snapshot.configuration.environment.allProxy === 'scope-proxy',
+          enabled: outboundProxyScopeEnabled(snapshot.configuration, scope),
         })
         send(response, 200, { scope, revision: snapshot.revision, environment })
       } catch (error) {

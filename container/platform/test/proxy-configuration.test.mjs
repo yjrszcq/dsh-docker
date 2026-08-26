@@ -385,6 +385,8 @@ test('restarts Proxy Manager after an unclean exit leaves its control socket beh
     assert.equal(routing.schema, 1)
     assert.equal(routing.enabled, false)
     assert.equal(routing.scopes.agentNetwork, false)
+    assert.deepEqual(routing.environment, { allProxy: null })
+    assert.deepEqual(routing.noProxy.system, ['localhost', '127.0.0.1', '::1'])
     assert.equal(JSON.stringify(routing).includes('password'), false)
     first.kill('SIGKILL')
     await once(first, 'exit')

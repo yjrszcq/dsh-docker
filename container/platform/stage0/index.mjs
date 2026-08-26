@@ -33,7 +33,12 @@ import {
   createProxyLaunchServer,
   listenProxyLaunch,
 } from './lib/proxy-launch-server.mjs'
-import { outboundProxyEnvironment, parseOutboundProxyEnvironment } from '../lib/outbound-proxy.mjs'
+import {
+  clearOutboundProxyEnvironment,
+  outboundProxyEnvironment,
+  outboundProxyScopeEnabled,
+  parseOutboundProxyEnvironment,
+} from '../lib/outbound-proxy.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -183,13 +188,20 @@ const maintenance = await createMaintenanceServer({
   terminalEnvironment: async () => {
     try {
       const result = await outboundProxy.request('GET', '/v1/environment?scope=managementTerminal')
-      return parseOutboundProxyEnvironment(result.environment, 'managementTerminal')
+      return clearOutboundProxyEnvironment(parseOutboundProxyEnvironment(result.environment, 'managementTerminal'))
     } catch (error) {
       await logs.diagnostic('stage0', 'outbound-proxy.terminal-environment.fallback', {
         error,
         level: 'warning',
       })
-      return outboundProxyEnvironment('managementTerminal')
+      try {
+        const state = JSON.parse(await readFile(paths.proxyRoutingStatePath, 'utf8'))
+        return outboundProxyEnvironment('managementTerminal', {
+          enabled: outboundProxyScopeEnabled(state, 'managementTerminal'),
+        })
+      } catch {
+        return outboundProxyEnvironment('managementTerminal')
+      }
     }
   },
   authorize: async request => {
