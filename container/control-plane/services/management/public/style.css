@@ -492,10 +492,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-form-grid input, .proxy-form-grid select { min-height: 36px; }
 .proxy-rules-grid textarea { resize: vertical; min-height: 92px; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxy-form-grid label > span, .proxy-rules-grid label > span { color: var(--text); font-weight: 500; }
-.proxy-rules-grid small, .proxy-check-row small { display: block; color: var(--muted); font-size: 11px; line-height: 17px; }
-.proxy-check-row { display: flex !important; align-items: flex-start; gap: 9px; margin-top: 12px; color: var(--text) !important; }
-.proxy-check-row[hidden] { display: none !important; }
-.proxy-check-row input { width: auto !important; min-height: 0 !important; margin-top: 3px; }
+.proxy-rules-grid small { display: block; color: var(--muted); font-size: 11px; line-height: 17px; }
 .proxy-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; color: var(--text); }
 .proxy-setting-row > span, .proxy-setting-row > div { min-width: 0; }
 .proxy-setting-row strong, .proxy-setting-row small { display: block; }

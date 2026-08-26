@@ -38,6 +38,12 @@ function pendingStage(stage) {
   return { stage, status: 'pending', durationMs: null, errorCode: null, detail: null }
 }
 
+function stagesFor(configuration) {
+  const localTargetDns = configuration.proxy.protocol === 'socks5'
+    && configuration.proxy.remoteDns === false
+  return localTargetDns ? STAGES : STAGES.filter(stage => stage !== 'target-dns')
+}
+
 function taskHash(configuration, baseRevision) {
   return `sha256:${createHash('sha256').update(canonicalJson({ baseRevision, configuration })).digest('hex')}`
 }
@@ -260,8 +266,8 @@ export class ProxyTestManager {
       baseRevision,
       candidateHash: taskHash(validated.configuration, baseRevision),
       mode: null,
-      currentStage: STAGES[0],
-      stages: STAGES.map(pendingStage),
+      currentStage: stagesFor(validated.configuration)[0],
+      stages: stagesFor(validated.configuration).map(pendingStage),
       error: null,
       createdAt,
       updatedAt: createdAt,
@@ -340,13 +346,7 @@ export class ProxyTestManager {
           return `${snapshot.configuration.proxy.protocol.toUpperCase()} proxy authentication succeeded`
         })
       }
-      const remoteDns = routes.every(route => route.mode === 'http'
-        || (route.mode === 'socks5' && route.endpoint.remoteDns === true))
-      if (remoteDns && task.mode !== 'direct') {
-        const stage = task.stages.find(value => value.stage === 'target-dns')
-        Object.assign(stage, { status: 'skipped', durationMs: 0, detail: 'target DNS is resolved by the proxy' })
-        await this.update(task, {})
-      } else {
+      if (task.stages.some(stage => stage.stage === 'target-dns')) {
         await this.stage(task, 'target-dns', async () => {
           for (const target of this.targets) {
             const records = await this.lookup(target.host, task.controller.signal)
@@ -410,4 +410,4 @@ export class ProxyTestManager {
   }
 }
 
-export const proxyTestInternals = Object.freeze({ STAGES, TARGETS, modeFor, publicTask })
+export const proxyTestInternals = Object.freeze({ STAGES, TARGETS, modeFor, publicTask, stagesFor })

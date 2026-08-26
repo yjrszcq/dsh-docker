@@ -58,9 +58,17 @@ test('proxy test requires and exercises the candidate proxy without changing cur
   assert.equal(completed.status, 'failed')
   assert.equal(completed.mode, 'proxy')
   assert.equal(completed.stages.find(stage => stage.stage === 'proxy-address').status, 'failed')
-  assert.deepEqual(completed.stages.slice(1).map(stage => stage.status), ['skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
+  assert.deepEqual(completed.stages.slice(1).map(stage => stage.status), ['skipped', 'skipped', 'skipped', 'skipped'])
+  assert.equal(completed.stages.some(stage => stage.stage === 'target-dns'), false)
   assert.equal(completed.stages.find(stage => stage.stage === 'target-http').status, 'skipped')
   assert.equal(state.configuration.enabled, false)
+})
+
+test('proxy tests list target DNS only when SOCKS5 resolves names locally', () => {
+  const remote = candidate({ proxy: { protocol: 'socks5', remoteDns: true } })
+  const local = candidate({ proxy: { protocol: 'socks5', remoteDns: false } })
+  assert.equal(proxyTestInternals.stagesFor(remote).includes('target-dns'), false)
+  assert.equal(proxyTestInternals.stagesFor(local).includes('target-dns'), true)
 })
 
 test('proxy tests allow one in-memory candidate, persist no credentials, and cancel safely', async () => {

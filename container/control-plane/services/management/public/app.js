@@ -3475,8 +3475,10 @@ const PROXY_TEST_STAGE_LABELS = Object.freeze({
   'target-http': 'proxyStageHttp',
 })
 
-function pendingProxyTestStages() {
-  return Object.keys(PROXY_TEST_STAGE_LABELS).map(stage => ({ stage, status: 'pending' }))
+function pendingProxyTestStages(proxy = {}) {
+  return Object.keys(PROXY_TEST_STAGE_LABELS)
+    .filter(stage => stage !== 'target-dns' || (proxy.protocol === 'socks5' && proxy.remoteDns === false))
+    .map(stage => ({ stage, status: 'pending' }))
 }
 
 function failedProxyTest(error, stages = proxyTestTask?.stages) {
@@ -3895,7 +3897,10 @@ function saveProxyImmediate(mutate) {
 
 async function startProxyTest() {
   expandedProxyTestStages.clear()
-  proxyTestTask = { status: 'starting', stages: pendingProxyTestStages() }
+  proxyTestTask = { status: 'starting', stages: pendingProxyTestStages({
+    protocol: elements['proxy-protocol'].value,
+    remoteDns: elements['proxy-remote-dns'].checked,
+  }) }
   elements['proxy-test-dialog'].showModal()
   renderProxyTest(proxyTestTask)
   try {

@@ -1423,8 +1423,10 @@ const PROXY_TEST_LABELS = Object.freeze({
   'target-tls': 'proxyStageTls', 'target-http': 'proxyStageHttp',
 })
 
-function pendingProxyTestStages() {
-  return Object.keys(PROXY_TEST_LABELS).map(stage => ({ stage, status: 'pending' }))
+function pendingProxyTestStages(proxy = {}) {
+  return Object.keys(PROXY_TEST_LABELS)
+    .filter(stage => stage !== 'target-dns' || (proxy.protocol === 'socks5' && proxy.remoteDns === false))
+    .map(stage => ({ stage, status: 'pending' }))
 }
 
 function proxyLines(value) {
@@ -1646,7 +1648,7 @@ function ProxySettings({ active, t }) {
   const startTest = async () => {
     setBusy(true); setTestError('')
     setExpandedTestStages(new Set())
-    setTask({ status: 'starting', stages: pendingProxyTestStages() })
+    setTask({ status: 'starting', stages: pendingProxyTestStages(connection) })
     requestAnimationFrame(() => testDialog.current?.showModal())
     try {
       const started = await request('proxy/test', { method: 'POST', body: { baseRevision: configuration.revision, value: candidate() } })
@@ -1730,8 +1732,9 @@ function ProxySettings({ active, t }) {
             h('label', null, h('span', null, t('proxyPassword')), h('input', { type: 'password', value: password, disabled: clearPassword, maxLength: 255, autoComplete: 'new-password', placeholder: t('proxyPasswordPlaceholder'), onChange: event => { setPassword(event.target.value); if (event.target.value !== '') setClearPassword(false) } })),
             configuration.proxy.passwordConfigured ? h('button', { type: 'button', className: css.proxyClearPassword, 'aria-pressed': clearPassword, onClick: () => { setClearPassword(value => !value); setPassword('') } }, t('proxyClearPassword')) : null),
           h('button', { type: 'button', className: css.secondaryButton, 'aria-expanded': advanced, onClick: () => setAdvanced(value => !value) }, t('proxyAdvanced'))),
-        connection.protocol === 'socks5' ? h('div', { className: css.proxySettingRow }, h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail'))), h('label', { className: css.toggle, 'aria-label': t('proxyRemoteDns'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: connection.remoteDns, onChange: event => preserveToggleScroll(event.currentTarget, () => patchConnection(['remoteDns'], event.target.checked)) }), h('span', { 'aria-hidden': true }))) : null),
+        ),
       advanced ? h('div', { className: css.proxyAdvanced },
+        connection.protocol === 'socks5' ? h('div', { className: `${css.proxySettingRow} ${css.proxyAdvancedSetting}` }, h('div', null, h('h4', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail'))), h('label', { className: css.toggle, 'aria-label': t('proxyRemoteDns'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: connection.remoteDns, onChange: event => preserveToggleScroll(event.currentTarget, () => patchConnection(['remoteDns'], event.target.checked)) }), h('span', { 'aria-hidden': true }))) : null,
         h('div', { className: css.sectionHeading },
           h('div', null, h('h4', null, t('proxyRules')), h('p', null, t('proxyRulesDetail'))),
           h('button', { type: 'button', className: css.secondaryButton, onClick: () => systemRulesDialog.current?.showModal() }, t('proxySystemRules'))),
