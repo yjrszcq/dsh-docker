@@ -12,12 +12,36 @@ import { verifyDetached } from '../stage0/lib/signature.mjs'
 import { verifyImageRelease } from '../tools/verify-image-release.mjs'
 import { createEnvironmentRelease } from '../tools/environment-release.mjs'
 import { verifyManagementDependencies } from '../tools/verify-management-dependencies.mjs'
+import { parseBootstrapVersion, validateBootstrapContentTransition } from '../lib/bootstrap-version.mjs'
 import { writeDshEntrypointFixture } from './fixtures/dsh-package.mjs'
 
 const supportedTargetUrl = new URL('../../../release/supported-target.json', import.meta.url)
 const environmentDefinitionUrl = new URL('../../environment/definition.json', import.meta.url)
 const supportedDshVersion = JSON.parse(await readFile(supportedTargetUrl, 'utf8')).latestSupportedDsh
 const environmentVersion = JSON.parse(await readFile(environmentDefinitionUrl, 'utf8')).version
+
+test('Bootstrap content changes require a strictly newer Bootstrap version', () => {
+  assert.equal(parseBootstrapVersion('1.0.1'), '1.0.1')
+  assert.equal(parseBootstrapVersion('1.0.1\n'), '1.0.1')
+  assert.throws(() => parseBootstrapVersion('1.0'), /Bootstrap VERSION is invalid/)
+  assert.throws(() => parseBootstrapVersion(' 1.0.1\n'), /Bootstrap VERSION is invalid/)
+  assert.throws(() => parseBootstrapVersion('1.0.1\nextra'), /Bootstrap VERSION is invalid/)
+  assert.throws(() => parseBootstrapVersion('99999999999999999999.0.0'), /Bootstrap VERSION is invalid/)
+  assert.doesNotThrow(() => validateBootstrapContentTransition({
+    previousVersion: '1.0.0', previousSha256: 'a'.repeat(64),
+    nextVersion: '1.0.0', nextSha256: 'a'.repeat(64),
+  }))
+  assert.doesNotThrow(() => validateBootstrapContentTransition({
+    previousVersion: '1.0.0', previousSha256: 'a'.repeat(64),
+    nextVersion: '1.0.1', nextSha256: 'b'.repeat(64),
+  }))
+  for (const nextVersion of ['1.0.0', '0.9.9']) {
+    assert.throws(() => validateBootstrapContentTransition({
+      previousVersion: '1.0.0', previousSha256: 'a'.repeat(64),
+      nextVersion, nextSha256: 'b'.repeat(64),
+    }), /content changed without increasing Bootstrap VERSION/)
+  }
+})
 
 test('Stage-0 launches the packaged outbound proxy entrypoint', async () => {
   const source = await readFile(new URL('../stage0/index.mjs', import.meta.url), 'utf8')
@@ -245,6 +269,7 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   verifyDetached(stableBytes, JSON.parse(await readFile(join(output, 'stable.sig.json'))), ring.current.publicKey)
   assert.equal(stable.desired.dsh.version, supportedDshVersion)
   assert.equal(stable.desired.environment.version, environmentVersion)
+  assert.equal(stable.desired.bootstrap.version, (await readFile(new URL('../bootstrap/VERSION', import.meta.url), 'utf8')).trim())
   assert.equal(stable.officialDshPolicy.packageName, '@deepseek-ai/dsh')
   assert.equal(stable.artifacts.some(artifact => artifact.mediaType === 'application/vnd.npm.package+gzip'), false)
   assert.equal(stable.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
@@ -280,6 +305,51 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+
+  const changedBootstrapRelease = join(root, 'changed-bootstrap-release')
+  await cp(output, changedBootstrapRelease, { recursive: true })
+  const changedBootstrapManifestPath = join(changedBootstrapRelease, 'bootstrap.manifest.json')
+  const changedBootstrapManifest = JSON.parse(await readFile(changedBootstrapManifestPath, 'utf8'))
+  changedBootstrapManifest.artifacts[0].sha256 = 'f'.repeat(64)
+  await writeFile(changedBootstrapManifestPath, JSON.stringify(changedBootstrapManifest))
+  await rm(join(changedBootstrapRelease, 'bootstrap.manifest.sig.json'))
+  result = spawnSync(process.execPath, [
+    new URL('../tools/sign.mjs', import.meta.url).pathname,
+    'sign', current.privatePath, changedBootstrapManifestPath,
+    join(changedBootstrapRelease, 'bootstrap.manifest.sig.json'),
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const changedStablePath = join(changedBootstrapRelease, 'stable.json')
+  const changedStable = JSON.parse(await readFile(changedStablePath, 'utf8'))
+  for (const [id, name] of [
+    ['bootstrap-manifest', 'bootstrap.manifest.json'],
+    ['bootstrap-signature', 'bootstrap.manifest.sig.json'],
+  ]) {
+    const bytes = await readFile(join(changedBootstrapRelease, name))
+    const artifact = changedStable.artifacts.find(candidate => candidate.id === id)
+    artifact.sha256 = createHash('sha256').update(bytes).digest('hex')
+    artifact.size = bytes.byteLength
+  }
+  await writeFile(changedStablePath, JSON.stringify(changedStable))
+  await rm(join(changedBootstrapRelease, 'stable.sig.json'))
+  result = spawnSync(process.execPath, [
+    new URL('../tools/sign.mjs', import.meta.url).pathname,
+    'sign', current.privatePath, changedStablePath, join(changedBootstrapRelease, 'stable.sig.json'),
+  ], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const invalidBootstrapOutput = join(root, 'unchanged-bootstrap-version-release')
+  result = spawnSync(process.execPath, [
+    new URL('../tools/prepare-release.mjs', import.meta.url).pathname,
+    supportedTargetUrl.pathname,
+    environmentDefinitionUrl.pathname,
+    new URL('../../../release/official-dsh-policy.json', import.meta.url).pathname,
+    trust, current.privatePath, tarball, changedBootstrapRelease, '2',
+    'https://release.example/platform-bootstrap-conflict/', invalidBootstrapOutput,
+  ], { encoding: 'utf8', env: { ...process.env, SOURCE_DATE_EPOCH: '1787068801' } })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Bootstrap content changed without increasing Bootstrap VERSION/)
+  await assert.rejects(lstat(invalidBootstrapOutput), error => error?.code === 'ENOENT')
+
   const rollbackOutput = join(root, 'rollback-release')
   result = spawnSync(process.execPath, [
     new URL('../tools/prepare-release.mjs', import.meta.url).pathname,

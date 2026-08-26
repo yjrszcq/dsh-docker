@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { canonicalJson } from '../lib/canonical-json.mjs'
+import { parseBootstrapVersion, validateBootstrapContentTransition } from '../lib/bootstrap-version.mjs'
 import { parseBootstrapManifest, parseEnvironmentManifest, parseOfficialDshPolicy, parseStable } from '../lib/contracts.mjs'
 import { validateSupportedTarget } from '../lib/supported-target.mjs'
 import { positiveSafeInteger } from '../lib/validation.mjs'
@@ -33,6 +34,7 @@ const output = resolve(outputArg)
 const targetSequence = positiveSafeInteger(Number(sequenceArg), 'target sequence')
 const artifactBaseUrl = new URL(baseUrlArg.endsWith('/') ? baseUrlArg : `${baseUrlArg}/`)
 if (artifactBaseUrl.protocol !== 'https:') throw new Error('Artifact base URL must use HTTPS')
+const bootstrapVersion = parseBootstrapVersion(await readFile(join(platformRoot, 'bootstrap', 'VERSION'), 'utf8'))
 
 const target = validateSupportedTarget(await readFile(targetPath), await readFile(definitionPath))
 const recoveryPublicKey = (await readFile(join(trustRoot, 'recovery-root.spki.base64'), 'utf8')).trim()
@@ -40,6 +42,7 @@ const keyringBytes = await readFile(join(trustRoot, 'keyring.json'))
 const keyringSignatureBytes = await readFile(join(trustRoot, 'keyring.sig.json'))
 const keyring = verifyRecoveryKeyring(keyringBytes, JSON.parse(keyringSignatureBytes.toString('utf8')), recoveryPublicKey)
 let previousTarget
+let previousBootstrap
 if (previousArg === '-') {
   if (targetSequence !== 1) throw new Error('The first target sequence must be 1')
 } else {
@@ -67,6 +70,30 @@ if (previousArg === '-') {
     if (!keyringBytes.equals(previousKeyringBytes)) throw new Error('same keyring generation must be byte-identical')
   } else validateKeyringTransition(previousKeyring, keyring)
   if (targetSequence <= previousTarget.targetSequence) throw new Error('target sequence must increase')
+  const manifestDescriptor = previousTarget.artifacts.find(({ id }) => id === previousTarget.desired.bootstrap.manifestArtifactId)
+  const signatureDescriptor = previousTarget.artifacts.find(({ id }) => id === previousTarget.desired.bootstrap.signatureArtifactId)
+  if (manifestDescriptor === undefined || signatureDescriptor === undefined) throw new Error('previous Bootstrap metadata is incomplete')
+  const previousBootstrapBytes = await readFile(join(previousRoot, basename(new URL(manifestDescriptor.url).pathname)))
+  const previousBootstrapSignatureBytes = await readFile(join(previousRoot, basename(new URL(signatureDescriptor.url).pathname)))
+  if (
+    previousBootstrapBytes.byteLength !== manifestDescriptor.size
+    || createHash('sha256').update(previousBootstrapBytes).digest('hex') !== manifestDescriptor.sha256
+    || previousBootstrapSignatureBytes.byteLength !== signatureDescriptor.size
+    || createHash('sha256').update(previousBootstrapSignatureBytes).digest('hex') !== signatureDescriptor.sha256
+  ) throw new Error('previous Bootstrap metadata differs from signed Stable descriptors')
+  verifyDetached(
+    previousBootstrapBytes,
+    JSON.parse(previousBootstrapSignatureBytes.toString('utf8')),
+    previousKeyring.current.publicKey,
+  )
+  previousBootstrap = parseBootstrapManifest(previousBootstrapBytes)
+  if (previousBootstrap.version !== previousTarget.desired.bootstrap.version) {
+    throw new Error('previous Stable and Bootstrap manifest versions differ')
+  }
+  if (
+    previousBootstrap.targetSequence !== previousTarget.targetSequence
+    || previousBootstrap.keyringGeneration !== previousTarget.keyringGeneration
+  ) throw new Error('previous Stable and Bootstrap manifest generations differ')
 }
 const privateKey = createPrivateKey(await readFile(privateKeyPath))
 if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Release private key must be Ed25519')
@@ -156,14 +183,25 @@ try {
     'control-plane/modules/plugin-manager', 'control-plane/modules/skill-manager',
     'control-plane/modules/updater', 'control-plane/modules/file-manager',
   ], 'Bootstrap packaging')
+  const bootstrapPackage = await descriptor('bootstrap-package', bootstrapPath, 'application/gzip')
+  if (previousBootstrap !== undefined) {
+    const previousBootstrapPackage = previousBootstrap.artifacts.find(({ id }) => id === 'bootstrap-package')
+    if (previousBootstrapPackage === undefined) throw new Error('previous Bootstrap package is missing')
+    validateBootstrapContentTransition({
+      previousVersion: previousBootstrap.version,
+      previousSha256: previousBootstrapPackage.sha256,
+      nextVersion: bootstrapVersion,
+      nextSha256: bootstrapPackage.sha256,
+    })
+  }
   const bootstrapManifest = canonicalJson({
     schema: 1,
     manifestType: 'bootstrap',
-    version: '1.0.0',
+    version: bootstrapVersion,
     keyringGeneration: keyring.generation,
     targetSequence,
     issuedAt,
-    artifacts: [await descriptor('bootstrap-package', bootstrapPath, 'application/gzip')],
+    artifacts: [bootstrapPackage],
     bootstrapApi: 1,
     entrypoint: '/platform/bootstrap/index.mjs',
   })
@@ -184,7 +222,7 @@ try {
       ['bootstrap-signature', join(staging, 'bootstrap.manifest.sig.json'), 'application/vnd.dsh-platform.signature.v1+json'],
     ].map(([id, path, mediaType]) => ({ id, path, mediaType })),
     desired: {
-      bootstrap: { version: '1.0.0', manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
+      bootstrap: { version: bootstrapVersion, manifestArtifactId: 'bootstrap-manifest', signatureArtifactId: 'bootstrap-signature' },
       environment: { version: target.environment, manifestArtifactId: 'environment-manifest', signatureArtifactId: 'environment-signature' },
       dsh: { version: target.latestSupportedDsh, integrity: dshIntegrity },
     },

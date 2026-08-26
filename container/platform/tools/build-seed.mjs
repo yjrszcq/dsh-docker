@@ -8,6 +8,7 @@ import { reconcileSystemPlugins } from '../../control-plane/modules/plugin-manag
 import { artifactForReference, parseEnvironmentManifest } from '../lib/contracts.mjs'
 import { canonicalJson } from '../lib/canonical-json.mjs'
 import { deriveImageBuildId, deriveRecordId, parseImageInventory } from '../lib/deployment-contracts.mjs'
+import { parseBootstrapVersion } from '../lib/bootstrap-version.mjs'
 import { hashTree } from '../lib/tree-hash.mjs'
 import { verifyImageRelease } from './verify-image-release.mjs'
 import { verifyManagementDependencies } from './verify-management-dependencies.mjs'
@@ -43,7 +44,7 @@ async function makeFilesReadOnly(root) {
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 
-const bootstrapVersion = '1.0.0'
+const bootstrapVersion = parseBootstrapVersion(await readFile(join(platformRoot, 'bootstrap', 'VERSION'), 'utf8'))
 const bootstrapRoot = join(output, 'bootstrap', bootstrapVersion)
 const environmentDefinition = join(containerRoot, 'environment', 'definition.json')
 const environmentVersion = JSON.parse(await readFile(environmentDefinition, 'utf8')).version
