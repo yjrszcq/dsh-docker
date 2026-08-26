@@ -107,6 +107,12 @@ function json(value) {
   return JSON.stringify(value)
 }
 
+const RETRYABLE_CONTROL_PLANE_ERRORS = new Set(['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE'])
+
+function isRetryableControlPlaneError(error) {
+  return RETRYABLE_CONTROL_PLANE_ERRORS.has(error?.code)
+}
+
 export async function runCli({
   argv = process.argv.slice(2),
   management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock'),
@@ -145,9 +151,23 @@ export async function runCli({
     const started = await management.request('POST', `${API_PREFIX}/update`)
     write(json(started))
     if (!parsed.wait) return 0
+    let controlPlaneRestarted = false
     for (;;) {
-      const value = await management.request('GET', `${API_PREFIX}/status`)
-      if (value.update.taskId === started.taskId && ['success', 'failed'].includes(value.update.status)) {
+      let value
+      try {
+        value = await management.request('GET', `${API_PREFIX}/status`)
+      } catch (error) {
+        if (!isRetryableControlPlaneError(error)) throw error
+        controlPlaneRestarted = true
+        await delay(1_000)
+        continue
+      }
+      const terminal = ['success', 'failed'].includes(value.update.status)
+      const sameTask = value.update.taskId === started.taskId
+      const resumedTask = controlPlaneRestarted
+        && value.update.taskId !== null
+        && value.update.operation === 'update'
+      if (terminal && (sameTask || resumedTask)) {
         write(json(value.update))
         return value.update.status === 'success' ? 0 : 1
       }

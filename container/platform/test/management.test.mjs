@@ -2002,6 +2002,46 @@ test('update wait ignores a terminal state from an older task', async () => {
   assert.match(output.at(-1), /new-task/)
 })
 
+test('update wait reconnects across a Bootstrap handoff and follows the resumed task', async () => {
+  const output = []
+  const unavailable = Object.assign(new Error('management socket is restarting'), { code: 'ENOENT' })
+  const statuses = [
+    unavailable,
+    { update: { taskId: 'resumed-task', operation: 'update', status: 'planning' } },
+    { update: { taskId: 'resumed-task', operation: 'update', status: 'success' } },
+  ]
+  const management = {
+    request: async (method, path) => {
+      if (method === 'POST' && path.endsWith('/update')) return { taskId: 'original-task' }
+      const next = statuses.shift()
+      if (next instanceof Error) throw next
+      return next
+    },
+  }
+  let waits = 0
+  const exitCode = await runCli({
+    argv: ['update', '--wait'],
+    management,
+    write: line => output.push(line),
+    delay: async () => { waits += 1 },
+  })
+  assert.equal(exitCode, 0)
+  assert.equal(waits, 2)
+  assert.match(output.at(-1), /resumed-task/)
+})
+
+test('update wait does not hide non-transient Management failures', async () => {
+  const management = {
+    request: async method => {
+      if (method === 'POST') return { taskId: 'original-task' }
+      throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+    },
+  }
+  await assert.rejects(runCli({
+    argv: ['update', '--wait'], management, write: () => {}, delay: async () => {},
+  }), /permission denied/)
+})
+
 test('management CLI emits each JSON result as one log-safe line', async () => {
   const output = []
   const status = {

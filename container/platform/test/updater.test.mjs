@@ -734,6 +734,9 @@ test('serializes one update task and persists success progress', async () => {
       health: async () => ({ healthy: true, components: [
         { id: 'gateway', healthy: true }, { id: 'dsh-runtime', healthy: true },
       ] }),
+      currentDeployment: async () => ({
+        dsh: '0.1.0-rc.7', environment: '1.0.0', runtime: 'runtime-current',
+      }),
     },
     state,
   })
@@ -748,6 +751,10 @@ test('serializes one update task and persists success progress', async () => {
   assert.equal((await state.read()).progress, 100)
   assert.equal((await state.read()).readyServices, 2)
   assert.equal((await state.read()).totalServices, 2)
+  assert.deepEqual((await state.read()).current, {
+    dsh: '0.1.0-rc.7', environment: '1.0.0', runtime: 'runtime-current',
+  })
+  assert.equal((await state.read()).updateAvailable, false)
 })
 
 test('samples high-frequency Runtime copy metrics without losing final totals', async () => {
@@ -1580,4 +1587,38 @@ test('keeps ordinary Stable-to-Experimental reconciliation retryable', async () 
 
   await coordinator.runReconcile('task-a')
   assert.deepEqual(options, { blockCombination: false })
+})
+
+test('refreshes current and availability after Stable reconciliation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-reconcile-stable-current-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const coordinator = new UpdateCoordinator({
+    metadata: {}, preparer: {}, activator: {}, state,
+  })
+  let planned = false
+  coordinator.desiredState = async () => {
+    if (!planned) {
+      planned = true
+      return {
+        action: 'stable',
+        current: { authority: 'stable', dsh: 'old', environment: 'env-old', runtime: 'runtime-old' },
+        supported: { environment: 'env-new' },
+      }
+    }
+    return {
+      action: 'none',
+      current: { authority: 'stable', dsh: 'new', environment: 'env-new', runtime: 'runtime-new' },
+      aheadOfStable: false,
+      experimentalBlocked: null,
+      holds: [],
+    }
+  }
+  coordinator.run = async () => {}
+
+  await coordinator.runReconcile('task-a')
+
+  const update = await state.read()
+  assert.deepEqual(update.current, { dsh: 'new', environment: 'env-new', runtime: 'runtime-new' })
+  assert.equal(update.updateAvailable, false)
+  assert.equal(update.outcome, 'none')
 })

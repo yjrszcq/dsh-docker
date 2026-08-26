@@ -481,7 +481,17 @@ export class UpdateCoordinator extends EventEmitter {
         if (next.action === 'experimental') {
           return this.runExperimental(taskId, { blockCombination: blockExperimentalCombination })
         }
-        return this.transition('success', { taskId, progress: 100, error: null, outcome: next.action })
+        return this.transition('success', {
+          taskId,
+          progress: 100,
+          current: { dsh: next.current.dsh, environment: next.current.environment, runtime: next.current.runtime },
+          aheadOfStable: next.aheadOfStable,
+          experimentalBlocked: next.experimentalBlocked,
+          holds: next.holds,
+          updateAvailable: ['stable', 'experimental'].includes(next.action),
+          error: null,
+          outcome: next.action,
+        })
       }
       if (plan.action === 'experimental') return this.runExperimental(taskId)
       return this.transition('success', {
@@ -576,8 +586,19 @@ export class UpdateCoordinator extends EventEmitter {
         onSwitching: () => this.transition('switching', { taskId, progress: 90 }),
       })
       const health = await this.reportHealth('switching', { taskId, progress: 95 })
+      const current = this.activator.currentDeployment === undefined
+        ? null
+        : await this.activator.currentDeployment()
       await this.bestEffort('update.notifications.cleanup.failed', () => this.clearSatisfiedNotifications(), undefined, { taskId })
-      return complete ? this.transition('success', { taskId, progress: 100, error: null }) : health
+      return complete ? this.transition('success', {
+        taskId,
+        progress: 100,
+        ...(current === null ? {} : {
+          current: { dsh: current.dsh, environment: current.environment, runtime: current.runtime },
+          updateAvailable: false,
+        }),
+        error: null,
+      }) : health
     } catch (error) {
       await this.record('update.stable.failed', { error, taskId })
       await this.transition('failed', { taskId, error: error instanceof Error ? error.message : 'update failed' })
