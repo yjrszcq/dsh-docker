@@ -381,6 +381,11 @@ test('restarts Proxy Manager after an unclean exit leaves its control socket beh
   let second
   try {
     await ready(first)
+    const routing = JSON.parse(await readFile(join(runRoot, 'outbound-proxy-routing.json'), 'utf8'))
+    assert.equal(routing.schema, 1)
+    assert.equal(routing.enabled, false)
+    assert.equal(routing.scopes.agentNetwork, false)
+    assert.equal(JSON.stringify(routing).includes('password'), false)
     first.kill('SIGKILL')
     await once(first, 'exit')
     second = launch()

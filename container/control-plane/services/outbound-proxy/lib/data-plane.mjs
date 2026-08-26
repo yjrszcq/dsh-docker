@@ -143,21 +143,18 @@ function idle(socket, timeoutMs) {
 }
 
 function bridge(left, right, { leftHead = Buffer.alloc(0), rightHead = Buffer.alloc(0), timeoutMs }) {
+  const close = () => {
+    if (!left.destroyed) left.destroy()
+    if (!right.destroyed) right.destroy()
+  }
+  left.on('error', close)
+  right.on('error', close)
   idle(left, timeoutMs)
   idle(right, timeoutMs)
   if (leftHead.byteLength > 0) right.write(leftHead)
   if (rightHead.byteLength > 0) left.write(rightHead)
   left.pipe(right)
   right.pipe(left)
-  let closing = false
-  const close = () => {
-    if (closing) return
-    closing = true
-    if (!left.destroyed) left.destroy()
-    if (!right.destroyed) right.destroy()
-  }
-  left.once('error', close)
-  right.once('error', close)
 }
 
 async function tryTargets(targets, connectTarget, { retry } = {}) {
@@ -350,6 +347,7 @@ function rawRequest(request, target, { absolute, authorization }) {
 }
 
 async function handleUpgrade(request, socket, head, context) {
+  socket.on('error', () => {})
   if (!checkHeaderLimits(request)) return socketError(socket, 431, 'REQUEST_HEADERS_TOO_LARGE', 'request headers are too large')
   const target = parseAbsoluteTarget(request.url ?? '')
   if (target === null || target.unsupported === true || target.url.protocol !== 'ws:' || String(request.headers.upgrade ?? '').toLowerCase() !== 'websocket') {
@@ -385,6 +383,7 @@ async function handleUpgrade(request, socket, head, context) {
 }
 
 async function handleConnect(request, socket, head, context) {
+  socket.on('error', () => {})
   if (!checkHeaderLimits(request)) return socketError(socket, 431, 'REQUEST_HEADERS_TOO_LARGE', 'request headers are too large')
   const target = parseAuthority(request.url ?? '')
   if (target === null) return socketError(socket, 400, 'INVALID_CONNECT_AUTHORITY', 'CONNECT authority is invalid')

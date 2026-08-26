@@ -66,6 +66,7 @@ test('rebuilds only the ephemeral run directory', async () => {
   assert.equal((await lstat(paths.systemPluginViewsRoot)).isDirectory(), true)
   assert.equal(paths.dshLifecycleSocket, join(paths.runRoot, 'dsh-lifecycle.sock'))
   assert.equal(paths.proxyControlSocket, join(paths.runRoot, 'outbound-proxy.sock'))
+  assert.equal(paths.proxyRoutingStatePath, join(paths.runRoot, 'outbound-proxy-routing.json'))
   assert.equal(paths.proxyLaunchSocket, join(paths.runRoot, 'proxy-launch.sock'))
   assert.equal(
     await readlink(join(paths.systemPluginViewsRoot, 'current')),

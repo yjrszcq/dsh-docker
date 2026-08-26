@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -60,6 +60,82 @@ test('Platform Management classifies official DSH Shell subprocesses as Agent ne
   } finally {
     if (previous === undefined) delete process.env.DSH_PLATFORM_AGENT_PROXY_URL
     else process.env.DSH_PLATFORM_AGENT_PROXY_URL = previous
+  }
+})
+
+test('Platform Management gives disabled Agent and Provider routes a real direct path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-direct-routing-'))
+  const routingStatePath = join(root, 'routing.json')
+  await writeFile(routingStatePath, JSON.stringify({
+    schema: 1,
+    revision: 'direct-revision',
+    enabled: true,
+    scopes: { dshCore: false, dshPlugins: false, agentNetwork: false },
+    modelApi: {
+      default: { followDsh: false, proxyEnabled: false },
+      providers: {},
+    },
+  }))
+  try {
+    const spec = managedNetworkInternals.managedSubprocessSpec({
+      env: { DSH_SHELL: '1' },
+    }, {
+      HTTP_PROXY: 'http://127.0.0.1:17898',
+      HTTPS_PROXY: 'http://127.0.0.1:17898',
+      DSH_PLATFORM_AGENT_PROXY_URL: 'http://127.0.0.1:17895',
+    }, routingStatePath)
+    assert.equal(spec.env.HTTP_PROXY, undefined)
+    assert.equal(spec.env.HTTPS_PROXY, undefined)
+    assert.equal(spec.env.ALL_PROXY, undefined)
+
+    let listener
+    let directClosed = false
+    const directDispatcher = { close: async () => { directClosed = true } }
+    const previousFetch = globalThis.fetch
+    const observed = []
+    globalThis.fetch = async () => { throw new Error('ambient proxy fetch must not be used') }
+    const remove = installProviderRouting({
+      on(_event, callback) { listener = callback; return () => { listener = undefined } },
+    }, {
+      socketPath: join(root, 'missing.sock'),
+      routingStatePath,
+      createDirectDispatcher: () => directDispatcher,
+      routedFetch: async (_input, init) => {
+        observed.push(init.dispatcher)
+        return { ok: true }
+      },
+    })
+    try {
+      const stream = listener({ provider: 'deepseek-official' }, () => (async function* () {
+        await fetch('https://provider.invalid')
+        yield 'direct'
+      })())
+      assert.deepEqual(await stream.next(), { value: 'direct', done: false })
+      assert.deepEqual(await stream.next(), { value: undefined, done: true })
+      assert.deepEqual(observed, [directDispatcher])
+
+      await writeFile(routingStatePath, JSON.stringify({
+        schema: 1,
+        revision: 'proxy-revision',
+        enabled: true,
+        scopes: { dshCore: false, dshPlugins: false, agentNetwork: true },
+        modelApi: {
+          default: { followDsh: false, proxyEnabled: true },
+          providers: {},
+        },
+      }))
+      const protectedStream = listener({ provider: 'deepseek-official' }, () => (async function* () {
+        yield 'must-not-run'
+      })())
+      await assert.rejects(protectedStream.next(), /ENOENT|ECONNREFUSED/)
+    } finally {
+      remove()
+      globalThis.fetch = previousFetch
+    }
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(directClosed, true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
 

@@ -1,12 +1,31 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { readFileSync } from 'node:fs'
 import { request } from 'node:http'
-import { fetch as proxyFetch, ProxyAgent } from 'undici'
+import { Agent, fetch as proxyFetch, ProxyAgent } from 'undici'
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const FETCH_ROUTER = Symbol.for('dsh-docker.platform-management.provider-fetch-router')
 const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 const DEFAULT_SOCKET = '/run/dsh-platform/outbound-proxy.sock'
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:17897'
+const DEFAULT_ROUTING_STATE = '/run/dsh-platform/outbound-proxy-routing.json'
+
+function routingState(path) {
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8'))
+    if (value?.schema !== 1 || typeof value.enabled !== 'boolean' || value.modelApi === null || typeof value.modelApi !== 'object') return null
+    return value
+  } catch {
+    return null
+  }
+}
+
+function providerProxyEnabled(state, providerId) {
+  if (state === null || !state.enabled) return false
+  const policy = state.modelApi.providers?.[providerId] ?? state.modelApi.default
+  if (policy?.proxyEnabled !== true) return false
+  return policy.followDsh !== true || state.scopes?.dshCore === true || state.scopes?.dshPlugins === true
+}
 
 function controlRequest(socketPath, method, path, body) {
   return new Promise((resolve, reject) => {
@@ -90,16 +109,14 @@ function installFetchRouter(store, routedFetch = proxyFetch) {
   }
 }
 
-function routedIterator(next, providerId, store, { socketPath, proxyUrl, createDispatcher }) {
+function routedIterator(next, providerId, store, { resolveRoute }) {
   let iterator
   let routePromise
   let closed = false
 
   async function route() {
     if (routePromise === undefined) {
-      routePromise = issueProviderHandle(providerId, socketPath).then(({ handle }) => ({
-        dispatcher: createDispatcher({ uri: proxyUrl, token: `DSH-Provider ${handle}` }),
-      }))
+      routePromise = resolveRoute(providerId)
     }
     return routePromise
   }
@@ -125,7 +142,7 @@ function routedIterator(next, providerId, store, { socketPath, proxyUrl, createD
   async function close(context) {
     if (closed) return
     closed = true
-    await context.dispatcher.close()
+    if (context.owned) await context.dispatcher.close()
   }
 
   return {
@@ -141,18 +158,36 @@ export function installProviderRouting(ctx, {
     ? DEFAULT_SOCKET
     : `${process.env.DSH_PLATFORM_RUN}/outbound-proxy.sock`,
   proxyUrl = DEFAULT_PROXY_URL,
+  routingStatePath = process.env.DSH_PLATFORM_RUN === undefined
+    ? DEFAULT_ROUTING_STATE
+    : `${process.env.DSH_PLATFORM_RUN}/outbound-proxy-routing.json`,
   createDispatcher = options => new ProxyAgent(options),
+  createDirectDispatcher = () => new Agent(),
   routedFetch = proxyFetch,
 } = {}) {
   const store = new AsyncLocalStorage()
+  const directDispatcher = createDirectDispatcher()
   const removeFetchRouter = installFetchRouter(store, routedFetch)
   const disposeStream = ctx.on('llm/stream', (options, next) => {
     if (!PROVIDER_ID_PATTERN.test(options.provider)) return next()
-    return routedIterator(next, options.provider, store, { socketPath, proxyUrl, createDispatcher })
+    return routedIterator(next, options.provider, store, {
+      resolveRoute: async providerId => {
+        const state = routingState(routingStatePath)
+        if (state !== null && !providerProxyEnabled(state, providerId)) {
+          return { dispatcher: directDispatcher, owned: false }
+        }
+        const { handle } = await issueProviderHandle(providerId, socketPath)
+        return {
+          dispatcher: createDispatcher({ uri: proxyUrl, token: `DSH-Provider ${handle}` }),
+          owned: true,
+        }
+      },
+    })
   }, { global: true, prepend: true })
   return () => {
     disposeStream?.()
     removeFetchRouter()
+    void directDispatcher.close()
   }
 }
 
@@ -161,5 +196,7 @@ export const providerRoutingInternals = Object.freeze({
   controlRequest,
   installFetchRouter,
   issueProviderHandle,
+  providerProxyEnabled,
+  routingState,
   routedIterator,
 })

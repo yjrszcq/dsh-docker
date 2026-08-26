@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { chmod, mkdir, readFile, unlink } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 import { PROXY_PORTS } from './lib/contracts.mjs'
@@ -29,6 +29,22 @@ const proxyTests = new ProxyTestManager({
 })
 await proxyTests.initialize(async path => JSON.parse(await readFile(path, 'utf8')))
 
+async function publishRoutingState(current) {
+  const staging = `${paths.proxyRoutingStatePath}.${String(process.pid)}.tmp`
+  const value = {
+    schema: 1,
+    revision: current.revision,
+    enabled: current.configuration.enabled,
+    scopes: current.configuration.scopes,
+    modelApi: current.configuration.modelApi,
+  }
+  await writeFile(staging, `${JSON.stringify(value)}\n`, { mode: 0o644 })
+  await chmod(staging, 0o644)
+  await rename(staging, paths.proxyRoutingStatePath)
+}
+
+await publishRoutingState(snapshot)
+
 for (const [scope, port] of Object.entries(PROXY_PORTS)) {
   const server = createScopedProxyServer({
     scope, getSnapshot: () => snapshot, dnsCache, agentPool, routeHealth, providerHandles,
@@ -50,6 +66,7 @@ const control = createOutboundProxyControl({
   commitConfiguration: async request => {
     const activated = await store.commit(request)
     snapshot = Object.freeze({ ...activated, recovery: 'none' })
+    await publishRoutingState(snapshot)
     return snapshot
   },
 })
