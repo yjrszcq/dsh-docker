@@ -265,8 +265,6 @@ if (outcome.type === 'exit') await logs.diagnostic('stage0', 'stage0.fatal', { e
 else await logs.diagnostic('stage0', 'stage0.stopping', { signal: outcome.signal })
 trustServer.close()
 recoveryServer.close()
-await proxyBroker.stop()
-await new Promise(resolve => proxyLaunchServer.close(resolve))
 await maintenance.terminal.shutdown()
 await new Promise(resolve => maintenance.server.close(resolve))
 await new Promise(resolve => snapshotServer.close(resolve))
@@ -276,6 +274,8 @@ try {
   await logs.diagnostic('stage0', 'stage0.stop.failed', { error })
   throw error
 }
+await proxyBroker.stop()
+await new Promise(resolve => proxyLaunchServer.close(resolve))
 await logs.diagnostic('stage0', 'stage0.stopped')
 if (outcome.type === 'exit') {
   throw outcome.error

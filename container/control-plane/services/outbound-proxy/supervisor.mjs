@@ -25,7 +25,7 @@ const stopped = new Promise(resolve => { resolveStop = resolve })
 const stop = () => {
   if (stopping) return
   stopping = true
-  void launch.request('POST', '/v1/stop', { token }).finally(resolveStop)
+  void launch.request('POST', '/v1/stop', { token }).catch(() => {}).finally(resolveStop)
 }
 process.once('SIGINT', stop)
 process.once('SIGTERM', stop)

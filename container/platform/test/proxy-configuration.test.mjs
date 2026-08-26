@@ -357,6 +357,54 @@ test('keeps the Bootstrap proxy supervisor alive until an explicit stop', async 
   }
 })
 
+test('stops the Bootstrap proxy supervisor cleanly after its launch socket disappears', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-supervisor-missing-socket-'))
+  const runRoot = join(root, 'run')
+  const socket = join(runRoot, 'proxy-launch.sock')
+  await mkdir(runRoot)
+  let started = false
+  const server = createServer((request, response) => {
+    request.resume()
+    request.on('end', () => {
+      if (request.method === 'POST' && request.url === '/v1/start') started = true
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ running: true, componentReady: true }))
+    })
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socket, resolve)
+  })
+  const script = new URL('../../control-plane/services/outbound-proxy/supervisor.mjs', import.meta.url).pathname
+  const child = spawn(process.execPath, [script], {
+    env: {
+      ...process.env,
+      DSH_PLATFORM_DATA: join(root, 'data'),
+      DSH_PLATFORM_RUN: runRoot,
+      DSH_PROXY_LAUNCH_TOKEN: 'x'.repeat(43),
+    },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  const stderr = []
+  child.stderr.on('data', chunk => stderr.push(chunk))
+  try {
+    const deadline = Date.now() + 3_000
+    while (!started && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(started, true)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await new Promise(resolve => server.close(resolve))
+    await rm(socket, { force: true })
+    child.kill('SIGTERM')
+    const [code] = await once(child, 'exit')
+    assert.equal(code, 0)
+    assert.equal(Buffer.concat(stderr).toString('utf8'), '')
+  } finally {
+    if (child.exitCode === null) child.kill('SIGKILL')
+    if (server.listening) await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('restarts Proxy Manager after an unclean exit leaves its control socket behind', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-process-restart-'))
   const runRoot = join(root, 'run')

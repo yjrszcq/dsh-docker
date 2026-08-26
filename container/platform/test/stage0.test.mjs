@@ -38,6 +38,12 @@ test('Stage-0 checks the Management status endpoint before managed file mutation
   assert.doesNotMatch(source, /management\.status\(\)/)
 })
 
+test('Bootstrap releases its parent IPC channel after shutdown', async () => {
+  const source = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
+  assert.match(source, /process\.off\('message', onRecoveryMessage\)/)
+  assert.match(source, /if \(process\.connected\) process\.disconnect\(\)/)
+})
+
 async function bootstrap(root, version, behavior) {
   const directory = join(root, version)
   await mkdir(directory, { recursive: true })

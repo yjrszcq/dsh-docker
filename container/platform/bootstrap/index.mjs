@@ -351,7 +351,7 @@ await deployments.publishStatus({ plan: imagePlan, recoveryMode })
 runtime.markStartupComplete()
 await logs.diagnostic('bootstrap', 'platform.ready', { recoveryMode: recoveryMode !== null })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
-process.on('message', message => {
+const onRecoveryMessage = message => {
   if (message?.type !== 'recover-image-baseline' || typeof message.requestId !== 'string') return
   void deployments.recoverImageBaseline(imageRecords.deployment, {
     healthCheck: () => runtime.reload(),
@@ -369,7 +369,8 @@ process.on('message', message => {
       })
     },
   )
-})
+}
+process.on('message', onRecoveryMessage)
 
 let resolveSignal
 const signal = new Promise(resolve => { resolveSignal = resolve })
@@ -387,4 +388,6 @@ server.close()
 dshLifecycleServer.close()
 await runtime.stop().catch(error => logs.diagnostic('bootstrap', 'bootstrap.stop.failed', { error }))
 await logs.diagnostic('bootstrap', 'bootstrap.stopped')
+process.off('message', onRecoveryMessage)
+if (process.connected) process.disconnect()
 if (outcome.type === 'fatal') throw outcome.error
