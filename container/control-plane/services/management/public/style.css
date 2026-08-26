@@ -479,7 +479,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-password-field { display: flex; min-width: 0; align-items: end; gap: 8px; }
 .proxy-password-field > label { display: grid; min-width: 0; flex: 1; gap: 6px; color: var(--muted); font-size: 12px; }
 .proxy-password-field > label > span { color: var(--text); font-weight: 500; }
-.proxy-password-row { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.proxy-password-row { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 12px; }
+.proxy-password-row > .secondary { justify-self: end; }
 .proxy-password-row > .proxy-password-field { min-width: 0; }
 .proxy-clear-password { flex: none; min-height: 36px; }
 .proxy-clear-password[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
@@ -870,7 +871,7 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .plugin-draft-actions { display: grid; width: 100%; grid-template-columns: 1fr; }
   .plugin-draft-actions button { width: 100%; }
   .proxy-password-field { align-items: stretch; flex-direction: column; }
-  .proxy-password-row { align-items: end; }
+  .proxy-password-row { align-items: end; grid-template-columns: minmax(0, 1fr) auto; }
   .proxy-clear-password { width: 100%; }
   .proxy-provider-heading > div { align-items: stretch; flex-direction: column; gap: 8px; }
   .proxy-provider-heading input { width: 100%; }
