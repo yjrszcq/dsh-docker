@@ -822,6 +822,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(source, /className: css\.proxyTestStages[\s\S]*task\.stages\.map/)
   assert.match(style, /proxyProviderFollow\[aria-pressed='true'\]\[data-shared-route='direct'\][^{]*\{[^}]*state-warn-label/)
   assert.match(style, /proxyTestStages > li\[data-state='running'\][^{]*\{[^}]*animation: checkSpin/)
+  assert.match(style, /\.proxyTestStages > li > span:nth-child\(2\) \{[^}]*display: grid;[^}]*gap: 1px;/)
   assert.match(style, /progressStageMarkerActive::before[^{]*\{[^}]*animation: checkSpin/)
   assert.doesNotMatch(source, /className: css\.proxyProvider[\s\S]{0,800}h\('select'/)
   assert.match(source, /className: css\.proxyProviderIdentity[\s\S]*className: css\.proxyProviderInfo/)

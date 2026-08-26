@@ -1347,6 +1347,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(html, /class="proxy-setting-row"[\s\S]*class="toggle"[\s\S]*id="proxy-all-proxy"/)
   assert.match(html, /id="proxy-provider-search"[^>]*type="search"/)
   assert.match(html, /id="proxy-test-dialog"[\s\S]*id="proxy-test-stages"/)
+  assert.match(style, /\.proxy-test-stage > span:nth-child\(2\) \{[^}]*display: grid;[^}]*gap: 1px;/)
   assert.match(script, /function pendingProxyTestStages\(\)[\s\S]*Object\.keys\(PROXY_TEST_STAGE_LABELS\)[\s\S]*status: 'pending'/)
   assert.match(script, /async function startProxyTest\(\)[\s\S]*status: 'starting'[\s\S]*pendingProxyTestStages\(\)[\s\S]*showModal\(\)/)
   assert.match(script, /function failedProxyTest\(error,[\s\S]*pendingProxyTestStages\(\)/)

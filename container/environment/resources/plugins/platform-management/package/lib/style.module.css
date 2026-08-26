@@ -562,6 +562,8 @@ a.secondaryButton { text-decoration: none; }
 .proxyTestStages > li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 7px; align-items: start; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 12px; }
 .proxyTestStages > li:last-child { border-bottom: 0; }
 .proxyTestStages > li > span:first-child { width: 9px; height: 9px; margin-top: 4px; border: 1.5px solid var(--dsw-alias-label-tertiary); border-radius: 50%; }
+.proxyTestStages > li > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+.proxyTestStages > li > span:nth-child(2) b, .proxyTestStages > li > span:nth-child(2) small { display: block; }
 .proxyTestStages > li[data-state='running'] > span:first-child { border-color: var(--dsw-alias-brand-primary); border-top-color: transparent; animation: checkSpin .7s linear infinite; }
 .proxyTestStages > li[data-state='success'] > span:first-child { border-color: var(--dsw-alias-state-success-primary); background: var(--dsw-alias-state-success-primary); }
 .proxyTestStages > li[data-state='failed'] > span:first-child { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-state-error-primary); }

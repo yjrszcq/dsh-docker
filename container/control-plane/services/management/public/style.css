@@ -528,6 +528,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .proxy-test-stage:last-child { border-bottom: 0; }
 .proxy-test-stage > span:first-child { width: 9px; height: 9px; margin-top: 4px; border: 1.5px solid var(--muted); border-radius: 50%; }
+.proxy-test-stage > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+.proxy-test-stage > span:nth-child(2) strong, .proxy-test-stage > span:nth-child(2) small { display: block; }
 .proxy-test-stage[data-state="running"] > span:first-child { border-color: var(--accent); border-top-color: transparent; animation: spin .7s linear infinite; }
 .proxy-test-stage[data-state="success"] > span:first-child { border-color: var(--success); background: var(--success); }
 .proxy-test-stage[data-state="failed"] > span:first-child { border-color: var(--danger); background: var(--danger); }
