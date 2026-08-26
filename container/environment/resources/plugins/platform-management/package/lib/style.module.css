@@ -548,13 +548,15 @@ a.secondaryButton { text-decoration: none; }
 .proxyProviderHeading > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .proxyProviderHeading p { min-width: 0; flex: 1; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-.proxyProvider > .toggle { justify-self: end; }
+.proxyProviderControls { display: flex; align-items: center; justify-self: end; gap: 10px; }
+.proxyProviderFollow { min-height: 26px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+.proxyProviderFollow[aria-pressed='true'] { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); }
+.proxyProviderFollow:disabled { cursor: default; opacity: 1; }
 .proxyProvider:last-child { border-bottom: 0; }
 .proxyProviderIdentity { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .proxyProviderIdentity b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proxyProviderInfo { box-sizing: border-box; flex: none; width: 17px; height: 17px; padding: 0; border: 1px solid var(--dsw-alias-label-tertiary); border-radius: 50%; color: var(--dsw-alias-label-tertiary); background: transparent; font: 600 11px/15px ui-sans-serif, system-ui, sans-serif; text-align: center; cursor: pointer; }
 .proxyProviderInfo:hover, .proxyProviderInfo:focus-visible { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
-.proxyCapability { padding: 3px 7px; border-radius: 999px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; white-space: nowrap; }
 .proxyTestStages { display: grid; gap: 0; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; list-style: none; }
 .proxyTestStages > li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 7px; align-items: start; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l2); font-size: 12px; }
 .proxyTestStages > li:last-child { border-bottom: 0; }

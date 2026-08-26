@@ -2,46 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { request } from 'node:http'
 import { fetch as proxyFetch, ProxyAgent } from 'undici'
 
-export const fetchRoutedProviderIds = Object.freeze([
-  'deepseek-official',
-  'ant-ling',
-  'anthropic',
-  'azure-openai-responses',
-  'cerebras',
-  'cloudflare-ai-gateway',
-  'cloudflare-workers-ai',
-  'deepseek',
-  'fireworks',
-  'github-copilot',
-  'google',
-  'google-vertex',
-  'groq',
-  'huggingface',
-  'kimi-coding',
-  'minimax',
-  'minimax-cn',
-  'mistral',
-  'moonshotai',
-  'moonshotai-cn',
-  'nvidia',
-  'openai',
-  'opencode',
-  'opencode-go',
-  'openrouter',
-  'qwen-token-plan',
-  'qwen-token-plan-cn',
-  'together',
-  'vercel-ai-gateway',
-  'xai',
-  'xiaomi',
-  'xiaomi-token-plan-ams',
-  'xiaomi-token-plan-cn',
-  'xiaomi-token-plan-sgp',
-  'zai',
-  'zai-coding-cn',
-])
-
-const supportedProviders = new Set(fetchRoutedProviderIds)
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const FETCH_ROUTER = Symbol.for('dsh-docker.platform-management.provider-fetch-router')
 const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 const DEFAULT_SOCKET = '/run/dsh-platform/outbound-proxy.sock'
@@ -186,7 +147,7 @@ export function installProviderRouting(ctx, {
   const store = new AsyncLocalStorage()
   const removeFetchRouter = installFetchRouter(store, routedFetch)
   const disposeStream = ctx.on('llm/stream', (options, next) => {
-    if (!supportedProviders.has(options.provider)) return next()
+    if (!PROVIDER_ID_PATTERN.test(options.provider)) return next()
     return routedIterator(next, options.provider, store, { socketPath, proxyUrl, createDispatcher })
   }, { global: true, prepend: true })
   return () => {

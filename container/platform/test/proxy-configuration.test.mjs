@@ -198,7 +198,7 @@ test('control API returns only sanitized configuration and hot-activates one cur
   assert.equal(snapshot.revision, activated.body.revision)
 })
 
-test('control API rejects unsupported model Provider routing before persistence', async t => {
+test('control API accepts dynamic model Provider routing before persistence', async t => {
   const current = Object.freeze({
     revision: 'revision-one', recovery: 'none',
     ...validateProxyConfiguration(defaultProxyConfiguration()),
@@ -207,16 +207,29 @@ test('control API rejects unsupported model Provider routing before persistence'
   const server = createOutboundProxyControl({
     getSnapshot: () => current,
     routeHealth: { status: () => ({}) },
-    supportedProviderIds: new Set(['adapted']),
-    commitConfiguration: async () => { committed = true },
+    commitConfiguration: async request => {
+      committed = true
+      return Object.freeze({ revision: 'revision-two', recovery: 'none', ...validateProxyConfiguration(request.value) })
+    },
   })
   const port = await listen(server)
   t.after(() => new Promise(resolve => server.close(resolve)))
-  const value = configured({ modelApi: { providers: { unsupported: 'proxy' } } })
+  const value = configured({ modelApi: { providers: { unsupported: { followDsh: false, proxyEnabled: true } } } })
   const result = await exchange(port, 'PUT', '/v1/configuration', { baseRevision: current.revision, value })
-  assert.equal(result.status, 400)
-  assert.equal(result.body.error.code, 'PROVIDER_POLICY_UNSUPPORTED')
-  assert.equal(committed, false)
+  assert.equal(result.status, 200)
+  assert.deepEqual(result.body.modelApi.providers.unsupported, { followDsh: false, proxyEnabled: true })
+  assert.equal(committed, true)
+})
+
+test('normalizes legacy Provider strings into independent policy flags', () => {
+  const { configuration } = validateProxyConfiguration(configured({
+    modelApi: { default: 'direct', providers: { direct: 'direct', proxied: 'proxy' } },
+  }))
+  assert.deepEqual(configuration.modelApi.default, { followDsh: false, proxyEnabled: false })
+  assert.deepEqual(configuration.modelApi.providers, {
+    direct: { followDsh: false, proxyEnabled: false },
+    proxied: { followDsh: false, proxyEnabled: true },
+  })
 })
 
 test('Management outbound proxy client preserves structured control errors', async t => {

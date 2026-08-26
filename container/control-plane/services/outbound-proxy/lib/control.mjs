@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { outboundProxyEnvironment } from '../../../../platform/lib/outbound-proxy.mjs'
-import { assertSupportedProviderPolicies, sanitizedProxyConfiguration } from './contracts.mjs'
+import { sanitizedProxyConfiguration } from './contracts.mjs'
 import { ProxyConfigurationError, proxyErrorBody } from './errors.mjs'
 
 const MAX_CONTROL_BODY_BYTES = 64 * 1024
@@ -39,7 +39,6 @@ export function createOutboundProxyControl({
   providerHandles,
   proxyTests,
   commitConfiguration,
-  supportedProviderIds = new Set(),
   getTestState = () => ({ lastTest: null }),
 }) {
   return createServer(async (request, response) => {
@@ -66,7 +65,6 @@ export function createOutboundProxyControl({
           || Object.keys(body).sort().join(',') !== 'baseRevision,value') {
           throw new ProxyConfigurationError('proxy configuration update is invalid')
         }
-        assertSupportedProviderPolicies(body.value, supportedProviderIds)
         const activated = await commitConfiguration(body)
         providerHandles?.clear()
         send(response, 200, configurationView(activated, routeHealth, getTestState()))

@@ -9,7 +9,12 @@ export function providerPolicy(configuration, providerId) {
 
 function scopeEnabled(configuration, scope, providerId) {
   if (scope === 'sharedDsh') return configuration.scopes.dshCore || configuration.scopes.dshPlugins
-  if (scope === 'modelApi') return providerId !== undefined && providerPolicy(configuration, providerId) === 'proxy'
+  if (scope === 'modelApi') {
+    if (providerId === undefined) return false
+    const policy = providerPolicy(configuration, providerId)
+    if (!policy.proxyEnabled) return false
+    return !policy.followDsh || configuration.scopes.dshCore || configuration.scopes.dshPlugins
+  }
   return configuration.scopes[scope] === true
 }
 
@@ -44,11 +49,17 @@ export async function selectProxyRoute({ snapshot, scope, providerId, host, port
     password: snapshot.credentials.password,
   })
   if (configuration.proxy.protocol !== 'socks5' || configuration.proxy.remoteDns || isIP(host) !== 0) {
-    return route(configuration.proxy.protocol, scope === 'modelApi' ? 'provider-proxy' : 'scope-proxy', snapshot, { endpoint })
+    const reason = scope === 'modelApi' && providerPolicy(configuration, providerId).followDsh
+      ? 'provider-follow-dsh'
+      : scope === 'modelApi' ? 'provider-proxy' : 'scope-proxy'
+    return route(configuration.proxy.protocol, reason, snapshot, { endpoint })
   }
   if (dnsCache === undefined) throw new TypeError('SOCKS5 local DNS requires a ProxyDnsCache')
   const targets = await dnsCache.resolve(host, snapshot.revision, { signal })
   const directTargets = targets.filter(target => matchesProxyRules(bypassCidrs, target.address, port))
   if (directTargets.length > 0) return route('direct', 'bypass-cidr', snapshot, { targets: Object.freeze(directTargets) })
-  return route('socks5', scope === 'modelApi' ? 'provider-proxy' : 'scope-proxy', snapshot, { endpoint, targets })
+  const reason = scope === 'modelApi' && providerPolicy(configuration, providerId).followDsh
+    ? 'provider-follow-dsh'
+    : scope === 'modelApi' ? 'provider-proxy' : 'scope-proxy'
+  return route('socks5', reason, snapshot, { endpoint, targets })
 }

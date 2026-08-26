@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises'
 import { connect as tlsConnect } from 'node:tls'
 import { canonicalJson } from '../../../../platform/lib/canonical-json.mjs'
 import { durableReplace } from '../../../../platform/lib/atomic.mjs'
-import { assertSupportedProviderPolicies, validateProxyConfiguration } from './contracts.mjs'
+import { validateProxyConfiguration } from './contracts.mjs'
 import { ProxyDnsCache } from './dns-cache.mjs'
 import { ProxyConfigurationError } from './errors.mjs'
 import { selectProxyRoute } from './policy.mjs'
@@ -153,7 +153,6 @@ export class ProxyTestManager {
     totalTimeoutMs = TOTAL_TIMEOUT_MS,
     retentionMs = RETENTION_MS,
     targets = TARGETS,
-    supportedProviderIds = new Set(),
   }) {
     this.statePath = statePath
     this.now = now
@@ -162,7 +161,6 @@ export class ProxyTestManager {
     this.totalTimeoutMs = totalTimeoutMs
     this.retentionMs = retentionMs
     this.targets = targets
-    this.supportedProviderIds = supportedProviderIds
     this.tasks = new Map()
     this.active = null
     this.lastTest = null
@@ -241,7 +239,6 @@ export class ProxyTestManager {
         code: 'REVISION_CONFLICT', statusCode: 409, stage: 'test', retryable: true,
       })
     }
-    assertSupportedProviderPolicies(value, this.supportedProviderIds)
     const testedValue = {
       ...value,
       enabled: true,

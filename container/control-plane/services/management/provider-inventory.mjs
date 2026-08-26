@@ -77,13 +77,11 @@ function loopbackUrl(value) {
   return false
 }
 
-function sanitizeProvider(provider, namespaces, adaptedProviders) {
+function sanitizeProvider(provider, namespaces) {
   if (!object(provider) || !validProviderId(provider.provider)) return undefined
   if (!configuredProvider(provider, namespaces)) return undefined
   const local = loopbackUrl(baseUrlFor(provider, namespaces))
-  const routingCapability = local
-    ? 'forced-direct'
-    : adaptedProviders.has(provider.provider) ? 'provider' : 'shared-dsh'
+  const routingCapability = local ? 'forced-direct' : 'provider'
   return Object.freeze({
     id: provider.provider,
     displayName: typeof provider.displayName === 'string' && provider.displayName.trim() !== ''
@@ -104,7 +102,13 @@ function decorate(provider, snapshot) {
   if (provider.routingCapability === 'provider') {
     const requestedPolicy = snapshot.configuration.modelApi.providers[provider.id]
       ?? snapshot.configuration.modelApi.default
-    return Object.freeze({ ...provider, requestedPolicy, effectivePolicy: requestedPolicy })
+    return Object.freeze({
+      ...provider,
+      requestedPolicy,
+      effectivePolicy: requestedPolicy.proxyEnabled
+        ? requestedPolicy.followDsh ? 'shared-dsh' : 'proxy'
+        : 'direct',
+    })
   }
   return Object.freeze({
     ...provider,
@@ -135,7 +139,6 @@ export class ProviderInventory {
     cachePath,
     endpoint = DEFAULT_ENDPOINT,
     fetchImpl = fetch,
-    adaptedProviders = [],
     timeoutMs = RPC_TIMEOUT_MS,
     now = () => new Date(),
   }) {
@@ -144,7 +147,6 @@ export class ProviderInventory {
     this.cachePath = cachePath
     this.endpoint = endpoint.replace(/\/$/, '')
     this.fetchImpl = fetchImpl
-    this.adaptedProviders = new Set(adaptedProviders)
     this.timeoutMs = timeoutMs
     this.now = now
   }
@@ -162,7 +164,7 @@ export class ProviderInventory {
       .filter(namespace => object(namespace) && typeof namespace.ns === 'string')
       .map(namespace => [namespace.ns, namespace]))
     const providers = providerValue.providers
-      .map(provider => sanitizeProvider(provider, namespaces, this.adaptedProviders))
+      .map(provider => sanitizeProvider(provider, namespaces))
       .filter(provider => provider !== undefined)
       .sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id))
     const cache = Object.freeze({

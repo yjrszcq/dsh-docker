@@ -7,6 +7,7 @@ import { defaultProxyConfiguration, validateProxyConfiguration } from '../../con
 import { createOutboundProxyControl } from '../../control-plane/services/outbound-proxy/lib/control.mjs'
 import { createScopedProxyServer } from '../../control-plane/services/outbound-proxy/lib/data-plane.mjs'
 import { ProviderHandleStore, providerHandleInternals } from '../../control-plane/services/outbound-proxy/lib/provider-handles.mjs'
+import { selectProxyRoute } from '../../control-plane/services/outbound-proxy/lib/policy.mjs'
 
 const sockets = new WeakMap()
 
@@ -41,10 +42,52 @@ function snapshot({ revision = 'revision-one', proxyPort = null, policy = 'direc
       username: proxyPort === null ? '' : 'external-user',
       password: proxyPort === null ? undefined : 'external-password',
     },
-    modelApi: { default: 'direct', providers: { deepseek: policy } },
+    modelApi: { default: defaults.modelApi.default, providers: { deepseek: policy } },
   })
   return Object.freeze({ revision, recovery: 'none', ...value })
 }
+
+test('model Provider follow and proxy controls select all four routes independently', async () => {
+  const defaults = defaultProxyConfiguration()
+  const make = (policy, scopes = {}) => Object.freeze({
+    revision: 'revision-one',
+    recovery: 'none',
+    ...validateProxyConfiguration({
+      ...defaults,
+      enabled: true,
+      proxy: { ...defaults.proxy, host: '127.0.0.1', port: 7890 },
+      scopes: { ...defaults.scopes, ...scopes },
+      modelApi: { default: defaults.modelApi.default, providers: { custom: policy } },
+    }),
+  })
+  const route = state => selectProxyRoute({
+    snapshot: state, scope: 'modelApi', providerId: 'custom', host: 'api.example.test', port: 443,
+  })
+
+  assert.equal((await route(make({ followDsh: true, proxyEnabled: false }, { dshCore: true }))).reason, 'provider-direct')
+  assert.equal((await route(make({ followDsh: false, proxyEnabled: false }, { dshCore: true }))).reason, 'provider-direct')
+  assert.equal((await route(make({ followDsh: true, proxyEnabled: true }, { dshCore: false, dshPlugins: false }))).reason, 'provider-direct')
+  assert.equal((await route(make({ followDsh: true, proxyEnabled: true }, { dshPlugins: true }))).reason, 'provider-follow-dsh')
+  assert.equal((await route(make({ followDsh: false, proxyEnabled: true }))).reason, 'provider-proxy')
+})
+
+test('unconfigured model Providers inherit the complete default policy', async () => {
+  const defaults = defaultProxyConfiguration()
+  const snapshot = Object.freeze({
+    revision: 'revision-one', recovery: 'none',
+    ...validateProxyConfiguration({
+      ...defaults,
+      enabled: true,
+      proxy: { ...defaults.proxy, host: '127.0.0.1', port: 7890 },
+      scopes: { ...defaults.scopes, dshCore: true },
+      modelApi: { default: { followDsh: true, proxyEnabled: true }, providers: {} },
+    }),
+  })
+  const result = await selectProxyRoute({
+    snapshot, scope: 'modelApi', providerId: 'new-provider', host: 'api.example.test', port: 443,
+  })
+  assert.equal(result.reason, 'provider-follow-dsh')
+})
 
 function request({ port, path = '/', method = 'GET', headers = {}, body }) {
   return new Promise((resolve, reject) => {

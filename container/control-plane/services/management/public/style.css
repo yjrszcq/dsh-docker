@@ -506,13 +506,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-provider-heading p { min-width: 0; flex: 1; margin: 0; color: var(--muted); font-size: 13px; line-height: 20px; }
 .proxy-provider-heading input { box-sizing: border-box; width: min(320px, 45%); height: 34px; flex: none; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 12px; }
 .proxy-provider-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--border); }
-.proxy-provider-item > .toggle { justify-self: end; }
+.proxy-provider-controls { display: flex; align-items: center; justify-self: end; gap: 10px; }
+.proxy-provider-follow { min-height: 26px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: var(--surface-raised); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+.proxy-provider-follow[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.proxy-provider-follow:disabled { cursor: default; opacity: 1; }
 .proxy-provider-item:last-child { border-bottom: 0; }
 .proxy-provider-identity { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .proxy-provider-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proxy-provider-info { box-sizing: border-box; flex: none; width: 17px; height: 17px; padding: 0; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); background: transparent; font: 600 11px/15px ui-sans-serif, system-ui, sans-serif; text-align: center; cursor: pointer; }
 .proxy-provider-info:hover, .proxy-provider-info:focus-visible { border-color: var(--accent); color: var(--accent); }
-.proxy-capability { padding: 3px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 10px; white-space: nowrap; }
 .proxy-test-stages { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
 .proxy-test-stages:empty { display: none; }
 .proxy-test-stage { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 11px; border-bottom: 1px solid var(--border); font-size: 12px; }

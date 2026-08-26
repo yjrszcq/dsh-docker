@@ -7,10 +7,8 @@ import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 import { apply as applyPlatformManagement, inject, managedNetworkInternals } from '../../environment/resources/plugins/platform-management/package/lib/index.js'
 import {
-  fetchRoutedProviderIds,
   installProviderRouting,
 } from '../../environment/resources/plugins/platform-management/package/lib/provider-routing.js'
-import { FETCH_ROUTED_PROVIDER_IDS } from '../lib/provider-routing.mjs'
 
 const root = new URL('../../environment/resources/plugins/platform-management/package/', import.meta.url)
 
@@ -65,11 +63,7 @@ test('Platform Management classifies official DSH Shell subprocesses as Agent ne
   }
 })
 
-test('Platform Management routes verified Provider fetches through opaque handles', async () => {
-  assert.deepEqual(fetchRoutedProviderIds, FETCH_ROUTED_PROVIDER_IDS)
-  assert.equal(fetchRoutedProviderIds.includes('amazon-bedrock'), false)
-  assert.equal(fetchRoutedProviderIds.includes('openai-codex'), false)
-
+test('Platform Management routes every valid llm/stream Provider through opaque handles', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-provider-routing-'))
   const socketPath = join(root, 'proxy.sock')
   const requests = []
@@ -133,12 +127,23 @@ test('Platform Management routes verified Provider fetches through opaque handle
       ['POST', '/v1/provider-handles', { providerId: 'deepseek-official', policyRevision: 'revision-one' }],
     ])
 
-    const shared = listener({ provider: 'amazon-bedrock' }, () => (async function* () {
+    const custom = listener({ provider: 'custom-provider' }, () => (async function* () {
       await fetch('https://provider.invalid')
-      yield 'shared'
+      yield 'custom'
     })())
-    assert.deepEqual(await shared.next(), { value: 'shared', done: false })
-    assert.equal(observed[1], null)
+    assert.deepEqual(await custom.next(), { value: 'custom', done: false })
+    assert.equal(observed[1], dispatchers[1])
+    assert.deepEqual(requests.slice(-2), [
+      ['GET', '/v1/configuration', undefined],
+      ['POST', '/v1/provider-handles', { providerId: 'custom-provider', policyRevision: 'revision-one' }],
+    ])
+
+    const invalid = listener({ provider: '../invalid' }, () => (async function* () {
+      await fetch('https://provider.invalid')
+      yield 'invalid'
+    })())
+    assert.deepEqual(await invalid.next(), { value: 'invalid', done: false })
+    assert.equal(observed[2], null)
   } finally {
     remove()
     globalThis.fetch = previousFetch
@@ -437,7 +442,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /const rememberToggleScroll = useCallback\([\s\S]*scrollableAncestorPositions\(event\.currentTarget\)/)
   assert.match(source, /const patchToggle = useCallback\([\s\S]*toggleScrollPositions\.current \?\? scrollableAncestorPositions\(element\)[\s\S]*restoreScrollableAncestors\(positions\)/)
   assert.match(source, /configuration\.environment\.allProxy[\s\S]*patchToggle\(event\.currentTarget, \['environment', 'allProxy'\]/)
-  assert.match(source, /configuration\.modelApi\.providers\[provider\.id\][\s\S]*patchToggle\(event\.currentTarget, \['modelApi', 'providers', provider\.id\]/)
+  assert.match(source, /const policy = configuration\.modelApi\.providers\[provider\.id\][\s\S]*followDsh:[\s\S]*proxyEnabled:/)
   assert.match(source, /configuration\.scopeCatalog/)
   assert.match(source, /proxyTransportWarning/)
   assert.doesNotMatch(source, /setPassword\(next\.proxy|value: configuration\.proxy\.password/)
@@ -690,7 +695,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(source, /DSH Docker System Plugins, and other platform components/)
   assert.doesNotMatch(source, /第三方及 DSH Docker 系统插件的联网/)
   assert.doesNotMatch(source, /third-party, and DSH Docker System Plugin traffic/)
-  assert.match(source, /className: css\.toggle[\s\S]*configuration\.modelApi\.providers\[provider\.id\][\s\S]*event\.target\.checked \? 'proxy' : 'direct'/)
+  assert.match(source, /className: css\.proxyProviderFollow[\s\S]*'aria-pressed':[\s\S]*followDsh[\s\S]*className: css\.toggle[\s\S]*proxyEnabled/)
   assert.doesNotMatch(source, /className: css\.proxyProvider[\s\S]{0,800}h\('select'/)
   assert.match(source, /className: css\.proxyProviderIdentity[\s\S]*className: css\.proxyProviderInfo/)
   assert.match(source, /ref: providerInfoDialog[\s\S]*providerInfo\?\.detail/)

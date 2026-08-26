@@ -124,7 +124,8 @@ test('management proxies sanitized outbound configuration, Provider inventory, a
   const view = {
     schema: 1, enabled: false, revision: 'revision-one', componentReady: true,
     proxy: { protocol: 'http', host: '', port: null, username: '', passwordConfigured: false, remoteDns: true },
-    scopes: {}, environment: { allProxy: null }, modelApi: { default: 'direct', providers: {} },
+    scopes: {}, environment: { allProxy: null },
+    modelApi: { default: { followDsh: true, proxyEnabled: false }, providers: {} },
     noProxy: { system: ['localhost'], user: [] }, bypass: { additional: [] },
     routeHealth: {}, lastTest: null, scopeCatalog: { schema: 1, entries: [] },
   }
@@ -1340,7 +1341,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /function renderProxyProviders\(\)[\s\S]*displayName[\s\S]*info\.className = 'proxy-provider-info'/)
   assert.match(script, /proxy-provider-search[\s\S]*addEventListener\('input', renderProxyProviders\)/)
   assert.match(script, /proxy-clear-password[\s\S]*getAttribute\('aria-pressed'\) === 'true'/)
-  assert.match(script, /toggle\.className = 'toggle'[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = provider\.requestedPolicy === 'proxy'/)
+  assert.match(script, /follow\.dataset\.providerFollow = provider\.id[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = policy\.proxyEnabled === true/)
   assert.match(html, /class="proxy-scope-card"[\s\S]*class="toggle"[\s\S]*data-proxy-scope="updates"/)
   assert.match(html, /id="proxy-clear-password"[^>]*aria-pressed="false"/)
   assert.match(html, /class="proxy-setting-row"[\s\S]*class="toggle"[\s\S]*id="proxy-all-proxy"/)

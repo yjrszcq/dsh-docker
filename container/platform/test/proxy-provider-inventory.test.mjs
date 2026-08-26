@@ -21,7 +21,11 @@ function proxySnapshot() {
     recovery: 'none',
     ...validateProxyConfiguration({
       ...defaults,
-      modelApi: { default: 'direct', providers: { adapted: 'proxy', shared: 'proxy', local: 'proxy' } },
+      modelApi: { default: defaults.modelApi.default, providers: {
+        adapted: { followDsh: false, proxyEnabled: true },
+        shared: { followDsh: true, proxyEnabled: true },
+        local: { followDsh: false, proxyEnabled: true },
+      } },
     }),
   })
 }
@@ -32,7 +36,6 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
   const calls = []
   const inventory = new ProviderInventory({
     cachePath: join(root, 'providers.json'),
-    adaptedProviders: ['adapted'],
     now: () => new Date('2026-08-25T00:00:00.000Z'),
     fetchImpl: async (url, init) => {
       const body = JSON.parse(init.body)
@@ -63,10 +66,10 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
     effective: provider.effectivePolicy,
     reason: provider.reason,
   })), [
-    { id: 'adapted', capability: 'provider', requested: 'proxy', effective: 'proxy', reason: null },
-    { id: 'custom', capability: 'shared-dsh', requested: null, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
+    { id: 'adapted', capability: 'provider', requested: { followDsh: false, proxyEnabled: true }, effective: 'proxy', reason: null },
+    { id: 'custom', capability: 'provider', requested: { followDsh: true, proxyEnabled: false }, effective: 'direct', reason: null },
     { id: 'local', capability: 'forced-direct', requested: null, effective: 'direct', reason: 'local-provider' },
-    { id: 'shared', capability: 'shared-dsh', requested: null, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
+    { id: 'shared', capability: 'provider', requested: { followDsh: true, proxyEnabled: true }, effective: 'shared-dsh', reason: null },
   ])
   assert.deepEqual(calls.map(call => call.method).sort(), ['llm.providers', 'settings.describe'])
   assert.equal(result.providers.some(provider => provider.id === 'dormant'), false)

@@ -59,27 +59,22 @@ function normalizeScopes(value) {
 }
 
 function normalizeProviderPolicy(value, label) {
-  if (!['direct', 'proxy'].includes(value)) throw new ProxyConfigurationError(`${label} must be direct or proxy`)
-  return value
+  // Development builds previously persisted direct/proxy strings. Normalize
+  // them into the unreleased schema-1 representation without breaking volumes.
+  if (['direct', 'proxy'].includes(value)) {
+    return { followDsh: false, proxyEnabled: value === 'proxy' }
+  }
+  object(value, label)
+  requiredKeys(value, ['followDsh', 'proxyEnabled'], label)
+  allowedKeys(value, ['followDsh', 'proxyEnabled'], label)
+  if (typeof value.followDsh !== 'boolean' || typeof value.proxyEnabled !== 'boolean') {
+    throw new ProxyConfigurationError(`${label} flags must be boolean`)
+  }
+  return { followDsh: value.followDsh, proxyEnabled: value.proxyEnabled }
 }
 
 export function validProviderId(value) {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,127}$/.test(value)
-}
-
-export function assertSupportedProviderPolicies(value, supportedProviderIds = new Set()) {
-  if (value?.modelApi?.default !== 'direct') {
-    throw new ProxyConfigurationError('model API default proxy policy is not supported', {
-      code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
-    })
-  }
-  for (const id of Object.keys(value?.modelApi?.providers ?? {})) {
-    if (!supportedProviderIds.has(id)) {
-      throw new ProxyConfigurationError(`model API provider ${id} cannot use an independent proxy route`, {
-        code: 'PROVIDER_POLICY_UNSUPPORTED', stage: 'validate',
-      })
-    }
-  }
 }
 
 function normalizeModelApi(value) {
@@ -104,7 +99,10 @@ export function defaultProxyConfiguration() {
     }),
     scopes: Object.freeze(Object.fromEntries(PROXY_SCOPES.map(scope => [scope, false]))),
     environment: Object.freeze({ allProxy: null }),
-    modelApi: Object.freeze({ default: 'direct', providers: Object.freeze({}) }),
+    modelApi: Object.freeze({
+      default: Object.freeze({ followDsh: true, proxyEnabled: false }),
+      providers: Object.freeze({}),
+    }),
     noProxy: Object.freeze({ system: PLATFORM_NO_PROXY, user: Object.freeze([]) }),
     bypass: Object.freeze({ additional: Object.freeze([]) }),
   })
