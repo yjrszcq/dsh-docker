@@ -3715,7 +3715,9 @@ function renderProxyTest(task = proxyTestTask) {
     detail.textContent = stage.detail ?? stage.errorCode ?? status
     content.append(label, detail)
     const statusLabel = document.createElement('small')
-    statusLabel.textContent = status
+    const finalStatus = stage.status === 'success' || stage.status === 'failed' || stage.status === 'skipped'
+    statusLabel.textContent = finalStatus ? status : ''
+    statusLabel.hidden = !finalStatus
     item.append(marker, content, statusLabel)
     container.append(item)
   }

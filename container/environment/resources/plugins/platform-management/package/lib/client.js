@@ -1763,7 +1763,8 @@ function ProxySettings({ active, t }) {
         h('header', null, h('div', null, h('h3', null, t('proxyTest')), h('p', null, t('proxyTestDetail'))), h('button', { type: 'button', className: css.secondaryButton, disabled: taskRunning, onClick: () => testDialog.current?.close() }, t('close'))),
       task ? h('ol', { className: css.proxyTestStages }, task.stages.map(stage => {
         const status = t(`proxyStage${stage.status[0].toUpperCase()}${stage.status.slice(1)}`)
-        return h('li', { key: stage.stage, 'data-state': stage.status }, h('span', { 'aria-hidden': 'true' }), h('span', null, h('b', null, t(PROXY_TEST_LABELS[stage.stage])), h('small', null, stage.detail ?? stage.errorCode ?? status)), h('small', null, status))
+        const finalStatus = stage.status === 'success' || stage.status === 'failed' || stage.status === 'skipped'
+        return h('li', { key: stage.stage, 'data-state': stage.status }, h('span', { 'aria-hidden': 'true' }), h('span', null, h('b', null, t(PROXY_TEST_LABELS[stage.stage])), h('small', null, stage.detail ?? stage.errorCode ?? status)), finalStatus ? h('small', null, status) : null)
       })) : null,
       task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
       task === null && testError ? h('p', { className: css.error, role: 'alert' }, testError) : null,

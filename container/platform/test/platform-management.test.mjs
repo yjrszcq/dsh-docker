@@ -820,6 +820,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(source, /function pendingProxyTestStages\(\)[\s\S]*Object\.keys\(PROXY_TEST_LABELS\)[\s\S]*status: 'pending'/)
   assert.match(source, /const startTest = async \(\) => \{[\s\S]*status: 'starting'[\s\S]*pendingProxyTestStages\(\)[\s\S]*showModal\(\)/)
   assert.match(source, /className: css\.proxyTestStages[\s\S]*task\.stages\.map/)
+  assert.match(source, /const finalStatus = stage\.status === 'success' \|\| stage\.status === 'failed' \|\| stage\.status === 'skipped'[\s\S]*finalStatus \? h\('small', null, status\) : null/)
   assert.match(style, /proxyProviderFollow\[aria-pressed='true'\]\[data-shared-route='direct'\][^{]*\{[^}]*state-warn-label/)
   assert.match(style, /proxyTestStages > li\[data-state='running'\][^{]*\{[^}]*animation: checkSpin/)
   assert.match(style, /\.proxyTestStages > li > span:nth-child\(2\) \{[^}]*display: grid;[^}]*gap: 1px;/)
