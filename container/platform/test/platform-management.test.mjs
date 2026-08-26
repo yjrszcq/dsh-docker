@@ -565,6 +565,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /proxyMasterDetail[\s\S]*saveImmediate\(next => \{ next\.enabled = event\.target\.checked \}\)/)
   assert.ok(source.indexOf("'platform-proxy-master-title'") < source.indexOf("'platform-proxy-title'"))
   assert.match(source, /h\('h3', \{ id: 'platform-proxy-master-title' \}[\s\S]*proxyComponentState/)
+  assert.match(style, /\.proxyMasterRow > div > small \{ font-size: 13px; line-height: 20px; \}/)
+  assert.match(style, /\.proxyAdvancedSetting > div > small \{ font-size: 13px; line-height: 20px; \}/)
   assert.match(source, /h\('h4', null, t\('proxyRules'\)[\s\S]*h\('h4', null, t\('proxyAllProxy'\)/)
   assert.doesNotMatch(source, /h\('span', null, t\('proxyDirectRules'\)\)/)
   assert.match(source, /taskRunning[\s\S]*cancelTest\(\)[\s\S]*testDialog\.current\?\.close\(\)/)

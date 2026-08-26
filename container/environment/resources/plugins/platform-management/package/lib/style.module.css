@@ -544,9 +544,11 @@ a.secondaryButton { text-decoration: none; }
 .proxySettingRow > .toggle { width: auto; justify-self: end; }
 .proxyMasterRow { margin-top: 0; }
 .proxyMasterRow h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 500; }
+.proxyMasterRow > div > small { font-size: 13px; line-height: 20px; }
 .proxyAdvanced { display: grid; gap: 11px; margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-module-platform); }
 .proxyAdvanced h4 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 500; }
 .proxyAdvancedSetting { margin-top: 0; }
+.proxyAdvancedSetting > div > small { font-size: 13px; line-height: 20px; }
 .proxyHint { margin: 6px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); }
 .proxyScopeCopy { min-width: 0; }

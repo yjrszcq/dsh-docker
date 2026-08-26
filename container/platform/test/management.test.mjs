@@ -1353,6 +1353,8 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.ok(html.indexOf('id="proxy-master-title"') < html.indexOf('id="proxy-title"'))
   assert.ok(html.indexOf('id="proxy-enabled"') < html.indexOf('id="proxy-test"'))
   assert.match(html, /<h2 id="proxy-master-title"[^>]*>[\s\S]*id="proxy-component-state"/)
+  assert.match(style, /\.proxy-master-row > div > small \{ font-size: 13px; line-height: 20px; \}/)
+  assert.match(style, /\.proxy-advanced-setting > div > small \{ font-size: 13px; line-height: 20px; \}/)
   assert.match(html, /<h3 data-i18n="proxyRules"[\s\S]*<h3 data-i18n="proxyAllProxy"/)
   assert.doesNotMatch(html, /<span data-i18n="proxyDirectRules"/)
   assert.match(style, /\.proxy-test-stage > span:nth-child\(2\) \{[^}]*display: grid;[^}]*gap: 1px;/)
