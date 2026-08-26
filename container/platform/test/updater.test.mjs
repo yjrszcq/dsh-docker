@@ -795,6 +795,50 @@ test('samples high-frequency Runtime copy metrics without losing final totals', 
   assert.equal(buildReports.at(-1).fields.processedItems, 1_000)
 })
 
+test('keeps overall download progress monotonic when later manifests expand totals', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-updater-progress-'))
+  const reports = []
+  const target = {
+    targetSequence: 2,
+    artifacts: [],
+    desired: {
+      bootstrap: { version: '1.0.0' },
+      environment: { version: '1.0.0' },
+      dsh: { version: '0.1.0-rc.7' },
+    },
+  }
+  const coordinator = new UpdateCoordinator({
+    metadata: { check: async () => ({ value: target }) },
+    preparer: {
+      prepare: async (_target, { onProgress }) => {
+        await onProgress({ processedBytes: 90, totalBytes: 100, processedItems: 1, totalItems: 1 })
+        await onProgress({ processedBytes: 90, totalBytes: 1_000, processedItems: 1, totalItems: 2 })
+        await onProgress({ processedBytes: 1_000, totalBytes: 1_000, processedItems: 2, totalItems: 2 })
+        return { stable: target }
+      },
+    },
+    activator: {
+      activate: async (_prepared, { onSwitching }) => onSwitching(),
+      health: async () => ({ healthy: true, components: [] }),
+      currentDeployment: async () => ({
+        dsh: '0.1.0-rc.7', environment: '1.0.0', runtime: 'runtime-current',
+      }),
+    },
+    state: new UpdateStateStore(join(root, 'state', 'update.json')),
+    report: (message, fields) => { reports.push({ message, fields }) },
+  })
+
+  await coordinator.start().completion
+  const downloads = reports.filter(entry => entry.message === 'update.phase.changed'
+    && entry.fields.status === 'downloading')
+  assert.deepEqual(
+    downloads.map(entry => entry.fields.progress),
+    downloads.map(entry => entry.fields.progress).toSorted((left, right) => left - right),
+  )
+  assert.equal(downloads.some(entry => entry.fields.totalBytes === 1_000), true)
+  assert.equal(downloads.some(entry => entry.fields.totalItems === 2), true)
+})
+
 test('persists a failed update without activating receipts and permits a later retry', async () => {
   const { root, metadata, objects, preparer } = await system()
   let fail = true

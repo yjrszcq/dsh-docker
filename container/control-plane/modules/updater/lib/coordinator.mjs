@@ -528,6 +528,7 @@ export class UpdateCoordinator extends EventEmitter {
         detail: 'downloading',
       })
       let previousDownloadKey
+      let previousDownloadProgress = 10
       const prepared = await this.preparer.prepare(target.value, {
         onProgress: metrics => {
           const byteRatio = Number.isFinite(metrics.totalBytes) && metrics.totalBytes > 0
@@ -537,7 +538,9 @@ export class UpdateCoordinator extends EventEmitter {
             ? metrics.processedItems / metrics.totalItems
             : null
           const ratio = byteRatio ?? itemRatio
-          const progress = ratio === null ? 10 : 10 + Math.round(Math.max(0, Math.min(1, ratio)) * 55)
+          const measuredProgress = ratio === null ? 10 : 10 + Math.round(Math.max(0, Math.min(1, ratio)) * 55)
+          const progress = Math.max(previousDownloadProgress, measuredProgress)
+          previousDownloadProgress = progress
           const key = `${progress}:${metrics.processedItems}:${metrics.totalItems}`
           if (key === previousDownloadKey) return undefined
           previousDownloadKey = key
