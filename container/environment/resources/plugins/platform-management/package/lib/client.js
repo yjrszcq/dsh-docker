@@ -486,22 +486,31 @@ function ExpandableProxyDescription({ text, identity, className = css.proxyScope
   }, text)
 }
 
-function preserveScrollableAncestors(element, update) {
+function scrollableAncestorPositions(element) {
   const positions = []
   for (let current = element.parentElement; current !== null; current = current.parentElement) {
     if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
       positions.push([current, current.scrollLeft, current.scrollTop])
     }
   }
+  return positions
+}
+
+function restoreScrollableAncestors(positions) {
   const restore = () => {
     for (const [current, left, top] of positions) {
       current.scrollLeft = left
       current.scrollTop = top
     }
   }
-  update()
   restore()
   window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
+}
+
+function preserveScrollableAncestors(element, update) {
+  const positions = scrollableAncestorPositions(element)
+  update()
+  restoreScrollableAncestors(positions)
 }
 
 function matchesResourceSearch(query, values) {
@@ -1447,6 +1456,7 @@ function ProxySettings({ active, t }) {
   const scopeDialog = useRef(null)
   const systemRulesDialog = useRef(null)
   const providerInfoDialog = useRef(null)
+  const toggleScrollPositions = useRef(null)
   const [providerInfo, setProviderInfo] = useState(null)
 
   const load = useCallback(async () => {
@@ -1501,6 +1511,25 @@ function ProxySettings({ active, t }) {
       return next
     })
   }, [])
+
+  const rememberToggleScroll = useCallback(event => {
+    if (event.type === 'keydown' && event.key !== ' ') return
+    if (event.type === 'mousedown') event.preventDefault()
+    toggleScrollPositions.current = scrollableAncestorPositions(event.currentTarget)
+  }, [])
+
+  const patchToggle = useCallback((element, path, value) => {
+    const positions = toggleScrollPositions.current ?? scrollableAncestorPositions(element)
+    toggleScrollPositions.current = null
+    patch(path, value)
+    restoreScrollableAncestors(positions)
+  }, [patch])
+
+  const toggleScrollHandlers = {
+    onPointerDown: rememberToggleScroll,
+    onMouseDown: rememberToggleScroll,
+    onKeyDown: rememberToggleScroll,
+  }
 
   if (configuration === null) return h('section', { className: css.section },
     h('h3', null, t('proxyTitle')),
@@ -1575,8 +1604,8 @@ function ProxySettings({ active, t }) {
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-title' },
       h('div', { className: css.sectionHeading },
         h('div', null, h('h3', { id: 'platform-proxy-title' }, t('proxyTitle')), h('p', null, t('proxyDetail'))),
-        h('label', { className: css.toggle },
-          h('input', { type: 'checkbox', checked: configuration.enabled, onChange: event => patch(['enabled'], event.target.checked) }),
+        h('label', { className: css.toggle, ...toggleScrollHandlers },
+          h('input', { type: 'checkbox', checked: configuration.enabled, onChange: event => patchToggle(event.currentTarget, ['enabled'], event.target.checked) }),
           h('span', { 'aria-hidden': 'true' }), h('b', null, t(configuration.enabled ? 'enabled' : 'disabled')))),
       h('p', { className: css.proxyHint }, t(configuration.componentReady ? 'proxyComponentReady' : 'proxyComponentUnavailable')),
       h('div', { className: css.proxyFormGrid },
@@ -1587,7 +1616,7 @@ function ProxySettings({ active, t }) {
         h('div', { className: css.proxyPasswordField },
           h('label', null, h('span', null, t('proxyPassword')), h('input', { type: 'password', value: password, disabled: clearPassword, maxLength: 255, autoComplete: 'new-password', placeholder: t('proxyPasswordPlaceholder'), onChange: event => { setPassword(event.target.value); if (event.target.value !== '') setClearPassword(false) } })),
           configuration.proxy.passwordConfigured ? h('button', { type: 'button', className: css.proxyClearPassword, 'aria-pressed': clearPassword, onClick: () => { setClearPassword(value => !value); setPassword('') } }, t('proxyClearPassword')) : null),
-        configuration.proxy.protocol === 'socks5' ? h('label', { className: css.proxyCheckRow }, h('input', { type: 'checkbox', checked: configuration.proxy.remoteDns, onChange: event => patch(['proxy', 'remoteDns'], event.target.checked) }), h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail')))) : null),
+        configuration.proxy.protocol === 'socks5' ? h('label', { className: css.proxyCheckRow, ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: configuration.proxy.remoteDns, onChange: event => patchToggle(event.currentTarget, ['proxy', 'remoteDns'], event.target.checked) }), h('span', null, h('b', null, t('proxyRemoteDns')), h('small', null, t('proxyRemoteDnsDetail')))) : null),
       h('p', { className: css.proxyHint }, t(configuration.proxy.passwordConfigured ? 'proxyPasswordConfigured' : 'proxyPasswordNotConfigured')),
       location.protocol !== 'https:' && (password !== '' || configuration.proxy.username !== '') ? h('p', { className: css.notice }, t('proxyTransportWarning')) : null),
 
@@ -1598,8 +1627,8 @@ function ProxySettings({ active, t }) {
           h('span', { className: css.proxyScopeCopy },
             h('b', null, t(title)),
             h(ExpandableProxyDescription, { text: t(detail), identity: `scope:${id}` })),
-          h('label', { className: css.toggle, 'aria-label': t(title) },
-            h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patch(['scopes', id], event.target.checked) }),
+          h('label', { className: css.toggle, 'aria-label': t(title), ...toggleScrollHandlers },
+            h('input', { type: 'checkbox', checked: configuration.scopes[id], onChange: event => patchToggle(event.currentTarget, ['scopes', id], event.target.checked) }),
             h('span', { 'aria-hidden': true })))))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-rules-title' },
@@ -1607,7 +1636,7 @@ function ProxySettings({ active, t }) {
       h('label', { className: css.proxyDirectRulesField }, h('span', null, t('proxyDirectRules')), h('textarea', { rows: 5, value: directRulesText, spellCheck: false, placeholder: t('proxyDirectRulesPlaceholder'), onChange: event => setDirectRulesText(event.target.value) }), h('small', null, t('proxyDirectRulesDetail'))),
       h('div', { className: css.proxySettingRow },
         h('span', null, h('b', null, t('proxyAllProxy')), h('small', null, t('proxyAllProxyDetail'))),
-        h('label', { className: css.toggle, 'aria-label': t('proxyAllProxy') }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', onChange: event => patch(['environment', 'allProxy'], event.target.checked ? 'scope-proxy' : null) }), h('span', { 'aria-hidden': true })))),
+        h('label', { className: css.toggle, 'aria-label': t('proxyAllProxy'), ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: configuration.environment.allProxy === 'scope-proxy', onChange: event => patchToggle(event.currentTarget, ['environment', 'allProxy'], event.target.checked ? 'scope-proxy' : null) }), h('span', { 'aria-hidden': true })))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-providers-title' },
       h('div', { className: css.proxyProviderHeading },
@@ -1630,7 +1659,7 @@ function ProxySettings({ active, t }) {
                 requestAnimationFrame(() => providerInfoDialog.current?.showModal())
               },
             }, 'i')),
-          provider.routingCapability === 'provider' ? h('label', { className: css.toggle, 'aria-label': displayName }, h('input', { type: 'checkbox', checked: (configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default) === 'proxy', onChange: event => patch(['modelApi', 'providers', provider.id], event.target.checked ? 'proxy' : 'direct') }), h('span', { 'aria-hidden': true })) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))
+          provider.routingCapability === 'provider' ? h('label', { className: css.toggle, 'aria-label': displayName, ...toggleScrollHandlers }, h('input', { type: 'checkbox', checked: (configuration.modelApi.providers[provider.id] ?? configuration.modelApi.default) === 'proxy', onChange: event => patchToggle(event.currentTarget, ['modelApi', 'providers', provider.id], event.target.checked ? 'proxy' : 'direct') }), h('span', { 'aria-hidden': true })) : h('span', { className: css.proxyCapability }, t(provider.routingCapability === 'forced-direct' ? 'proxyProviderDirect' : 'proxyProviderShared')))
       }))),
 
     h('section', { className: css.section, 'aria-labelledby': 'platform-proxy-test-title' },

@@ -242,7 +242,14 @@ export class ProxyTestManager {
       })
     }
     assertSupportedProviderPolicies(value, this.supportedProviderIds)
-    const validated = validateProxyConfiguration(value, { existingPassword: current.credentials.password })
+    const testedValue = {
+      ...value,
+      enabled: true,
+      scopes: { ...value.scopes, updates: true },
+      noProxy: { ...value.noProxy, user: [] },
+      bypass: { ...value.bypass, additional: [] },
+    }
+    const validated = validateProxyConfiguration(testedValue, { existingPassword: current.credentials.password })
     const snapshot = Object.freeze({
       revision: `test-${randomUUID()}`,
       configuration: validated.configuration,

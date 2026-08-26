@@ -34,21 +34,31 @@ async function terminal(manager, taskId) {
   throw new Error('proxy test did not reach a terminal state')
 }
 
-test('proxy test records real direct-route stages without changing current configuration', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-test-direct-'))
+test('proxy test requires and exercises the candidate proxy without changing current configuration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-test-candidate-'))
   const manager = new ProxyTestManager({
     statePath: join(root, 'tasks.json'),
-    targets: [{ id: 'unreachable', host: '127.0.0.1', port: 1, path: '/' }],
+    resolve: async host => {
+      if (host === 'proxy.invalid') throw Object.assign(new Error('proxy host was not found'), { code: 'ENOTFOUND' })
+      return [{ address: '127.0.0.1', family: 4 }]
+    },
+    targets: [{ id: 'unreachable', host: 'target.invalid', port: 443, path: '/' }],
     phaseTimeoutMs: 500,
   })
   const state = current()
-  const started = await manager.start({ baseRevision: state.revision, value: candidate() }, state)
+  await assert.rejects(
+    manager.start({ baseRevision: state.revision, value: candidate() }, state),
+    error => error.code === 'INVALID_CONFIG' && /requires a host and port/.test(error.message),
+  )
+  const started = await manager.start({
+    baseRevision: state.revision,
+    value: candidate({ proxy: { host: 'proxy.invalid', port: 8080 } }),
+  }, state)
   const completed = await terminal(manager, started.taskId)
   assert.equal(completed.status, 'failed')
-  assert.equal(completed.mode, 'direct')
-  assert.deepEqual(completed.stages.slice(0, 3).map(stage => stage.status), ['skipped', 'skipped', 'skipped'])
-  assert.equal(completed.stages.find(stage => stage.stage === 'target-dns').status, 'success')
-  assert.equal(completed.stages.find(stage => stage.stage === 'target-tls').status, 'failed')
+  assert.equal(completed.mode, 'proxy')
+  assert.equal(completed.stages.find(stage => stage.stage === 'proxy-address').status, 'failed')
+  assert.deepEqual(completed.stages.slice(1).map(stage => stage.status), ['skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
   assert.equal(completed.stages.find(stage => stage.stage === 'target-http').status, 'skipped')
   assert.equal(state.configuration.enabled, false)
 })
