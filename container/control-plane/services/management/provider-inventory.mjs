@@ -99,21 +99,21 @@ function sanitizeProvider(provider, namespaces) {
 }
 
 function decorate(provider, snapshot) {
-  if (provider.routingCapability === 'provider') {
+  if (provider.routingCapability !== 'forced-direct') {
     const requestedPolicy = snapshot.configuration.modelApi.providers[provider.id]
       ?? snapshot.configuration.modelApi.default
     return Object.freeze({
       ...provider,
       requestedPolicy,
       effectivePolicy: requestedPolicy.proxyEnabled
-        ? requestedPolicy.followDsh ? 'shared-dsh' : 'proxy'
+        ? provider.routingCapability === 'shared-dsh' ? 'shared-dsh' : 'proxy'
         : 'direct',
     })
   }
   return Object.freeze({
     ...provider,
     requestedPolicy: null,
-    effectivePolicy: provider.routingCapability === 'forced-direct' ? 'direct' : 'shared-dsh',
+    effectivePolicy: 'direct',
   })
 }
 

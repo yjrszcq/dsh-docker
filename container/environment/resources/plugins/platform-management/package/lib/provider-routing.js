@@ -24,8 +24,7 @@ function routingState(path) {
 function providerProxyEnabled(state, providerId) {
   if (state === null || !state.enabled) return false
   const policy = state.modelApi.providers?.[providerId] ?? state.modelApi.default
-  if (policy?.proxyEnabled !== true) return false
-  return policy.followDsh !== true || state.scopes?.dshCore === true || state.scopes?.dshPlugins === true
+  return policy?.proxyEnabled === true
 }
 
 function sharedDshProxyEnabled(state) {

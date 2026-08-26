@@ -30,7 +30,7 @@ async function close(server) {
   await new Promise(resolve => server.close(resolve))
 }
 
-function snapshot({ revision = 'revision-one', proxyPort = null, policy = 'direct' } = {}) {
+function snapshot({ revision = 'revision-one', proxyPort = null, policy = { proxyEnabled: false } } = {}) {
   const defaults = defaultProxyConfiguration()
   const value = validateProxyConfiguration({
     ...defaults,
@@ -47,7 +47,7 @@ function snapshot({ revision = 'revision-one', proxyPort = null, policy = 'direc
   return Object.freeze({ revision, recovery: 'none', ...value })
 }
 
-test('model Provider follow and proxy controls select all four routes independently', async () => {
+test('model Provider switch selects direct or independent proxy routing', async () => {
   const defaults = defaultProxyConfiguration()
   const make = (policy, scopes = {}) => Object.freeze({
     revision: 'revision-one',
@@ -64,11 +64,9 @@ test('model Provider follow and proxy controls select all four routes independen
     snapshot: state, scope: 'modelApi', providerId: 'custom', host: 'api.example.test', port: 443,
   })
 
-  assert.equal((await route(make({ followDsh: true, proxyEnabled: false }, { dshCore: true }))).reason, 'provider-direct')
-  assert.equal((await route(make({ followDsh: false, proxyEnabled: false }, { dshCore: true }))).reason, 'provider-direct')
-  assert.equal((await route(make({ followDsh: true, proxyEnabled: true }, { dshCore: false, dshPlugins: false }))).reason, 'provider-direct')
-  assert.equal((await route(make({ followDsh: true, proxyEnabled: true }, { dshPlugins: true }))).reason, 'provider-follow-dsh')
-  assert.equal((await route(make({ followDsh: false, proxyEnabled: true }))).reason, 'provider-proxy')
+  assert.equal((await route(make({ proxyEnabled: false }, { dshCore: true }))).reason, 'provider-direct')
+  assert.equal((await route(make({ proxyEnabled: true }, { dshCore: false, dshPlugins: false }))).reason, 'provider-proxy')
+  assert.equal((await route(make({ proxyEnabled: true }, { dshPlugins: true }))).reason, 'provider-proxy')
 })
 
 test('unconfigured model Providers inherit the complete default policy', async () => {
@@ -80,13 +78,13 @@ test('unconfigured model Providers inherit the complete default policy', async (
       enabled: true,
       proxy: { ...defaults.proxy, host: '127.0.0.1', port: 7890 },
       scopes: { ...defaults.scopes, dshCore: true },
-      modelApi: { default: { followDsh: true, proxyEnabled: true }, providers: {} },
+      modelApi: { default: { proxyEnabled: true }, providers: {} },
     }),
   })
   const result = await selectProxyRoute({
     snapshot, scope: 'modelApi', providerId: 'new-provider', host: 'api.example.test', port: 443,
   })
-  assert.equal(result.reason, 'provider-follow-dsh')
+  assert.equal(result.reason, 'provider-proxy')
 })
 
 function request({ port, path = '/', method = 'GET', headers = {}, body }) {
@@ -229,7 +227,7 @@ test('model Provider proxy replaces the internal handle with external Basic auth
     response.end('provider-proxied')
   })
   const upstreamPort = await listen(upstream)
-  const state = snapshot({ proxyPort: upstreamPort, policy: 'proxy' })
+  const state = snapshot({ proxyPort: upstreamPort, policy: { proxyEnabled: true } })
   const handles = new ProviderHandleStore()
   const issued = handles.issue({ providerId: 'deepseek', policyRevision: state.revision }, state)
   const proxy = createScopedProxyServer({ scope: 'modelApi', getSnapshot: () => state, providerHandles: handles })
@@ -265,7 +263,7 @@ test('model Provider CONNECT requires a handle and never forwards it to the exte
     })
   })
   const upstreamPort = await listen(upstream)
-  const state = snapshot({ proxyPort: upstreamPort, policy: 'proxy' })
+  const state = snapshot({ proxyPort: upstreamPort, policy: { proxyEnabled: true } })
   const handles = new ProviderHandleStore()
   const issued = handles.issue({ providerId: 'deepseek', policyRevision: state.revision }, state)
   const proxy = createScopedProxyServer({ scope: 'modelApi', getSnapshot: () => state, providerHandles: handles })

@@ -18,7 +18,7 @@ const COPY = Object.freeze({
     proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentUnavailable: '出站代理组件暂不可用', proxyComponentIssueLabel: '查看出站代理组件异常', proxyComponentIssueTitle: '出站代理组件不可用', proxyComponentIssueDetail: 'DSH Docker 的出站代理组件当前不可用。配置仍可保存，但受管代理流量和连接测试可能失败。这不代表已配置的外部代理是否可连接。',
     proxyScopes: '流量范围', proxyScopesDetail: '选择哪些受管出站流量使用此代理。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '平台如何归类各类联网来源。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: 'Metadata 检查和远程 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'DSH Docker 组件与系统插件的外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: '不含模型 Provider API 的 DSH 核心流量。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 联网工具、命令及其子进程。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: '此管理中心创建的 Shell 会话。',
     proxyRules: '直连规则', proxyRulesDetail: '列出的目标不会使用外部代理。', proxyDirectRules: '附加直连规则', proxyDirectRulesDetail: '每行一个主机、域后缀、IP 地址或 CIDR；使用 .example.com，不使用 *.example.com。', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: '内置规则', proxySystemRulesTitle: '内置直连规则', proxySystemRulesDetail: '以下平台托管的本地目标始终直连，无需重复填写。', proxyAllProxy: '在已验证支持的客户端中设置 ALL_PROXY', proxyAllProxyDetail: '只向已确认支持 ALL_PROXY 的客户端注入。',
-    proxyProviders: '模型 Provider', proxyProvidersDetail: '所有可识别的 DSH llm/stream Provider 均可选择跟随 DSH、直连或独立代理。', proxyProviderSearch: '搜索已配置的 Provider', proxyNoProviders: '没有符合条件的已配置 Provider。', proxyProviderDirect: '强制直连', proxyProviderIndependent: '可独立配置', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 始终直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份，因此只能跟随 DSH 共享流量策略。',
+    proxyProviders: '模型 Provider', proxyProvidersDetail: '可识别的 DSH llm/stream Provider 可分别选择直连或独立代理。', proxyProviderSearch: '搜索已配置的 Provider', proxyNoProviders: '没有符合条件的已配置 Provider。', proxyProviderDirect: '强制直连', proxyProviderIndependent: '可独立配置', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 始终直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份。开关开启时跟随 DSH 共享流量策略，关闭时直连。',
     proxyTest: '连接测试', proxyTestDetail: '使用当前表单测试，不保存也不激活配置。', proxyTestStart: '测试连接', proxySave: '保存并应用', proxySaving: '正在保存代理设置', proxySaved: '代理设置已保存并应用', proxyTestRunning: '正在测试代理连接', proxyTestSuccess: '代理连接测试通过', proxyTestFailed: '代理连接测试失败', proxyTestCancelled: '代理连接测试已取消', proxyStageAddress: '解析代理地址', proxyStageConnect: '连接代理服务器', proxyStageHandshake: '验证代理协议与认证', proxyStageDns: '解析目标地址', proxyStageTls: '验证目标 TLS', proxyStageHttp: '请求 GitHub 与 npm', proxyStagePending: '待测试', proxyStageRunning: '测试中', proxyStageSuccess: '通过', proxyStageFailed: '失败', proxyStageSkipped: '无需执行',
     channel: '更新通道', channelDetail: '实验通道仅更新 DSH，平台环境仍使用正式支持版本。',
     stable: '稳定', experimental: '实验', current: '当前版本', supported: '正式支持版本', upstream: '上游版本', officialNpm: 'npm 官方源',
@@ -114,7 +114,7 @@ const COPY = Object.freeze({
     proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentUnavailable: 'Outbound Proxy is unavailable', proxyComponentIssueLabel: 'View outbound proxy component error', proxyComponentIssueTitle: 'Outbound proxy component unavailable', proxyComponentIssueDetail: 'The DSH Docker outbound proxy component is unavailable. Settings can still be saved, but managed proxy traffic and connection tests may fail. This does not indicate whether the configured external proxy is reachable.',
     proxyScopes: 'Traffic scopes', proxyScopesDetail: 'Select which managed outbound traffic uses this proxy.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'How managed network sources are classified.', proxyScopeUpdates: 'Updates', proxyScopeUpdatesDetail: 'Metadata checks and remote Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'External requests from DSH Docker components and System Plugins.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official and user-installed DSH plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent network tools, commands, and child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'Shell sessions created by this Management Console.',
     proxyRules: 'Direct rules', proxyRulesDetail: 'Listed destinations bypass the external proxy.', proxyDirectRules: 'Additional direct rules', proxyDirectRulesDetail: 'One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: 'Built-in rules', proxySystemRulesTitle: 'Built-in direct rules', proxySystemRulesDetail: 'These platform-managed local destinations are always direct and do not need to be entered again.', proxyAllProxy: 'Set ALL_PROXY where support is verified', proxyAllProxyDetail: 'Injected only into clients with verified ALL_PROXY support.',
-    proxyProviders: 'Model Providers', proxyProvidersDetail: 'Every identifiable DSH llm/stream Provider can follow DSH, connect directly, or use an independent proxy.', proxyProviderSearch: 'Search configured Providers', proxyNoProviders: 'No configured Providers match the current search.', proxyProviderDirect: 'Forced direct', proxyProviderIndependent: 'Independent routing', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Providers are always direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity, so it can only follow shared DSH traffic.',
+    proxyProviders: 'Model Providers', proxyProvidersDetail: 'Identifiable DSH llm/stream Providers can independently select direct access or a dedicated proxy route.', proxyProviderSearch: 'Search configured Providers', proxyNoProviders: 'No configured Providers match the current search.', proxyProviderDirect: 'Forced direct', proxyProviderIndependent: 'Independent routing', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Providers are always direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity. When enabled it follows shared DSH traffic; when disabled it connects directly.',
     proxyTest: 'Connection test', proxyTestDetail: 'Tests the current form without saving or activating it.', proxyTestStart: 'Test connection', proxySave: 'Save and apply', proxySaving: 'Saving proxy settings', proxySaved: 'Proxy settings saved and applied', proxyTestRunning: 'Testing proxy connection', proxyTestSuccess: 'Proxy connection test passed', proxyTestFailed: 'Proxy connection test failed', proxyTestCancelled: 'Proxy connection test cancelled', proxyStageAddress: 'Resolve proxy address', proxyStageConnect: 'Connect to proxy server', proxyStageHandshake: 'Verify proxy protocol and authentication', proxyStageDns: 'Resolve target addresses', proxyStageTls: 'Verify target TLS', proxyStageHttp: 'Request GitHub and npm', proxyStagePending: 'Pending test', proxyStageRunning: 'Testing', proxyStageSuccess: 'Passed', proxyStageFailed: 'Failed', proxyStageSkipped: 'Not required',
     channel: 'Update channel', channelDetail: 'Experimental updates DSH only; the platform Environment remains on the supported release.',
     stable: 'Stable', experimental: 'Experimental', current: 'Current', supported: 'Supported', upstream: 'Upstream', officialNpm: 'Official npm',
@@ -3581,7 +3581,7 @@ function proxyCandidate({ connection = 'form', rules = 'form', configuration = p
     scopes: { ...configuration.scopes },
     environment: { allProxy: rules === 'form' ? (elements['proxy-all-proxy'].checked ? 'scope-proxy' : null) : configuration.environment?.allProxy ?? null },
     modelApi: {
-      default: configuration.modelApi?.default ?? { followDsh: true, proxyEnabled: false },
+      default: configuration.modelApi?.default ?? { proxyEnabled: false },
       providers: { ...(configuration.modelApi?.providers ?? {}) },
     },
     noProxy: { user: directRules.noProxy },
@@ -3628,23 +3628,15 @@ function renderProxyProviders() {
     }
     const policy = proxyConfiguration.modelApi?.providers?.[provider.id]
       ?? provider.requestedPolicy
-      ?? { followDsh: true, proxyEnabled: false }
+      ?? { proxyEnabled: false }
     const controls = document.createElement('div')
     controls.className = 'proxy-provider-controls'
-    const follow = document.createElement('button')
-    follow.type = 'button'
-    follow.className = 'proxy-provider-follow'
-    follow.textContent = t('proxyProviderShared')
-    follow.dataset.providerFollow = provider.id
-    follow.setAttribute('aria-pressed', String(provider.routingCapability === 'shared-dsh' || policy.followDsh === true))
-    follow.dataset.sharedRoute = sharedDshProxyEnabled() ? 'proxy' : 'direct'
-    follow.disabled = provider.routingCapability !== 'provider'
-    follow.addEventListener('click', async () => {
-      const next = follow.getAttribute('aria-pressed') !== 'true'
-      await saveProxyImmediate(configuration => {
-        configuration.modelApi.providers[provider.id] = { ...policy, followDsh: next }
-      })
-    })
+    if (provider.routingCapability !== 'provider') {
+      const route = document.createElement('span')
+      route.className = 'proxy-provider-route'
+      route.textContent = t(provider.routingCapability === 'shared-dsh' ? 'proxyProviderShared' : 'proxyProviderDirect')
+      controls.append(route)
+    }
     const toggle = document.createElement('label')
     toggle.className = 'toggle'
     toggle.setAttribute('aria-label', displayName)
@@ -3652,31 +3644,19 @@ function renderProxyProviders() {
     input.type = 'checkbox'
     input.dataset.providerPolicy = provider.id
     input.checked = policy.proxyEnabled === true
-    input.disabled = provider.routingCapability !== 'provider'
+    input.disabled = provider.routingCapability === 'forced-direct'
     input.addEventListener('change', async event => {
       const next = event.target.checked
       await saveProxyImmediate(configuration => {
-        configuration.modelApi.providers[provider.id] = { ...policy, proxyEnabled: next }
+        configuration.modelApi.providers[provider.id] = { proxyEnabled: next }
       })
     })
     const track = document.createElement('span')
     track.setAttribute('aria-hidden', 'true')
     toggle.append(input, track)
-    controls.append(follow, toggle)
+    controls.append(toggle)
     row.append(identity, controls)
     container.append(row)
-  }
-}
-
-function sharedDshProxyEnabled() {
-  return [...document.querySelectorAll('[data-proxy-scope="dshCore"], [data-proxy-scope="dshPlugins"]')]
-    .some(input => input.checked)
-}
-
-function renderSharedDshRouteState() {
-  const route = sharedDshProxyEnabled() ? 'proxy' : 'direct'
-  for (const button of elements['proxy-provider-list'].querySelectorAll('[data-provider-follow]')) {
-    button.dataset.sharedRoute = route
   }
 }
 
@@ -4080,9 +4060,6 @@ for (const [key, prefix] of Object.entries({ plugins: 'plugins', systemSkills: '
 elements['proxy-enabled'].addEventListener('change', event => {
   void saveProxyImmediate(configuration => { configuration.enabled = event.target.checked })
 })
-for (const input of document.querySelectorAll('[data-proxy-scope="dshCore"], [data-proxy-scope="dshPlugins"]')) {
-  input.addEventListener('change', renderSharedDshRouteState)
-}
 for (const input of document.querySelectorAll('[data-proxy-scope]')) {
   input.addEventListener('change', event => {
     void saveProxyImmediate(configuration => { configuration.scopes[event.target.dataset.proxyScope] = event.target.checked })

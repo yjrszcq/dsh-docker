@@ -214,22 +214,20 @@ test('control API accepts dynamic model Provider routing before persistence', as
   })
   const port = await listen(server)
   t.after(() => new Promise(resolve => server.close(resolve)))
-  const value = configured({ modelApi: { providers: { unsupported: { followDsh: false, proxyEnabled: true } } } })
+  const value = configured({ modelApi: { providers: { unsupported: { proxyEnabled: true } } } })
   const result = await exchange(port, 'PUT', '/v1/configuration', { baseRevision: current.revision, value })
   assert.equal(result.status, 200)
-  assert.deepEqual(result.body.modelApi.providers.unsupported, { followDsh: false, proxyEnabled: true })
+  assert.deepEqual(result.body.modelApi.providers.unsupported, { proxyEnabled: true })
   assert.equal(committed, true)
 })
 
-test('normalizes legacy Provider strings into independent policy flags', () => {
-  const { configuration } = validateProxyConfiguration(configured({
-    modelApi: { default: 'direct', providers: { direct: 'direct', proxied: 'proxy' } },
-  }))
-  assert.deepEqual(configuration.modelApi.default, { followDsh: false, proxyEnabled: false })
-  assert.deepEqual(configuration.modelApi.providers, {
-    direct: { followDsh: false, proxyEnabled: false },
-    proxied: { followDsh: false, proxyEnabled: true },
-  })
+test('rejects unreleased legacy Provider policy shapes', () => {
+  assert.throws(() => validateProxyConfiguration(configured({
+    modelApi: { default: 'direct', providers: {} },
+  })), /must be an object/)
+  assert.throws(() => validateProxyConfiguration(configured({
+    modelApi: { default: { proxyEnabled: false }, providers: { legacy: { followDsh: true, proxyEnabled: true } } },
+  })), /unsupported fields: followDsh/)
 })
 
 test('Management outbound proxy client preserves structured control errors', async t => {

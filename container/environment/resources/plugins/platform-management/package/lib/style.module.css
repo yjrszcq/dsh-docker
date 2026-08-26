@@ -568,10 +568,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyProviderHeading p { min-width: 0; flex: 1; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
 .proxyProvider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .proxyProviderControls { display: flex; align-items: center; justify-self: end; gap: 10px; }
-.proxyProviderFollow { min-height: 26px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
-.proxyProviderFollow[aria-pressed='true'][data-shared-route='proxy'] { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); }
-.proxyProviderFollow[aria-pressed='true'][data-shared-route='direct'] { border-color: var(--dsw-alias-state-warn-label); color: var(--dsw-alias-state-warn-label); background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 10%, transparent); }
-.proxyProviderFollow:disabled { cursor: default; opacity: 1; }
+.proxyProviderRoute { box-sizing: border-box; min-height: 22px; padding: 3px 9px; border-radius: 999px; color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; line-height: 16px; white-space: nowrap; }
 .proxyProvider:last-child { border-bottom: 0; }
 .proxyProviderIdentity { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .proxyProviderIdentity b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

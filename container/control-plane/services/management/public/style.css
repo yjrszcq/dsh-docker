@@ -526,10 +526,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-provider-heading input { box-sizing: border-box; width: min(320px, 45%); height: 34px; flex: none; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 12px; }
 .proxy-provider-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--border); }
 .proxy-provider-controls { display: flex; align-items: center; justify-self: end; gap: 10px; }
-.proxy-provider-follow { min-height: 26px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: var(--surface-raised); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
-.proxy-provider-follow[aria-pressed="true"][data-shared-route="proxy"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.proxy-provider-follow[aria-pressed="true"][data-shared-route="direct"] { border-color: var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
-.proxy-provider-follow:disabled { cursor: default; opacity: 1; }
+.proxy-provider-route { box-sizing: border-box; min-height: 22px; padding: 3px 9px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; white-space: nowrap; }
 .proxy-provider-item:last-child { border-bottom: 0; }
 .proxy-provider-identity { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .proxy-provider-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

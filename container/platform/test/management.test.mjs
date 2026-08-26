@@ -125,7 +125,7 @@ test('management proxies sanitized outbound configuration, Provider inventory, a
     schema: 1, enabled: false, revision: 'revision-one', componentReady: true,
     proxy: { protocol: 'http', host: '', port: null, username: '', passwordConfigured: false, remoteDns: true },
     scopes: {}, environment: { allProxy: null },
-    modelApi: { default: { followDsh: true, proxyEnabled: false }, providers: {} },
+    modelApi: { default: { proxyEnabled: false }, providers: {} },
     noProxy: { system: ['localhost'], user: [] }, bypass: { additional: [] },
     routeHealth: {}, lastTest: null, scopeCatalog: { schema: 1, entries: [] },
   }
@@ -1341,7 +1341,7 @@ test('standalone file task queue stays below file actions and scrolls within a f
   assert.match(script, /function renderProxyProviders\(\)[\s\S]*displayName[\s\S]*info\.className = 'proxy-provider-info'/)
   assert.match(script, /proxy-provider-search[\s\S]*addEventListener\('input', renderProxyProviders\)/)
   assert.match(script, /proxy-clear-password[\s\S]*getAttribute\('aria-pressed'\) === 'true'/)
-  assert.match(script, /follow\.dataset\.providerFollow = provider\.id[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = policy\.proxyEnabled === true/)
+  assert.match(script, /route\.className = 'proxy-provider-route'[\s\S]*input\.dataset\.providerPolicy = provider\.id[\s\S]*input\.checked = policy\.proxyEnabled === true/)
   assert.match(html, /class="proxy-scope-card"[\s\S]*class="toggle"[\s\S]*data-proxy-scope="updates"/)
   assert.match(html, /id="proxy-clear-password"[^>]*aria-pressed="false"/)
   assert.match(html, /class="proxy-setting-row[^"]*"[\s\S]*class="toggle"[\s\S]*id="proxy-all-proxy"/)
@@ -1432,10 +1432,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
   assert.match(script, /function clearProxySecrets\(\)[\s\S]*elements\['proxy-password'\]\.value = ''/)
-  assert.match(script, /function sharedDshProxyEnabled\(\)[\s\S]*data-proxy-scope="dshCore"[\s\S]*data-proxy-scope="dshPlugins"[\s\S]*some\(input => input\.checked\)/)
-  assert.match(script, /follow\.dataset\.sharedRoute = sharedDshProxyEnabled\(\) \? 'proxy' : 'direct'/)
+  assert.doesNotMatch(script, /function sharedDshProxyEnabled\(\)/)
+  assert.doesNotMatch(script, /data-provider-follow|followDsh/)
   assert.match(script, /detail\.textContent = stage\.detail \?\? stage\.errorCode \?\? status/)
-  assert.match(style, /proxy-provider-follow\[aria-pressed="true"\]\[data-shared-route="direct"\][^{]*\{[^}]*var\(--warning\)/)
+  assert.match(style, /\.proxy-provider-route \{[^}]*background: var\(--surface-raised\)/)
   assert.match(style, /proxy-test-stage\[data-state="running"\][^{]*\{[^}]*animation: spin/)
   assert.match(style, /progress-stage-marker\.active::before[^{]*\{[^}]*animation: spin/)
   assert.match(script, /function saveProxyConfiguration\(\)[\s\S]*proxyCandidate\(\)/)

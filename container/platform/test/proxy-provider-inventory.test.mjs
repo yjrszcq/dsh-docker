@@ -22,9 +22,9 @@ function proxySnapshot() {
     ...validateProxyConfiguration({
       ...defaults,
       modelApi: { default: defaults.modelApi.default, providers: {
-        adapted: { followDsh: false, proxyEnabled: true },
-        shared: { followDsh: true, proxyEnabled: true },
-        local: { followDsh: false, proxyEnabled: true },
+        adapted: { proxyEnabled: true },
+        shared: { proxyEnabled: true },
+        local: { proxyEnabled: true },
       } },
     }),
   })
@@ -66,10 +66,10 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
     effective: provider.effectivePolicy,
     reason: provider.reason,
   })), [
-    { id: 'adapted', capability: 'provider', requested: { followDsh: false, proxyEnabled: true }, effective: 'proxy', reason: null },
-    { id: 'custom', capability: 'provider', requested: { followDsh: true, proxyEnabled: false }, effective: 'direct', reason: null },
+    { id: 'adapted', capability: 'provider', requested: { proxyEnabled: true }, effective: 'proxy', reason: null },
+    { id: 'custom', capability: 'provider', requested: { proxyEnabled: false }, effective: 'direct', reason: null },
     { id: 'local', capability: 'forced-direct', requested: null, effective: 'direct', reason: 'local-provider' },
-    { id: 'shared', capability: 'provider', requested: { followDsh: true, proxyEnabled: true }, effective: 'shared-dsh', reason: null },
+    { id: 'shared', capability: 'provider', requested: { proxyEnabled: true }, effective: 'proxy', reason: null },
   ])
   assert.deepEqual(calls.map(call => call.method).sort(), ['llm.providers', 'settings.describe'])
   assert.equal(result.providers.some(provider => provider.id === 'dormant'), false)

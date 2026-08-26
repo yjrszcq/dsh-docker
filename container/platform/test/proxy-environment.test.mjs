@@ -54,7 +54,7 @@ test('scope policy selects direct transport whenever the configured route is dis
   const direct = {
     enabled: false,
     scopes: { updates: true, platform: true, dshCore: true, dshPlugins: true, agentNetwork: true, managementTerminal: true },
-    modelApi: { default: { followDsh: false, proxyEnabled: true }, providers: {} },
+    modelApi: { default: { proxyEnabled: true }, providers: {} },
   }
   for (const scope of ['updates', 'platform', 'dshCore', 'dshPlugins', 'agentNetwork', 'managementTerminal', 'sharedDsh']) {
     assert.equal(outboundProxyScopeEnabled(direct, scope), false, scope)
@@ -66,10 +66,10 @@ test('scope policy selects direct transport whenever the configured route is dis
     enabled: true,
     scopes: { updates: true, platform: false, dshCore: false, dshPlugins: false, agentNetwork: true, managementTerminal: false },
     modelApi: {
-      default: { followDsh: true, proxyEnabled: true },
+      default: { proxyEnabled: true },
       providers: {
-        direct: { followDsh: false, proxyEnabled: false },
-        independent: { followDsh: false, proxyEnabled: true },
+        direct: { proxyEnabled: false },
+        independent: { proxyEnabled: true },
       },
     },
   }
@@ -80,11 +80,11 @@ test('scope policy selects direct transport whenever the configured route is dis
   assert.equal(outboundProxyScopeEnabled(configured, 'sharedDsh'), false)
   assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'direct'), false)
   assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'independent'), true)
-  assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'follow'), false)
+  assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'default'), true)
 
   configured.scopes.dshCore = true
   assert.equal(outboundProxyScopeEnabled(configured, 'sharedDsh'), true)
-  assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'follow'), true)
+  assert.equal(outboundProxyScopeEnabled(configured, 'modelApi', 'default'), true)
 })
 
 test('outbound proxy control returns sanitized process environments', async () => {
@@ -97,7 +97,7 @@ test('outbound proxy control returns sanitized process environments', async () =
       environment: Object.freeze({ allProxy: 'scope-proxy' }),
       enabled: true,
       scopes: Object.freeze({ agentNetwork: true }),
-      modelApi: Object.freeze({ default: Object.freeze({ followDsh: true, proxyEnabled: false }), providers: Object.freeze({}) }),
+      modelApi: Object.freeze({ default: Object.freeze({ proxyEnabled: false }), providers: Object.freeze({}) }),
     }),
   })
   const server = createOutboundProxyControl({
@@ -132,7 +132,7 @@ test('outbound proxy control omits proxy entries for every disabled process scop
         updates: false, platform: false, dshCore: false, dshPlugins: false,
         agentNetwork: false, managementTerminal: false,
       }),
-      modelApi: Object.freeze({ default: Object.freeze({ followDsh: true, proxyEnabled: false }), providers: Object.freeze({}) }),
+      modelApi: Object.freeze({ default: Object.freeze({ proxyEnabled: false }), providers: Object.freeze({}) }),
       noProxy: Object.freeze({ system: Object.freeze(['localhost', '127.0.0.1', '::1']), user: Object.freeze([]) }),
       environment: Object.freeze({ allProxy: 'scope-proxy' }),
     }),

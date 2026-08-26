@@ -72,7 +72,7 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     enabled: true,
     scopes: { dshCore: false, dshPlugins: false, agentNetwork: false },
     modelApi: {
-      default: { followDsh: false, proxyEnabled: false },
+      default: { proxyEnabled: false },
       providers: {},
     },
   }))
@@ -122,7 +122,7 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
         enabled: true,
         scopes: { dshCore: false, dshPlugins: false, agentNetwork: true },
         modelApi: {
-          default: { followDsh: false, proxyEnabled: true },
+          default: { proxyEnabled: true },
           providers: {},
         },
       }))
@@ -577,7 +577,8 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /taskRunning[\s\S]*cancelTest\(\)[\s\S]*testDialog\.current\?\.close\(\)/)
   assert.match(source, /task && !taskRunning[\s\S]*proxyTestSuccess[\s\S]*taskRunning/)
   assert.doesNotMatch(source, /connection\.enabled/)
-  assert.match(source, /const policy = configuration\.modelApi\.providers\[provider\.id\][\s\S]*followDsh:[\s\S]*proxyEnabled:/)
+  assert.match(source, /const policy = configuration\.modelApi\.providers\[provider\.id\][\s\S]*proxyEnabled:/)
+  assert.doesNotMatch(source, /followDsh/)
   assert.match(source, /configuration\.scopeCatalog/)
   assert.match(source, /proxyTransportWarning/)
   assert.doesNotMatch(source, /setPassword\(next\.proxy|value: configuration\.proxy\.password/)
@@ -830,16 +831,15 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(source, /DSH Docker System Plugins, and other platform components/)
   assert.doesNotMatch(source, /第三方及 DSH Docker 系统插件的联网/)
   assert.doesNotMatch(source, /third-party, and DSH Docker System Plugin traffic/)
-  assert.match(source, /className: css\.proxyProviderFollow[\s\S]*'aria-pressed':[\s\S]*followDsh[\s\S]*className: css\.toggle[\s\S]*proxyEnabled/)
-  assert.match(source, /sharedDshProxyEnabled = configuration\.scopes\.dshCore \|\| configuration\.scopes\.dshPlugins/)
-  assert.match(source, /'data-shared-route': sharedDshProxyEnabled \? 'proxy' : 'direct'/)
+  assert.match(source, /className: css\.proxyProviderRoute[\s\S]*proxyProviderShared[\s\S]*className: css\.toggle[\s\S]*proxyEnabled/)
+  assert.doesNotMatch(source, /proxyProviderFollow|data-shared-route/)
   assert.match(source, /stage\.detail \?\? stage\.errorCode \?\? status/)
   assert.match(source, /function pendingProxyTestStages\(\)[\s\S]*Object\.keys\(PROXY_TEST_LABELS\)[\s\S]*status: 'pending'/)
   assert.match(source, /const startTest = async \(\) => \{[\s\S]*status: 'starting'[\s\S]*pendingProxyTestStages\(\)[\s\S]*showModal\(\)/)
   assert.match(source, /className: css\.proxyTestStages[\s\S]*task\.stages\.map/)
   assert.match(source, /const \[expandedTestStages, setExpandedTestStages\] = useState\(\(\) => new Set\(\)\)/)
   assert.match(source, /role: 'button'[\s\S]*'aria-expanded': expanded[\s\S]*onClick: event => toggleDetails\(event\.currentTarget\)[\s\S]*h\('small', null, status\)/)
-  assert.match(style, /proxyProviderFollow\[aria-pressed='true'\]\[data-shared-route='direct'\][^{]*\{[^}]*state-warn-label/)
+  assert.match(style, /\.proxyProviderRoute \{[^}]*background: var\(--dsw-alias-bg-module-platform\)/)
   assert.match(style, /proxyTestStages > li\[data-state='running'\][^{]*\{[^}]*animation: checkSpin/)
   assert.match(style, /\.proxyTestStages > li > span:nth-child\(2\) \{[^}]*display: grid;[^}]*gap: 1px;/)
   assert.match(style, /\.proxyTestDialog footer \{[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/)

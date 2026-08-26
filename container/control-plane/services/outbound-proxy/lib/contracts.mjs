@@ -59,18 +59,11 @@ function normalizeScopes(value) {
 }
 
 function normalizeProviderPolicy(value, label) {
-  // Development builds previously persisted direct/proxy strings. Normalize
-  // them into the unreleased schema-1 representation without breaking volumes.
-  if (['direct', 'proxy'].includes(value)) {
-    return { followDsh: false, proxyEnabled: value === 'proxy' }
-  }
   object(value, label)
-  requiredKeys(value, ['followDsh', 'proxyEnabled'], label)
-  allowedKeys(value, ['followDsh', 'proxyEnabled'], label)
-  if (typeof value.followDsh !== 'boolean' || typeof value.proxyEnabled !== 'boolean') {
-    throw new ProxyConfigurationError(`${label} flags must be boolean`)
-  }
-  return { followDsh: value.followDsh, proxyEnabled: value.proxyEnabled }
+  requiredKeys(value, ['proxyEnabled'], label)
+  allowedKeys(value, ['proxyEnabled'], label)
+  if (typeof value.proxyEnabled !== 'boolean') throw new ProxyConfigurationError(`${label} proxyEnabled must be boolean`)
+  return { proxyEnabled: value.proxyEnabled }
 }
 
 export function validProviderId(value) {
@@ -100,7 +93,7 @@ export function defaultProxyConfiguration() {
     scopes: Object.freeze(Object.fromEntries(PROXY_SCOPES.map(scope => [scope, false]))),
     environment: Object.freeze({ allProxy: null }),
     modelApi: Object.freeze({
-      default: Object.freeze({ followDsh: true, proxyEnabled: false }),
+      default: Object.freeze({ proxyEnabled: false }),
       providers: Object.freeze({}),
     }),
     noProxy: Object.freeze({ system: PLATFORM_NO_PROXY, user: Object.freeze([]) }),

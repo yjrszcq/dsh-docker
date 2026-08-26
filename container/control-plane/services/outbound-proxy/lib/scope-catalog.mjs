@@ -37,8 +37,8 @@ export const PROXY_SCOPE_CATALOG = Object.freeze({
     entry('agent-session', 'agent', 'agentNetwork', 'Agent 持久终端会话', 'Persistent Agent terminal sessions', '会话创建时确定代理范围。', 'The proxy scope is selected when the session is created.'),
     entry('management-terminal', 'agent', 'managementTerminal', '管理中心容器终端', 'Management container terminal', '独立于 Agent 和插件终端。', 'Independent from Agent and plugin terminals.'),
     entry('docker-exec', 'direct', 'unmanaged', '宿主机执行的 docker exec Shell', 'Host-created docker exec Shell', '不受平台管理，用户自行设置代理环境。', 'Not managed by the platform; users configure its environment.'),
-    entry('provider-routed', 'models', 'modelApi', '可识别的模型 Provider', 'Identifiable model Providers', '可选择直连、独立代理或跟随 DSH 共享流量策略。', 'Can connect directly, use an independent proxy, or follow the shared DSH policy.'),
-    entry('provider-shared', 'models', 'sharedDsh', '无法独立路由的模型请求', 'Model requests without independent routing', '锁定为 DSH 共享流量策略；DSH 核心或 DSH 插件任一范围启用时即使用代理。', 'Locked to the shared DSH policy; the proxy is used when either DSH Core or DSH Plugins is enabled.'),
+    entry('provider-routed', 'models', 'modelApi', '可识别的模型 Provider', 'Identifiable model Providers', '可分别选择直连或独立代理。', 'Can independently select direct access or a dedicated proxy route.'),
+    entry('provider-shared', 'models', 'sharedDsh', '无法独立路由的模型请求', 'Model requests without independent routing', '只能选择直连或跟随 DSH 共享流量策略；DSH 核心或 DSH 插件任一范围启用时共享路由使用代理。', 'Can only connect directly or follow the shared DSH policy; the shared route uses the proxy when either DSH Core or DSH Plugins is enabled.'),
     entry('provider-local', 'direct', 'forcedDirect', '本地模型 Provider', 'Local model Providers', '本地地址强制直连。', 'Local addresses are always direct.'),
     entry('gateway-dsh', 'direct', 'direct', 'Gateway 到 DSH 的本地转发', 'Local Gateway-to-DSH forwarding', '容器内部 loopback 通信。', 'Container-internal loopback communication.'),
     entry('platform-sockets', 'direct', 'direct', 'Management、Bootstrap、Stage-0 的 Unix socket', 'Management, Bootstrap, and Stage-0 Unix sockets', '本地控制协议不使用代理。', 'Local control protocols do not use the proxy.'),
@@ -46,7 +46,7 @@ export const PROXY_SCOPE_CATALOG = Object.freeze({
   ]),
   summaries: Object.freeze([
     Object.freeze({ zh: '本地平台通信始终直连。', en: 'Local platform communication is always direct.' }),
-    Object.freeze({ zh: '可识别的模型 Provider 可选择直连、独立代理或跟随 DSH；无法独立路由的请求会锁定为 DSH 共享策略。', en: 'Identifiable model Providers can connect directly, use an independent proxy, or follow DSH; requests without independent routing are locked to the shared DSH policy.' }),
+    Object.freeze({ zh: '可识别的模型 Provider 可分别选择直连或独立代理；无法独立路由的请求只能选择直连或跟随 DSH。', en: 'Identifiable model Providers independently select direct access or a dedicated proxy; requests without independent routing can only connect directly or follow DSH.' }),
     Object.freeze({ zh: 'docker exec 创建的 Shell 不受平台代理设置管理。', en: 'Shells created with docker exec are not managed by platform proxy settings.' }),
   ]),
 })

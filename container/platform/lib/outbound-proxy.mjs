@@ -31,7 +31,6 @@ export function outboundProxyScopeEnabled(configuration, scope, providerId) {
     if (providerId === undefined) return false
     const policy = configuration.modelApi?.providers?.[providerId] ?? configuration.modelApi?.default
     return policy?.proxyEnabled === true
-      && (policy.followDsh !== true || configuration.scopes?.dshCore === true || configuration.scopes?.dshPlugins === true)
   }
   return configuration.scopes?.[scope] === true
 }
