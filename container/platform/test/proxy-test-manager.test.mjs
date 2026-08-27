@@ -111,6 +111,8 @@ test('proxy tests allow one in-memory candidate, persist no credentials, and can
   const cancelled = await terminal(manager, started.taskId)
   assert.equal(cancelled.status, 'cancelled')
   assert.equal(cancelled.error.errorCode, 'REQUEST_CANCELLED')
+  assert.equal(cancelled.stages.find(stage => stage.stage === 'proxy-address').status, 'cancelled')
+  assert.equal(cancelled.stages.find(stage => stage.stage === 'proxy-address').errorCode, 'REQUEST_CANCELLED')
   assert.equal((await readFile(statePath, 'utf8')).includes('alice'), false)
 })
 

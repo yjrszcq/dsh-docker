@@ -314,10 +314,18 @@ export class ProxyTestManager {
       })
       await this.update(task, {})
     } catch (error) {
-      const failure = signal.reason?.name === 'TimeoutError'
-        ? { errorCode: 'PROXY_TEST_STAGE_TIMEOUT', detail: `${name} timed out` }
-        : safeError(error)
-      Object.assign(entry, { status: 'failed', durationMs: Date.now() - started, ...failure })
+      const cancelled = task.controller.signal.aborted
+        && task.controller.signal.reason?.code !== 'PROXY_TEST_TIMEOUT'
+      const failure = cancelled
+        ? { errorCode: 'REQUEST_CANCELLED', detail: 'proxy test was cancelled' }
+        : signal.reason?.name === 'TimeoutError'
+          ? { errorCode: 'PROXY_TEST_STAGE_TIMEOUT', detail: `${name} timed out` }
+          : safeError(error)
+      Object.assign(entry, {
+        status: cancelled ? 'cancelled' : 'failed',
+        durationMs: Date.now() - started,
+        ...failure,
+      })
       throw error
     }
   }

@@ -549,6 +549,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-test-stage[data-state="running"] > span:first-child { border-color: var(--accent); border-top-color: transparent; animation: spin .7s linear infinite; }
 .proxy-test-stage[data-state="success"] > span:first-child { border-color: var(--success); background: var(--success); }
 .proxy-test-stage[data-state="failed"] > span:first-child { border-color: var(--danger); background: var(--danger); }
+.proxy-test-stage[data-state="cancelled"] > span:first-child { border-color: var(--warning); background: var(--warning); }
 .proxy-test-stage[data-state="skipped"] { color: var(--muted); }
 .proxy-test-stage small { color: var(--muted); font-size: 10px; }
 .proxy-test-stage small[hidden] { display: none; }

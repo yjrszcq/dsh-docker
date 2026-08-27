@@ -585,6 +585,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyTestStages > li[data-state='running'] > span:first-child { border-color: var(--dsw-alias-brand-primary); border-top-color: transparent; animation: checkSpin .7s linear infinite; }
 .proxyTestStages > li[data-state='success'] > span:first-child { border-color: var(--dsw-alias-state-success-primary); background: var(--dsw-alias-state-success-primary); }
 .proxyTestStages > li[data-state='failed'] > span:first-child { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-state-error-primary); }
+.proxyTestStages > li[data-state='cancelled'] > span:first-child { border-color: var(--dsw-alias-state-warn-label); background: var(--dsw-alias-state-warn-label); }
 .proxyTestStages > li small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 10px; line-height: 16px; }
 .proxyTestDialog { box-sizing: border-box; width: min(620px, calc(100vw - 40px)); max-height: min(720px, calc(100dvh - 40px)); padding: 0; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
 .proxyTestDialog::backdrop { background: rgb(0 0 0 / 50%); }
