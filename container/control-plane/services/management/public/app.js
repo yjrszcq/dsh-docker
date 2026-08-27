@@ -1148,9 +1148,9 @@ function pluginDescription(plugin) {
 }
 
 function resourceSearchValues(key, value) {
-  if (key === 'plugins' || key === 'systemSkills') return [value.id, value.description?.zh, value.description?.en]
-  if (key === 'userSkills') return [value.name, value.entryName, value.description, value.source]
-  return [value.name, value.version, value.spec, value.description, value.source]
+  if (key === 'plugins' || key === 'systemSkills') return [value.id]
+  if (key === 'userSkills') return [value.name ?? value.entryName]
+  return [value.name]
 }
 
 function filteredResources(key, values) {

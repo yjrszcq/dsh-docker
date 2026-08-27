@@ -290,14 +290,15 @@ test('gates only managed Web launches and routes restart through Management', as
     adapter.provideManagedLifecycle({ provide: (name, value) => { provided = { name, value } } })
     assert.equal(provided.name, 'dshPlatformLifecycle')
     assert.deepEqual(await provided.value.restart(), { taskId: 'restart-task' })
+    const restartCallsBeforeSigterm = calls.filter(value => value.path?.endsWith('/restart-dsh')).length
     let interrupts = 0
     const onSigterm = adapter.managedSigtermHandler(() => { interrupts += 1 })
     onSigterm()
-    for (let attempt = 0; attempt < 50 && !calls.some(value => value.path === '/v1/runtime/signal'); attempt += 1) {
+    for (let attempt = 0; attempt < 50 && calls.filter(value => value.path?.endsWith('/restart-dsh')).length === restartCallsBeforeSigterm; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 5))
     }
     assert.equal(calls.some(value => value.socket === 'broker' && value.path === '/v1/runtime/signal'), true)
-    assert.equal(calls.some(value => value.socket === 'management' && value.path?.endsWith('/restart-dsh')), true)
+    assert.equal(calls.filter(value => value.path?.endsWith('/restart-dsh')).length, restartCallsBeforeSigterm + 1)
     assert.equal(interrupts, 0)
     onSigterm()
     assert.equal(interrupts, 1)

@@ -1168,7 +1168,7 @@ function systemPluginSummary(progress, draft, t) {
 function SystemPluginManager({ plugins, draft, applyingDraft, progress, operation, busy, error, onAction, onCancel, onApply, t }) {
   const operationBusy = operation?.status === 'running'
   const [query, setQuery] = useState('')
-  const filteredPlugins = plugins.filter(plugin => matchesResourceSearch(query, [plugin.id, plugin.description?.zh, plugin.description?.en]))
+  const filteredPlugins = plugins.filter(plugin => matchesResourceSearch(query, [plugin.id]))
   const pagination = usePaginatedItems('system-plugins', filteredPlugins)
   const visiblePlugins = pagination.items
   const restartRequired = draft.size > 0 || plugins.some(plugin => plugin.pendingRestart) || progress !== null
@@ -1242,7 +1242,7 @@ function SystemPluginManager({ plugins, draft, applyingDraft, progress, operatio
 function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
   const operationBusy = operation?.status === 'running'
   const [query, setQuery] = useState('')
-  const filteredSkills = skills.filter(skill => matchesResourceSearch(query, [skill.id, skill.description?.zh, skill.description?.en]))
+  const filteredSkills = skills.filter(skill => matchesResourceSearch(query, [skill.id]))
   const pagination = usePaginatedItems('system-skills', filteredSkills)
   return h('section', { className: `${css.section} ${css.pluginSection}`, 'aria-labelledby': 'system-skills-title' },
     h('div', { className: `${css.sectionHeading} ${css.resourceSectionHeading}` },
