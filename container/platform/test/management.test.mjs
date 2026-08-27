@@ -229,7 +229,11 @@ test('management exposes one reconnectable and cancellable outbound proxy test t
     assert.equal(cancelled, true)
     await new Promise(resolve => setTimeout(resolve, 300))
     const audit = await logs.query({ sources: ['audit'] })
-    assert.equal(audit.some(entry => entry.message === 'proxy.test.started'), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.started' && entry.taskId === taskId), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.stage.changed'
+      && entry.taskId === taskId && entry.stage === 'proxy-connect' && entry.status === 'running'), true)
+    assert.equal(audit.some(entry => entry.message === 'proxy.test.stage.changed'
+      && entry.taskId === taskId && entry.stage === 'proxy-connect' && entry.status === 'success'), true)
     assert.equal(audit.some(entry => entry.message === 'proxy.test.cancel-requested' && entry.taskId === taskId), true)
     assert.equal(audit.some(entry => entry.message === 'proxy.test.cancelled' && entry.taskId === taskId), true)
   } finally {
