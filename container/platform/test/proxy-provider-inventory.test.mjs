@@ -24,6 +24,7 @@ function proxySnapshot() {
       modelApi: { default: defaults.modelApi.default, providers: {
         adapted: { proxyEnabled: true },
         shared: { proxyEnabled: true },
+        'shared-explicit': { proxyEnabled: true },
         local: { proxyEnabled: true },
       } },
     }),
@@ -43,13 +44,14 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
       if (body.method === 'llm.providers') return response({ providers: [
         { provider: 'dormant', displayName: 'Dormant', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'dormant'], active: false },
         { provider: 'shared', displayName: 'Shared', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared'], active: true },
+        { provider: 'shared-explicit', displayName: 'Shared explicit', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared-explicit'], active: true, supportsIndependentRouting: false },
         { provider: 'custom', displayName: 'Custom route', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'custom'], active: true, declared: true },
         { provider: 'adapted', displayName: 'Adapted', settingsNs: 'adapted', settingsPath: [], active: true },
         { provider: 'local', displayName: 'Local', settingsNs: 'local', settingsPath: [], active: true },
         { provider: '../invalid', displayName: 'Invalid', settingsNs: 'invalid', settingsPath: [], active: true },
       ] })
       return response({ namespaces: [
-        { ns: 'llm-pi-ai', value: { providers: { shared: { baseURL: 'https://api.example.test' }, custom: { baseURL: 'https://custom.example.test' } } }, base: {} },
+        { ns: 'llm-pi-ai', value: { providers: { shared: { baseURL: 'https://api.example.test' }, 'shared-explicit': { baseURL: 'https://shared.example.test' }, custom: { baseURL: 'https://custom.example.test' } } }, base: {} },
         { ns: 'adapted', value: {}, base: {} },
         { ns: 'local', value: { baseURL: 'http://127.0.0.1:11434/v1' }, base: {} },
       ] })
@@ -70,6 +72,7 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
     { id: 'custom', capability: 'provider', requested: { proxyEnabled: false }, effective: 'direct', reason: null },
     { id: 'local', capability: 'forced-direct', requested: null, effective: 'direct', reason: 'local-provider' },
     { id: 'shared', capability: 'provider', requested: { proxyEnabled: true }, effective: 'proxy', reason: null },
+    { id: 'shared-explicit', capability: 'shared-dsh', requested: { proxyEnabled: true }, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
   ])
   assert.deepEqual(calls.map(call => call.method).sort(), ['llm.providers', 'settings.describe'])
   assert.equal(result.providers.some(provider => provider.id === 'dormant'), false)

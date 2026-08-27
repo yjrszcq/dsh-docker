@@ -81,7 +81,11 @@ function sanitizeProvider(provider, namespaces) {
   if (!object(provider) || !validProviderId(provider.provider)) return undefined
   if (!configuredProvider(provider, namespaces)) return undefined
   const local = loopbackUrl(baseUrlFor(provider, namespaces))
-  const routingCapability = local ? 'forced-direct' : 'provider'
+  const routingCapability = local
+    ? 'forced-direct'
+    : provider.routingCapability === 'shared-dsh' || provider.supportsIndependentRouting === false
+      ? 'shared-dsh'
+      : 'provider'
   return Object.freeze({
     id: provider.provider,
     displayName: typeof provider.displayName === 'string' && provider.displayName.trim() !== ''
