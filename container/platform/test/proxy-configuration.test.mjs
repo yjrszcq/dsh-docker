@@ -312,6 +312,11 @@ test('publishes one complete bilingual proxy scope catalog', () => {
     assert.equal(typeof entry.detail.zh, 'string')
     assert.equal(typeof entry.detail.en, 'string')
   }
+  const pluginTerminal = PROXY_SCOPE_CATALOG.entries.find(entry => entry.id === 'plugin-terminal')
+  assert.match(pluginTerminal.detail.zh, /可识别子进程接口/)
+  assert.match(pluginTerminal.detail.zh, /共享 DSH/)
+  assert.match(pluginTerminal.detail.en, /identifiable subprocess interface/)
+  assert.match(pluginTerminal.detail.en, /shared DSH policy/)
 })
 
 test('keeps the Bootstrap proxy supervisor alive until an explicit stop', async () => {

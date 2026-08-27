@@ -31,7 +31,7 @@ export const PROXY_SCOPE_CATALOG = Object.freeze({
     entry('dsh-core', 'dsh', 'dshCore', 'DSH 核心对外请求', 'DSH core external requests', '不包括模型 Provider API。', 'Excludes model Provider APIs.'),
     entry('official-plugins', 'dsh', 'dshPlugins', 'DSH 官方插件', 'Official DSH plugins', '当前与第三方插件共用一个总开关。', 'Currently shares one switch with third-party plugins.'),
     entry('user-plugins', 'dsh', 'dshPlugins', '用户安装的第三方插件', 'User-installed third-party plugins', '包括插件产生的可识别子进程。', 'Includes identifiable child processes created by plugins.'),
-    entry('plugin-terminal', 'dsh', 'dshPlugins', '第三方插件提供的终端', 'Third-party plugin terminals', '命令和子进程归入插件来源。', 'Commands and child processes are classified as plugin traffic.'),
+    entry('plugin-terminal', 'dsh', 'dshPlugins', '第三方插件提供的终端', 'Third-party plugin terminals', '通过可识别子进程接口创建时归入插件范围；直接创建的 PTY 跟随共享 DSH 策略。', 'Uses the plugin scope when created through an identifiable subprocess interface; directly created PTYs follow the shared DSH policy.'),
     entry('agent-tools', 'agent', 'agentNetwork', 'Agent 的 web_search、web_fetch 等联网工具', 'Agent network tools such as web_search and web_fetch', '按 Agent 工具执行上下文注入代理。', 'Proxy settings are injected using the Agent execution context.'),
     entry('agent-commands', 'agent', 'agentNetwork', 'Agent 执行的 curl、git、npm 等命令', 'Commands such as curl, git, and npm run by an Agent', '包括 Agent 创建的子进程。', 'Includes child processes created by the Agent.'),
     entry('agent-session', 'agent', 'agentNetwork', 'Agent 持久终端会话', 'Persistent Agent terminal sessions', '会话创建时确定代理范围。', 'The proxy scope is selected when the session is created.'),
