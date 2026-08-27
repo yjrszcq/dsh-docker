@@ -1,6 +1,7 @@
 import { request } from 'node:http'
 
 const MAX_RESPONSE_BYTES = 256 * 1024
+const UNAVAILABLE_CODES = new Set(['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ABORT_ERR'])
 
 export class OutboundProxyControlError extends Error {
   constructor(error, statusCode, path) {
@@ -57,7 +58,16 @@ export class OutboundProxyControlClient {
           else resolve(value)
         })
       })
-      outgoing.once('error', reject)
+      outgoing.once('error', error => {
+        if (UNAVAILABLE_CODES.has(error?.code) || error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+          reject(new OutboundProxyControlError({
+            code: 'PROXY_MANAGER_UNAVAILABLE',
+            message: 'Outbound Proxy control service is unavailable',
+            stage: 'control',
+            retryable: true,
+          }, 503, path))
+        } else reject(error)
+      })
       outgoing.end(bytes)
     })
   }

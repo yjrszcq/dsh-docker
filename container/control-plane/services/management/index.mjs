@@ -31,6 +31,7 @@ import { createScopedFetch } from './scoped-fetch.mjs'
 import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
 import { ProviderInventory } from './provider-inventory.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
+import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -53,6 +54,23 @@ const providerInventory = new ProviderInventory({
   cachePath: paths.proxyProviderInventoryPath,
 })
 
+let lastProxyConfiguration
+
+function unavailableProxyConfiguration() {
+  const fallback = lastProxyConfiguration ?? {
+    ...defaultProxyConfiguration(),
+    revision: null,
+    routeHealth: {},
+    lastTest: null,
+  }
+  return Object.freeze({
+    ...fallback,
+    componentReady: false,
+    configurationAvailable: lastProxyConfiguration !== undefined,
+    scopeCatalog: PROXY_SCOPE_CATALOG,
+  })
+}
+
 function proxySnapshot(view) {
   return Object.freeze({
     revision: view.revision,
@@ -69,10 +87,20 @@ function proxySnapshot(view) {
   })
 }
 
-const proxyConfiguration = async () => Object.freeze({
-  ...await outboundProxy.configuration(),
-  scopeCatalog: PROXY_SCOPE_CATALOG,
-})
+const proxyConfiguration = async () => {
+  try {
+    lastProxyConfiguration = await outboundProxy.configuration()
+    return Object.freeze({
+      ...lastProxyConfiguration,
+      configurationAvailable: true,
+      scopeCatalog: PROXY_SCOPE_CATALOG,
+    })
+  } catch (error) {
+    if (error?.code === 'PROXY_MANAGER_UNAVAILABLE') return unavailableProxyConfiguration()
+    throw error
+  }
+}
+void proxyConfiguration().catch(error => logs.diagnostic('platform-management', 'proxy.configuration.cache.failed', { error }))
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 await logs.diagnostic('platform-management', 'management.starting', {
   imageBuildId: imageInventory.imageBuildId,
@@ -217,7 +245,7 @@ server = createManagementServer({
     scopeCatalog: PROXY_SCOPE_CATALOG,
   }),
   listProxyProviders: async () => {
-    const configuration = await outboundProxy.configuration()
+    const configuration = await proxyConfiguration()
     return providerInventory.list(proxySnapshot(configuration))
   },
   startProxyTest: value => outboundProxy.startTest(value),

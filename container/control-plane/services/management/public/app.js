@@ -15,7 +15,7 @@ const COPY = Object.freeze({
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
-    proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentUnavailable: '出站代理组件暂不可用', proxyComponentIssueLabel: '查看出站代理组件异常', proxyComponentIssueTitle: '出站代理组件不可用', proxyComponentIssueDetail: 'DSH Docker 的出站代理组件当前不可用。配置仍可保存，但受管代理流量和连接测试可能失败。这不代表已配置的外部代理是否可连接。',
+    proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentUnavailable: '出站代理组件暂不可用', proxyComponentIssueLabel: '查看出站代理组件异常', proxyComponentIssueTitle: '出站代理组件不可用', proxyComponentIssueDetail: 'DSH Docker 的出站代理组件当前不可用。当前配置仅供查看，保存、连接测试和受管代理流量将在组件恢复后可用。这不代表已配置的外部代理是否可连接。',
     proxyScopes: '流量范围', proxyScopesDetail: '选择哪些受管出站流量使用此代理。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '平台如何归类各类联网来源。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: 'Metadata 检查和远程 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'DSH Docker 组件与系统插件的外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: '不含模型 Provider API 的 DSH 核心流量。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 联网工具、命令及其子进程。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: '此管理中心创建的 Shell 会话。',
     proxyRules: '直连规则', proxyRulesDetail: '列出的目标不会使用外部代理。', proxyDirectRules: '附加直连规则', proxyDirectRulesDetail: '每行一个主机、域后缀、IP 地址或 CIDR；使用 .example.com，不使用 *.example.com。', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: '内置规则', proxySystemRulesTitle: '内置直连规则', proxySystemRulesDetail: '以下平台托管的本地目标始终直连，无需重复填写。', proxyAllProxy: '在已验证支持的客户端中设置 ALL_PROXY', proxyAllProxyDetail: '只向已确认支持 ALL_PROXY 的客户端注入。',
     proxyProviders: '模型 Provider', proxyProvidersDetail: '可识别的 DSH llm/stream Provider 可分别选择直连或独立代理。', proxyProviderSearch: '搜索已配置的 Provider', proxyNoProviders: '没有符合条件的已配置 Provider。', proxyProviderDirect: '强制直连', proxyProviderIndependent: '可独立配置', proxyProviderShared: '跟随 DSH', proxyProviderInfo: '查看 {name} 的路由说明', proxyProviderReasonLocal: '本地 Provider 始终直连。', proxyProviderReasonShared: '当前客户端无法稳定携带 Provider 身份。开关开启时跟随 DSH 共享流量策略，关闭时直连。',
@@ -111,7 +111,7 @@ const COPY = Object.freeze({
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
     managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
-    proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentUnavailable: 'Outbound Proxy is unavailable', proxyComponentIssueLabel: 'View outbound proxy component error', proxyComponentIssueTitle: 'Outbound proxy component unavailable', proxyComponentIssueDetail: 'The DSH Docker outbound proxy component is unavailable. Settings can still be saved, but managed proxy traffic and connection tests may fail. This does not indicate whether the configured external proxy is reachable.',
+    proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentUnavailable: 'Outbound Proxy is unavailable', proxyComponentIssueLabel: 'View outbound proxy component error', proxyComponentIssueTitle: 'Outbound proxy component unavailable', proxyComponentIssueDetail: 'The DSH Docker outbound proxy component is unavailable. The current configuration is read-only until the component recovers; saving, connection tests, and managed proxy traffic are unavailable. This does not indicate whether the configured external proxy is reachable.',
     proxyScopes: 'Traffic scopes', proxyScopesDetail: 'Select which managed outbound traffic uses this proxy.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'How managed network sources are classified.', proxyScopeUpdates: 'Updates', proxyScopeUpdatesDetail: 'Metadata checks and remote Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'External requests from DSH Docker components and System Plugins.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official and user-installed DSH plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent network tools, commands, and child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'Shell sessions created by this Management Console.',
     proxyRules: 'Direct rules', proxyRulesDetail: 'Listed destinations bypass the external proxy.', proxyDirectRules: 'Additional direct rules', proxyDirectRulesDetail: 'One host, domain suffix, IP address, or CIDR per line. Use .example.com, not *.example.com.', proxyDirectRulesPlaceholder: '.example.com\n10.0.0.0/8', proxySystemRules: 'Built-in rules', proxySystemRulesTitle: 'Built-in direct rules', proxySystemRulesDetail: 'These platform-managed local destinations are always direct and do not need to be entered again.', proxyAllProxy: 'Set ALL_PROXY where support is verified', proxyAllProxyDetail: 'Injected only into clients with verified ALL_PROXY support.',
     proxyProviders: 'Model Providers', proxyProvidersDetail: 'Identifiable DSH llm/stream Providers can independently select direct access or a dedicated proxy route.', proxyProviderSearch: 'Search configured Providers', proxyNoProviders: 'No configured Providers match the current search.', proxyProviderDirect: 'Forced direct', proxyProviderIndependent: 'Independent routing', proxyProviderShared: 'Follow DSH', proxyProviderInfo: 'View routing information for {name}', proxyProviderReasonLocal: 'Local Providers are always direct.', proxyProviderReasonShared: 'The client cannot carry a stable Provider identity. When enabled it follows shared DSH traffic; when disabled it connects directly.',
@@ -3532,7 +3532,7 @@ function splitDirectRules(value) {
 
 function clearProxySecrets() {
   elements['proxy-password'].value = ''
-  elements['proxy-password'].disabled = false
+  elements['proxy-password'].disabled = proxyConfiguration?.componentReady === false
   elements['proxy-clear-password'].setAttribute('aria-pressed', 'false')
   renderProxyTransportWarning()
 }
@@ -3669,7 +3669,7 @@ function renderProxyProviders() {
     input.type = 'checkbox'
     input.dataset.providerPolicy = provider.id
     input.checked = policy.proxyEnabled === true
-    input.disabled = provider.routingCapability === 'forced-direct'
+    input.disabled = provider.routingCapability === 'forced-direct' || proxyConfiguration.componentReady === false
     input.addEventListener('change', async event => {
       const next = event.target.checked
       await saveProxyImmediate(configuration => {
@@ -3727,7 +3727,9 @@ function renderProxyCatalog() {
 function renderProxyConfiguration() {
   if (proxyConfiguration === undefined) return
   const configuration = proxyConfiguration
+  const componentUnavailable = configuration.componentReady === false
   elements['proxy-enabled'].checked = configuration.enabled === true
+  elements['proxy-enabled'].disabled = componentUnavailable
   elements['proxy-protocol'].value = configuration.proxy.protocol
   elements['proxy-host'].value = configuration.proxy.host
   elements['proxy-port'].value = configuration.proxy.port ?? ''
@@ -3735,11 +3737,22 @@ function renderProxyConfiguration() {
   elements['proxy-remote-dns'].checked = configuration.proxy.remoteDns === true
   elements['proxy-remote-dns-row'].hidden = configuration.proxy.protocol !== 'socks5'
   elements['proxy-clear-password'].hidden = configuration.proxy.passwordConfigured !== true
-  for (const input of document.querySelectorAll('[data-proxy-scope]')) input.checked = configuration.scopes?.[input.dataset.proxyScope] === true
+  for (const id of [
+    'proxy-protocol', 'proxy-host', 'proxy-port', 'proxy-username', 'proxy-password',
+    'proxy-clear-password', 'proxy-advanced-toggle', 'proxy-direct-rules',
+    'proxy-system-rules', 'proxy-remote-dns', 'proxy-provider-search', 'proxy-scope-help',
+  ]) elements[id].disabled = componentUnavailable
+  for (const input of document.querySelectorAll('[data-proxy-scope]')) {
+    input.checked = configuration.scopes?.[input.dataset.proxyScope] === true
+    input.disabled = componentUnavailable
+  }
   elements['proxy-direct-rules'].value = directRuleText(configuration)
   elements['proxy-system-rules-list'].textContent = (configuration.noProxy?.system ?? []).join('\n')
   elements['proxy-all-proxy'].checked = configuration.environment?.allProxy === 'scope-proxy'
-  elements['proxy-component-alert'].hidden = configuration.componentReady !== false
+  elements['proxy-all-proxy'].disabled = componentUnavailable
+  elements['proxy-test'].disabled = componentUnavailable
+  elements['proxy-save'].disabled = componentUnavailable
+  elements['proxy-component-alert'].hidden = !componentUnavailable
   renderProxyProviders()
   renderProxyCatalog()
   renderProxyTransportWarning()
@@ -3788,8 +3801,9 @@ function renderProxyTest(task = proxyTestTask) {
     container.append(item)
   }
   const running = task?.status === 'starting' || task?.status === 'running'
-  elements['proxy-test'].disabled = running
-  elements['proxy-save'].disabled = running
+  const componentUnavailable = proxyConfiguration?.componentReady === false
+  elements['proxy-test'].disabled = running || componentUnavailable
+  elements['proxy-save'].disabled = running || componentUnavailable
   elements['proxy-test-cancel'].hidden = task === undefined
   elements['proxy-test-cancel'].disabled = running && task?.taskId === undefined
   elements['proxy-test-cancel'].textContent = t(running ? 'cancel' : 'close')
@@ -3865,7 +3879,7 @@ async function saveProxyConfiguration() {
     renderProxySaveState()
     if (error.statusCode === 409) await loadProxy({ force: true })
   } finally {
-    elements['proxy-save'].disabled = false
+    elements['proxy-save'].disabled = proxyConfiguration?.componentReady === false
   }
 }
 
@@ -3891,6 +3905,7 @@ function restoreProxyDraft(draft) {
   elements['proxy-password'].value = draft.password
   elements['proxy-clear-password'].setAttribute('aria-pressed', draft.clearPassword)
   elements['proxy-password'].disabled = draft.clearPassword === 'true'
+    || proxyConfiguration?.componentReady === false
   elements['proxy-remote-dns'].checked = draft.remoteDns
   elements['proxy-remote-dns-row'].hidden = draft.protocol !== 'socks5'
   elements['proxy-direct-rules'].value = draft.directRules

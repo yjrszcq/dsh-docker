@@ -251,6 +251,19 @@ test('Management outbound proxy client preserves structured control errors', asy
   ))
 })
 
+test('Management outbound proxy client redacts unavailable control sockets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-client-unavailable-'))
+  const client = new OutboundProxyControlClient(join(root, 'missing.sock'), { timeoutMs: 100 })
+  await assert.rejects(client.configuration(), error => (
+    error.statusCode === 503
+      && error.code === 'PROXY_MANAGER_UNAVAILABLE'
+      && error.stage === 'control'
+      && error.retryable === true
+      && !error.message.includes(root)
+      && !error.message.includes('missing.sock')
+  ))
+})
+
 test('recovers the newest intact immutable revision when current state is corrupt', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-recovery-'))
   let tick = 0
