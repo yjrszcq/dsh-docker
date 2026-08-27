@@ -179,18 +179,25 @@ test('checks Recovery keyring before stable and prepares the complete signed Art
   }
 })
 
-test('rejects encoded signed Artifact responses without retrying transformed bytes', async () => {
-  const { fixture, metadata, preparer } = await system()
-  const checked = await metadata.check()
-  let requests = 0
-  preparer.fetchImpl = async url => {
-    requests += 1
-    return new Response(fixture.files.get(String(url)), {
-      headers: { 'content-encoding': 'gzip', 'content-length': '1' },
+test('rejects encoded signed Artifact responses without retrying transformed bytes', async t => {
+  for (const encoding of ['identity', 'gzip', 'br', 'deflate']) {
+    await t.test(encoding, async () => {
+      const { fixture, metadata, preparer } = await system()
+      const checked = await metadata.check()
+      let requests = 0
+      let imports = 0
+      preparer.trust.importArtifact = async () => { imports += 1 }
+      preparer.fetchImpl = async url => {
+        requests += 1
+        return new Response(fixture.files.get(String(url)), {
+          headers: { 'content-encoding': encoding, 'content-length': '1' },
+        })
+      }
+      await assert.rejects(preparer.prepare(checked.value), /must not use content encoding/)
+      assert.equal(requests, 1)
+      assert.equal(imports, 0)
     })
   }
-  await assert.rejects(preparer.prepare(checked.value), /must not use content encoding/)
-  assert.equal(requests, 1)
 })
 
 test('downloads official DSH metadata and tarball with bounded retry and measurable progress', async () => {
@@ -224,6 +231,27 @@ test('downloads official DSH metadata and tarball with bounded retry and measura
   for (let index = 1; index < progress.length; index += 1) {
     assert.ok(progress[index].processedBytes >= progress[index - 1].processedBytes)
   }
+})
+
+test('rejects an encoded official DSH tarball without retrying transformed bytes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-official-encoding-'))
+  const registry = registryKeyPair()
+  const content = Buffer.from('official-dsh')
+  const candidate = registryCandidate(registry, '0.1.0-rc.8', content)
+  const metadata = JSON.stringify({ versions: { [candidate.version]: candidate } })
+  let requests = 0
+  const downloader = new OfficialDshDownloader({
+    attempts: 3,
+    retryMs: 1,
+    fetchImpl: async () => {
+      requests += 1
+      return requests === 1
+        ? new Response(metadata)
+        : new Response(content, { headers: { 'content-encoding': 'br' } })
+    },
+  })
+  await assert.rejects(downloader.download(candidate.version, root), /must not use content encoding/)
+  assert.equal(requests, 2)
 })
 
 test('does not follow an untrusted official DSH metadata redirect', async () => {

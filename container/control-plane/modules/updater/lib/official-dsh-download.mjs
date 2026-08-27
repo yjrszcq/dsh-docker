@@ -103,7 +103,9 @@ export class OfficialDshDownloader {
       } catch (error) {
         lastError = error
         const status = error?.status
-        if ((Number.isInteger(status) && status < 500 && status !== 408 && status !== 429) || attempt === this.attempts) {
+        if (error?.retryable === false
+          || (Number.isInteger(status) && status < 500 && status !== 408 && status !== 429)
+          || attempt === this.attempts) {
           throw error
         }
         await delay(this.retryMs)
@@ -143,7 +145,9 @@ export class OfficialDshDownloader {
           redirect: 'error',
         }), tarballUrl, 'official DSH tarball')
         if (tarballResponse.headers?.get?.('content-encoding')) {
-          throw new Error('official DSH tarball must not use content encoding')
+          const error = new Error('official DSH tarball must not use content encoding')
+          error.retryable = false
+          throw error
         }
         const declaredTarball = responseLength(tarballResponse)
         const knownTotal = declaredTarball === null ? null : metadata.byteLength + declaredTarball
