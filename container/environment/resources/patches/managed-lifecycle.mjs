@@ -5,13 +5,15 @@ export const MANAGED_LIFECYCLE_MODULE = 'lib/dsh-docker-managed-lifecycle.js'
 export const PROFILE_PACKAGE_STORAGE_MODULE = 'lib/dsh-docker-profile-package-storage.js'
 const BIN_TARGET = 'lib/bin.js'
 const BIN_IMPORT = 'import { prepareManagedInvocation } from "./dsh-docker-managed-lifecycle.js";'
-const PROFILE_IMPORT = 'import { managedSigtermHandler, provideManagedLifecycle } from "./dsh-docker-managed-lifecycle.js";'
+const PROFILE_IMPORT = 'import { managedSigtermHandler, markManagedReady, provideManagedLifecycle } from "./dsh-docker-managed-lifecycle.js";'
 const BIN_DISPATCH = 'const invocation = parseDshArgs(process.argv.slice(2), readVersion());'
 const BIN_DISPATCH_PATCHED = `${BIN_DISPATCH}\nconst managedExitCode = await prepareManagedInvocation(invocation);\nif (managedExitCode !== null) process.exit(managedExitCode);`
 const SIGTERM = 'process.on("SIGTERM", () => {\n\t\tinterrupt(0);\n\t});'
 const SIGTERM_PATCHED = 'process.on("SIGTERM", managedSigtermHandler(interrupt));'
 const HOST_PROVIDER = 'hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);'
 const HOST_PROVIDER_PATCHED = `${HOST_PROVIDER}\n\t\tprovideManagedLifecycle(hostCtx);`
+const PROFILE_RETURN = '\treturn {\n\t\tctx,\n\t\tshutdown\n\t};'
+const PROFILE_RETURN_PATCHED = '\tif (ctx.get("loader") !== void 0) await markManagedReady();\n' + PROFILE_RETURN
 
 const PROFILE_PACKAGE_STORAGE_SOURCE = String.raw`import {
 	closeSync, cpSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync,
@@ -410,6 +412,13 @@ export function managedSigtermHandler(interrupt) {
 	};
 }
 
+export async function markManagedReady() {
+	if (managedSessionId === null) return;
+	await requestJson(socketPath("dsh-lifecycle.sock"), "POST", "/v1/runtime/ready", {
+		sessionId: managedSessionId
+	});
+}
+
 export function provideManagedLifecycle(hostCtx) {
 	if (managedSessionId === null) return;
 	hostCtx.provide("dshPlatformLifecycle", Object.freeze({
@@ -468,6 +477,7 @@ export function applyPatch(dshRoot) {
   profile = `${PROFILE_IMPORT}\n${profile}`
   profile = replaceOnce(profile, SIGTERM, SIGTERM_PATCHED, 'Web Profile SIGTERM handler', profilePath)
   profile = replaceOnce(profile, HOST_PROVIDER, HOST_PROVIDER_PATCHED, 'Web Profile host provider', profilePath)
+  profile = replaceOnce(profile, PROFILE_RETURN, PROFILE_RETURN_PATCHED, 'Web Profile settled return', profilePath)
   writeFileSync(join(root, MANAGED_LIFECYCLE_MODULE), ADAPTER_SOURCE)
   writeFileSync(join(root, PROFILE_PACKAGE_STORAGE_MODULE), PROFILE_PACKAGE_STORAGE_SOURCE)
   writeFileSync(profilePath, profile)
@@ -488,10 +498,11 @@ export function verifyPatch(dshRoot) {
   if (profile.split(PROFILE_IMPORT).length - 1 !== 1
     || profile.split(SIGTERM_PATCHED).length - 1 !== 1
     || profile.split(HOST_PROVIDER_PATCHED).length - 1 !== 1
+    || profile.split(PROFILE_RETURN_PATCHED).length - 1 !== 1
     || profile.includes(SIGTERM)) {
     throw new Error(`Managed lifecycle Profile Patch verification failed for ${profilePath}`)
   }
-  for (const marker of ['prepareManagedInvocation', 'managedSigtermHandler', 'provideManagedLifecycle']) {
+  for (const marker of ['prepareManagedInvocation', 'managedSigtermHandler', 'markManagedReady', 'provideManagedLifecycle']) {
     if (!adapter.includes(`export function ${marker}`) && !adapter.includes(`export async function ${marker}`)) {
       throw new Error(`Managed lifecycle adapter is missing ${marker}`)
     }

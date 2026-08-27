@@ -78,10 +78,25 @@ export class DshLifecycleBroker {
       throw Object.assign(new Error('DSH launch token is invalid or already consumed'), { statusCode: 409 })
     }
     const sessionId = randomUUID()
-    this.session = Object.freeze({ id: sessionId, launchId: this.launch.id })
+    this.session = Object.freeze({ id: sessionId, launchId: this.launch.id, ready: false })
     this.launch = Object.freeze({ ...this.launch, token: null })
     void this.record('dsh.launch.claimed')
     return Object.freeze({ sessionId })
+  }
+
+  ready(sessionId) {
+    if (this.session === null || !matchesSecret(sessionId, this.session.id)) {
+      throw Object.assign(new Error('DSH lifecycle session is invalid'), { statusCode: 409 })
+    }
+    if (!this.session.ready) {
+      this.session = Object.freeze({ ...this.session, ready: true })
+      void this.record('dsh.launch.ready')
+    }
+    return Object.freeze({ ready: true })
+  }
+
+  readiness() {
+    return Object.freeze({ ready: this.session?.ready === true })
   }
 
   async signal(sessionId, signal) {
@@ -89,7 +104,7 @@ export class DshLifecycleBroker {
     if (this.session === null || !matchesSecret(sessionId, this.session.id)) {
       throw Object.assign(new Error('DSH lifecycle session is invalid'), { statusCode: 409 })
     }
-    const disposition = this.shuttingDown || await this.shouldTerminate()
+    const disposition = this.session.ready !== true || this.shuttingDown || await this.shouldTerminate()
       ? 'terminate'
       : 'request-restart'
     await this.record('dsh.signal.disposition', { disposition, signal })
@@ -113,6 +128,12 @@ export function createDshLifecycleServer(broker) {
       if (pathname === '/v1/runtime/claim') {
         const body = exactObject(await jsonBody(request), ['launchToken'], 'claim request')
         send(response, 200, broker.claim(body.launchToken))
+      } else if (pathname === '/v1/runtime/ready') {
+        const body = exactObject(await jsonBody(request), ['sessionId'], 'ready request')
+        send(response, 200, broker.ready(body.sessionId))
+      } else if (pathname === '/v1/runtime/readiness') {
+        exactObject(await jsonBody(request), [], 'readiness request')
+        send(response, 200, broker.readiness())
       } else if (pathname === '/v1/runtime/signal') {
         const body = exactObject(await jsonBody(request), ['sessionId', 'signal'], 'signal request')
         send(response, 200, await broker.signal(body.sessionId, body.signal))

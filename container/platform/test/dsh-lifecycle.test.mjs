@@ -31,12 +31,15 @@ test('authorizes exactly one claim for each supervised DSH launch', async () => 
   const launch = broker.prepareLaunch('dsh-runtime')
   const first = broker.claim(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN)
   assert.match(first.sessionId, /^[0-9a-f-]{36}$/)
+  assert.deepEqual(broker.readiness(), { ready: false })
+  assert.deepEqual(broker.ready(first.sessionId), { ready: true })
+  assert.deepEqual(broker.readiness(), { ready: true })
   assert.throws(() => broker.claim(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN), /already consumed/)
   launch.release()
   await assert.rejects(broker.signal(first.sessionId, 'SIGTERM'), /session is invalid/)
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(reports.map(value => value.message), [
-    'dsh.launch.authorized', 'dsh.launch.claimed', 'dsh.launch.released',
+    'dsh.launch.authorized', 'dsh.launch.claimed', 'dsh.launch.ready', 'dsh.launch.released',
   ])
   assert.doesNotMatch(JSON.stringify(reports), new RegExp(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN))
   assert.doesNotMatch(JSON.stringify(reports), new RegExp(first.sessionId))
@@ -56,6 +59,8 @@ test('returns restart only for an active session outside an owned shutdown', asy
   const broker = new DshLifecycleBroker({ shouldTerminate: async () => owned })
   const launch = broker.prepareLaunch('dsh-runtime')
   const { sessionId } = broker.claim(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN)
+  assert.deepEqual(await broker.signal(sessionId, 'SIGTERM'), { disposition: 'terminate' })
+  broker.ready(sessionId)
   assert.deepEqual(await broker.signal(sessionId, 'SIGTERM'), { disposition: 'request-restart' })
   owned = true
   assert.deepEqual(await broker.signal(sessionId, 'SIGTERM'), { disposition: 'terminate' })
@@ -65,7 +70,7 @@ test('returns restart only for an active session outside an owned shutdown', asy
   await assert.rejects(broker.signal(sessionId, 'SIGINT'), /signal is invalid/)
 })
 
-test('serves only claim and signal over a private Unix socket', async t => {
+test('serves launch ownership and readiness over a private Unix socket', async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-broker-'))
   const socketPath = join(root, 'dsh-lifecycle.sock')
   const reports = []
@@ -80,6 +85,18 @@ test('serves only claim and signal over a private Unix socket', async t => {
     launchToken: launch.environment.DSH_PLATFORM_LAUNCH_TOKEN,
   })
   assert.equal(claim.status, 200)
+  assert.deepEqual(await call(socketPath, '/v1/runtime/readiness', {}), {
+    status: 200,
+    body: { ready: false },
+  })
+  assert.deepEqual(await call(socketPath, '/v1/runtime/ready', { sessionId: claim.body.sessionId }), {
+    status: 200,
+    body: { ready: true },
+  })
+  assert.deepEqual(await call(socketPath, '/v1/runtime/readiness', {}), {
+    status: 200,
+    body: { ready: true },
+  })
   const signal = await call(socketPath, '/v1/runtime/signal', {
     sessionId: claim.body.sessionId,
     signal: 'SIGTERM',

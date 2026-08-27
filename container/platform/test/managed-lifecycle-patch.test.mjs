@@ -35,6 +35,10 @@ ${sigterm ? '\tprocess.on("SIGTERM", () => {\n\t\tinterrupt(0);\n\t});' : '\tpro
 \tconst ctx = await boot(NAME, rootConfig, patches, (hostCtx) => {
 \t\thostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);
 \t});
+\treturn {
+\t\tctx,
+\t\tshutdown
+\t};
 }
 export { runProfile as x };
 `)
@@ -249,6 +253,7 @@ test('gates only managed Web launches and routes restart through Management', as
     calls.push({ socket: 'broker', path: request.url, body: JSON.parse(Buffer.concat(chunks)) })
     if (claimStatus !== 200) json(response, claimStatus, { error: 'launch already claimed' })
     else if (request.url === '/v1/runtime/claim') json(response, 200, { sessionId: 'session-1' })
+    else if (request.url === '/v1/runtime/ready') json(response, 200, { ready: true })
     else {
       if (signalDelayMs > 0) await new Promise(resolve => setTimeout(resolve, signalDelayMs))
       json(response, 200, { disposition })
@@ -279,6 +284,8 @@ test('gates only managed Web launches and routes restart through Management', as
       JSON.parse(await readFile(profileManifest, 'utf8')).dsh.profile.bundles,
       ['built-in-bundle', 'missing-dependency'],
     )
+    await adapter.markManagedReady()
+    assert.equal(calls.some(value => value.socket === 'broker' && value.path === '/v1/runtime/ready'), true)
     let provided
     adapter.provideManagedLifecycle({ provide: (name, value) => { provided = { name, value } } })
     assert.equal(provided.name, 'dshPlatformLifecycle')

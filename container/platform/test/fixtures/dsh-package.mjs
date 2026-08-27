@@ -20,6 +20,10 @@ switch (invocation.mode) {
 \tconst ctx = await boot(NAME, rootConfig, patches, (hostCtx) => {
 \t\thostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);
 \t});
+\treturn {
+\t\tctx,
+\t\tshutdown
+\t};
 }
 export { runProfile as r };
 `)
