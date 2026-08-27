@@ -7,7 +7,7 @@ import test from 'node:test'
 import { buildSystemPluginClient } from '../tools/build-system-plugin-client.mjs'
 import { apply as applyPlatformManagement, inject, managedNetworkInternals } from '../../environment/resources/plugins/platform-management/package/lib/index.js'
 import {
-  installProviderRouting,
+  installProviderRouting, providerRoutingInternals,
 } from '../../environment/resources/plugins/platform-management/package/lib/provider-routing.js'
 
 const root = new URL('../../environment/resources/plugins/platform-management/package/', import.meta.url)
@@ -91,8 +91,10 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     const listeners = new Map()
     let directClosed = false
     let agentClosed = false
+    let sharedClosed = false
     const directDispatcher = { close: async () => { directClosed = true } }
     const agentDispatcher = { close: async () => { agentClosed = true } }
+    const sharedDispatcher = { close: async () => { sharedClosed = true } }
     const previousFetch = globalThis.fetch
     const observed = []
     globalThis.fetch = async () => { throw new Error('ambient proxy fetch must not be used') }
@@ -103,6 +105,7 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
       routingStatePath,
       createDirectDispatcher: () => directDispatcher,
       createAgentDispatcher: () => agentDispatcher,
+      createSharedDispatcher: () => sharedDispatcher,
       routedFetch: async (_input, init) => {
         observed.push(init.dispatcher)
         return { ok: true }
@@ -143,6 +146,53 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
         yield 'must-not-run'
       })())
       await assert.rejects(protectedStream.next(), /ENOENT|ECONNREFUSED/)
+
+      const sharedDirect = listeners.get('llm/stream')({
+        provider: 'shared-provider', supportsIndependentRouting: false,
+      }, () => (async function* () {
+        await fetch('https://shared-direct.invalid')
+        yield 'shared-direct'
+      })())
+      assert.deepEqual(await sharedDirect.next(), { value: 'shared-direct', done: false })
+      assert.equal(observed.at(-1), directDispatcher)
+
+      await writeFile(routingStatePath, JSON.stringify({
+        schema: 1,
+        revision: 'shared-revision',
+        enabled: true,
+        scopes: { dshCore: false, dshPlugins: true, agentNetwork: false },
+        modelApi: {
+          default: { proxyEnabled: false },
+          providers: { 'shared-provider': { proxyEnabled: true } },
+        },
+      }))
+      const sharedProxied = listeners.get('llm/stream')({
+        provider: 'shared-provider', routingCapability: 'shared-dsh',
+      }, () => (async function* () {
+        await fetch('https://shared-proxied.invalid')
+        yield 'shared-proxied'
+      })())
+      assert.deepEqual(await sharedProxied.next(), { value: 'shared-proxied', done: false })
+      assert.equal(observed.at(-1), sharedDispatcher)
+
+      await writeFile(routingStatePath, JSON.stringify({
+        schema: 1,
+        revision: 'shared-direct-revision',
+        enabled: true,
+        scopes: { dshCore: true, dshPlugins: true, agentNetwork: false },
+        modelApi: {
+          default: { proxyEnabled: false },
+          providers: { 'shared-provider': { proxyEnabled: false } },
+        },
+      }))
+      const sharedDisabled = listeners.get('llm/stream')({
+        provider: 'shared-provider', supportsIndependentRouting: false,
+      }, () => (async function* () {
+        await fetch('https://shared-disabled.invalid')
+        yield 'shared-disabled'
+      })())
+      assert.deepEqual(await sharedDisabled.next(), { value: 'shared-disabled', done: false })
+      assert.equal(observed.at(-1), directDispatcher)
     } finally {
       remove()
       globalThis.fetch = previousFetch
@@ -150,7 +200,50 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(directClosed, true)
     assert.equal(agentClosed, true)
+    assert.equal(sharedClosed, true)
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Platform Management retries one Provider policy revision conflict and no more', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-revision-retry-'))
+  const socketPath = join(root, 'proxy.sock')
+  const requests = []
+  let revision = 'revision-one'
+  let conflicts = 0
+  const server = createServer(async (request, response) => {
+    const chunks = []
+    for await (const chunk of request) chunks.push(chunk)
+    const body = chunks.length === 0 ? undefined : JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    requests.push([request.method, request.url, body])
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET') {
+      response.end(JSON.stringify({ revision }))
+      return
+    }
+    conflicts += 1
+    revision = `revision-${conflicts + 1}`
+    response.statusCode = 409
+    response.end(JSON.stringify({ error: { code: 'REVISION_CONFLICT', message: 'changed' } }))
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(socketPath, resolve)
+  })
+  try {
+    await assert.rejects(
+      providerRoutingInternals.issueProviderHandle('deepseek-official', socketPath),
+      error => error.code === 'REVISION_CONFLICT',
+    )
+    assert.deepEqual(requests, [
+      ['GET', '/v1/configuration', undefined],
+      ['POST', '/v1/provider-handles', { providerId: 'deepseek-official', policyRevision: 'revision-one' }],
+      ['GET', '/v1/configuration', undefined],
+      ['POST', '/v1/provider-handles', { providerId: 'deepseek-official', policyRevision: 'revision-2' }],
+    ])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })
   }
 })

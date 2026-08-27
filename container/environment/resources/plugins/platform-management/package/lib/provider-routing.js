@@ -28,6 +28,12 @@ function providerProxyEnabled(state, providerId) {
   return policy?.proxyEnabled === true
 }
 
+function providerRoutingCapability(options) {
+  return options?.routingCapability === 'shared-dsh' || options?.supportsIndependentRouting === false
+    ? 'shared-dsh'
+    : 'provider'
+}
+
 function sharedDshProxyEnabled(state) {
   return state !== null && state.enabled
     && (state.scopes?.dshCore === true || state.scopes?.dshPlugins === true)
@@ -197,11 +203,18 @@ export function installProviderRouting(ctx, {
   }, { global: true, prepend: true })
   const disposeStream = ctx.on('llm/stream', (options, next) => {
     if (!PROVIDER_ID_PATTERN.test(options.provider)) return next()
+    const capability = providerRoutingCapability(options)
     return routedIterator(next, options.provider, store, {
       resolveRoute: async providerId => {
         const state = routingState(routingStatePath)
         if (state !== null && !providerProxyEnabled(state, providerId)) {
           return { dispatcher: directDispatcher, owned: false }
+        }
+        if (capability === 'shared-dsh') {
+          return {
+            dispatcher: sharedDshProxyEnabled(state) ? sharedDispatcher : directDispatcher,
+            owned: false,
+          }
         }
         const { handle } = await issueProviderHandle(providerId, socketPath)
         return {
@@ -228,6 +241,7 @@ export const providerRoutingInternals = Object.freeze({
   issueProviderHandle,
   agentNetworkProxyEnabled,
   providerProxyEnabled,
+  providerRoutingCapability,
   sharedDshProxyEnabled,
   routingState,
   routedIterator,
