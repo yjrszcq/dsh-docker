@@ -105,8 +105,15 @@ export async function readHttpHead(socket, {
   }
 }
 
-export async function connectThroughHttpProxy({ endpoint, targetHost, targetPort, signal }) {
-  const socket = await connectTcp({ ...endpoint, signal })
+export async function connectThroughHttpProxy({
+  endpoint,
+  targetHost,
+  targetPort,
+  connectTimeoutMs = PROXY_TIMEOUTS.connectMs,
+  handshakeTimeoutMs = PROXY_TIMEOUTS.handshakeMs,
+  signal,
+}) {
+  const socket = await connectTcp({ ...endpoint, timeoutMs: connectTimeoutMs, signal })
   const authorization = basicProxyAuthorization(endpoint.username, endpoint.password)
   const authority = targetHost.includes(':') ? `[${targetHost}]:${targetPort}` : `${targetHost}:${targetPort}`
   socket.write([
@@ -118,7 +125,7 @@ export async function connectThroughHttpProxy({ endpoint, targetHost, targetPort
     '',
   ].join('\r\n'))
   try {
-    const result = await readHttpHead(socket, { signal })
+    const result = await readHttpHead(socket, { timeoutMs: handshakeTimeoutMs, signal })
     validateHttpHeadLimits(result.head)
     const first = result.head.subarray(0, result.head.indexOf('\r\n')).toString('latin1')
     const match = /^HTTP\/1\.[01] ([0-9]{3})(?: |$)/.exec(first)
@@ -354,16 +361,18 @@ export async function connectThroughSocks5({
   targetHost,
   targetPort,
   resolver = lookup,
-  timeoutMs = PROXY_TIMEOUTS.handshakeMs,
+  connectTimeoutMs = PROXY_TIMEOUTS.connectMs,
+  handshakeTimeoutMs = PROXY_TIMEOUTS.handshakeMs,
+  timeoutMs,
   signal,
 }) {
-  const socket = await connectTcp({ ...endpoint, signal })
+  const socket = await connectTcp({ ...endpoint, timeoutMs: connectTimeoutMs, signal })
   const cancel = () => socket.destroy(new ProxyTransportError('SOCKS5 handshake was cancelled', {
     code: 'REQUEST_CANCELLED', statusCode: 499,
   }))
   signal?.addEventListener('abort', cancel, { once: true })
   const reader = new SocketByteReader(socket)
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + (timeoutMs ?? handshakeTimeoutMs)
   try {
     const username = Buffer.from(endpoint.username ?? '', 'utf8')
     const password = Buffer.from(endpoint.password ?? '', 'utf8')

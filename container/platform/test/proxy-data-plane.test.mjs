@@ -33,6 +33,21 @@ async function close(server) {
   await new Promise(resolve => server.close(resolve))
 }
 
+async function unusedPort() {
+  const server = createNetServer()
+  const port = await listen(server)
+  await close(server)
+  return port
+}
+
+const shortTimeouts = Object.freeze({
+  connectMs: 30,
+  handshakeMs: 30,
+  responseHeaderMs: 30,
+  streamIdleMs: 30,
+  tunnelIdleMs: 30,
+})
+
 function snapshot({
   proxyPort = null,
   protocol = 'http',
@@ -218,6 +233,139 @@ test('keeps local readiness separate from revision-scoped external route health'
   assert.equal(health.status(enabled).updates, 'ready')
   const next = Object.freeze({ ...enabled, revision: 'next-revision' })
   assert.equal(health.status(next).updates, 'unknown')
+})
+
+test('classifies target DNS and TCP connection failures at the proxy entry', async () => {
+  let proxyConnections = 0
+  const socks = createNetServer(socket => {
+    proxyConnections += 1
+    socket.destroy()
+  })
+  const socksPort = await listen(socks)
+  const dnsState = snapshot({ proxyPort: socksPort, protocol: 'socks5', remoteDns: false })
+  const dnsProxy = createScopedProxyServer({
+    scope: 'updates',
+    getSnapshot: () => dnsState,
+    resolver: async () => { throw new Error('fixture DNS failure') },
+    timeouts: shortTimeouts,
+  })
+  const dnsProxyPort = await listen(dnsProxy)
+  try {
+    const result = await proxyRequest({ proxyPort: dnsProxyPort, target: 'http://missing.example/' })
+    assert.equal(result.statusCode, 502)
+    assert.equal(result.headers['x-dsh-proxy-error'], 'TARGET_DNS_FAILED')
+    assert.equal(proxyConnections, 0)
+  } finally {
+    await close(dnsProxy)
+    await close(socks)
+  }
+
+  const refusedPort = await unusedPort()
+  const tcpProxy = createScopedProxyServer({
+    scope: 'updates', getSnapshot: () => snapshot(), timeouts: shortTimeouts,
+  })
+  const tcpProxyPort = await listen(tcpProxy)
+  try {
+    const result = await proxyRequest({ proxyPort: tcpProxyPort, target: `http://127.0.0.1:${refusedPort}/` })
+    assert.equal(result.statusCode, 502)
+    assert.equal(result.headers['x-dsh-proxy-error'], 'UPSTREAM_CONNECT_FAILED')
+  } finally {
+    await close(tcpProxy)
+  }
+})
+
+test('classifies HTTP proxy handshake and response-header timeouts at the proxy entry', async () => {
+  const silentProxy = createNetServer(socket => socket.resume())
+  const silentProxyPort = await listen(silentProxy)
+  const state = snapshot({ proxyPort: silentProxyPort })
+  const handshakeProxy = createScopedProxyServer({
+    scope: 'updates', getSnapshot: () => state, timeouts: shortTimeouts,
+  })
+  const handshakeProxyPort = await listen(handshakeProxy)
+  try {
+    const exchange = await rawExchange(handshakeProxyPort, [
+      'CONNECT target.example:443 HTTP/1.1',
+      'Host: target.example:443',
+      '',
+      '',
+    ].join('\r\n'), { waitFor: 'PROXY_CONNECT_TIMEOUT' })
+    assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 504 /)
+  } finally {
+    await close(handshakeProxy)
+    await close(silentProxy)
+  }
+
+  const silentTarget = createServer(() => {})
+  const silentTargetPort = await listen(silentTarget)
+  const responseProxy = createScopedProxyServer({
+    scope: 'updates', getSnapshot: () => snapshot(), timeouts: shortTimeouts,
+  })
+  const responseProxyPort = await listen(responseProxy)
+  try {
+    const result = await proxyRequest({ proxyPort: responseProxyPort, target: `http://127.0.0.1:${silentTargetPort}/` })
+    assert.equal(result.statusCode, 504)
+    assert.equal(result.headers['x-dsh-proxy-error'], 'UPSTREAM_TIMEOUT')
+  } finally {
+    await close(responseProxy)
+    await close(silentTarget)
+  }
+})
+
+test('closes idle HTTP response streams and CONNECT tunnels', async () => {
+  const partialTarget = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/plain' })
+    response.write('partial')
+  })
+  const partialTargetPort = await listen(partialTarget)
+  const streamProxy = createScopedProxyServer({
+    scope: 'updates', getSnapshot: () => snapshot(), timeouts: shortTimeouts,
+  })
+  const streamProxyPort = await listen(streamProxy)
+  let streamSocket
+  try {
+    const exchange = await rawExchange(streamProxyPort, [
+      `GET http://127.0.0.1:${partialTargetPort}/ HTTP/1.1`,
+      `Host: 127.0.0.1:${partialTargetPort}`,
+      '',
+      '',
+    ].join('\r\n'), { waitFor: 'partial', keepOpen: true })
+    streamSocket = exchange.socket
+    assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 200 /)
+    await Promise.race([
+      once(streamSocket, 'close'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('idle HTTP response stream remained open')), 500)),
+    ])
+  } finally {
+    streamSocket?.destroy()
+    await close(streamProxy)
+    await close(partialTarget)
+  }
+
+  const tunnelTarget = createNetServer(socket => socket.resume())
+  const tunnelTargetPort = await listen(tunnelTarget)
+  const tunnelProxy = createScopedProxyServer({
+    scope: 'updates', getSnapshot: () => snapshot(), timeouts: shortTimeouts,
+  })
+  const tunnelProxyPort = await listen(tunnelProxy)
+  let tunnelSocket
+  try {
+    const exchange = await rawExchange(tunnelProxyPort, [
+      `CONNECT 127.0.0.1:${tunnelTargetPort} HTTP/1.1`,
+      `Host: 127.0.0.1:${tunnelTargetPort}`,
+      '',
+      '',
+    ].join('\r\n'), { keepOpen: true })
+    tunnelSocket = exchange.socket
+    assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 200 Connection Established/)
+    await Promise.race([
+      once(tunnelSocket, 'close'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('idle CONNECT tunnel remained open')), 500)),
+    ])
+  } finally {
+    tunnelSocket?.destroy()
+    await close(tunnelProxy)
+    await close(tunnelTarget)
+  }
 })
 
 function socksFixture({ username = null, password = null, rejectAuth = false, rejectConnect = false, connectTarget = true, sticky = '' } = {}) {

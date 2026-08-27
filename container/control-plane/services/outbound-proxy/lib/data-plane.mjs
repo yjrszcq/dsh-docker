@@ -168,30 +168,43 @@ async function tryTargets(targets, connectTarget, { retry } = {}) {
   throw failure ?? new ProxyTransportError('no usable target addresses', { code: 'TARGET_DNS_FAILED' })
 }
 
-async function routeSocket(route, target, signal) {
+async function routeSocket(route, target, signal, timeouts) {
   if (route.mode === 'direct') return tryTargets(route.targets ?? [{ address: target.host }], async candidate => Object.freeze({
-    socket: await connectTcp({ host: candidate.address, port: target.port, signal }),
+    socket: await connectTcp({ host: candidate.address, port: target.port, timeoutMs: timeouts.connectMs, signal }),
     remainder: Buffer.alloc(0),
   }))
   if (route.mode === 'http') return connectThroughHttpProxy({
     endpoint: route.endpoint,
     targetHost: target.host,
     targetPort: target.port,
+    connectTimeoutMs: timeouts.connectMs,
+    handshakeTimeoutMs: timeouts.handshakeMs,
     signal,
   })
   if (route.mode === 'socks5') return tryTargets(route.targets ?? [{ address: target.host }], candidate => connectThroughSocks5({
-    endpoint: route.endpoint, targetHost: candidate.address, targetPort: target.port, signal,
+    endpoint: route.endpoint,
+    targetHost: candidate.address,
+    targetPort: target.port,
+    connectTimeoutMs: timeouts.connectMs,
+    handshakeTimeoutMs: timeouts.handshakeMs,
+    signal,
   }), { retry: error => error?.code === 'UPSTREAM_PROXY_REJECTED' })
   throw new ProxyTransportError('configured proxy protocol is not available', {
     code: 'PROXY_PROTOCOL_UNAVAILABLE',
   })
 }
 
-async function httpConnection(route, target, signal) {
+async function httpConnection(route, target, signal, timeouts) {
   if (route.mode === 'http') return Object.freeze({
-    socket: await connectTcp({ host: route.endpoint.host, port: route.endpoint.port, signal }), remainder: Buffer.alloc(0),
+    socket: await connectTcp({
+      host: route.endpoint.host,
+      port: route.endpoint.port,
+      timeoutMs: timeouts.connectMs,
+      signal,
+    }),
+    remainder: Buffer.alloc(0),
   })
-  return routeSocket(route, target, signal)
+  return routeSocket(route, target, signal, timeouts)
 }
 
 function agentKey(route) {
@@ -220,20 +233,20 @@ export class ProxyAgentPool {
     }
   }
 
-  agentFor(route) {
+  agentFor(route, timeouts = PROXY_TIMEOUTS) {
     this.retireOtherRevisions(route.revision)
     const key = agentKey(route)
     const existing = this.entries.get(key)
     if (existing !== undefined) return existing.agent
     const entry = { revision: route.revision, retired: false, agent: null }
-    const agent = new Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 8, timeout: PROXY_TIMEOUTS.streamIdleMs })
+    const agent = new Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 8, timeout: timeouts.streamIdleMs })
     entry.agent = agent
     agent.createConnection = (options, callback) => {
       const target = {
         host: options.dshProxyTargetHost,
         port: Number(options.dshProxyTargetPort),
       }
-      void httpConnection(route, target, options.dshProxySignal).then(connection => {
+      void httpConnection(route, target, options.dshProxySignal, timeouts).then(connection => {
         if (connection.remainder.byteLength > 0) connection.socket.unshift(connection.remainder)
         connection.socket.resume()
         callback(null, connection.socket)
@@ -277,7 +290,7 @@ async function handleHttp(request, response, context) {
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     const proxied = route.mode === 'http'
-    const agent = context.agentPool.agentFor(route)
+    const agent = context.agentPool.agentFor(route, context.timeouts)
     const headers = forwardHeaders(request.headers, {
       host: target.authority,
       authorization: proxied ? basicProxyAuthorization(route.endpoint.username, route.endpoint.password) : null,
@@ -295,7 +308,7 @@ async function handleHttp(request, response, context) {
       dshProxyTargetPort: target.port,
       dshProxySignal: cancellation.signal,
     })
-    upstream.setTimeout(PROXY_TIMEOUTS.responseHeaderMs, () => upstream.destroy(new ProxyTransportError('upstream response timed out', {
+    upstream.setTimeout(context.timeouts.responseHeaderMs, () => upstream.destroy(new ProxyTransportError('upstream response timed out', {
       code: 'UPSTREAM_TIMEOUT', statusCode: 504,
     })))
     request.once('aborted', () => upstream.destroy())
@@ -306,7 +319,7 @@ async function handleHttp(request, response, context) {
         return proxyError(response, 502, 'UPSTREAM_PROXY_AUTH_FAILED', 'upstream proxy authentication failed')
       }
       if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
-      incoming.socket.setTimeout(PROXY_TIMEOUTS.streamIdleMs, () => incoming.destroy(new ProxyTransportError('upstream response timed out', {
+      incoming.socket.setTimeout(context.timeouts.streamIdleMs, () => incoming.destroy(new ProxyTransportError('upstream response timed out', {
         code: 'UPSTREAM_TIMEOUT', statusCode: 504,
       })))
       response.writeHead(incoming.statusCode ?? 502, incoming.statusMessage, responseHeaders(incoming.headers))
@@ -366,14 +379,14 @@ async function handleUpgrade(request, socket, head, context) {
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
     if (!['direct', 'http', 'socks5'].includes(route.mode)) throw new ProxyTransportError('configured proxy protocol is not available', { code: 'PROXY_PROTOCOL_UNAVAILABLE' })
-    const connected = await httpConnection(route, target, cancellation.signal)
+    const connected = await httpConnection(route, target, cancellation.signal, context.timeouts)
     if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
     const authorization = route.mode === 'http' ? basicProxyAuthorization(route.endpoint.username, route.endpoint.password) : null
     const preface = rawRequest(request, target, { absolute: route.mode === 'http', authorization })
     bridge(socket, connected.socket, {
       leftHead: Buffer.concat([preface, head]),
       rightHead: connected.remainder,
-      timeoutMs: PROXY_TIMEOUTS.streamIdleMs,
+      timeoutMs: context.timeouts.streamIdleMs,
     })
   } catch (error) {
     if (route?.mode !== undefined && route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
@@ -398,13 +411,13 @@ async function handleConnect(request, socket, head, context) {
       snapshot, scope: context.scope, providerId, host: target.host, port: target.port,
       dnsCache: context.dnsCache, signal: cancellation.signal,
     })
-    const connected = await routeSocket(route, target, cancellation.signal)
+    const connected = await routeSocket(route, target, cancellation.signal, context.timeouts)
     if (route.mode !== 'direct') observeRouteHealth(context, snapshot, 'ready')
     socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
     bridge(socket, connected.socket, {
       leftHead: head,
       rightHead: connected.remainder,
-      timeoutMs: PROXY_TIMEOUTS.tunnelIdleMs,
+      timeoutMs: context.timeouts.tunnelIdleMs,
     })
   } catch (error) {
     if (route?.mode !== undefined && route.mode !== 'direct') observeRouteHealth(context, snapshot, 'degraded')
@@ -421,8 +434,17 @@ export function createScopedProxyServer({
   agentPool = new ProxyAgentPool(),
   routeHealth = new ProxyRouteHealth(),
   providerHandles,
+  timeouts = PROXY_TIMEOUTS,
 }) {
-  const context = Object.freeze({ scope, getSnapshot, dnsCache, agentPool, routeHealth, providerHandles })
+  const context = Object.freeze({
+    scope,
+    getSnapshot,
+    dnsCache,
+    agentPool,
+    routeHealth,
+    providerHandles,
+    timeouts: Object.freeze({ ...PROXY_TIMEOUTS, ...timeouts }),
+  })
   const server = createServer({ maxHeaderSize: 256 * 1024, allowHalfOpen: true }, (request, response) => {
     void handleHttp(request, response, context)
   })
