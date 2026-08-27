@@ -120,6 +120,20 @@ test('standalone recovery smoke covers live terminal and consecutive faulty plug
   assert.match(script, /assert\.doesNotMatch\(JSON\.stringify\(logEntries\.filter/)
 })
 
+test('Stage-0 owns privileged User Skill mutations behind a constrained local API', async () => {
+  const [stage0, management, paths] = await Promise.all([
+    readFile(new URL('../stage0/index.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../lib/paths.mjs', import.meta.url), 'utf8'),
+  ])
+  assert.match(stage0, /prepareUserSkillRoots, UserSkillManager/)
+  assert.match(stage0, /new UserSkillManager\(\{ dshHome, agentsHome \}\)/)
+  assert.match(stage0, /listenUserSkills\(userSkillServer, paths\.userSkillSocket\)/)
+  assert.match(management, /new LocalApiClient\(paths\.userSkillSocket\)/)
+  assert.match(management, /configureUserSkill: value => userSkillApi\.request\('POST', '\/v1\/action', value\)/)
+  assert.match(paths, /this\.userSkillSocket = join\(this\.runRoot, 'user-skills\.sock'\)/)
+})
+
 test('Docker health reports DSH readiness instead of control-plane liveness', async () => {
   const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
   const healthcheck = dockerfile.split('HEALTHCHECK')[1]?.split('\n\n')[0] ?? ''

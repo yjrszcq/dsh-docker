@@ -23,10 +23,11 @@ import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.m
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
 import { createPasswordAccess } from '../../control-plane/services/gateway/lib/auth.mjs'
-import { prepareUserSkillRoots } from '../../control-plane/services/management/user-skills.mjs'
+import { prepareUserSkillRoots, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
 import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
 import { createSnapshotServer, listenSnapshots } from './lib/snapshot-server.mjs'
+import { createUserSkillServer, listenUserSkills } from './lib/user-skill-server.mjs'
 import { prepareUserWritableRoots } from './lib/user-roots.mjs'
 import {
   ProxyLaunchBroker,
@@ -251,6 +252,12 @@ const snapshotServer = createSnapshotServer({
 })
 await startup('snapshot-api', () => listenSnapshots(snapshotServer, paths.snapshotSocket))
 await logs.diagnostic('stage0', 'snapshot-api.ready', { privileged: true })
+const userSkillServer = createUserSkillServer({
+  manager: new UserSkillManager({ dshHome, agentsHome }),
+  report: (message, fields) => logs.diagnostic('user-skill-manager', message, fields),
+})
+await startup('user-skill-api', () => listenUserSkills(userSkillServer, paths.userSkillSocket))
+await logs.diagnostic('stage0', 'user-skill-api.ready', { privileged: true })
 await startup('bootstrap', () => supervisor.startWithRollback())
 const recoveryServer = createRecoveryServer({
   inventory,
@@ -280,6 +287,7 @@ recoveryServer.close()
 await maintenance.terminal.shutdown()
 await new Promise(resolve => maintenance.server.close(resolve))
 await new Promise(resolve => snapshotServer.close(resolve))
+await new Promise(resolve => userSkillServer.close(resolve))
 try {
   await supervisor.stop()
 } catch (error) {

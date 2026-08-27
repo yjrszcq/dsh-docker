@@ -41,6 +41,7 @@ const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'invent
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
 const snapshotApi = new LocalApiClient(paths.snapshotSocket)
+const userSkillApi = new LocalApiClient(paths.userSkillSocket)
 const outboundProxy = new OutboundProxyControlClient(paths.proxyControlSocket)
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
 const logs = new JsonlLogManager({
@@ -210,7 +211,7 @@ server = createManagementServer({
   configureSystemSkill: (skillId, action) => bootstrap.request('POST', '/v1/system-skills/action', { skillId, action }),
   listUserSkills: () => userSkills.list(),
   validateUserSkillAction: value => userSkills.validate(value),
-  configureUserSkill: value => userSkills.configure(value),
+  configureUserSkill: value => userSkillApi.request('POST', '/v1/action', value),
   listUserPlugins,
   markUserPluginsLoaded,
   validateUserPluginActions: value => userPluginTransactions.validate(value),

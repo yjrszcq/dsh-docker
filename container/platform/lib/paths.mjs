@@ -53,6 +53,7 @@ export class PlatformPaths {
     this.dshLifecycleSocket = join(this.runRoot, 'dsh-lifecycle.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
     this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
+    this.userSkillSocket = join(this.runRoot, 'user-skills.sock')
     this.snapshotSocket = join(this.runRoot, 'snapshot.sock')
     this.gatewayAccessSocket = join(this.runRoot, 'gateway-access.sock')
     this.proxyControlSocket = join(this.runRoot, 'outbound-proxy.sock')
