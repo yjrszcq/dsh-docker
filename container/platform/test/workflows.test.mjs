@@ -160,6 +160,7 @@ test('Docker publication consumes one signed channel target and mirrors only sta
   assert.match(workflow, /latestSupportedDsh/)
   assert.match(workflow, /channel\/targets\/\$sequence/)
   assert.match(workflow, /verify-image-release\.mjs/)
+  assert.equal((workflow.match(/SIGNED_IMAGE_INPUT=true/g) ?? []).length, 4)
   assert.match(workflow, /PLATFORM_REVISION=\$\{\{ steps\.channel\.outputs\.source_commit \}\}/)
   assert.match(workflow, /ENVIRONMENT_VERSION=\$\{\{ steps\.signed-target\.outputs\.environment_version \}\}/)
   assert.match(workflow, /TARGET_SEQUENCE=\$\{\{ steps\.signed-target\.outputs\.sequence \}\}/)

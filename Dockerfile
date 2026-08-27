@@ -1,9 +1,11 @@
 ARG DSH_VERSION=latest
 ARG ENVIRONMENT_VERSION=development
 ARG TARGET_SEQUENCE=0
+ARG SIGNED_IMAGE_INPUT=false
 
 FROM node:24-bookworm-slim AS installer
 ARG DSH_VERSION
+ARG SIGNED_IMAGE_INPUT
 COPY container/platform/image-input /opt/dsh-platform-image-input
 COPY release/supported-target.json /opt/dsh-supported-target.json
 
@@ -12,30 +14,36 @@ RUN apt-get update \
         g++ \
         make \
         python3 \
-    && if [ -f /opt/dsh-platform-image-input/dsh.tgz ]; then \
-         npm install --global /opt/dsh-platform-image-input/dsh.tgz; \
-       else \
+    && case "$SIGNED_IMAGE_INPUT" in \
+       true) \
+         test -f /opt/dsh-platform-image-input/dsh.tgz \
+         && npm install --global /opt/dsh-platform-image-input/dsh.tgz \
+         ;; \
+       false) \
          requested_version="$DSH_VERSION"; \
          if [ "$requested_version" = latest ]; then \
            requested_version="$(node -p "JSON.parse(require('fs').readFileSync('/opt/dsh-supported-target.json', 'utf8')).latestSupportedDsh")"; \
          fi; \
-         npm install --global "@deepseek-ai/dsh@${requested_version}"; \
-       fi \
+         npm install --global "@deepseek-ai/dsh@${requested_version}" \
+         ;; \
+       *) echo "SIGNED_IMAGE_INPUT must be true or false" >&2; exit 64 ;; \
+       esac \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM node:24-bookworm-slim AS platform-seed
 ARG PLATFORM_REVISION=development
+ARG SIGNED_IMAGE_INPUT
 COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
 RUN npm ci --omit=dev --ignore-scripts \
       --prefix /opt/dsh-platform-source/control-plane/services/management \
     && npm ci --omit=dev --ignore-scripts --legacy-peer-deps \
       --prefix /opt/dsh-platform-source/environment/resources/plugins/platform-management/package \
-    && if [ -f /opt/dsh-platform-source/platform/image-input/release/stable.json ]; then \
-      image_input=/opt/dsh-platform-source/platform/image-input; \
-    else \
-      image_input=-; \
-    fi \
+    && case "$SIGNED_IMAGE_INPUT" in \
+      true) image_input=/opt/dsh-platform-source/platform/image-input ;; \
+      false) image_input=- ;; \
+      *) echo "SIGNED_IMAGE_INPUT must be true or false" >&2; exit 64 ;; \
+    esac \
     && node /opt/dsh-platform-source/platform/tools/build-seed.mjs \
       /opt/installed-dsh /opt/dsh-platform-seed "$image_input" "$PLATFORM_REVISION"
 

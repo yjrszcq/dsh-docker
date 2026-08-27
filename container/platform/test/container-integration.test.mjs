@@ -148,9 +148,12 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
 test('local Docker builds resolve the default DSH from the supported target without a sticky latest cache', async () => {
   const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
   assert.match(dockerfile, /COPY release\/supported-target\.json \/opt\/dsh-supported-target\.json/)
+  assert.match(dockerfile, /ARG SIGNED_IMAGE_INPUT=false/)
+  assert.match(dockerfile, /case "\$SIGNED_IMAGE_INPUT" in[\s\S]*true\)[\s\S]*npm install --global \/opt\/dsh-platform-image-input\/dsh\.tgz[\s\S]*false\)[\s\S]*latestSupportedDsh/)
   assert.match(dockerfile, /if \[ "\$requested_version" = latest \]; then[\s\S]*latestSupportedDsh/)
   assert.match(dockerfile, /npm install --global "@deepseek-ai\/dsh@\$\{requested_version\}"/)
-  assert.match(dockerfile, /if \[ -f \/opt\/dsh-platform-image-input\/dsh\.tgz \]; then[\s\S]*npm install --global \/opt\/dsh-platform-image-input\/dsh\.tgz/)
+  assert.match(dockerfile, /false\) image_input=-/)
+  assert.doesNotMatch(dockerfile, /if \[ -f \/opt\/dsh-platform-(?:image-input|source\/platform\/image-input)/)
 })
 
 test('formal images identify DSH, Environment, target sequence, and the signed update channel', async () => {

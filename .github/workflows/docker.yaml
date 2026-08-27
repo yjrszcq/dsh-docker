@@ -182,6 +182,7 @@ jobs:
           load: true
           provenance: false
           build-args: |
+            SIGNED_IMAGE_INPUT=true
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
@@ -203,6 +204,7 @@ jobs:
           load: true
           provenance: false
           build-args: |
+            SIGNED_IMAGE_INPUT=true
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
@@ -238,6 +240,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
+            SIGNED_IMAGE_INPUT=true
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
@@ -256,6 +259,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
+            SIGNED_IMAGE_INPUT=true
             DSH_VERSION=${{ steps.signed-target.outputs.version }}
             ENVIRONMENT_VERSION=${{ steps.signed-target.outputs.environment_version }}
             TARGET_SEQUENCE=${{ steps.signed-target.outputs.sequence }}
