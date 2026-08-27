@@ -302,6 +302,17 @@ test('one unexpected local failure remains 502 until repeated probes confirm una
   }
 })
 
+test('a Bootstrap candidate handoff serves the switching page instead of a bare 502', async () => {
+  const context = await unavailableGateway({ platform: { update: { status: 'building-candidate' } } })
+  try {
+    const response = await request(context.port)
+    assert.equal(response.status, 200)
+    assert.match(response.body, /Switching the DeepSeek Harness runtime/)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})
+
 test('readiness immediately reports ready and clears confirmed failure state', async () => {
   let ready = false
   let now = 0

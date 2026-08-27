@@ -34,12 +34,34 @@ export async function runGateway(config, {
   maintenanceSocketPath = process.env.DSH_PLATFORM_MAINTENANCE_SOCKET ?? '/run/dsh-platform/maintenance.sock',
   gatewayAccessSocketPath = process.env.DSH_PLATFORM_GATEWAY_ACCESS_SOCKET ?? '/run/dsh-platform/gateway-access.sock',
   platformAccess = new PlatformAccess({ password: config.platformPassword }),
+  managementClient,
+  platformStatusPollMs = 250,
+  platformStatusCacheMs = 10_000,
+  now = () => Date.now(),
   accessServerFactory = createPlatformAccessControlServer,
   listenAccessServer = listenPlatformAccessControl,
   report = async () => {},
 } = {}) {
   const record = (message, fields = {}) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
-  const management = new LocalApiClient(managementSocketPath)
+  const management = managementClient ?? new LocalApiClient(managementSocketPath)
+  let lastPlatformStatus
+  let lastPlatformStatusAt = 0
+  const refreshPlatformStatus = async () => {
+    const status = await management.request('GET', '/_dsh_platform/api/v1/status')
+    lastPlatformStatus = status
+    lastPlatformStatusAt = now()
+    return status
+  }
+  const platformStatus = async () => {
+    try {
+      return await refreshPlatformStatus()
+    } catch (error) {
+      if (lastPlatformStatus !== undefined && now() - lastPlatformStatusAt <= platformStatusCacheMs) {
+        return lastPlatformStatus
+      }
+      throw error
+    }
+  }
   const accessServer = accessServerFactory(platformAccess, { report: record })
   const server = gatewayFactory({
     password: config.password,
@@ -49,9 +71,14 @@ export async function runGateway(config, {
     managementSocketPath,
     maintenanceSocketPath,
     platformAccess,
-    platformStatus: () => management.request('GET', '/_dsh_platform/api/v1/status'),
+    platformStatus,
     report: record,
   })
+  const platformStatusTimer = setInterval(() => {
+    void refreshPlatformStatus().catch(() => {})
+  }, platformStatusPollMs)
+  platformStatusTimer.unref?.()
+  void refreshPlatformStatus().catch(() => {})
   let resolveSignal
   const receivedSignal = new Promise(resolve => { resolveSignal = resolve })
   const onSignal = signal => resolveSignal(signal)
@@ -84,6 +111,7 @@ export async function runGateway(config, {
     if (accessServer.listening) await new Promise(resolve => accessServer.close(resolve))
     throw error
   } finally {
+    clearInterval(platformStatusTimer)
     signalSource.off('SIGINT', onSigint)
     signalSource.off('SIGTERM', onSigterm)
   }

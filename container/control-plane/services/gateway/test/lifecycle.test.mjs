@@ -80,3 +80,34 @@ test('gateway propagates listener failures without creating a DSH process', asyn
   assert.equal(reports.some(entry => entry.message === 'gateway.fatal'
     && entry.fields.error.message === 'bind failed'), true)
 })
+
+test('gateway retains a recent platform status while Management is handed off', async () => {
+  const signalSource = new EventEmitter()
+  const server = new FakeServer()
+  const accessServer = new FakeServer()
+  const expected = { update: { status: 'building-candidate' } }
+  let requests = 0
+  let options
+  const running = runGateway(config, {
+    gatewayFactory: value => { options = value; return server },
+    accessServerFactory: () => accessServer,
+    listenAccessServer: async value => { value.listening = true },
+    signalSource,
+    managementClient: {
+      request: async () => {
+        requests += 1
+        if (requests === 1) return expected
+        throw Object.assign(new Error('Management is switching'), { code: 'ECONNREFUSED' })
+      },
+    },
+    platformStatusPollMs: 5,
+  })
+  try {
+    await new Promise(resolve => setTimeout(resolve, 15))
+    assert.deepEqual(await options.platformStatus(), expected)
+    assert.equal(requests >= 2, true)
+  } finally {
+    signalSource.emit('SIGTERM')
+    assert.equal(await running, 0)
+  }
+})

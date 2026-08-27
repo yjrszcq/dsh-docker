@@ -1,6 +1,9 @@
 import { request as httpRequest } from 'node:http'
 
-const SWITCHING_STATES = new Set(['snapshotting-data', 'switching', 'probation'])
+// A Bootstrap handoff stops DSH while the updater that initiated it is still
+// recorded as building the candidate. This state is consulted only after the
+// DSH upstream becomes unavailable, so ordinary candidate builds stay visible.
+const SWITCHING_STATES = new Set(['building-candidate', 'snapshotting-data', 'switching', 'probation'])
 const RECOVERING_STATES = new Set(['restoring-data'])
 
 const COPY = Object.freeze({
