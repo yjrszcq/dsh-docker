@@ -357,6 +357,22 @@ test('rejects origin-form and unsupported absolute-form requests without contact
   }
 })
 
+test('rejects invalid CONNECT authorities without contacting an upstream', async () => {
+  const state = snapshot()
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  try {
+    for (const authority of ['missing-port', 'target.example:0', 'target.example:65536', 'user@target.example:443', 'target.example:443/path']) {
+      const exchange = await rawExchange(proxyPort, `CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`, {
+        waitFor: 'INVALID_CONNECT_AUTHORITY',
+      })
+      assert.match(exchange.bytes.toString('latin1'), /^HTTP\/1\.1 400 /)
+    }
+  } finally {
+    await close(proxy)
+  }
+})
+
 test('forwards HTTP through an external proxy with in-memory Basic authentication', async () => {
   let observed
   const upstreamProxy = createServer((request, response) => {
@@ -402,6 +418,31 @@ test('maps external HTTP proxy authentication failures to a redacted local 502',
     assert.equal(result.headers['proxy-authenticate'], undefined)
     assert.equal(result.body.toString().includes('credential details'), false)
     assert.equal(routeHealth.status(state).updates, 'degraded')
+  } finally {
+    await close(proxy)
+    await close(upstreamProxy)
+  }
+})
+
+test('does not replay a failed non-idempotent request', async () => {
+  let requests = 0
+  const upstreamProxy = createServer((request) => {
+    requests += 1
+    request.socket.destroy()
+  })
+  const upstreamPort = await listen(upstreamProxy)
+  const state = snapshot({ proxyPort: upstreamPort })
+  const proxy = createScopedProxyServer({ scope: 'updates', getSnapshot: () => state })
+  const proxyPort = await listen(proxy)
+  try {
+    const result = await proxyRequest({
+      proxyPort,
+      target: 'http://example.invalid/mutate',
+      method: 'POST',
+      body: Buffer.from('must-not-replay'),
+    })
+    assert.equal(result.statusCode, 502)
+    assert.equal(requests, 1)
   } finally {
     await close(proxy)
     await close(upstreamProxy)
@@ -750,6 +791,39 @@ test('encodes IPv6 SOCKS5 targets and does not fall back direct on authenticatio
   } finally {
     await close(rejectedProxy)
     await close(rejected.server)
+  }
+})
+
+test('rejects an oversized SOCKS5 domain before sending a CONNECT request', async () => {
+  let bytesAfterGreeting = 0
+  let closed
+  const fixture = createNetServer(socket => {
+    let greeted = false
+    socket.on('data', chunk => {
+      if (!greeted) {
+        greeted = true
+        socket.write(Buffer.from([0x05, 0x00]))
+        return
+      }
+      bytesAfterGreeting += chunk.byteLength
+    })
+    socket.once('close', () => closed?.())
+  })
+  const fixturePort = await listen(fixture)
+  try {
+    const fixtureClosed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('invalid SOCKS target did not close its transport')), 1_000)
+      closed = () => { clearTimeout(timer); resolve() }
+    })
+    await assert.rejects(connectThroughSocks5({
+      endpoint: { host: '127.0.0.1', port: fixturePort, username: '', password: null, remoteDns: true },
+      targetHost: `${'a'.repeat(252)}.test`,
+      targetPort: 443,
+    }), error => error.code === 'SOCKS5_TARGET_INVALID')
+    await fixtureClosed
+    assert.equal(bytesAfterGreeting, 0)
+  } finally {
+    await close(fixture)
   }
 })
 
