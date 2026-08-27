@@ -9,6 +9,7 @@ const MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
 const DEFAULT_SOCKET = '/run/dsh-platform/outbound-proxy.sock'
 const DEFAULT_PROXY_URL = 'http://127.0.0.1:17897'
 const DEFAULT_SHARED_PROXY_URL = 'http://127.0.0.1:17898'
+const DEFAULT_AGENT_PROXY_URL = 'http://127.0.0.1:17895'
 const DEFAULT_ROUTING_STATE = '/run/dsh-platform/outbound-proxy-routing.json'
 
 function routingState(path) {
@@ -30,6 +31,10 @@ function providerProxyEnabled(state, providerId) {
 function sharedDshProxyEnabled(state) {
   return state !== null && state.enabled
     && (state.scopes?.dshCore === true || state.scopes?.dshPlugins === true)
+}
+
+function agentNetworkProxyEnabled(state) {
+  return state !== null && state.enabled && state.scopes?.agentNetwork === true
 }
 
 function controlRequest(socketPath, method, path, body) {
@@ -169,18 +174,27 @@ export function installProviderRouting(ctx, {
     : `${process.env.DSH_PLATFORM_RUN}/outbound-proxy-routing.json`,
   createDispatcher = options => new ProxyAgent(options),
   createSharedDispatcher = options => new ProxyAgent(options),
+  createAgentDispatcher = options => new ProxyAgent(options),
   createDirectDispatcher = () => new Agent(),
   routedFetch = proxyFetch,
 } = {}) {
   const store = new AsyncLocalStorage()
   const directDispatcher = createDirectDispatcher()
   const sharedDispatcher = createSharedDispatcher({ uri: DEFAULT_SHARED_PROXY_URL })
+  const agentDispatcher = createAgentDispatcher({ uri: DEFAULT_AGENT_PROXY_URL })
   const resolveDefaultRoute = () => {
     const state = routingState(routingStatePath)
     if (state === null) return undefined
     return { dispatcher: sharedDshProxyEnabled(state) ? sharedDispatcher : directDispatcher }
   }
   const removeFetchRouter = installFetchRouter(store, routedFetch, resolveDefaultRoute)
+  const disposeTool = ctx.on('tools/execute', (_execution, next) => {
+    const state = routingState(routingStatePath)
+    return store.run({
+      dispatcher: agentNetworkProxyEnabled(state) ? agentDispatcher : directDispatcher,
+      owned: false,
+    }, next)
+  }, { global: true, prepend: true })
   const disposeStream = ctx.on('llm/stream', (options, next) => {
     if (!PROVIDER_ID_PATTERN.test(options.provider)) return next()
     return routedIterator(next, options.provider, store, {
@@ -198,10 +212,12 @@ export function installProviderRouting(ctx, {
     })
   }, { global: true, prepend: true })
   return () => {
+    disposeTool?.()
     disposeStream?.()
     removeFetchRouter()
     void directDispatcher.close()
     void sharedDispatcher.close()
+    void agentDispatcher.close()
   }
 }
 
@@ -210,6 +226,7 @@ export const providerRoutingInternals = Object.freeze({
   controlRequest,
   installFetchRouter,
   issueProviderHandle,
+  agentNetworkProxyEnabled,
   providerProxyEnabled,
   sharedDshProxyEnabled,
   routingState,

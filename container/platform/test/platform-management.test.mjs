@@ -88,18 +88,21 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     assert.equal(spec.env.HTTPS_PROXY, undefined)
     assert.equal(spec.env.ALL_PROXY, undefined)
 
-    let listener
+    const listeners = new Map()
     let directClosed = false
+    let agentClosed = false
     const directDispatcher = { close: async () => { directClosed = true } }
+    const agentDispatcher = { close: async () => { agentClosed = true } }
     const previousFetch = globalThis.fetch
     const observed = []
     globalThis.fetch = async () => { throw new Error('ambient proxy fetch must not be used') }
     const remove = installProviderRouting({
-      on(_event, callback) { listener = callback; return () => { listener = undefined } },
+      on(event, callback) { listeners.set(event, callback); return () => { listeners.delete(event) } },
     }, {
       socketPath: join(root, 'missing.sock'),
       routingStatePath,
       createDirectDispatcher: () => directDispatcher,
+      createAgentDispatcher: () => agentDispatcher,
       routedFetch: async (_input, init) => {
         observed.push(init.dispatcher)
         return { ok: true }
@@ -108,13 +111,18 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     try {
       await fetch('https://ordinary-dsh.invalid')
       assert.deepEqual(observed, [directDispatcher])
-      const stream = listener({ provider: 'deepseek-official' }, () => (async function* () {
+      const stream = listeners.get('llm/stream')({ provider: 'deepseek-official' }, () => (async function* () {
         await fetch('https://provider.invalid')
         yield 'direct'
       })())
       assert.deepEqual(await stream.next(), { value: 'direct', done: false })
       assert.deepEqual(await stream.next(), { value: undefined, done: true })
       assert.deepEqual(observed, [directDispatcher, directDispatcher])
+
+      await listeners.get('tools/execute')({ name: 'web_fetch' }, async () => {
+        await fetch('https://agent-direct.invalid')
+      })
+      assert.equal(observed.at(-1), directDispatcher)
 
       await writeFile(routingStatePath, JSON.stringify({
         schema: 1,
@@ -126,7 +134,12 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
           providers: {},
         },
       }))
-      const protectedStream = listener({ provider: 'deepseek-official' }, () => (async function* () {
+      await listeners.get('tools/execute')({ name: 'web_fetch' }, async () => {
+        await fetch('https://agent-proxied.invalid')
+      })
+      assert.equal(observed.at(-1), agentDispatcher)
+
+      const protectedStream = listeners.get('llm/stream')({ provider: 'deepseek-official' }, () => (async function* () {
         yield 'must-not-run'
       })())
       await assert.rejects(protectedStream.next(), /ENOENT|ECONNREFUSED/)
@@ -136,6 +149,7 @@ test('Platform Management gives disabled Agent and Provider routes a real direct
     }
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(directClosed, true)
+    assert.equal(agentClosed, true)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -198,13 +212,12 @@ test('Platform Management routes every valid llm/stream Provider through opaque 
     observed.push(init?.dispatcher ?? null)
     return { ok: true }
   }
-  let listener
+  const listeners = new Map()
   const remove = installProviderRouting({
     on(event, callback, options) {
-      assert.equal(event, 'llm/stream')
       assert.deepEqual(options, { global: true, prepend: true })
-      listener = callback
-      return () => { listener = undefined }
+      listeners.set(event, callback)
+      return () => { listeners.delete(event) }
     },
   }, {
     socketPath,
@@ -220,7 +233,7 @@ test('Platform Management routes every valid llm/stream Provider through opaque 
   })
 
   try {
-    const routed = listener({ provider: 'deepseek-official' }, () => (async function* () {
+    const routed = listeners.get('llm/stream')({ provider: 'deepseek-official' }, () => (async function* () {
       await fetch('https://provider.invalid')
       yield 'chunk'
     })())
@@ -237,7 +250,7 @@ test('Platform Management routes every valid llm/stream Provider through opaque 
       ['POST', '/v1/provider-handles', { providerId: 'deepseek-official', policyRevision: 'revision-one' }],
     ])
 
-    const custom = listener({ provider: 'custom-provider' }, () => (async function* () {
+    const custom = listeners.get('llm/stream')({ provider: 'custom-provider' }, () => (async function* () {
       await fetch('https://provider.invalid')
       yield 'custom'
     })())
@@ -248,7 +261,7 @@ test('Platform Management routes every valid llm/stream Provider through opaque 
       ['POST', '/v1/provider-handles', { providerId: 'custom-provider', policyRevision: 'revision-one' }],
     ])
 
-    const invalid = listener({ provider: '../invalid' }, () => (async function* () {
+    const invalid = listeners.get('llm/stream')({ provider: '../invalid' }, () => (async function* () {
       await fetch('https://provider.invalid')
       yield 'invalid'
     })())
