@@ -1850,7 +1850,7 @@ function ProxySettings({ active, t }) {
       })) : null,
       task === null && testError ? h('p', { className: css.error, role: 'alert' }, testError) : null,
       task !== null || testError ? h('footer', null,
-        task && !taskRunning ? h('p', { className: task.status === 'success' ? css.proxyHint : css.error, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
+        task && !taskRunning ? h('p', { className: task.status === 'failed' ? css.error : css.proxyHint, role: 'status' }, task.status === 'success' ? t('proxyTestSuccess') : task.status === 'cancelled' ? t('proxyTestCancelled') : `${t('proxyTestFailed')}: ${task.error?.detail ?? task.error?.errorCode ?? ''}`) : null,
         taskRunning
           ? h('button', { type: 'button', className: css.secondaryButton, disabled: !task?.taskId, onClick: () => { void cancelTest() } }, t('cancel'))
           : h('button', { type: 'button', className: css.secondaryButton, onClick: () => testDialog.current?.close() }, t('close'))) : null)),

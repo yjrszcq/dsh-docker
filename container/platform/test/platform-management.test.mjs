@@ -673,6 +673,7 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /const displayName =[\s\S]*return matchesResourceSearch\(providerQuery, \[displayName\]\)/)
   assert.doesNotMatch(source, /matchesResourceSearch\(providerQuery, \[provider\.displayName, provider\.id, provider\.type\]\)/)
   assert.match(source, /ref: testDialog, className: css\.proxyTestDialog/)
+  assert.match(source, /task\.status === 'failed' \? css\.error : css\.proxyHint/)
   assert.match(source, /proxyMasterDetail[\s\S]*saveImmediate\(next => \{ next\.enabled = event\.target\.checked \}\)/)
   assert.ok(source.indexOf("'platform-proxy-master-title'") < source.indexOf("'platform-proxy-title'"))
   assert.match(source, /h\('h3', \{ id: 'platform-proxy-master-title' \}[\s\S]*configuration\.componentReady === false[\s\S]*proxyComponentAlert/)
