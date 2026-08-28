@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access create|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|set-username|reset-password|reset-management-password|disable-management-password|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -42,7 +42,7 @@ export function parseCli(argv) {
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 1 && rest[0] === 'create') {
+  if (command === 'access' && rest.length === 1 && ['create', 'status', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password'].includes(rest[0])) {
     return { command, operation: 'create' }
   }
   throw new Error(usage())
@@ -107,6 +107,28 @@ function json(value) {
   return JSON.stringify(value)
 }
 
+async function readSecret(input, output, prompt) {
+  output.write(prompt)
+  if (typeof input.setRawMode !== 'function') throw new Error('password input must be an interactive TTY')
+  input.setRawMode(true)
+  input.resume()
+  let value = ''
+  try {
+    for await (const chunk of input) {
+      for (const character of String(chunk)) {
+        if (character === '\r' || character === '\n') {
+          output.write('\n')
+          return value
+        }
+        if (character === '\u0003') throw new Error('access recovery cancelled')
+        if (character === '\u007f') value = value.slice(0, -1)
+        else if (character >= ' ') value += character
+      }
+    }
+    throw new Error('password input ended before confirmation')
+  } finally { input.setRawMode(false); input.pause() }
+}
+
 const RETRYABLE_CONTROL_PLANE_ERRORS = new Set(['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE'])
 
 function isRetryableControlPlaneError(error) {
@@ -119,7 +141,7 @@ export async function runCli({
   trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/run/dsh-platform/stage0-trust.sock'),
   reset = resetTrust,
   recovery = new LocalApiClient(process.env.DSH_PLATFORM_RECOVERY_SOCKET ?? '/run/dsh-platform/recovery.sock'),
-  access = new LocalApiClient(process.env.DSH_PLATFORM_GATEWAY_ACCESS_SOCKET ?? '/run/dsh-platform/gateway-access.sock'),
+  access = new LocalApiClient(process.env.DSH_PLATFORM_ACCESS_RECOVERY_SOCKET ?? '/run/dsh-platform/access/recovery.sock'),
   recover = recoverImageBaseline,
   write = value => process.stdout.write(`${value}\n`),
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
@@ -128,7 +150,36 @@ export async function runCli({
 } = {}) {
   const parsed = parseCli(argv)
   if (parsed.command === 'access') {
-    const value = await access.request('POST', '/v1/keys')
+    if (parsed.operation === 'create') {
+      const value = await access.request('POST', '/v1/keys')
+      write(json(value))
+      return 0
+    }
+    if (typeof process.getuid === 'function' && process.getuid() !== 0) throw new Error('access recovery requires root')
+    if (!input.isTTY || !output.isTTY) throw new Error('access recovery requires an interactive container console')
+    const current = await access.request('GET', '/v1/recovery/status')
+    if (parsed.operation === 'status') {
+      write(json(current))
+      return 0
+    }
+    if (current.account === null) throw new Error('administrator account is unavailable')
+    const revision = current.account.revision
+    if (parsed.operation === 'set-username') {
+      const prompt = createInterface({ input, output })
+      const username = await prompt.question('New administrator username: ')
+      prompt.close()
+      write(json(await access.request('POST', '/v1/recovery/set-username', { revision, username })))
+      return 0
+    }
+    if (parsed.operation === 'disable-management-password') {
+      write(json(await access.request('POST', '/v1/recovery/disable-management-password', { revision })))
+      return 0
+    }
+    const password = await readSecret(input, output, parsed.operation === 'reset-management-password'
+      ? 'New management password: ' : 'New administrator password: ')
+    const route = parsed.operation === 'reset-management-password'
+      ? '/v1/recovery/reset-management-password' : '/v1/recovery/reset-password'
+    const value = await access.request('POST', route, { revision, password })
     write(json(value))
     return 0
   }

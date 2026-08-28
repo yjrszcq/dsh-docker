@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { timingSafeEqual } from 'node:crypto'
 import { AuthenticationLimiter } from './rate-limiter.mjs'
 import { AccessError, accessErrorBody } from './errors.mjs'
@@ -8,6 +9,7 @@ import { ManagementExchangeStore } from './exchanges.mjs'
 import { CapabilityStore } from './capabilities.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
+function identifier() { return randomBytes(32).toString('base64url') }
 
 function sameToken(left, right) {
   const a = Buffer.from(left ?? '')
@@ -254,6 +256,71 @@ export class AccessService {
     if (capability === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid or expired', 401)
     return { authorized: true, capability }
   }
+
+  async recoveryStatus() {
+    const current = await this.store.state()
+    return {
+      state: current.state,
+      account: current.account === undefined ? null : {
+        accountId: current.account.accountId,
+        username: current.account.username,
+        revision: current.account.revision,
+        mainCredentialVersion: current.account.mainCredential.version,
+        managementAdditionalCredential: {
+          enabled: current.account.managementAdditionalCredential.enabled,
+          version: current.account.managementAdditionalCredential.version,
+        },
+        managementAccess: { ...current.account.managementAccess },
+      },
+    }
+  }
+
+  async replaceRecoveryAccount(value, operation) {
+    const current = await this.store.state()
+    if (current.account === undefined) throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
+    if (value.revision !== current.account.revision) throw new AccessError('REVISION_CONFLICT', 'account revision changed', 409)
+    const account = { ...current.account, revision: identifier(), updatedAt: new Date().toISOString() }
+    await operation(account, current.account)
+    const next = await this.store.replaceAccount(account, current.account.revision)
+    this.sessions.revokeAll?.()
+    this.exchanges.clear?.()
+    return { account: publicAccount(next) }
+  }
+
+  async setRecoveryUsername(value) {
+    const normalized = normalizeUsername(value.username)
+    return this.replaceRecoveryAccount(value, async account => { account.username = normalized })
+  }
+
+  async resetRecoveryPassword(value) {
+    const verifier = await this.store.createVerifier(value.password)
+    return this.replaceRecoveryAccount(value, async account => {
+      account.mainCredential = { ...verifier, version: account.mainCredential.version + 1 }
+    })
+  }
+
+  async resetRecoveryManagementPassword(value) {
+    const verifier = await this.store.createVerifier(value.password)
+    return this.replaceRecoveryAccount(value, async account => {
+      account.managementAdditionalCredential = {
+        enabled: true,
+        version: account.managementAdditionalCredential.version + 1,
+        verifier: { ...verifier, version: account.managementAdditionalCredential.version + 1 },
+        changedAt: new Date().toISOString(),
+      }
+    })
+  }
+
+  async disableRecoveryManagementPassword(value) {
+    return this.replaceRecoveryAccount(value, async account => {
+      account.managementAdditionalCredential = {
+        enabled: false,
+        version: account.managementAdditionalCredential.version + 1,
+        verifier: null,
+        changedAt: new Date().toISOString(),
+      }
+    })
+  }
 }
 
 export function createAccessHttpServer({ service, surface = 'access' }) {
@@ -261,7 +328,15 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
     void (async () => {
       const pathname = new URL(request.url ?? '/', 'http://access.internal').pathname
       if (request.method === 'GET' && pathname === '/v1/status') return send(response, 200, await service.status())
-      if (surface === 'recovery') return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
+      if (surface === 'recovery') {
+        const value = await body(request)
+        if (request.method === 'GET' && pathname === '/v1/recovery/status') return send(response, 200, await service.recoveryStatus())
+        if (request.method === 'POST' && pathname === '/v1/recovery/set-username') return send(response, 200, await service.setRecoveryUsername(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/reset-password') return send(response, 200, await service.resetRecoveryPassword(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/reset-management-password') return send(response, 200, await service.resetRecoveryManagementPassword(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))
+        return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
+      }
       const value = await body(request)
       if (request.method === 'POST' && pathname === '/v1/classify') return send(response, 200, await service.classify(value))
       if (request.method === 'POST' && pathname === '/v1/initialize') return send(response, 201, await service.initialize(value))
