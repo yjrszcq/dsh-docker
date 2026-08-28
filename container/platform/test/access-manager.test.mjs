@@ -12,6 +12,7 @@ import {
 } from '../../control-plane/services/access-manager/lib/credentials.mjs'
 import { AuthenticationLimiter } from '../../control-plane/services/access-manager/lib/rate-limiter.mjs'
 import { AccessService, createAccessHttpServer } from '../../control-plane/services/access-manager/lib/server.mjs'
+import { BrowserSessionStore } from '../../control-plane/services/access-manager/lib/sessions.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
@@ -151,6 +152,87 @@ test('limits failed authentication before admitting more KDF work', () => {
   assert.throws(() => limiter.enter('account'), error => error.code === 'AUTHENTICATION_RATE_LIMITED')
   now += 60_001
   limiter.enter('account').release(true)
+})
+
+test('stores only digests for origin-bound DSH sessions with absolute and idle expiry', async () => {
+  let now = 1_000
+  const sessions = new BrowserSessionStore({
+    now: () => now,
+    dshAbsoluteMs: 1_000,
+    dshIdleMs: 100,
+  })
+  const account = {
+    accountId: 'account',
+    mainCredential: { version: 2 },
+    managementAdditionalCredential: { enabled: false, version: 1 },
+    managementAccess: { version: 3 },
+  }
+  const issued = sessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  assert.match(issued.token, /^dshs_/)
+  assert.match(issued.csrfToken, /^dshc_/)
+  assert.doesNotMatch(JSON.stringify([...sessions.sessions.values()]), new RegExp(issued.token))
+  assert.equal(sessions.validate(issued.token, 'dsh', account, {
+    origin: 'https://dsh.example', csrfToken: issued.csrfToken, requireCsrf: true,
+  })?.kind, 'dsh')
+  assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://other.example' }), undefined)
+  assert.equal(sessions.validate(issued.token, 'management', account, { origin: 'https://dsh.example' }), undefined)
+  assert.equal(sessions.validate(issued.token, 'dsh', account, {
+    origin: 'https://dsh.example', csrfToken: 'wrong', requireCsrf: true,
+  }), undefined)
+  now += 101
+  assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+})
+
+test('initializes and logs into DSH with separately revocable browser sessions', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await current.service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  assert.equal(initialized.state, 'initialized')
+  assert.match(initialized.session.token, /^dshs_/)
+  assert.equal((await current.service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  await current.service.logout({ kind: 'dsh', token: initialized.session.token })
+  assert.equal((await current.service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+
+  const loggedIn = await current.service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  assert.match(loggedIn.session.token, /^dshs_/)
+  assert.doesNotMatch(JSON.stringify(loggedIn), /salt|hash|verifier/i)
+})
+
+test('exchanges one DSH session for one origin-bound Management session', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await current.service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const created = await current.service.createManagementHandoff({
+    dshToken: initialized.session.token,
+    dshOrigin: 'https://dsh.example',
+    targetOrigin: 'https://dsh.example',
+  })
+  assert.match(created.handoff.token, /^dshh_/)
+  const consumed = await current.service.consumeManagementHandoff({
+    token: created.handoff.token, origin: 'https://dsh.example',
+  })
+  assert.match(consumed.session.token, /^dshms_/)
+  assert.notEqual(consumed.session.token, initialized.session.token)
+  assert.equal((await current.service.validateSession({
+    kind: 'management', token: consumed.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  assert.equal((await current.service.validateSession({
+    kind: 'dsh', token: consumed.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+  await assert.rejects(
+    current.service.consumeManagementHandoff({ token: created.handoff.token, origin: 'https://dsh.example' }),
+    error => error.code === 'HANDOFF_INVALID',
+  )
 })
 
 test('moves initialized installations with missing or damaged accounts to recovery-required', async () => {

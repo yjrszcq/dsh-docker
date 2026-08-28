@@ -3,6 +3,8 @@ import { timingSafeEqual } from 'node:crypto'
 import { AuthenticationLimiter } from './rate-limiter.mjs'
 import { AccessError, accessErrorBody } from './errors.mjs'
 import { normalizeUsername, verifyCredential } from './credentials.mjs'
+import { BrowserSessionStore } from './sessions.mjs'
+import { ManagementExchangeStore } from './exchanges.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 
@@ -53,6 +55,8 @@ export class AccessService {
     store,
     classificationToken,
     limiter = new AuthenticationLimiter(),
+    sessions = new BrowserSessionStore(),
+    exchanges = new ManagementExchangeStore(),
     verify = verifyCredential,
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
@@ -60,6 +64,8 @@ export class AccessService {
     this.store = store
     this.classificationToken = classificationToken
     this.limiter = limiter
+    this.sessions = sessions
+    this.exchanges = exchanges
     this.verify = verify
     this.sleep = sleep
     this.report = report
@@ -101,6 +107,16 @@ export class AccessService {
     })
   }
 
+  initializeDsh(value) {
+    return this.serialized(async () => {
+      const account = await this.store.initialize(value)
+      const session = this.sessions.issue('dsh', account, { origin: value.origin })
+      await this.report('access.initialization.completed', { accountId: account.accountId })
+      await this.report('access.session.created', { accountId: account.accountId, kind: 'dsh' })
+      return { state: 'initialized', account: publicAccount(account), session }
+    })
+  }
+
   async authenticate(value) {
     const current = await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
@@ -128,6 +144,88 @@ export class AccessService {
       }
     } finally { admission.release(authenticated) }
   }
+
+
+  async loginDsh(value) {
+    const authenticated = await this.authenticate(value)
+    const current = await this.store.state()
+    const session = this.sessions.issue('dsh', current.account, { origin: value.origin })
+    await this.report('access.session.created', { accountId: authenticated.accountId, kind: 'dsh' })
+    return { ...authenticated, session }
+  }
+
+  async validateSession(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) return { authenticated: false }
+    const session = this.sessions.validate(value.token, value.kind, current.account, {
+      origin: value.origin,
+      csrfToken: value.csrfToken,
+      requireCsrf: value.requireCsrf === true,
+    })
+    return session === undefined ? { authenticated: false } : { authenticated: true, session }
+  }
+
+  async logout(value) {
+    const revoked = this.sessions.revoke(value.token)
+    if (revoked) await this.report('access.session.revoked', { kind: value.kind ?? null })
+    return { authenticated: false }
+  }
+
+  async managementResult(account, { origin, sourceDshOrigin = null }) {
+    if (account.managementAdditionalCredential.enabled) {
+      return { pending: this.exchanges.createPending(account, { targetOrigin: origin, sourceDshOrigin }) }
+    }
+    const session = this.sessions.issue('management', account, { origin, sourceDshOrigin })
+    await this.report('access.session.created', { accountId: account.accountId, kind: 'management' })
+    return { session }
+  }
+
+  async loginManagement(value) {
+    await this.authenticate(value)
+    const current = await this.store.state()
+    return this.managementResult(current.account, { origin: value.origin })
+  }
+
+  async createManagementHandoff(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const session = this.sessions.validate(value.dshToken, 'dsh', current.account, { origin: value.dshOrigin })
+    if (session === undefined) throw new AccessError('SESSION_INVALID', 'DSH session is invalid', 401)
+    const handoff = this.exchanges.createHandoff(session, current.account, value.targetOrigin)
+    await this.report('access.handoff.created', { accountId: current.account.accountId })
+    return { handoff }
+  }
+
+  async consumeManagementHandoff(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const handoff = this.exchanges.consumeHandoff(value.token, current.account, value.origin)
+    if (handoff === undefined) throw new AccessError('HANDOFF_INVALID', 'management handoff is invalid or expired', 401)
+    await this.report('access.handoff.consumed', { accountId: current.account.accountId })
+    return this.managementResult(current.account, { origin: value.origin, sourceDshOrigin: handoff.sourceDshOrigin })
+  }
+
+  async completeManagementLogin(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined
+      || !current.account.managementAdditionalCredential.enabled) {
+      throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
+    }
+    const pending = this.exchanges.inspectPending(value.pendingToken, current.account, value.origin)
+    if (pending === undefined) throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
+    const valid = await this.verify(value.password, current.account.managementAdditionalCredential.verifier)
+    if (!valid) throw new AccessError('AUTHENTICATION_FAILED', 'username or password is incorrect', 401)
+    this.exchanges.consumePending(pending.key)
+    const session = this.sessions.issue('management', current.account, {
+      origin: value.origin, sourceDshOrigin: pending.value.sourceDshOrigin,
+    })
+    await this.report('access.session.created', { accountId: current.account.accountId, kind: 'management' })
+    return { session }
+  }
 }
 
 export function createAccessHttpServer({ service, surface = 'access' }) {
@@ -140,6 +238,14 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/classify') return send(response, 200, await service.classify(value))
       if (request.method === 'POST' && pathname === '/v1/initialize') return send(response, 201, await service.initialize(value))
       if (request.method === 'POST' && pathname === '/v1/authenticate') return send(response, 200, await service.authenticate(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/initialize') return send(response, 201, await service.initializeDsh(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
+      if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
+      if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
+      if (request.method === 'POST' && pathname === '/v1/management/login') return send(response, 200, await service.loginManagement(value))
+      if (request.method === 'POST' && pathname === '/v1/management/handoffs') return send(response, 201, await service.createManagementHandoff(value))
+      if (request.method === 'POST' && pathname === '/v1/management/handoffs/consume') return send(response, 200, await service.consumeManagementHandoff(value))
+      if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {
       const status = error instanceof AccessError ? error.statusCode : 500
