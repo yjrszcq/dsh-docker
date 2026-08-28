@@ -49,6 +49,11 @@ test('Stage-0 launches the packaged outbound proxy entrypoint', async () => {
   assert.doesNotMatch(source, /'services', 'proxy', 'index\.mjs'/)
 })
 
+test('Stage-0 launches the packaged Access Manager entrypoint', async () => {
+  const source = await readFile(new URL('../stage0/index.mjs', import.meta.url), 'utf8')
+  assert.match(source, /'services', 'access-manager', 'index\.mjs'/)
+})
+
 function pair(root, name) {
   const value = generateKeyPairSync('ed25519')
   const privatePath = join(root, `${name}-private.pem`)
@@ -237,6 +242,9 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/hooks/dsh-web-ready.mjs',
     'control-plane/hooks/recovery/index.mjs',
     'control-plane/services/gateway/index.mjs',
+    'control-plane/services/access-manager/index.mjs',
+    'control-plane/services/access-manager/supervisor.mjs',
+    'control-plane/services/access-manager/lib/server.mjs',
     'control-plane/services/outbound-proxy/index.mjs',
     'control-plane/services/outbound-proxy/supervisor.mjs',
     'control-plane/services/management/index.mjs',

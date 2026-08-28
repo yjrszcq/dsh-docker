@@ -665,6 +665,50 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   ])
 })
 
+test('classifies administrator access after Control Plane readiness and before DSH startup', async () => {
+  const calls = []
+  const runtime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => { calls.push('control:start') },
+      stop: async () => { calls.push('control:stop') },
+      status: () => ({ components: [{ id: 'access-manager' }] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      start: async () => { calls.push('environment:start') },
+      stop: async () => { calls.push('environment:stop') },
+      status: () => ({ environmentVersion: '1.0.0', components: [{ id: 'dsh-runtime' }] }),
+    },
+    beforeEnvironmentStart: async () => { calls.push('access:classify') },
+  })
+
+  await runtime.start()
+  assert.deepEqual(calls, ['control:start', 'access:classify', 'environment:start'])
+  await runtime.stop()
+
+  const blocked = []
+  const failure = new Error('access classification failed')
+  const blockedRuntime = new BootstrapRuntime({
+    controlPlane: {
+      fatal: new Promise(() => {}),
+      start: async () => { blocked.push('control:start') },
+      stop: async () => { blocked.push('control:stop') },
+      status: () => ({ components: [{ id: 'access-manager' }] }),
+    },
+    environment: {
+      fatal: new Promise(() => {}),
+      start: async () => { blocked.push('environment:start') },
+      stop: async () => { blocked.push('environment:stop') },
+      status: () => ({ environmentVersion: '1.0.0', components: [] }),
+    },
+    beforeEnvironmentStart: async () => { blocked.push('access:classify'); throw failure },
+  })
+
+  await assert.rejects(blockedRuntime.start(), error => error === failure)
+  assert.deepEqual(blocked, ['control:start', 'access:classify', 'control:stop'])
+})
+
 test('isolates a non-DSH Environment exit and keeps the Control Plane available', async () => {
   const calls = []
   let emitEnvironmentFatal
