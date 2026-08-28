@@ -39,10 +39,10 @@ Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.
 
 - **Directory permissions:** Bind-mounted DSH data, platform data, and workspace directories must be writable by UID/GID `1000:1000`. Keep both data directories when replacing or upgrading a container.
 - **Port exposure:** Bind `127.0.0.1:3080:3080` for host-only access. `3080:3080` or `0.0.0.0:3080:3080` publishes DSH on every host interface.
-- **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains. A strong `DSH_PROXY_PASSWORD` is recommended, and HTTPS should terminate outside the container.
+- **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains, initialize the local administrator, and terminate HTTPS outside the container.
 - **Agent root authority:** The `dsh-sudo-true` supplementary group grants DSH and its Agent unrestricted passwordless root access. Omit it when root is unnecessary, or set `DSH_SUDO_ENABLED=false` when using the repository Compose file.
 - **Management root authority:** Disabling Agent sudo does not restrict the standalone DSH Management Console. Its container terminal and file manager intentionally run as root and require authentication and a trusted network boundary.
-- **Recovery access:** `/_dsh_platform/console/` remains available while DSH is stopped or cannot start. It uses the Gateway password when configured, otherwise `DSH_PLATFORM_PASSWORD`, and falls back to temporary-key mode when both are empty.
+- **Recovery access:** `/_dsh_platform/console/` remains available while DSH is stopped or cannot start. It requires a separate authenticated Management Session; lost credentials are recovered only from an interactive Root console.
 
 ### Minimal Bind-Mount Compose
 
@@ -121,7 +121,7 @@ Named volumes survive ordinary container replacement and `docker compose down`, 
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | Host address used for port publication |
 | `DSH_PORT` | `3080` | Published host port |
 | `DSH_WORKSPACE` | `./workspace` | Host directory mounted at `/workspace` |
-| `DSH_SUDO_ENABLED` | `true` | Add unrestricted passwordless sudo; `true` or `false` |
+| `DSH_SUDO_ENABLED` | `false` | Add unrestricted passwordless sudo to DSH and its Agent; `true` or `false` |
 
 These values describe the checked-in `.env.example`. Compose stores DSH and platform data in named volumes and bind-mounts `DSH_WORKSPACE` at `/workspace`.
 
@@ -134,9 +134,6 @@ These values describe the checked-in `.env.example`. Compose stores DSH and plat
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Default directory for directory pickers and standalone file management; must be an accessible absolute directory |
 | `DSH_TELEMETRY_DISABLED` | `true` | Disable upstream telemetry; `true` or `false` |
 | `DSH_TRUSTED_HOSTS` | Empty | Comma-separated external `host` or `host:port` authorities |
-| `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username; ignored when the password is empty |
-| `DSH_PROXY_PASSWORD` | Empty | Optional gateway password; empty disables authentication |
-| `DSH_PLATFORM_PASSWORD` | Empty | DSH Management Console password used when the gateway password is empty; empty selects temporary-key mode |
 | `DSH_PROXY_POLYFILL` | `true` | Inject the guarded `crypto.randomUUID` compatibility shim |
 | `DSH_LOG_MAX_BYTES` | `104857600` | Aggregate platform JSONL log budget |
 | `DSH_LOG_RETENTION_DAYS` | `14` | Platform log retention |
@@ -278,13 +275,13 @@ For routine backups, preserve `/data/dsh` and `/data/platform/state`. Compose st
 
 ## Gateway
 
-The Gateway validates external `Host`, `Origin`, and Fetch Metadata and optionally requires HTTP Basic authentication. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values. Before forwarding to DSH, Gateway also removes external `Forwarded`, every `X-Forwarded-*`, and `X-Real-IP` header. An outer proxy such as OpenResty therefore cannot make same-origin DSH plugins mistake the trusted Gateway hop for an untrusted proxy. Management routes retain those forwarding headers, and the original external request still passes every Gateway security check.
+The Gateway validates external `Host`, `Origin`, and Fetch Metadata and gates every browser surface through the isolated Access Manager. It proxies the fixed `/_dsh_platform/console/` and bounded management API routes to Management. Other HTTP, SSE, and WebSocket traffic goes to DSH with loopback `Host` and `Origin` values. Before forwarding to DSH, Gateway also removes external `Forwarded`, every `X-Forwarded-*`, and `X-Real-IP` header. An outer proxy such as OpenResty therefore cannot make same-origin DSH plugins mistake the trusted Gateway hop for an untrusted proxy. Management routes retain those forwarding headers, and the original external request still passes every Gateway security check.
 
 Official DSH classifies the browser from its public hostname and can disable Host-backed settings on non-loopback pages. An exact-match patch marks browsers admitted by this Gateway as loopback, matching the authority sent upstream. No upstream server-side privileged API implementation is patched.
 
 ### Remote Deployment Examples
 
-Remote publication requires both an external bind address and an explicit trusted-host allowlist. The example also includes the recommended Gateway password. Replace its values before use:
+Remote publication requires both an external bind address and an explicit trusted-host allowlist. Replace its values before use:
 
 ```yaml
 services:
@@ -298,7 +295,6 @@ services:
       - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
-      DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -314,32 +310,35 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
-  -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
 
-A reverse proxy must preserve the original `Host` header, and remote deployments must terminate TLS outside this container. Restrict the published address with a host firewall when only selected clients should connect.
+A reverse proxy must preserve the original `Host` header, and remote deployments must terminate TLS outside this container. Restrict the published address with a host firewall when only selected clients should connect. On first access, create the local administrator before admitting other clients.
 
-`DSH_PROXY_PASSWORD` may be removed from either example. Without it, standalone Management Console access falls back to `DSH_PLATFORM_PASSWORD` or temporary-key mode; this does not remove Host, Origin, or Fetch Metadata validation.
+### Local Administrator Authentication
 
-### Password Access
+The Access Manager owns one durable local administrator account under `/data/platform/state/access`. A new installation blocks DSH, API, WebSocket, and Management routes until the browser registers a username and main password. Concurrent registration converges to one account. Damaged initialized state enters `recovery-required` and never silently creates a replacement account.
 
-When `DSH_PROXY_PASSWORD` is non-empty, browsers receive an HTTP Basic challenge. If `DSH_PROXY_USERNAME` is empty, Gateway ignores the submitted username and validates only the password. If both are set, both must match. A username cannot contain `:`.
+A successful DSH login creates an HttpOnly, SameSite DSH Session. It does not authorize the complete Management API. Opening the Management Console consumes a one-time handoff and creates a separate Management Session bound to its Origin. Authentication Settings can require an additional Management password and independently revoke DSH or Management sessions. Changing credentials invalidates sessions through the credential version.
 
-Credentials are not trimmed, logged, or persisted. Gateway removes `Authorization` before forwarding to DSH. Browsers may retain Basic credentials for the session and provide no reliable logout. Use HTTPS remotely because Basic credentials are encoded, not encrypted; TLS termination remains external.
+The default compatibility mode serves Management at `/_dsh_platform/console/` on port `3080`. Optional strong isolation serves Management from the root of a separately published Origin on port `3081`, where no DSH upstream is available. The platform verifies the exact candidate Origin and instance before switching, then revokes prior Management sessions. Port `3081` is not published by the supplied Compose unless the operator chooses to expose or reverse-proxy it. When DSH can obtain container Root, the UI honestly reports that process-level isolation is ineffective and locks this mode transition; Origin separation still protects browser sessions from same-origin DSH client plugins.
 
-When `DSH_PROXY_PASSWORD` is empty, the standalone console's `/_dsh_platform/console/*` routes, full management API, SSE streams, and terminal WebSocket are protected by a separate platform session. Set `DSH_PLATFORM_PASSWORD` to sign in on the platform login page. Platform Management and the Settings Document Editor inside DSH settings use a separate restricted API and do not require a console session. That API exposes only the DSH integrations' update, DSH restart, log, System Plugin, System Skill, and settings-document operations; it does not expose the container terminal, file manager, or User Plugin recovery. Anyone who can access the DSH page can therefore use those integration operations.
+Every privileged Management or Maintenance operation is authorized again at its final Unix-socket execution point with a short-lived, single-use capability bound to method, path, session, CSRF, credential version, and access version. Direct socket access cannot substitute for a browser session. The DSH-side Platform Management and Settings Document Editor use a fixed restricted Plugin API through the authenticated DSH Session; it cannot reach files, the Root terminal, User Plugin recovery, authentication settings, or complete Management capabilities.
 
-When both passwords are empty, anonymous access remains locked and temporary-key mode is used. Run:
+Administrator recovery is Root-only and requires an interactive TTY. Passwords are read with echo disabled and are rejected from arguments or pipes:
 
 ```bash
-docker exec deepseek-harness dsh-platform access create
+docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access set-username
+docker exec -it --user root deepseek-harness dsh-platform access reset-password
+docker exec -it --user root deepseek-harness dsh-platform access reset-management-password
+docker exec -it --user root deepseek-harness dsh-platform access disable-management-password
 ```
 
-The command returns a random temporary key and expiry. It remains usable for 10 minutes; generating another produces a different key and immediately invalidates the prior key. A successful sign-in creates an HttpOnly, SameSite cookie scoped to `/_dsh_platform/`. Sessions expire after 30 minutes idle or eight hours total, and Gateway or container restart clears them. Neither temporary keys nor sessions are written to `/data/platform` or logs.
+An existing pre-account deployment enters `migration-required`. Run `dsh-platform access begin-migration` from the same Root TTY to issue a single-use setup key valid for ten minutes, then use the browser migration page to set the new username and main password. A new key invalidates the previous key. Legacy environment passwords are evidence only: their values are stripped before Bootstrap and DSH start and are never retained as a hidden login bypass.
 
 ### Browser Compatibility
 
@@ -410,7 +409,7 @@ If a browser requests a plugin bundle during a registered lifecycle transition, 
 
 If `dsh-runtime` exits without a registered platform operation, Bootstrap retries it at most three times with immediate, 2-second, and 5-second delays. Recovery does not run in parallel with an update, rollback, reset, or probation owner. Three failed attempts enter recovery mode while Gateway and the Management Console remain available.
 
-The image HEALTHCHECK probes the DSH HTTP listener directly at loopback `127.0.0.1:3079`. It represents DSH readiness, not merely Stage-0, Gateway, or Management liveness. An intentional DSH stop therefore makes Docker report the container as unhealthy even though the standalone Management Console remains available.
+The image HEALTHCHECK probes Gateway control-plane health at `127.0.0.1:3080/_dsh_gateway/health`. It does not depend on DSH readiness, so an intentional DSH stop does not make the container unhealthy while authentication and the standalone Management Console remain available.
 
 The standalone console also provides **Reset runtime** for repairing damaged DSH program or patch bytes. It rebuilds the current Runtime from the verified Pristine DSH and the current Environment's complete Patch Set, verifies that the rebuilt content still matches the current Deployment Record, and only then pauses and restarts DSH. It does not change the DSH or Environment version, update channel, rollback slots, settings, sessions, credentials, or third-party plugins under `/data/dsh`. If the rebuilt Runtime cannot start, the prior Runtime directory is restored automatically.
 
@@ -474,7 +473,7 @@ Files or complete browser-selected folders can be uploaded while retaining their
 
 Copy, move, archive, extraction, and permanent deletion run as persistent background tasks. Move and delete write durable commit boundaries so Management can safely finish them after a restart; an uncommitted operation that cannot be proven idempotent is marked interrupted and retains its source. There is no trash. `/`, `/data`, `/data/dsh`, `/data/platform`, `/workspace`, and the active Deployment view root cannot themselves be selected for recursive deletion. Platform-managed paths remain accessible but are clearly marked because updates, restarts, runtime rebuilds, or GC can replace changes and manual edits can damage the active Deployment. Audit logs record paths, operation type, byte counts, duration, and outcome, never file contents.
 
-Both tools use the existing Gateway Host, Origin, Fetch Metadata, Basic Auth, or standalone Management Console session checks and add no listener. This is a container-root management boundary: anyone admitted to the page can read or modify container data and execute arbitrary shell commands. Expose it only behind the trusted boundary described in [Security Model](#security-model).
+Both tools use the existing Gateway Host, Origin, Fetch Metadata, and the appropriate DSH or Management Session checks and add no listener. This is a container-root management boundary: anyone admitted to the page can read or modify container data and execute arbitrary shell commands. Expose it only behind the trusted boundary described in [Security Model](#security-model).
 
 ## Logs
 
@@ -536,7 +535,7 @@ Recovery private material must never enter GitHub secrets. CI receives only a si
 
 ## Security Model
 
-Gateway access is full DSH access. After standalone Management Console authentication, the Container terminal and Files tools additionally have root authority. An admitted user may read or replace model credentials, execute commands, and access any writable path in the container. The Host allowlist mitigates DNS rebinding; it is not user authentication.
+An authenticated DSH Session has full DSH authority. A separate Management Session additionally grants the Container terminal and Files tools root authority. An admitted administrator may read or replace model credentials, execute commands, and access any writable path in the container. The Host allowlist mitigates DNS rebinding; it is not user authentication.
 
 Before exposing the service to untrusted networks, use a strong Gateway password, authenticated reverse proxy, VPN, or another trusted boundary. An SSH tunnel can be combined with loopback-only publication:
 
@@ -544,7 +543,7 @@ Before exposing the service to untrusted networks, use a strong Gateway password
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-Compose enables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=false` to disable it. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
+Repository Compose disables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=true` only when that authority is intentional. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
 
 ## Release Automation
 

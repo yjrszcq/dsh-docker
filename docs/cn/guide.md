@@ -39,10 +39,10 @@ Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.i
 
 - **目录权限：** bind mount 的 DSH 数据、平台数据和工作区目录必须允许 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** `127.0.0.1:3080:3080` 只允许从 Docker 宿主机访问；`3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放 DSH。
-- **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，同时应在容器外终止 HTTPS。
+- **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，初始化本地管理员，并在容器外终止 HTTPS。
 - **Agent Root 权限：** `dsh-sudo-true` 附加用户组会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。不需要时应移除该用户组；使用仓库 Compose 时则设置 `DSH_SUDO_ENABLED=false`。
 - **管理中心 Root 权限：** 关闭 Agent sudo 不会限制独立 DSH 管理中心。其容器终端和文件管理会按设计使用 Root 权限，必须放在认证和可信网络边界之后。
-- **恢复入口：** `/_dsh_platform/console/` 在 DSH 停止或无法启动时仍可使用。配置 Gateway 密码时复用该密码，否则使用 `DSH_PLATFORM_PASSWORD`；两者均为空时进入临时密钥模式。
+- **恢复入口：** `/_dsh_platform/console/` 在 DSH 停止或无法启动时仍可使用。它要求独立认证的 Management Session；遗失凭据时只能从交互式 Root 控制台恢复。
 
 ### 精简 Bind Mount Compose
 
@@ -121,7 +121,7 @@ docker compose up -d
 | `DSH_LISTEN_ADDRESS` | `127.0.0.1` | 宿主机端口发布地址 |
 | `DSH_PORT` | `3080` | 宿主机发布端口 |
 | `DSH_WORKSPACE` | `./workspace` | 挂载到 `/workspace` 的宿主机目录 |
-| `DSH_SUDO_ENABLED` | `true` | 是否提供不受限制的免密码 sudo；`true` 或 `false` |
+| `DSH_SUDO_ENABLED` | `false` | 是否向 DSH 和 Agent 提供不受限制的免密码 sudo；`true` 或 `false` |
 
 以上值来自仓库中的 `.env.example`。Compose 使用 named volumes 保存 DSH 与平台数据，并将 `DSH_WORKSPACE` 挂载到 `/workspace`。
 
@@ -134,9 +134,6 @@ docker compose up -d
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器和独立文件管理的默认目录；必须是可访问的绝对目录 |
 | `DSH_TELEMETRY_DISABLED` | `true` | 是否禁用上游遥测；`true` 或 `false` |
 | `DSH_TRUSTED_HOSTS` | 空 | 逗号分隔的外部 `host` 或 `host:port` authority |
-| `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名；密码为空时忽略 |
-| `DSH_PROXY_PASSWORD` | 空 | 可选 Gateway 密码；留空关闭认证 |
-| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时使用的 DSH 管理中心密码；留空进入临时密钥模式 |
 | `DSH_PROXY_POLYFILL` | `true` | 是否注入受保护的 `crypto.randomUUID` 兼容代码 |
 | `DSH_LOG_MAX_BYTES` | `104857600` | 平台 JSONL 日志总量上限 |
 | `DSH_LOG_RETENTION_DAYS` | `14` | 平台日志保留天数 |
@@ -278,13 +275,13 @@ current Deployment 资产无法解析、Patch 校验失败或 DSH 启动失败�
 
 ## Gateway
 
-Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并按需使用 HTTP Basic 认证。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。转发到 DSH 前还会移除外部 `Forwarded`、`X-Forwarded-*` 和 `X-Real-IP`，因此 OpenResty 等外层代理不会被 DSH 内的同源插件误判为不可信代理；Management 路由仍保留这些转发信息。原始外部请求的安全检查不会因此绕过。
+Gateway 校验外部 `Host`、`Origin` 和 Fetch Metadata，并通过隔离的 Access Manager 保护所有浏览器入口。固定的 `/_dsh_platform/console/` 和受限管理 API 路由转发给 Management；其余 HTTP、SSE 和 WebSocket 请求使用 loopback `Host` 和 `Origin` 转发给 DSH。转发到 DSH 前还会移除外部 `Forwarded`、`X-Forwarded-*` 和 `X-Real-IP`，因此 OpenResty 等外层代理不会被 DSH 内的同源插件误判为不可信代理；Management 路由仍保留这些转发信息。原始外部请求的安全检查不会因此绕过。
 
 官方 DSH 根据公开 hostname 判断浏览器是否为 loopback，并可能在非 loopback 页面禁用 Host 侧设置。一个精确匹配补丁会将 Gateway 已放行的浏览器标记为 loopback，与转发给上游的 authority 保持一致。上游服务端特权 API 实现不作修改。
 
 ### 远程部署示例
 
-远程发布必须同时配置外部监听地址和明确的可信 Host allowlist。示例还包含建议使用但并非必需的 Gateway 密码；使用前应替换其中的值：
+远程发布必须同时配置外部监听地址和明确的可信 Host allowlist；使用前应替换其中的值：
 
 ```yaml
 services:
@@ -298,7 +295,6 @@ services:
       - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
-      DSH_PROXY_PASSWORD: "请替换为强密码"
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -314,32 +310,35 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
-  -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
   szcq/deepseek-harness:latest
 ```
 
-反向代理必须保留原始 `Host` 请求头，远程部署必须在容器外终止 TLS；只允许部分客户端连接时，还应通过宿主机防火墙限制来源。
+反向代理必须保留原始 `Host` 请求头，远程部署必须在容器外终止 TLS；只允许部分客户端连接时，还应通过宿主机防火墙限制来源。首次访问时必须先创建本地管理员，再允许其他客户端进入。
 
-两个示例都可以删除 `DSH_PROXY_PASSWORD`。此时独立管理中心改用 `DSH_PLATFORM_PASSWORD` 或临时密钥模式；Host、Origin 和 Fetch Metadata 校验仍然生效。
+### 本地管理员认证
 
-### 密码访问
+Access Manager 在 `/data/platform/state/access` 中持有一个持久化本地管理员账户。全新安装会阻断 DSH、API、WebSocket 和管理中心，直到浏览器注册用户名和主密码；并发注册只会收敛到一个账户。已初始化状态损坏时进入 `recovery-required`，不会静默创建替代账户。
 
-`DSH_PROXY_PASSWORD` 非空时，浏览器收到 HTTP Basic 认证请求。`DSH_PROXY_USERNAME` 为空时，Gateway 忽略提交的用户名，只校验密码；两者均设置时必须全部匹配。用户名不能包含 `:`。
+登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接并创建绑定 Origin 的独立 Management Session。“认证设置”可以要求额外的管理密码，并分别撤销 DSH 或 Management 会话。修改凭据会通过 credential version 使旧会话失效。
 
-凭据不会被裁剪、记录或持久化。Gateway 在请求进入 DSH 前删除 `Authorization`。浏览器可能在当前会话保留 Basic 凭据，且没有可靠的退出机制。远程访问必须使用 HTTPS，因为 Basic 凭据只是编码而非加密；TLS 终止仍由容器外部负责。
+默认兼容模式在 `3080` 的 `/_dsh_platform/console/` 提供管理中心。可选强隔离模式从单独发布的 `3081` Origin 根路径提供管理中心，且该入口不提供 DSH upstream。平台会先校验候选 Origin 和当前实例，再切换并注销旧 Management Session。仓库 Compose 默认不发布 `3081`，需要由运维人员显式映射或反向代理。当 DSH 可以取得容器 Root 时，界面会如实说明进程级隔离无效并锁定模式切换；Origin 分离仍能阻止同源 DSH 客户端插件取得 Management Session。
 
-`DSH_PROXY_PASSWORD` 为空时，独立管理中心的 `/_dsh_platform/console/*`、完整管理 API、SSE 和终端 WebSocket 改由独立的平台会话保护。设置 `DSH_PLATFORM_PASSWORD` 后可在登录页输入该密码。DSH 设置中的“平台管理”和“设置文档编辑器”使用单独的受限 API，不要求管理中心会话；该接口只开放这些 DSH 集成所需的更新、DSH 重启、日志、系统插件、系统技能和设置文档操作，不开放容器终端、文件管理或用户插件恢复。能够访问 DSH 页面就意味着能够使用这些集成操作。
+每个特权 Management 或 Maintenance 操作还会在最终 Unix Socket 执行点校验短时、单次 capability；它绑定 method、path、session、CSRF、credential version 和 access version。直接连接 Socket 不能代替浏览器认证。DSH 内“平台管理”和“设置文档编辑器”通过已认证 DSH Session 使用固定受限 Plugin API，不能访问文件、Root 终端、用户插件恢复、认证设置或完整 Management capability。
 
-两个密码都为空时不会开放匿名访问，而是进入临时密钥模式。执行：
+管理员恢复只允许 Root 在交互式 TTY 中执行。密码输入会关闭回显，不接受命令参数或管道：
 
 ```bash
-docker exec deepseek-harness dsh-platform access create
+docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access set-username
+docker exec -it --user root deepseek-harness dsh-platform access reset-password
+docker exec -it --user root deepseek-harness dsh-platform access reset-management-password
+docker exec -it --user root deepseek-harness dsh-platform access disable-management-password
 ```
 
-命令返回一个随机临时密钥和失效时间。密钥从生成起有效 10 分钟，期间可以用于登录；每次重新生成都会产生不同密钥并立即废止旧密钥。成功登录得到只作用于 `/_dsh_platform/` 的 HttpOnly、SameSite 会话 Cookie；会话空闲 30 分钟或持续 8 小时后失效，Gateway 或容器重启也会清除。临时密钥和会话都不会写入 `/data/platform` 或日志。
+已有但没有新版账户的部署进入 `migration-required`。在同一个 Root TTY 中执行 `dsh-platform access begin-migration`，生成十分钟有效且单次使用的 setup key，再通过浏览器迁移页设置新用户名和主密码；新 key 会使旧 key 失效。旧环境密码只作为迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 
 ### 浏览器兼容
 
@@ -410,7 +409,7 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 `dsh-runtime` 在没有平台操作登记时意外退出，Bootstrap 最多恢复三次，间隔依次为立即、2 秒和 5 秒。更新、回滚、重置或 probation 已持有生命周期时不会并行恢复。三次均失败后进入 recovery mode，Gateway 和独立管理中心继续可用。
 
-镜像 HEALTHCHECK 会直接探测回环地址 `127.0.0.1:3079` 上的 DSH HTTP 监听器。它表示 DSH 是否 Ready，而不只是 Stage-0、Gateway 或 Management 是否存活。因此，主动停止 DSH 后，即使独立管理中心仍可使用，Docker 也会把容器标记为 unhealthy。
+镜像 HEALTHCHECK 探测 `127.0.0.1:3080/_dsh_gateway/health` 的 Gateway 控制面健康，不依赖 DSH Ready。因此主动停止 DSH 后，只要认证和独立管理中心仍可使用，容器不会被标记为 unhealthy。
 
 独立控制台还提供“重置运行时”，用于修复意外损坏的 DSH 程序或补丁文件。平台从已验证的 Pristine DSH 和当前 Environment 的完整 Patch Set 重新构建 Runtime，确认重建内容仍与当前 Deployment Record 一致后，才暂停并重启 DSH。该操作不会改变 DSH 或 Environment 版本、更新通道、回滚 slots，也不会修改 `/data/dsh` 中的设置、会话、凭据和第三方插件。如果重建后的 Runtime 无法启动，平台会自动恢复原 Runtime 目录。
 
@@ -474,7 +473,7 @@ Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/ds
 
 复制、移动和永久删除作为持久化后台任务执行。移动和删除在提交边界写入 journal，Management 重启后会完成可以证明安全的收尾；无法证明幂等的未提交任务标记为中断，并保留源文件。删除没有回收站，`/`、`/data`、`/data/dsh`、`/data/platform`、`/workspace` 和当前 Deployment view 根本身不能作为递归删除目标。平台托管路径可查看和修改，但界面会警告这些修改可能被更新、重启、Runtime 重建或 GC 覆盖，并可能破坏当前 Deployment。平台日志记录路径、操作、字节数、耗时和结果，但不记录文件内容。
 
-两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata、Basic Auth 或独立管理中心会话校验，不增加监听端口。这是容器 root 级管理边界：能进入该页面的用户可读写容器数据并执行任意 Shell 命令，只应在[安全模型](#安全模型)所述的可信边界内开放。
+两项能力复用 Gateway 现有的 Host、Origin、Fetch Metadata，以及对应的 DSH 或 Management Session 校验，不增加监听端口。这是容器 root 级管理边界：能进入该页面的用户可读写容器数据并执行任意 Shell 命令，只应在[安全模型](#安全模型)所述的可信边界内开放。
 
 ## 日志
 
@@ -536,15 +535,15 @@ Recovery 私钥绝不能进入 GitHub secrets。CI 只接收已签好的公开 k
 
 ## 安全模型
 
-能通过 Gateway 访问 DSH，就等同于拥有完整 DSH 权限；通过独立管理中心认证后，容器终端和文件管理还拥有 root 权限。被放行的用户可能读取或替换模型凭据、执行命令并访问容器内的任意可写路径。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
+已认证的 DSH Session 拥有完整 DSH 权限；独立的 Management Session 还可使用拥有 root 权限的容器终端和文件管理。被放行的管理员可能读取或替换模型凭据、执行命令并访问容器内的任意可写路径。Host allowlist 用于缓解 DNS rebinding，不是用户身份认证。
 
-允许不可信网络访问前，应使用强 Gateway 密码、带认证的反向代理、VPN 或其他可信边界。显式绑定 loopback 后可以使用 SSH 隧道：
+允许不可信网络访问前，应使用强本地管理员密码、HTTPS、带认证的反向代理、VPN 或其他可信边界。显式绑定 loopback 后可以使用 SSH 隧道：
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-Compose 默认向 Agent 提供不受限制的免密码 root 权限。设置 `DSH_SUDO_ENABLED=false` 可将其关闭。除非明确需要这些权限，否则不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机目录挂载。
+仓库 Compose 默认关闭 Agent 的免密码 root 权限。只有明确需要时才设置 `DSH_SUDO_ENABLED=true`。除非这些权限是有意授予，否则不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机目录挂载。
 
 ## 发布自动化
 

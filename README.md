@@ -10,9 +10,9 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 
 - **Directory permissions:** Bind-mounted `data/dsh`, `data/platform`, and `workspace` must be writable by container UID/GID `1000:1000`. Keep both data directories when replacing or upgrading the container.
 - **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
-- **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers. A strong `DSH_PROXY_PASSWORD` is recommended, together with HTTPS or another trusted network boundary. Do not expose privileged Docker or host resources to the container.
+- **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers, initialize the local administrator account, and use HTTPS or another trusted network boundary. Do not expose privileged Docker or host resources to the container.
 - **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. If they do not need root, remove that `group_add` entry from the minimal Compose example (or omit `--group-add dsh-sudo-true` from `docker run`); with the repository Compose file, set `DSH_SUDO_ENABLED=false`. This does not disable the standalone Management Console's terminal and file manager, which always operate as container root and must remain protected by authentication and a trusted network boundary.
-- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, outbound proxy settings, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. It uses `DSH_PROXY_PASSWORD` when Gateway authentication is enabled; otherwise set `DSH_PLATFORM_PASSWORD`, or create a temporary access key from the container when both passwords are empty.
+- **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, outbound proxy settings, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. The first browser visit creates the local administrator account; DSH and Management use separate authenticated sessions.
 
 | Variant | Rolling tag | Versioned tag | Contents |
 | --- | --- | --- | --- |
@@ -87,14 +87,13 @@ sudo chown -R 1000:1000 data workspace
 
 ## Remote Access
 
-For LAN or reverse-proxy access, set the browser-facing host. A Gateway password is recommended for remote deployments:
+For LAN or reverse-proxy access, set the browser-facing host:
 
 ```dotenv
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
-DSH_PROXY_PASSWORD=choose-a-strong-password
 ```
 
-Use this minimal remote-access `docker-compose.yaml`, replacing the trusted hosts and recommended password first:
+Use this minimal remote-access `docker-compose.yaml`, replacing the trusted hosts first:
 
 ```yaml
 services:
@@ -108,7 +107,6 @@ services:
       - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
-      DSH_PROXY_PASSWORD: "replace-with-a-strong-password"
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -124,7 +122,6 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
-  -e 'DSH_PROXY_PASSWORD=replace-with-a-strong-password' \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
@@ -133,18 +130,15 @@ docker run -d \
 
 A reverse proxy must preserve the original `Host` header. Terminate TLS outside this container. To publish only on the Docker host, use `127.0.0.1:3080:3080` instead of `3080:3080`.
 
-`DSH_PROXY_PASSWORD` may be omitted. Without it, DSH Management Console uses `DSH_PLATFORM_PASSWORD` or temporary-key mode as described under [Online Updates](#online-updates).
+After startup, open the browser-facing address and create the local administrator username and main password. The initialization page blocks DSH and Management until registration finishes. Use HTTPS or another trusted network boundary because credentials and authenticated sessions grant full DSH access.
 
 Common settings:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DSH_TRUSTED_HOSTS` | Loopback only | Allowed browser-facing hosts |
-| `DSH_PROXY_USERNAME` | Empty | Optional HTTP Basic username |
-| `DSH_PROXY_PASSWORD` | Empty | HTTP Basic password; empty disables authentication |
-| `DSH_PLATFORM_PASSWORD` | Empty | Protects DSH Management Console when the gateway password is empty; empty uses temporary-key mode |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | Default workspace for directory pickers and standalone file management |
-| `DSH_SUDO_ENABLED` | `true` | Compose-only passwordless sudo switch |
+| `DSH_SUDO_ENABLED` | `false` | Compose-only passwordless sudo switch for DSH and its Agent |
 
 See the [complete configuration reference](docs/en/guide.md#configuration) for all variables and validation rules.
 
@@ -154,10 +148,13 @@ Open **Platform Management** in DSH settings or visit the standalone **DSH Manag
 
 The standalone page remains available when DSH is down. It provides DSH lifecycle and recovery controls, live logs, bundled System Plugin and System Skill management, User Plugin and User Skill recovery, root file management, and a container terminal.
 
-When the gateway password is empty, DSH Management Console uses its separate `DSH_PLATFORM_PASSWORD`. If that password is also empty, the console stays locked until you create a temporary access key. The key expires after 10 minutes, and creating another immediately invalidates the previous key:
+Authentication is initialized in the browser. A DSH login creates only a DSH Session; opening the Management Console exchanges it once for a separate Management Session. Authentication Settings can require an additional Management password, revoke either session class, or move Management to a separately published origin on port `3081`.
+
+Lost credentials are recovered only from an interactive Root console. Passwords are read with input echo disabled and are never accepted as command arguments or piped input:
 
 ```bash
-docker exec deepseek-harness dsh-platform access create
+docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access reset-password
 ```
 
 Useful commands:
@@ -186,7 +183,7 @@ The Container Environment includes these DSH-Docker integrations:
 
 Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Changes are marked pending and take effect after restarting DSH. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.
 
-Platform Management and the Settings Document Editor use the restricted DSH-side platform API. They do not require a separate DSH Management Console login.
+Platform Management and the Settings Document Editor use the restricted DSH-side platform API through the authenticated DSH Session. They do not require a separate Management Session.
 
 ## User Plugins
 
@@ -202,9 +199,9 @@ The standalone console also inventories native User Skills from the configured D
 
 ## Security
 
-Anyone admitted by the gateway has full DSH authority. The standalone Management Console also provides a root container terminal and root file operations, so an admitted user can read credentials, execute commands, and modify container data. Use HTTPS and a trusted network boundary for remote access.
+An authenticated DSH Session has full DSH authority. A Management Session additionally grants a root container terminal and root file operations, so an admitted administrator can read credentials, execute commands, and modify container data. Use HTTPS and a trusted network boundary for remote access.
 
-Compose enables unrestricted passwordless sudo by default. Set `DSH_SUDO_ENABLED=false` unless the agent needs root access. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts without understanding the impact.
+Repository Compose disables DSH/Agent passwordless sudo by default. Set `DSH_SUDO_ENABLED=true` only when the agent intentionally needs root access. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts without understanding the impact.
 
 ## Documentation
 

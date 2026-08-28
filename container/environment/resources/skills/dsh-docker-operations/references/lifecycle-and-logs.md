@@ -34,7 +34,7 @@ Do not diagnose these classified holding responses as Gateway outages. An explic
 
 Plugin bundle requests are held while a registered lifecycle transition makes DSH temporarily unavailable. The same guard covers official DSH plugins, bundled System Plugins, and User Plugins. A failed bundle request or structured dynamic-import error may enter the holding page twice for the same running Deployment. A third structured failure opens Gateway's terminal plugin-failure page and links to the standalone Management Console; it never starts an unbounded reload loop. Detection uses the plugin request or module error URL, not visible page text. Do not advise repeated manual refreshes before checking lifecycle state, recovery-attempt fields, and browser recovery events in platform logs.
 
-Docker health probes the DSH HTTP listener directly at loopback `127.0.0.1:3079`. It represents DSH readiness; Stage-0, Gateway, or Management being alive is not sufficient for a healthy container. An intentional DSH stop therefore makes Docker report the container as unhealthy even though the standalone Management Console remains available.
+Docker health probes Gateway control-plane health at `127.0.0.1:3080/_dsh_gateway/health`. It is independent of DSH readiness, so an intentional DSH stop does not make Docker report the container as unhealthy while the standalone Management Console remains available.
 
 ## Logs
 

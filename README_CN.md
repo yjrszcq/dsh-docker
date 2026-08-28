@@ -10,9 +10,9 @@
 
 - **目录权限：** bind mount 的 `data/dsh`、`data/platform` 和 `workspace` 必须允许容器 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
-- **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名。建议设置强 `DSH_PROXY_PASSWORD`，同时应通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
+- **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，初始化本地管理员账户，并通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
 - **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
-- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，提供更新与恢复、出站代理设置、实时日志、内置系统插件和系统技能管理、用户插件恢复、用户技能管理、容器文件和 Root 终端。启用 Gateway 认证时由 `DSH_PROXY_PASSWORD` 保护；否则应设置 `DSH_PLATFORM_PASSWORD`，两个密码都为空时则需从容器生成临时访问密钥。
+- **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，提供更新与恢复、出站代理设置、实时日志、内置系统插件和系统技能管理、用户插件恢复、用户技能管理、容器文件和 Root 终端。首次浏览器访问会创建本地管理员账户；DSH 与管理中心使用相互独立的认证会话。
 
 | 变体 | 滚动标签 | 固定版本标签 | 内容 |
 | --- | --- | --- | --- |
@@ -87,14 +87,13 @@ sudo chown -R 1000:1000 data workspace
 
 ## 远程访问
 
-通过局域网或反向代理访问时，必须配置浏览器使用的主机；远程部署建议同时设置 Gateway 密码：
+通过局域网或反向代理访问时，必须配置浏览器使用的主机：
 
 ```dotenv
 DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com
-DSH_PROXY_PASSWORD=请设置一个强密码
 ```
 
-将可信主机和建议使用的密码替换为实际值后，可以使用以下支持远程访问的精简 `docker-compose.yaml`：
+将可信主机替换为实际值后，可以使用以下支持远程访问的精简 `docker-compose.yaml`：
 
 ```yaml
 services:
@@ -108,7 +107,6 @@ services:
       - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
-      DSH_PROXY_PASSWORD: "请替换为强密码"
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -124,7 +122,6 @@ docker run -d \
   --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
-  -e 'DSH_PROXY_PASSWORD=请替换为强密码' \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
   -v "$(pwd)/workspace:/workspace" \
@@ -133,18 +130,15 @@ docker run -d \
 
 反向代理必须保留原始 `Host` 请求头，TLS 在容器外终止。如需只监听 Docker 宿主机，请使用 `127.0.0.1:3080:3080`，不要使用 `3080:3080`。
 
-可以不设置 `DSH_PROXY_PASSWORD`。此时 DSH 管理中心改用 `DSH_PLATFORM_PASSWORD` 或[在线更新](#在线更新)中说明的临时密钥模式。
+启动后打开浏览器侧地址，创建本地管理员用户名和主密码。初始化完成前，注册页会阻断 DSH 和管理中心。凭据及认证会话拥有完整 DSH 权限，因此远程访问必须使用 HTTPS 或其他可信网络边界。
 
 常用设置：
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `DSH_TRUSTED_HOSTS` | 仅 loopback | 浏览器侧允许的主机 |
-| `DSH_PROXY_USERNAME` | 空 | 可选 HTTP Basic 用户名 |
-| `DSH_PROXY_PASSWORD` | 空 | HTTP Basic 密码；留空关闭认证 |
-| `DSH_PLATFORM_PASSWORD` | 空 | Gateway 密码关闭时保护 DSH 管理中心；留空进入临时密钥模式 |
 | `DSH_DEFAULT_WORKSPACE` | `/workspace` | 目录选择器和独立文件管理的默认工作目录 |
-| `DSH_SUDO_ENABLED` | `true` | 仅供 Compose 使用的免密码 sudo 开关 |
+| `DSH_SUDO_ENABLED` | `false` | 仅供 Compose 使用的 DSH/Agent 免密码 sudo 开关 |
 
 全部变量和校验规则见[完整配置参考](docs/cn/guide.md#配置参考)。
 
@@ -154,10 +148,13 @@ docker run -d \
 
 独立页面在 DSH 无法启动时仍可使用，提供 DSH 生命周期与恢复、实时日志、内置系统插件和系统技能管理、用户插件和用户技能恢复、Root 文件管理及容器终端。
 
-Gateway 密码为空时，DSH 管理中心使用独立的 `DSH_PLATFORM_PASSWORD`。如果该密码也为空，管理中心默认锁定，可从容器终端生成有效期 10 分钟的临时访问密钥；重新生成会立即废止旧密钥：
+认证在浏览器中初始化。登录 DSH 只创建 DSH Session；打开管理中心时会通过一次性交接创建独立的 Management Session。“认证设置”可要求额外的管理密码、撤销任一类会话，或将管理中心切换到通过 `3081` 发布的独立 Origin。
+
+遗失凭据时只能从交互式 Root 控制台恢复。密码输入会关闭回显，且不接受命令参数或管道输入：
 
 ```bash
-docker exec deepseek-harness dsh-platform access create
+docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access reset-password
 ```
 
 常用命令：
@@ -186,7 +183,7 @@ Container Environment 包含以下 DSH-Docker 集成：
 
 除“平台管理”本身外，已安装的系统插件可在 DSH 的“平台管理”中启用或禁用；“平台管理”不能修改自身。独立的“DSH 管理中心”可以安装、卸载、启用或禁用 Environment 随附的系统插件，并能在“平台管理”缺失时将其恢复。变更会标记为待重启，并在重新启动 DSH 后生效。安装只使用经过验证的本地 Environment 资产，不会从 GitHub 或 npm 下载。第三方用户插件与系统插件分开管理，不会被视为系统插件。
 
-“平台管理”和“设置文档编辑器”使用 DSH 侧的受限平台接口，不要求用户另行登录 DSH 管理中心。
+“平台管理”和“设置文档编辑器”通过已认证的 DSH Session 使用 DSH 侧受限平台接口，不要求用户另行取得 Management Session。
 
 ## 用户插件
 
@@ -202,9 +199,9 @@ DSH Docker 内置已签名的 `dsh-docker-operations` System Skill，为 Agent �
 
 ## 安全提醒
 
-能通过 Gateway 访问，就等同于拥有完整 DSH 权限。独立管理中心还提供 root 容器终端和 root 文件操作，因此被放行的用户可以读取凭据、执行命令并修改容器数据。远程访问必须使用 HTTPS 和可信网络边界。
+已认证的 DSH Session 拥有完整 DSH 权限；Management Session 还可使用 root 容器终端和 root 文件操作，因此管理员可以读取凭据、执行命令并修改容器数据。远程访问必须使用 HTTPS 和可信网络边界。
 
-Compose 默认开启不受限制的免密码 sudo。Agent 不需要 root 权限时请设置 `DSH_SUDO_ENABLED=false`。不了解影响时，不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机挂载。
+仓库 Compose 默认关闭 DSH/Agent 的免密码 sudo。只有 Agent 明确需要 root 权限时才设置 `DSH_SUDO_ENABLED=true`。不了解影响时，不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机挂载。
 
 ## 详细文档
 
