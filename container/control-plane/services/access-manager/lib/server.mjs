@@ -459,6 +459,11 @@ export class AccessService {
     const authorization = this.consumeInternalCapability(value, current.account)
     const session = this.sessions.details(authorization.sessionId)
     if (session?.kind !== 'management') throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
+    const runtimeCapabilities = await this.runtimeCapabilities()
+    if (runtimeCapabilities.dshRootCapabilityEffective === true
+      && value.mode !== current.account.managementAccess.mode) {
+      throw new AccessError('ACCESS_MODE_LOCKED', 'Management access mode cannot change while DSH Root capability is enabled', 409)
+    }
     const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
     const candidateOrigin = value.mode === 'isolated'
       ? (() => {

@@ -73,10 +73,17 @@ button { letter-spacing: 0; }
 .auth-settings-form input, .auth-settings-form select { min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); }
 .auth-subsection { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .auth-subsection h3 { margin: 0; font-size: 14px; }
+.auth-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-origin-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.auth-origin-field label { display: grid; gap: 7px; }
 .auth-security-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .auth-password-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .auth-password-grid label { display: grid; gap: 7px; }
 .auth-session-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.auth-comparison-table { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(80px, .7fr)); margin-top: 14px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; font-size: 12px; line-height: 18px; }
+.auth-comparison-table > * { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.auth-comparison-table > :nth-child(3n + 2), .auth-comparison-table > :nth-child(3n + 3) { border-left: 1px solid var(--border); text-align: center; }
+.auth-comparison-table > :nth-last-child(-n + 3) { border-bottom: 0; }
 
 .connection, .log-connection {
   display: inline-flex;
@@ -855,6 +862,10 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .brand div > span { display: none; }
   .section-heading { flex-direction: column; gap: 10px; }
   .auth-password-grid { grid-template-columns: 1fr; }
+  .auth-subsection-heading { align-items: stretch; flex-direction: column; }
+  .auth-origin-field { grid-template-columns: 1fr; }
+  .auth-comparison-table { grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(64px, .7fr)); }
+  .auth-comparison-table > * { padding: 7px 6px; }
   .auth-session-actions { display: grid; grid-template-columns: 1fr; }
   .resource-heading-detail { align-items: stretch; flex-direction: column; gap: 8px; }
   .resource-search { width: 100%; margin-left: 0; }

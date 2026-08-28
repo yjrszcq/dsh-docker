@@ -116,7 +116,7 @@ test('Management origin transitions and continuations expire without changing au
   }), undefined)
 })
 
-async function fixture() {
+async function fixture(options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-access-state-'))
   let now = new Date('2026-08-28T00:00:00.000Z')
   const store = new AccessStateStore({
@@ -129,6 +129,7 @@ async function fixture() {
     classificationToken: 'classification-token',
     limiter: new AuthenticationLimiter({ globalLimit: 10, accountLimit: 3, maxConcurrent: 2 }),
     now: () => now.getTime(),
+    ...options,
   })
   return { root, store, service, setNow: value => { now = new Date(value) } }
 }
@@ -607,6 +608,34 @@ test('rejects equal administrator passwords and non-origin Management entries', 
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
     mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example/path' },
   }), error => error.code === 'ACCESS_ENTRY_INVALID')
+})
+
+test('locks Management mode changes at the final execution point when DSH can become Root', async () => {
+  const { service } = await fixture({
+    runtimeCapabilities: async () => ({
+      dshRootCapabilityEffective: true,
+      agentIsolationEffective: false,
+      details: { sudoSelection: 'enabled', agentIsolationReason: 'shared-node-process-identity' },
+    }),
+  })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const handoff = await service.createManagementHandoff({
+    dshToken: initialized.session.token, dshOrigin: 'https://dsh.example', targetOrigin: 'https://dsh.example',
+  })
+  const management = await service.consumeManagementHandoff({ token: handoff.handoff.token, origin: 'https://dsh.example' })
+  const capability = (await service.issueCapability({
+    managementToken: management.session.token, origin: 'https://dsh.example',
+    csrfToken: management.session.csrfToken, requireCsrf: true,
+    audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+  })).capability.token
+  await assert.rejects(service.createManagementTransition({
+    internalCapability: capability,
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  }), error => error.code === 'ACCESS_MODE_LOCKED')
 })
 
 test('initializes and logs into DSH with separately revocable browser sessions', async () => {

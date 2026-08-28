@@ -1474,12 +1474,12 @@ test('standalone console keeps localized feature parity on the shared Management
   const serverSource = await readFile(new URL('../../control-plane/services/management/server.mjs', import.meta.url), 'utf8')
   const maintenanceSource = await readFile(new URL('../stage0/lib/maintenance-server.mjs', import.meta.url), 'utf8')
   const pluginSource = await readFile(new URL('../../environment/resources/plugins/platform-management/package/lib/client.js', import.meta.url), 'utf8')
-  for (const panel of ['updates', 'proxy', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
+  for (const panel of ['updates', 'proxy', 'auth-settings', 'maintenance', 'plugins', 'skills', 'user-skills', 'user-plugins', 'terminal', 'files']) {
     assert.match(html, new RegExp(`id="panel-${panel}"`))
   }
   const extensionTabs = [
     'tab-maintenance', 'tab-files', 'tab-terminal', 'tab-plugins',
-    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-proxy', 'tab-updates',
+    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-proxy', 'tab-auth-settings', 'tab-updates',
   ]
     .map(id => html.indexOf(`id="${id}"`))
   assert.deepEqual(extensionTabs, [...extensionTabs].sort((left, right) => left - right))
@@ -1503,6 +1503,14 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.equal((html.match(/class="theme-icon"[^>]*>[\s\S]*?<svg viewBox="0 0 24 24">/g) ?? []).length, 3)
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
+  assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-agent-warning"/)
+  assert.match(html, /id="auth-origin"[\s\S]*id="auth-origin-detect"/)
+  assert.match(html, /id="auth-isolation-dialog"[\s\S]*class="auth-comparison-table"/)
+  assert.match(html, /id="auth-isolation-confirm-dialog"[\s\S]*data-i18n="authIsolationConfirm"/)
+  assert.match(script, /function detectedManagementOrigin\(\)[\s\S]*value\.port = '3081'/)
+  assert.match(script, /option\.disabled = rootEnabled && accessMode\(option\.value\) !== currentMode/)
+  assert.match(script, /auth-agent-warning'\]\.hidden = authenticationSettings\?\.agentIsolationEffective === true/)
+  assert.match(script, /isolationModeChanged && nextAccess\.mode === 'isolated' && !await confirmIsolationEnable\(\)/)
   assert.match(script, /function clearProxySecrets\(\)[\s\S]*elements\['proxy-password'\]\.value = ''/)
   assert.doesNotMatch(script, /function sharedDshProxyEnabled\(\)/)
   assert.doesNotMatch(script, /data-provider-follow|followDsh/)
