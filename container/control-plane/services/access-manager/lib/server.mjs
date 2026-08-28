@@ -8,6 +8,7 @@ import { BrowserSessionStore } from './sessions.mjs'
 import { ManagementExchangeStore } from './exchanges.mjs'
 import { CapabilityStore } from './capabilities.mjs'
 import { ManagementTransitionStore } from './transitions.mjs'
+import { detectRuntimeCapabilities } from './runtime-capabilities.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 function identifier() { return randomBytes(32).toString('base64url') }
@@ -93,6 +94,7 @@ export class AccessService {
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
     now = () => Date.now(),
+    runtimeCapabilities = detectRuntimeCapabilities,
   }) {
     this.store = store
     this.classificationToken = classificationToken
@@ -105,6 +107,7 @@ export class AccessService {
     this.sleep = sleep
     this.report = report
     this.now = now
+    this.runtimeCapabilities = runtimeCapabilities
     this.migrationSetup = null
     this.transition = Promise.resolve()
   }
@@ -117,11 +120,13 @@ export class AccessService {
 
   async status() {
     const current = await this.store.state()
+    const capabilities = await this.runtimeCapabilities()
     return {
       componentReady: true,
       state: current.state,
       instanceId: current.initialization?.instanceId ?? null,
       account: publicAccount(current.account),
+      ...capabilities,
     }
   }
 
@@ -353,9 +358,11 @@ export class AccessService {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
     const authorization = this.consumeInternalCapability(value, current.account)
+    const capabilities = await this.runtimeCapabilities()
     return {
       account: publicAccount(current.account),
       sessions: this.sessions.list(current.account, authorization.sessionId),
+      ...capabilities,
     }
   }
 

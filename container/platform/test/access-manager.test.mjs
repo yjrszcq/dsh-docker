@@ -18,10 +18,39 @@ import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
 import { CapabilityStore } from '../../control-plane/services/access-manager/lib/capabilities.mjs'
 import { ManagementTransitionStore } from '../../control-plane/services/access-manager/lib/transitions.mjs'
+import { detectRuntimeCapabilities } from '../../control-plane/services/access-manager/lib/runtime-capabilities.mjs'
 
 const fastVerifier = (password, options = {}) => createCredential(password, {
   ...options,
   policy: { N: 16, r: 1, p: 1, keyLength: 32, maxmem: 2 * 1024 * 1024 },
+})
+
+test('derives Root capability from actual init groups and reports shared-process isolation honestly', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-access-capabilities-'))
+  try {
+    const groupPath = join(root, 'group')
+    const statusPath = join(root, 'status')
+    const mountsPath = join(root, 'mounts')
+    const ptracePath = join(root, 'ptrace_scope')
+    await writeFile(groupPath, 'dsh-sudo-true:x:993:\ndsh-sudo-false:x:994:\n')
+    await writeFile(statusPath, 'Name:\ttini\nGroups:\t1000 993\n')
+    await writeFile(mountsPath, 'proc /proc proc rw,nosuid,nodev,noexec,relatime,hidepid=2 0 0\n')
+    await writeFile(ptracePath, '1\n')
+    assert.deepEqual(await detectRuntimeCapabilities({
+      groupPath, initStatusPath: statusPath, mountsPath, ptraceScopePath: ptracePath,
+    }), {
+      dshRootCapabilityEffective: true,
+      agentIsolationEffective: false,
+      details: {
+        sudoSelection: 'enabled', ptraceScope: 1, procHidepid: 2,
+        agentIsolationReason: 'shared-node-process-identity',
+      },
+    })
+    await writeFile(statusPath, 'Name:\ttini\nGroups:\t1000 994\n')
+    assert.equal((await detectRuntimeCapabilities({
+      groupPath, initStatusPath: statusPath, mountsPath, ptraceScopePath: ptracePath,
+    })).dshRootCapabilityEffective, false)
+  } finally { await rm(root, { recursive: true, force: true }) }
 })
 
 test('privileged capabilities are single-use and bound to execution details', () => {
@@ -534,6 +563,9 @@ test('lists and independently revokes DSH and Management browser sessions', asyn
     internalCapability: await issue('GET', '/_dsh_platform/api/v1/auth-settings'),
     method: 'GET', target: '/_dsh_platform/api/v1/auth-settings',
   })
+  assert.equal(typeof settings.dshRootCapabilityEffective, 'boolean')
+  assert.equal(settings.agentIsolationEffective, false)
+  assert.equal(settings.details.agentIsolationReason, 'shared-node-process-identity')
   assert.equal(settings.sessions.filter(value => value.kind === 'dsh').length, 2)
   assert.equal(settings.sessions.filter(value => value.kind === 'management').length, 1)
 
