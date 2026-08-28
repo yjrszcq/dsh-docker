@@ -32,7 +32,7 @@ import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
 import { ProviderInventory } from './provider-inventory.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
-import { cookieValue, requestOrigin } from '../gateway/lib/browser-auth.mjs'
+import { requestOrigin } from '../gateway/lib/browser-auth.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -199,6 +199,7 @@ server = createManagementServer({
   authorizeInternal: async request => {
     const token = request.headers['x-dsh-internal-capability']
     if (typeof token !== 'string') return false
+    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     try {
       const result = await access.request('POST', '/v1/capabilities/consume', {
         token,
@@ -209,14 +210,44 @@ server = createManagementServer({
       return result.authorized === true
     } catch { return false }
   },
-  updateManagementOrigin: async (value, request) => {
-    const origin = requestOrigin(request, { requireHeader: false })
-    if (origin === undefined) throw new Error('Management origin is invalid')
-    return access.request('POST', '/v1/management/access', {
+  createManagementOriginTransition: async (value, request) => {
+    return access.request('POST', '/v1/management/transitions', {
       ...value,
-      managementToken: cookieValue(request.headers.cookie, 'dsh_management_compat_session'),
-      origin,
-      csrfToken: request.headers['x-dsh-csrf'],
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  commitManagementOriginTransition: async (value, request) => {
+    return access.request('POST', '/v1/management/transitions/commit', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  getAuthenticationSettings: async request => {
+    return access.request('POST', '/v1/management/settings', {
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+      origin: requestOrigin(request, { requireHeader: false }),
+    })
+  },
+  updateAuthenticationSettings: async (value, request) => {
+    return access.request('POST', '/v1/management/auth-settings', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  revokeAuthenticationSessions: async (value, request) => {
+    return access.request('POST', '/v1/management/sessions/revoke', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
     })
   },
   platformStatus: async () => ({

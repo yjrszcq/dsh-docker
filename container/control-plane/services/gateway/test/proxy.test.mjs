@@ -947,3 +947,67 @@ test('compatibility and isolated Management surfaces are mutually exclusive', as
     await close(upstream)
   }
 })
+
+test('isolated listener exposes only the instance-bound transition probe before isolation is enabled', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const handled = []
+  const browserAuthentication = {
+    ...browserForMode('compat'),
+    handle: async (_request, response, pathname) => {
+      handled.push(pathname)
+      if (pathname !== '/transition/probe') return false
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"proof":"bound"}')
+      return true
+    },
+  }
+  const management = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'management', browserAuthentication,
+  })
+  const port = await listen(management)
+  try {
+    const probe = await request(port, '/transition/probe?transitionId=one&nonce=two', {
+      host: 'candidate-management.example', origin: 'https://dsh.example', accept: 'application/json',
+    })
+    assert.equal(probe.status, 200)
+    assert.deepEqual(handled, ['/transition/probe'])
+    assert.equal((await request(port, '/', { host: '127.0.0.1', accept: 'text/html' })).status, 404)
+    assert.equal((await request(port, '/api/v1/status', { host: '127.0.0.1' })).status, 404)
+  } finally {
+    await Promise.all([closeGatewayServer(management), close(upstream)])
+  }
+})
+
+test('isolated Management trusts its verified public Origin instead of DSH trusted Hosts', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const browserAuthentication = {
+    ...browserForMode('isolated'),
+    status: async () => ({
+      state: 'initialized',
+      account: { managementAccess: {
+        mode: 'isolated', version: 2,
+        isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://management.example' },
+      } },
+    }),
+  }
+  const management = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort, surface: 'management', browserAuthentication,
+  })
+  const port = await listen(management)
+  try {
+    const accepted = await request(port, '/', {
+      host: 'management.example', origin: 'https://management.example', accept: 'text/html',
+      'x-forwarded-proto': 'https',
+    })
+    assert.notEqual(accepted.status, 403)
+    assert.equal((await request(port, '/', {
+      host: 'dsh.example', origin: 'https://dsh.example', accept: 'text/html',
+      'x-forwarded-proto': 'https',
+    })).status, 403)
+  } finally {
+    await Promise.all([closeGatewayServer(management), close(upstream)])
+  }
+})

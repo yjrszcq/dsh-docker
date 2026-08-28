@@ -42,6 +42,8 @@ function fixture(initialState = 'never-initialized') {
   const sessions = new Map()
   const managementSessions = new Map()
   const handoffs = new Map()
+  const transitionNonces = new Map([['transition-valid', 'nonce-valid']])
+  const continuations = new Map([['continuation-valid', null]])
   const calls = []
   const access = {
     request: async (method, path, body) => {
@@ -95,6 +97,25 @@ function fixture(initialState = 'never-initialized') {
         managementSessions.set('dshms_exchanged', body.origin)
         return { session: { token: 'dshms_exchanged', csrfToken: 'dshc_management' } }
       }
+      if (path === '/v1/management/transitions/probe') {
+        if (transitionNonces.get(body.transitionId) !== body.nonce) {
+          throw Object.assign(new Error('transition probe is invalid'), {
+            code: 'TRANSITION_PROBE_INVALID', statusCode: 401,
+          })
+        }
+        transitionNonces.delete(body.transitionId)
+        return { proof: 'proof-valid' }
+      }
+      if (path === '/v1/management/continuations/consume') {
+        if (!continuations.has(body.token)) {
+          throw Object.assign(new Error('continuation is invalid'), {
+            code: 'CONTINUATION_INVALID', statusCode: 401,
+          })
+        }
+        continuations.delete(body.token)
+        managementSessions.set('dshms_continued', body.origin)
+        return { session: { token: 'dshms_continued', csrfToken: 'dshc_continued' } }
+      }
       throw new Error(`unexpected request ${method} ${path}`)
     },
   }
@@ -107,6 +128,89 @@ function fixture(initialState = 'never-initialized') {
   })
   return { access, authentication, calls, server, sessions, state: () => state }
 }
+
+test('Management transition probe exposes a proof only to its exact source Origin and consumes the nonce', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const sourceOrigin = 'https://dsh.example'
+    const path = '/_dsh_platform/transition/probe?transitionId=transition-valid&nonce=nonce-valid'
+    const first = await request(port, {
+      path,
+      headers: { host: `127.0.0.1:${port}`, origin: sourceOrigin, accept: 'application/json' },
+    })
+    assert.equal(first.status, 200)
+    assert.equal(first.headers['access-control-allow-origin'], sourceOrigin)
+    assert.equal(first.headers['access-control-allow-credentials'], undefined)
+    assert.equal(first.headers.vary, 'Origin')
+    assert.deepEqual(JSON.parse(first.body), { proof: 'proof-valid' })
+    const call = current.calls.find(value => value.path === '/v1/management/transitions/probe')
+    assert.equal(call.body.sourceOrigin, sourceOrigin)
+    assert.equal(call.body.candidateOrigin, `http://127.0.0.1:${port}`)
+
+    const replay = await request(port, {
+      path,
+      headers: { host: `127.0.0.1:${port}`, origin: sourceOrigin, accept: 'application/json' },
+    })
+    assert.equal(replay.status, 401)
+    assert.equal(replay.headers['access-control-allow-origin'], sourceOrigin)
+  } finally { await close(current.server) }
+})
+
+test('Management continuation requires a top-level navigation and creates one session once', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const path = '/_dsh_platform/transition/continue?token=continuation-valid'
+    const forbidden = await request(port, {
+      path,
+      headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' },
+    })
+    assert.equal(forbidden.status, 403)
+
+    const consumed = await request(port, {
+      path,
+      headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
+    })
+    assert.equal(consumed.status, 303)
+    assert.equal(consumed.headers.location, '/_dsh_platform/console/')
+    assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
+    assert.match(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
+
+    const replay = await request(port, {
+      path,
+      headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
+    })
+    assert.equal(replay.status, 401)
+  } finally { await close(current.server) }
+})
+
+test('isolated Management continuation creates root-path cookies and redirects to root', async () => {
+  const current = fixture('initialized')
+  const isolated = createBrowserAuthentication({
+    access: current.access,
+    safeReturnPath,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
+  })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void isolated.handle(incoming, response, url.pathname, url.searchParams).then(handled => {
+      if (!handled) { response.writeHead(404); response.end() }
+    })
+  })
+  const port = await listen(server)
+  try {
+    const consumed = await request(port, {
+      path: '/transition/continue?token=continuation-valid',
+      headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
+    })
+    assert.equal(consumed.status, 303)
+    assert.equal(consumed.headers.location, '/')
+    assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
+    assert.match(consumed.headers['set-cookie'][0], /Path=\//)
+    assert.doesNotMatch(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
+  } finally { await close(server) }
+})
 
 test('renders state-driven initialization and recovery pages without exposing account material', async () => {
   for (const [state, expected] of [

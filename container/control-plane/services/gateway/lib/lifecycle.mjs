@@ -47,7 +47,7 @@ export async function runGateway(config, {
     access,
     safeReturnPath,
     report: record,
-    paths: { authPrefix: '/auth/', accessPrefix: '/access/', consolePath: '/' },
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
   })
   let lastPlatformStatus
   let lastPlatformStatusAt = 0

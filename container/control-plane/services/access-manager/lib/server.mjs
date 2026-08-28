@@ -7,9 +7,16 @@ import { normalizePassword, normalizeUsername, verifyCredential } from './creden
 import { BrowserSessionStore } from './sessions.mjs'
 import { ManagementExchangeStore } from './exchanges.mjs'
 import { CapabilityStore } from './capabilities.mjs'
+import { ManagementTransitionStore } from './transitions.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 function identifier() { return randomBytes(32).toString('base64url') }
+function isLoopbackHostname(hostname) {
+  if (hostname === 'localhost' || hostname === '[::1]') return true
+  const parts = hostname.split('.')
+  return parts.length === 4 && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
 function digest(value) { return createHash('sha256').update(value).digest('base64url') }
 
 function normalizeManagementAccess(mode, entry) {
@@ -81,6 +88,7 @@ export class AccessService {
     sessions = new BrowserSessionStore(),
     exchanges = new ManagementExchangeStore(),
     capabilities = new CapabilityStore(),
+    transitions,
     verify = verifyCredential,
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
@@ -92,6 +100,7 @@ export class AccessService {
     this.sessions = sessions
     this.exchanges = exchanges
     this.capabilities = capabilities
+    this.transitions = transitions ?? new ManagementTransitionStore({ now })
     this.verify = verify
     this.sleep = sleep
     this.report = report
@@ -199,6 +208,24 @@ export class AccessService {
     } finally { admission.release(authenticated) }
   }
 
+  async verifyFreshAuthentication(account, mainPassword, additionalPassword, requireAdditional) {
+    const admission = this.limiter.enter(account.accountId)
+    let authenticated = false
+    try {
+      if (admission.delayMs > 0) await this.sleep(admission.delayMs)
+      const mainMatches = typeof mainPassword === 'string'
+        && await this.verify(mainPassword, account.mainCredential)
+      const additionalMatches = !requireAdditional || (typeof additionalPassword === 'string'
+        && await this.verify(additionalPassword, account.managementAdditionalCredential.verifier))
+      authenticated = mainMatches && additionalMatches
+      if (!authenticated) {
+        await this.report('access.fresh-authentication.failed', { accountId: account.accountId, level: 'warning' })
+        throw new AccessError('FRESH_AUTH_FAILED', 'current administrator credentials are incorrect', 401)
+      }
+      await this.report('access.fresh-authentication.succeeded', { accountId: account.accountId })
+    } finally { admission.release(authenticated) }
+  }
+
 
   async loginDsh(value) {
     const authenticated = await this.authenticate(value)
@@ -225,11 +252,11 @@ export class AccessService {
     return { authenticated: false }
   }
 
-  async managementResult(account, { origin, sourceDshOrigin = null }) {
+  async managementResult(account, { origin, sourceDshOrigin = null, sourceDshSessionId = null }) {
     if (account.managementAdditionalCredential.enabled) {
-      return { pending: this.exchanges.createPending(account, { targetOrigin: origin, sourceDshOrigin }) }
+      return { pending: this.exchanges.createPending(account, { targetOrigin: origin, sourceDshOrigin, sourceDshSessionId }) }
     }
-    const session = this.sessions.issue('management', account, { origin, sourceDshOrigin })
+    const session = this.sessions.issue('management', account, { origin, sourceDshOrigin, sourceDshSessionId })
     await this.report('access.session.created', { accountId: account.accountId, kind: 'management' })
     return { session }
   }
@@ -260,7 +287,11 @@ export class AccessService {
     const handoff = this.exchanges.consumeHandoff(value.token, current.account, value.origin)
     if (handoff === undefined) throw new AccessError('HANDOFF_INVALID', 'management handoff is invalid or expired', 401)
     await this.report('access.handoff.consumed', { accountId: current.account.accountId })
-    return this.managementResult(current.account, { origin: value.origin, sourceDshOrigin: handoff.sourceDshOrigin })
+    return this.managementResult(current.account, {
+      origin: value.origin,
+      sourceDshOrigin: handoff.sourceDshOrigin,
+      sourceDshSessionId: handoff.dshSessionId,
+    })
   }
 
   async completeManagementLogin(value) {
@@ -275,7 +306,9 @@ export class AccessService {
     if (!valid) throw new AccessError('AUTHENTICATION_FAILED', 'username or password is incorrect', 401)
     this.exchanges.consumePending(pending.key)
     const session = this.sessions.issue('management', current.account, {
-      origin: value.origin, sourceDshOrigin: pending.value.sourceDshOrigin,
+      origin: value.origin,
+      sourceDshOrigin: pending.value.sourceDshOrigin,
+      sourceDshSessionId: pending.value.sourceDshSessionId,
     })
     await this.report('access.session.created', { accountId: current.account.accountId, kind: 'management' })
     return { session }
@@ -304,6 +337,46 @@ export class AccessService {
     const capability = this.capabilities.consume(value.token, current.account, value)
     if (capability === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid or expired', 401)
     return { authorized: true, capability }
+  }
+
+  consumeInternalCapability(value, account) {
+    const authorization = this.capabilities.consume(value.internalCapability, account, {
+      audience: 'management', method: value.method, target: value.target,
+    })
+    if (authorization === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid', 401)
+    return authorization
+  }
+
+  async authenticationSettings(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    return {
+      account: publicAccount(current.account),
+      sessions: this.sessions.list(current.account, authorization.sessionId),
+    }
+  }
+
+  async revokeBrowserSessions(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    if (!['dsh', 'management'].includes(value.kind) || !['others', 'all'].includes(value.scope)) {
+      throw new AccessError('SESSION_ACTION_INVALID', 'session action is invalid')
+    }
+    const preservedSessionId = value.kind === 'dsh'
+      ? this.sessions.sourceDshSessionId(authorization.sessionId)
+      : authorization.sessionId
+    const revoked = value.scope === 'all'
+      ? (this.sessions.list(current.account, null).filter(session => session.kind === value.kind).length)
+      : this.sessions.revokeKindExcept(value.kind, preservedSessionId)
+    if (value.scope === 'all') this.sessions.revokeKind(value.kind)
+    await this.report('access.sessions.revoked', { kind: value.kind, scope: value.scope, revoked })
+    return { revoked, currentSessionRevoked: value.scope === 'all' && value.kind === 'management' }
   }
 
   async recoveryStatus() {
@@ -371,32 +444,116 @@ export class AccessService {
     })
   }
 
-  async setManagementAccess(value) {
+  async createManagementTransition(value) {
     const current = await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    const authorization = this.capabilities.consume(value.internalCapability, current.account, {
-      audience: 'management', method: value.method, target: value.target,
-    })
-    if (authorization === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid', 401)
+    const authorization = this.consumeInternalCapability(value, current.account)
+    const session = this.sessions.details(authorization.sessionId)
+    if (session?.kind !== 'management') throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
     const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
-    const account = {
-      ...current.account,
-      revision: identifier(),
-      updatedAt: new Date().toISOString(),
-      managementAccess: {
-        mode: value.mode,
-        version: current.account.managementAccess.version + 1,
-        isolatedEntry,
-        changedAt: new Date().toISOString(),
-      },
+    const candidateOrigin = value.mode === 'isolated'
+      ? (() => {
+          if (isolatedEntry.kind === 'public') return isolatedEntry.managementPublicOrigin
+          try {
+            const parsed = new URL(value.candidateOrigin)
+            if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== value.candidateOrigin
+              || !isLoopbackHostname(parsed.hostname)) throw new Error('not loopback')
+            return parsed.origin
+          } catch { throw new AccessError('ACCESS_ENTRY_INVALID', 'local Management probe origin is invalid') }
+        })()
+      : null
+    const transition = this.transitions.create({
+      account: current.account,
+      instanceId: current.initialization.instanceId,
+      sessionId: authorization.sessionId,
+      sourceOrigin: session.origin,
+      sourceDshOrigin: session.sourceDshOrigin,
+      mode: value.mode,
+      isolatedEntry,
+      candidateOrigin,
+    })
+    await this.report('access.management-transition.created', { mode: value.mode })
+    return { transition, instanceId: current.initialization.instanceId }
+  }
+
+  async probeManagementTransition(value) {
+    const current = await this.store.state()
+    const result = this.transitions.probe({
+      ...value,
+      instanceId: current.initialization?.instanceId,
+    })
+    if (result === undefined) throw new AccessError('TRANSITION_PROBE_INVALID', 'Management origin probe is invalid or expired', 401)
+    await this.report('access.management-transition.probed')
+    return result
+  }
+
+  async commitManagementTransition(value) {
+    return this.serialized(async () => {
+      const current = await this.store.state()
+      if (current.state !== 'initialized' || current.account === undefined) {
+        throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+      }
+      const authorization = this.consumeInternalCapability(value, current.account)
+      const transitionValue = {
+        transitionId: value.transitionId,
+        proof: value.proof,
+        account: current.account,
+        sessionId: authorization.sessionId,
+      }
+      const transition = this.transitions.consume(transitionValue)
+      if (transition === undefined) throw new AccessError('TRANSITION_INVALID', 'Management origin transition is invalid or expired', 409)
+      await this.verifyFreshAuthentication(
+        current.account,
+        value.currentPassword,
+        value.currentAdditionalPassword,
+        current.account.managementAdditionalCredential.enabled,
+      )
+      const account = {
+        ...current.account,
+        revision: identifier(),
+        updatedAt: new Date().toISOString(),
+        managementAccess: {
+          mode: transition.mode,
+          version: current.account.managementAccess.version + 1,
+          isolatedEntry: transition.isolatedEntry,
+          changedAt: new Date().toISOString(),
+        },
+      }
+      const next = await this.store.replaceAccount(account, current.account.revision)
+      const targetOrigin = transition.mode === 'isolated'
+        ? (transition.isolatedEntry.kind === 'public' ? transition.candidateOrigin : null)
+        : transition.sourceDshOrigin
+      const continuation = this.transitions.createContinuation({
+        account: next, targetOrigin, sourceDshOrigin: transition.sourceDshOrigin,
+      })
+      this.sessions.revokeKind('management')
+      this.exchanges.clear?.()
+      await this.report('access.management-origin.changed', { mode: transition.mode })
+      return {
+        account: publicAccount(next),
+        continuation,
+        targetOrigin,
+        loginOrigin: transition.mode === 'isolated' ? transition.candidateOrigin : transition.sourceDshOrigin,
+      }
+    })
+  }
+
+  async consumeManagementContinuation(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    const next = await this.store.replaceAccount(account, current.account.revision)
-    this.sessions.revokeAll?.()
-    this.exchanges.clear?.()
-    await this.report('access.management-origin.changed', { mode: value.mode })
-    return { account: publicAccount(next) }
+    const continuation = this.transitions.consumeContinuation({
+      token: value.token, account: current.account, targetOrigin: value.origin,
+    })
+    if (continuation === undefined) throw new AccessError('CONTINUATION_INVALID', 'Management continuation is invalid or expired', 401)
+    const session = this.sessions.issue('management', current.account, {
+      origin: value.origin, sourceDshOrigin: continuation.sourceDshOrigin,
+    })
+    await this.report('access.management-continuation.consumed')
+    return { session }
   }
 
   async updateAuthenticationSettings(value) {
@@ -404,11 +561,24 @@ export class AccessService {
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    const authorization = this.capabilities.consume(value.internalCapability, current.account, {
-      audience: 'management', method: value.method, target: value.target,
-    })
-    if (authorization === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid', 401)
+    this.consumeInternalCapability(value, current.account)
     const account = { ...current.account, revision: identifier(), updatedAt: new Date().toISOString() }
+    const usernameChanged = value.username !== undefined && normalizeUsername(value.username) !== current.account.username
+    const mainPasswordChanged = value.password !== undefined
+    const additionalChanged = value.additionalPassword !== undefined
+      || (value.additionalEnabled !== undefined
+        && value.additionalEnabled !== current.account.managementAdditionalCredential.enabled)
+    if (value.mode !== undefined || value.isolatedEntry !== undefined) {
+      throw new AccessError('TRANSITION_REQUIRED', 'Management access changes require a verified transition', 409)
+    }
+    if (usernameChanged || mainPasswordChanged || additionalChanged) {
+      await this.verifyFreshAuthentication(
+        current.account,
+        value.currentPassword,
+        value.currentAdditionalPassword,
+        additionalChanged && current.account.managementAdditionalCredential.enabled,
+      )
+    }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
     if (value.password !== undefined) {
       if (current.account.managementAdditionalCredential.enabled
@@ -445,20 +615,15 @@ export class AccessService {
         throw new AccessError('PASSWORD_REQUIRED', 'additional password is required')
       }
     }
-    if (value.mode !== undefined) {
-      const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
-      account.managementAccess = {
-        mode: value.mode,
-        version: current.account.managementAccess.version + 1,
-        isolatedEntry,
-        changedAt: new Date().toISOString(),
-      }
-    }
     const next = await this.store.replaceAccount(account, current.account.revision)
-    this.sessions.revokeAll?.()
+    if (mainPasswordChanged) this.sessions.revokeAll()
+    else if (additionalChanged) this.sessions.revokeKind('management')
     this.exchanges.clear?.()
-    await this.report('access.authentication.settings.changed', { usernameChanged: value.username !== undefined })
-    return { account: publicAccount(next) }
+    await this.report('access.authentication.settings.changed', { usernameChanged })
+    return {
+      account: publicAccount(next),
+      currentManagementSessionRevoked: mainPasswordChanged || additionalChanged,
+    }
   }
 }
 
@@ -492,7 +657,12 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities') return send(response, 201, await service.issueCapability(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
-      if (request.method === 'POST' && pathname === '/v1/management/access') return send(response, 200, await service.setManagementAccess(value))
+      if (request.method === 'POST' && pathname === '/v1/management/settings') return send(response, 200, await service.authenticationSettings(value))
+      if (request.method === 'POST' && pathname === '/v1/management/sessions/revoke') return send(response, 200, await service.revokeBrowserSessions(value))
+      if (request.method === 'POST' && pathname === '/v1/management/transitions') return send(response, 201, await service.createManagementTransition(value))
+      if (request.method === 'POST' && pathname === '/v1/management/transitions/probe') return send(response, 200, await service.probeManagementTransition(value))
+      if (request.method === 'POST' && pathname === '/v1/management/transitions/commit') return send(response, 200, await service.commitManagementTransition(value))
+      if (request.method === 'POST' && pathname === '/v1/management/continuations/consume') return send(response, 200, await service.consumeManagementContinuation(value))
       if (request.method === 'POST' && pathname === '/v1/management/auth-settings') return send(response, 200, await service.updateAuthenticationSettings(value))
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {

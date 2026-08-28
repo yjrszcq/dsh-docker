@@ -48,7 +48,7 @@ export class ManagementExchangeStore {
     return handoff
   }
 
-  createPending(account, { targetOrigin, sourceDshOrigin = null }) {
+  createPending(account, { targetOrigin, sourceDshOrigin = null, sourceDshSessionId = null }) {
     this.prune()
     const value = token('dshmp', this.random)
     this.pending.set(digest(value), {
@@ -58,6 +58,7 @@ export class ManagementExchangeStore {
       managementAccessVersion: account.managementAccess.version,
       targetOrigin,
       sourceDshOrigin,
+      sourceDshSessionId,
       attempts: 0,
       expiresAt: this.now() + this.pendingTtlMs,
     })

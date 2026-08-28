@@ -52,6 +52,20 @@ test('request inspection rejects cross-site and mismatched origins', () => {
   }, trusted).accepted, true)
 })
 
+test('explicit cross-origin inspection still requires a trusted Host', () => {
+  const trusted = parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'management.example' })
+  assert.equal(inspectExternalRequest({
+    host: 'management.example',
+    origin: 'https://dsh.example',
+    'sec-fetch-site': 'cross-site',
+  }, trusted, { allowCrossOrigin: true }).accepted, true)
+  assert.equal(inspectExternalRequest({
+    host: 'untrusted.example',
+    origin: 'https://dsh.example',
+    'sec-fetch-site': 'cross-site',
+  }, trusted, { allowCrossOrigin: true }).accepted, false)
+})
+
 test('request inspection rejects missing and malformed browser authorities', () => {
   const trusted = parseTrustedHosts({ DSH_TRUSTED_HOSTS: '*' })
   assert.deepEqual(inspectExternalRequest({}, trusted), { accepted: false, reason: 'missing-host' })

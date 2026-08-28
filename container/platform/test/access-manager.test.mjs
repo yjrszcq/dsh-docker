@@ -256,7 +256,7 @@ test('stores only digests for origin-bound DSH sessions with absolute and idle e
   assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
 })
 
-test('changes Management origin mode and invalidates the previous session', async () => {
+test('probes the current instance before atomically changing Management origin', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
@@ -267,23 +267,118 @@ test('changes Management origin mode and invalidates the previous session', asyn
     csrfToken: login.session.csrfToken,
     requireCsrf: true,
     audience: 'management',
-    method: 'PUT',
-    target: '/_dsh_platform/api/v1/management-origin',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/management-origin/transitions',
   })
-  const changed = await service.setManagementAccess({
+  const created = await service.createManagementTransition({
     internalCapability: issued.capability.token,
-    method: 'PUT',
-    target: '/_dsh_platform/api/v1/management-origin',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/management-origin/transitions',
     mode: 'isolated',
-    isolatedEntry: { kind: 'local-only' },
+    isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  })
+  const proof = await service.probeManagementTransition({
+    transitionId: created.transition.transitionId,
+    nonce: created.transition.nonce,
+    sourceOrigin: 'http://dsh.example:3080',
+    candidateOrigin: 'https://manage.example',
+  })
+  const commitCapability = await service.issueCapability({
+    managementToken: login.session.token,
+    origin: 'http://dsh.example:3080',
+    csrfToken: login.session.csrfToken,
+    requireCsrf: true,
+    audience: 'management',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+  })
+  const changed = await service.commitManagementTransition({
+    internalCapability: commitCapability.capability.token,
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: created.transition.transitionId, proof: proof.proof,
+    currentPassword: 'correct horse battery staple',
   })
   assert.equal(changed.account.managementAccess.mode, 'isolated')
+  assert.equal(changed.account.managementAccess.version, 2)
+  assert.equal(changed.targetOrigin, 'https://manage.example')
+  assert.equal(changed.loginOrigin, 'https://manage.example')
   assert.equal((await service.validateSession({
     token: login.session.token, kind: 'management', origin: 'http://dsh.example:3080',
   })).authenticated, false)
+  const continued = await service.consumeManagementContinuation({
+    token: changed.continuation.token, origin: 'https://manage.example',
+  })
+  assert.match(continued.session.token, /^dshms_/)
+  await assert.rejects(service.consumeManagementContinuation({
+    token: changed.continuation.token, origin: 'https://manage.example',
+  }), error => error.code === 'CONTINUATION_INVALID')
 })
 
-test('changes credentials and Management origin in one capability-bound transaction', async () => {
+test('verifies a loopback candidate without persisting it for local-only Management', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const login = await service.loginManagement({
+    username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
+  })
+  const capability = async target => (await service.issueCapability({
+    managementToken: login.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.session.csrfToken, requireCsrf: true,
+    audience: 'management', method: 'POST', target,
+  })).capability.token
+  const created = await service.createManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'isolated', isolatedEntry: { kind: 'local-only' }, candidateOrigin: 'http://127.20.30.40:3081',
+  })
+  const proof = await service.probeManagementTransition({
+    transitionId: created.transition.transitionId, nonce: created.transition.nonce,
+    sourceOrigin: 'http://dsh.example:3080', candidateOrigin: 'http://127.20.30.40:3081',
+  })
+  const changed = await service.commitManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: created.transition.transitionId, proof: proof.proof,
+    currentPassword: 'correct horse battery staple',
+  })
+  assert.deepEqual(changed.account.managementAccess.isolatedEntry, { kind: 'local-only' })
+  assert.equal(changed.targetOrigin, null)
+  assert.equal(changed.continuation, null)
+  assert.equal(changed.loginOrigin, 'http://127.20.30.40:3081')
+})
+
+test('consumes a Management transition when fresh authentication fails', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const login = await service.loginManagement({
+    username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
+  })
+  const capability = async target => (await service.issueCapability({
+    managementToken: login.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.session.csrfToken, requireCsrf: true,
+    audience: 'management', method: 'POST', target,
+  })).capability.token
+  const created = await service.createManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  })
+  const proof = await service.probeManagementTransition({
+    transitionId: created.transition.transitionId, nonce: created.transition.nonce,
+    sourceOrigin: 'http://dsh.example:3080', candidateOrigin: 'https://manage.example',
+  })
+  const attempt = async currentPassword => service.commitManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: created.transition.transitionId, proof: proof.proof, currentPassword,
+  })
+  await assert.rejects(attempt('wrong password'), error => error.code === 'FRESH_AUTH_FAILED')
+  await assert.rejects(attempt('correct horse battery staple'), error => error.code === 'TRANSITION_INVALID')
+  assert.equal((await service.status()).account.managementAccess.mode, 'compat')
+})
+
+test('requires Management origin changes to use the verified transition protocol', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
@@ -293,50 +388,132 @@ test('changes credentials and Management origin in one capability-bound transact
     csrfToken: login.session.csrfToken, requireCsrf: true,
     audience: 'management', method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
   })
-  const changed = await service.updateAuthenticationSettings({
+  await assert.rejects(service.updateAuthenticationSettings({
     internalCapability: issued.capability.token,
     method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    currentPassword: 'correct horse battery staple',
     username: 'operator', password: 'a different secure password',
     mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  }), error => error.code === 'TRANSITION_REQUIRED')
+})
+
+test('requires fresh authentication and applies credential-specific session revocation', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
-  assert.equal(changed.account.username, 'operator')
-  assert.equal(changed.account.managementAccess.mode, 'isolated')
-  assert.match((await service.loginManagement({
-    username: 'operator', password: 'a different secure password', origin: 'https://manage.example',
-  })).session.token, /^dshms_/)
-  await assert.rejects(() => service.updateAuthenticationSettings({
-    internalCapability: issued.capability.token,
-    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'replay',
-  }), error => error.code === 'CAPABILITY_INVALID')
+  const handoff = await service.createManagementHandoff({
+    dshToken: initialized.session.token,
+    dshOrigin: 'https://dsh.example',
+    targetOrigin: 'https://dsh.example',
+  })
+  const management = await service.consumeManagementHandoff({
+    token: handoff.handoff.token, origin: 'https://dsh.example',
+  })
+  const capability = async target => (await service.issueCapability({
+    managementToken: management.session.token,
+    origin: 'https://dsh.example',
+    csrfToken: management.session.csrfToken,
+    requireCsrf: true,
+    audience: 'management', method: 'PUT', target,
+  })).capability.token
+
+  await assert.rejects(service.updateAuthenticationSettings({
+    internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'operator',
+  }), error => error.code === 'FRESH_AUTH_FAILED')
+
+  const renamed = await service.updateAuthenticationSettings({
+    internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    username: 'operator', currentPassword: 'correct horse battery staple',
+  })
+  assert.equal(renamed.currentManagementSessionRevoked, false)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+
+  const changed = await service.updateAuthenticationSettings({
+    internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    password: 'a different secure password', currentPassword: 'correct horse battery staple',
+  })
+  assert.equal(changed.currentManagementSessionRevoked, true)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+})
+
+test('lists and independently revokes DSH and Management browser sessions', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const firstDsh = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const secondDsh = await service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const handoff = await service.createManagementHandoff({
+    dshToken: firstDsh.session.token, dshOrigin: 'https://dsh.example', targetOrigin: 'https://dsh.example',
+  })
+  const management = await service.consumeManagementHandoff({ token: handoff.handoff.token, origin: 'https://dsh.example' })
+  const issue = async (method, target) => (await service.issueCapability({
+    managementToken: management.session.token, origin: 'https://dsh.example',
+    csrfToken: management.session.csrfToken, requireCsrf: true,
+    audience: 'management', method, target,
+  })).capability.token
+  const settings = await service.authenticationSettings({
+    internalCapability: await issue('GET', '/_dsh_platform/api/v1/auth-settings'),
+    method: 'GET', target: '/_dsh_platform/api/v1/auth-settings',
+  })
+  assert.equal(settings.sessions.filter(value => value.kind === 'dsh').length, 2)
+  assert.equal(settings.sessions.filter(value => value.kind === 'management').length, 1)
+
+  const result = await service.revokeBrowserSessions({
+    internalCapability: await issue('POST', '/_dsh_platform/api/v1/auth-sessions/revoke'),
+    method: 'POST', target: '/_dsh_platform/api/v1/auth-sessions/revoke',
+    kind: 'dsh', scope: 'others',
+  })
+  assert.equal(result.revoked, 1)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: firstDsh.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: secondDsh.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
 })
 
 test('rejects equal administrator passwords and non-origin Management entries', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const capability = async () => {
+  const capability = async (method = 'PUT', target = '/_dsh_platform/api/v1/auth-settings') => {
     const login = await service.loginManagement({
       username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
     })
     return (await service.issueCapability({
       managementToken: login.session.token, origin: 'http://dsh.example:3080',
       csrfToken: login.session.csrfToken, requireCsrf: true,
-      audience: 'management', method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+      audience: 'management', method, target,
     })).capability.token
   }
   await assert.rejects(service.updateAuthenticationSettings({
     internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    currentPassword: 'correct horse battery staple',
     additionalEnabled: true, additionalPassword: 'correct horse battery staple',
   }), error => error.code === 'PASSWORDS_MUST_DIFFER')
-  await assert.rejects(service.updateAuthenticationSettings({
-    internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+  await assert.rejects(service.createManagementTransition({
+    internalCapability: await capability('POST', '/_dsh_platform/api/v1/management-origin/transitions'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
     mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example/path' },
   }), error => error.code === 'ACCESS_ENTRY_INVALID')
-  const changed = await service.updateAuthenticationSettings({
-    internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
-    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example:443' },
-  })
-  assert.equal(changed.account.managementAccess.isolatedEntry.managementPublicOrigin, 'https://manage.example')
 })
 
 test('initializes and logs into DSH with separately revocable browser sessions', async () => {

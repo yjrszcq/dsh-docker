@@ -78,6 +78,7 @@ function rawRequest(socketPath, path, method = 'GET') {
 test('management socket exposes status, check, update, logs, and local rollback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-'))
   const coordinator = new Coordinator()
+  const originTransitions = []
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   await logs.append('gateway', 'stdout', 'ready')
   const server = createManagementServer({
@@ -85,6 +86,17 @@ test('management socket exposes status, check, update, logs, and local rollback'
     logs,
     platformStatus: async () => ({ environment: 'one' }),
     updateAutomaticCheck: async value => value,
+    getAuthenticationSettings: async () => ({ account: { username: 'admin' } }),
+    updateAuthenticationSettings: async value => ({ account: { username: value.username } }),
+    revokeAuthenticationSessions: async value => ({ revoked: value.scope === 'all' ? 2 : 1 }),
+    createManagementOriginTransition: async value => {
+      originTransitions.push({ stage: 'create', value })
+      return { transition: { transitionId: 'transition-one', nonce: 'nonce-one' } }
+    },
+    commitManagementOriginTransition: async value => {
+      originTransitions.push({ stage: 'commit', value })
+      return { account: { managementAccess: { mode: 'isolated' } } }
+    },
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -105,6 +117,18 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.deepEqual(await client.request('PUT', '/_dsh_platform/api/v1/automatic-check', {
       enabled: true, intervalSeconds: 21_600, notificationsEnabled: false,
     }), { enabled: true, intervalSeconds: 21_600, notificationsEnabled: false })
+    assert.equal((await client.request('GET', '/_dsh_platform/api/v1/auth-settings')).account.username, 'admin')
+    assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/auth-settings', { username: 'operator' })).account.username, 'operator')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-sessions/revoke', {
+      kind: 'dsh', scope: 'others',
+    })).revoked, 1)
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/management-origin/transitions', {
+      mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    })).transition.transitionId, 'transition-one')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/management-origin/transitions/commit', {
+      transitionId: 'transition-one', proof: 'proof-one',
+    })).account.managementAccess.mode, 'isolated')
+    assert.deepEqual(originTransitions.map(value => value.stage), ['create', 'commit'])
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/holds/retry', { id: 'hold-a' })).retried, 'hold-a')
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
     coordinator.running = false
@@ -1979,25 +2003,38 @@ test('CLI parser keeps rollback local and update wait behavior explicit', async 
   assert.match(output[0], /rollback-task/)
 })
 
-test('management CLI creates an ephemeral standalone console access key', async () => {
-  assert.deepEqual(parseCli(['access', 'create']), { command: 'access', operation: 'create' })
+test('management CLI creates a root-only one-time migration setup key', async () => {
+  assert.deepEqual(parseCli(['access', 'begin-migration']), { command: 'access', operation: 'begin-migration' })
+  assert.throws(() => parseCli(['access', 'create']))
   assert.throws(() => parseCli(['access']))
   const calls = []
   const output = []
+  const tty = { isTTY: true }
   assert.equal(await runCli({
-    argv: ['access', 'create'],
+    argv: ['access', 'begin-migration'],
     access: {
       request: async (method, path) => {
         calls.push([method, path])
-        return { key: 'dshp_example', expiresAt: '2026-08-21T00:10:00.000Z' }
+        if (method === 'GET') return { state: 'migration-required', account: null }
+        return { key: 'dshmk_example', expiresAt: '2026-08-28T00:10:00.000Z' }
       },
     },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
     write: line => output.push(line),
   }), 0)
-  assert.deepEqual(calls, [['POST', '/v1/keys']])
+  assert.deepEqual(calls, [
+    ['GET', '/v1/recovery/status'],
+    ['POST', '/v1/recovery/begin-migration'],
+  ])
   assert.deepEqual(JSON.parse(output[0]), {
-    key: 'dshp_example', expiresAt: '2026-08-21T00:10:00.000Z',
+    key: 'dshmk_example', expiresAt: '2026-08-28T00:10:00.000Z',
   })
+  await assert.rejects(runCli({
+    argv: ['access', 'begin-migration'], access: { request: async () => ({}) },
+    getuid: () => 1000, input: tty, output: tty,
+  }), /requires root/)
 })
 
 test('update wait ignores a terminal state from an older task', async () => {

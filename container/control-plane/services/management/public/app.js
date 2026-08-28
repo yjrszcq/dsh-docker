@@ -1,4 +1,4 @@
-const API = '/_dsh_platform/api/v1'
+const API = window.location.pathname.startsWith('/_dsh_platform/') ? '/_dsh_platform/api/v1' : '/api/v1'
 const UPDATE_TERMINAL_STATES = new Set(['idle', 'success', 'failed'])
 const PLUGIN_DRAFT_KEY = 'dsh-platform:system-plugin-draft'
 const LOG_CLEAR_CUTOFF_KEY = 'dsh-platform:log-clear-cutoff'
@@ -13,7 +13,7 @@ const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
-    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
+    managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', authSettingsTab: '认证设置', authSettingsTitle: '认证设置', authSettingsDetail: '管理本地管理员账户、附加密码、浏览器会话和管理中心访问方式。', authUsername: '用户名', authMainPasswordTitle: '主密码', authCurrentPassword: '当前主密码', authCurrentPasswordPlaceholder: '修改敏感设置时填写', authNewPassword: '新主密码', authConfirmPassword: '确认新主密码', authPasswordPlaceholder: '留空表示保持不变', authAdditionalTitle: '管理中心附加密码', authAdditionalEnabled: '要求进入管理中心时再次输入附加密码', authCurrentAdditionalPassword: '当前附加密码', authAdditionalPassword: '新附加密码', authConfirmAdditionalPassword: '确认新附加密码', authOriginTitle: '管理中心入口', authMode: '访问模式', authModeCompat: '兼容模式（3080）', authModeIsolated: '独立公开管理入口', authModeLocal: '仅本机独立入口', authOrigin: '候选管理中心地址', authOriginDetail: '切换前会确认候选地址确实连接到当前平台实例，并注销现有管理中心会话。', authSessionsTitle: '浏览器会话', authSessionSummary: 'DSH 会话 {dsh} 个，管理中心会话 {management} 个。', authRevokeOtherDsh: '注销其他 DSH 会话', authRevokeAllDsh: '注销全部 DSH 会话', authRevokeOtherManagement: '注销其他管理中心会话', authRevokeAllManagement: '注销全部管理中心会话', authSessionsRevoked: '已注销 {count} 个会话。', authPasswordMismatch: '两次输入的新密码不一致。', authCombinedChange: '请先保存账户或密码修改，再单独切换管理中心入口。', authTransitionFailed: '无法验证并切换管理中心入口。', authTransitionCompatLogin: '兼容模式已启用。请返回你的 DSH 地址打开管理中心。', authTransitionLocalLogin: '仅本机管理入口已启用。请通过容器宿主机映射的 loopback 地址登录管理中心。', authSave: '保存认证设置', authSaved: '认证设置已保存。', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
     proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentUnavailable: '出站代理组件暂不可用', proxyComponentIssueLabel: '查看出站代理组件异常', proxyComponentIssueTitle: '出站代理组件不可用', proxyComponentIssueDetail: 'DSH Docker 的出站代理组件当前不可用。当前配置仅供查看，保存、连接测试和受管代理流量将在组件恢复后可用。这不代表已配置的外部代理是否可连接。',
     proxyScopes: '流量范围', proxyScopesDetail: '选择哪些受管出站流量使用此代理。', proxyScopeHelp: '范围说明', proxyScopeGuideTitle: '代理范围说明', proxyScopeGuideDetail: '平台如何归类各类联网来源。', proxyScopeUpdates: '更新管理', proxyScopeUpdatesDetail: 'Metadata 检查和远程 Artifact 下载。', proxyScopePlatform: '平台组件', proxyScopePlatformDetail: 'DSH Docker 组件与系统插件的外部请求。', proxyScopeDshCore: 'DSH 核心', proxyScopeDshCoreDetail: '不含模型 Provider API 的 DSH 核心流量。', proxyScopeDshPlugins: 'DSH 插件', proxyScopeDshPluginsDetail: 'DSH 官方插件与用户安装的第三方插件。', proxyScopeAgent: 'Agent 联网操作', proxyScopeAgentDetail: 'Agent 联网工具、命令及其子进程。', proxyScopeTerminal: '容器终端', proxyScopeTerminalDetail: '此管理中心创建的 Shell 会话。',
@@ -109,7 +109,7 @@ const COPY = Object.freeze({
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
-    managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
+    managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', authSettingsTab: 'Authentication', authSettingsTitle: 'Authentication settings', authSettingsDetail: 'Manage the local administrator account, additional password, browser sessions, and Management access mode.', authUsername: 'Username', authMainPasswordTitle: 'Main password', authCurrentPassword: 'Current main password', authCurrentPasswordPlaceholder: 'Required for sensitive changes', authNewPassword: 'New main password', authConfirmPassword: 'Confirm new main password', authPasswordPlaceholder: 'Leave blank to keep the current value', authAdditionalTitle: 'Additional Management password', authAdditionalEnabled: 'Require an additional password for Management', authCurrentAdditionalPassword: 'Current additional password', authAdditionalPassword: 'New additional password', authConfirmAdditionalPassword: 'Confirm new additional password', authOriginTitle: 'Management origin', authMode: 'Access mode', authModeCompat: 'Compatibility path (3080)', authModeIsolated: 'Separate public Management origin', authModeLocal: 'Local-only separate origin', authOrigin: 'Candidate Management origin', authOriginDetail: 'The candidate origin is verified against this platform instance before changing modes and signing out existing Management sessions.', authSessionsTitle: 'Browser sessions', authSessionSummary: '{dsh} DSH session(s), {management} Management session(s).', authRevokeOtherDsh: 'Sign out other DSH sessions', authRevokeAllDsh: 'Sign out all DSH sessions', authRevokeOtherManagement: 'Sign out other Management sessions', authRevokeAllManagement: 'Sign out all Management sessions', authSessionsRevoked: 'Signed out {count} session(s).', authPasswordMismatch: 'The new password confirmation does not match.', authCombinedChange: 'Save account or password changes first, then switch the Management origin separately.', authTransitionFailed: 'The Management origin could not be verified and switched.', authTransitionCompatLogin: 'Compatibility mode is enabled. Return to your DSH address to open Management.', authTransitionLocalLogin: 'Local-only Management is enabled. Sign in through the loopback address mapped on the container host.', authSave: 'Save authentication settings', authSaved: 'Authentication settings saved.', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
     proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentUnavailable: 'Outbound Proxy is unavailable', proxyComponentIssueLabel: 'View outbound proxy component error', proxyComponentIssueTitle: 'Outbound proxy component unavailable', proxyComponentIssueDetail: 'The DSH Docker outbound proxy component is unavailable. The current configuration is read-only until the component recovers; saving, connection tests, and managed proxy traffic are unavailable. This does not indicate whether the configured external proxy is reachable.',
     proxyScopes: 'Traffic scopes', proxyScopesDetail: 'Select which managed outbound traffic uses this proxy.', proxyScopeHelp: 'Scope guide', proxyScopeGuideTitle: 'Proxy scope guide', proxyScopeGuideDetail: 'How managed network sources are classified.', proxyScopeUpdates: 'Updates', proxyScopeUpdatesDetail: 'Metadata checks and remote Artifact downloads.', proxyScopePlatform: 'Platform components', proxyScopePlatformDetail: 'External requests from DSH Docker components and System Plugins.', proxyScopeDshCore: 'DSH core', proxyScopeDshCoreDetail: 'DSH core traffic excluding model Provider APIs.', proxyScopeDshPlugins: 'DSH plugins', proxyScopeDshPluginsDetail: 'Official and user-installed DSH plugins.', proxyScopeAgent: 'Agent network operations', proxyScopeAgentDetail: 'Agent network tools, commands, and child processes.', proxyScopeTerminal: 'Container terminal', proxyScopeTerminalDetail: 'Shell sessions created by this Management Console.',
@@ -4003,6 +4003,7 @@ async function selectTab(tab) {
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
   if (tab === 'proxy') void loadProxy()
+  if (tab === 'auth-settings') void loadAuthenticationSettings()
   return true
 }
 
@@ -4070,6 +4071,184 @@ async function refreshLogs() {
     showError(error)
   } finally {
     elements['refresh-logs'].disabled = false
+  }
+}
+
+let authenticationSettings
+function managementLoginPath() {
+  return window.location.pathname.startsWith('/_dsh_platform/')
+    ? '/_dsh_platform/auth/management'
+    : '/auth/management'
+}
+
+function selectedManagementAccess() {
+  const selected = elements['auth-mode'].value
+  if (selected === 'compat') return { mode: 'compat', isolatedEntry: null, candidateOrigin: null }
+  const candidateOrigin = elements['auth-origin'].value.trim()
+  return {
+    mode: 'isolated',
+    isolatedEntry: selected === 'isolated-local'
+      ? { kind: 'local-only' }
+      : { kind: 'public', managementPublicOrigin: candidateOrigin },
+    candidateOrigin,
+  }
+}
+
+function currentManagementAccessSelection(access = {}) {
+  if (access.mode !== 'isolated') return { mode: 'compat', origin: '' }
+  if (access.isolatedEntry?.kind === 'local-only') return { mode: 'isolated-local', origin: '' }
+  return { mode: 'isolated-public', origin: access.isolatedEntry?.managementPublicOrigin ?? '' }
+}
+
+async function loadAuthenticationSettings() {
+  try {
+    authenticationSettings = await api('auth-settings')
+    const account = authenticationSettings.account ?? {}
+    elements['auth-username'].value = account.username ?? ''
+    elements['auth-additional-enabled'].checked = account.managementAdditionalCredential?.enabled === true
+    const selectedAccess = currentManagementAccessSelection(account.managementAccess)
+    elements['auth-mode'].value = selectedAccess.mode
+    elements['auth-origin'].value = selectedAccess.origin
+    renderAuthenticationOrigin()
+    const sessions = authenticationSettings.sessions ?? []
+    elements['auth-session-summary'].textContent = t('authSessionSummary', {
+      dsh: sessions.filter(session => session.kind === 'dsh').length,
+      management: sessions.filter(session => session.kind === 'management').length,
+    })
+    for (const id of ['auth-current-password', 'auth-password', 'auth-password-confirm', 'auth-current-additional-password', 'auth-additional-password', 'auth-additional-password-confirm']) {
+      elements[id].value = ''
+    }
+    elements['auth-settings-status'].hidden = true
+  } catch (error) { showError(error) }
+}
+
+function renderAuthenticationOrigin() {
+  elements['auth-origin'].disabled = elements['auth-mode'].value === 'compat'
+}
+
+async function probeManagementOrigin(created) {
+  if (created.transition?.candidateOrigin === null) return null
+  const target = new URL('/transition/probe', created.transition.candidateOrigin)
+  target.searchParams.set('transitionId', created.transition.transitionId)
+  target.searchParams.set('nonce', created.transition.nonce)
+  const response = await fetch(target, {
+    credentials: 'omit',
+    headers: { accept: 'application/json' },
+    mode: 'cors',
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok || typeof result.proof !== 'string') throw new Error(result.error ?? t('authTransitionFailed'))
+  return result.proof
+}
+
+function continueManagementTransition(result) {
+  if (result.continuation?.token !== undefined && typeof result.targetOrigin === 'string') {
+    const prefix = result.account?.managementAccess?.mode === 'isolated'
+      ? '/transition/continue'
+      : '/_dsh_platform/transition/continue'
+    const target = new URL(prefix, result.targetOrigin)
+    target.searchParams.set('token', result.continuation.token)
+    window.location.assign(target)
+    return
+  }
+  if (result.account?.managementAccess?.isolatedEntry?.kind === 'local-only') {
+    elements['auth-settings-status'].textContent = t('authTransitionLocalLogin')
+    elements['auth-settings-status'].hidden = false
+    return
+  }
+  if (typeof result.loginOrigin === 'string') {
+    window.location.assign(new URL('/auth/management', result.loginOrigin))
+    return
+  }
+  elements['auth-settings-status'].textContent = t('authTransitionCompatLogin')
+  elements['auth-settings-status'].hidden = false
+}
+
+async function changeManagementOrigin(access, currentPassword, currentAdditionalPassword) {
+  const created = await api('management-origin/transitions', {
+    method: 'POST',
+    body: access,
+  })
+  const proof = await probeManagementOrigin(created)
+  const result = await api('management-origin/transitions/commit', {
+    method: 'POST',
+    body: {
+      transitionId: created.transition.transitionId,
+      proof,
+      currentPassword,
+      ...(currentAdditionalPassword === '' ? {} : { currentAdditionalPassword }),
+    },
+  })
+  continueManagementTransition(result)
+}
+
+async function saveAuthenticationSettings(event) {
+  event.preventDefault()
+  const button = elements['auth-settings-save']
+  button.disabled = true
+  try {
+    const body = { username: elements['auth-username'].value }
+    const password = elements['auth-password'].value
+    if (password !== elements['auth-password-confirm'].value) throw new Error(t('authPasswordMismatch'))
+    if (password !== '') body.password = password
+    const additionalEnabled = elements['auth-additional-enabled'].checked
+    const priorAdditionalEnabled = authenticationSettings?.account?.managementAdditionalCredential?.enabled === true
+    const additionalPassword = elements['auth-additional-password'].value
+    if (additionalPassword !== elements['auth-additional-password-confirm'].value) throw new Error(t('authPasswordMismatch'))
+    if (additionalEnabled !== priorAdditionalEnabled || additionalPassword !== '') body.additionalEnabled = additionalEnabled
+    if (additionalEnabled && additionalPassword !== '') body.additionalPassword = additionalPassword
+    const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
+    const nextAccess = selectedManagementAccess()
+    const modeChanged = elements['auth-mode'].value !== previousAccess.mode
+      || (nextAccess.mode === 'isolated' && nextAccess.candidateOrigin !== previousAccess.origin)
+    const usernameChanged = body.username !== (authenticationSettings?.account?.username ?? '')
+    const credentialsChanged = password !== '' || additionalEnabled !== priorAdditionalEnabled || additionalPassword !== ''
+    if (modeChanged && (usernameChanged || credentialsChanged)) throw new Error(t('authCombinedChange'))
+    if (usernameChanged || credentialsChanged || modeChanged) body.currentPassword = elements['auth-current-password'].value
+    if (priorAdditionalEnabled && (additionalEnabled !== priorAdditionalEnabled || additionalPassword !== '' || modeChanged)) {
+      body.currentAdditionalPassword = elements['auth-current-additional-password'].value
+    }
+    if (modeChanged) {
+      await changeManagementOrigin(nextAccess, body.currentPassword, body.currentAdditionalPassword ?? '')
+      return
+    }
+    const result = await api('auth-settings', { method: 'PUT', body })
+    elements['auth-settings-status'].textContent = t('authSaved')
+    elements['auth-settings-status'].hidden = false
+    if (result.currentManagementSessionRevoked === true) {
+      window.setTimeout(() => { window.location.assign(managementLoginPath()) }, 900)
+    } else {
+      authenticationSettings.account = result.account
+      button.disabled = false
+      await loadAuthenticationSettings()
+      elements['auth-settings-status'].textContent = t('authSaved')
+      elements['auth-settings-status'].hidden = false
+    }
+  } catch (error) {
+    showError(error)
+    button.disabled = false
+  }
+}
+
+async function revokeAuthenticationSessions(button) {
+  const buttons = [...document.querySelectorAll('.auth-session-actions button')]
+  for (const value of buttons) value.disabled = true
+  try {
+    const result = await api('auth-sessions/revoke', {
+      method: 'POST',
+      body: { kind: button.dataset.sessionKind, scope: button.dataset.sessionScope },
+    })
+    if (result.currentSessionRevoked === true) {
+      window.location.assign(managementLoginPath())
+      return
+    }
+    await loadAuthenticationSettings()
+    elements['auth-settings-status'].textContent = t('authSessionsRevoked', { count: result.revoked ?? 0 })
+    elements['auth-settings-status'].hidden = false
+  } catch (error) {
+    showError(error)
+  } finally {
+    for (const value of buttons) value.disabled = false
   }
 }
 
@@ -4231,6 +4410,11 @@ elements['theme-switch'].addEventListener('click', () => {
   applyTheme(themePreference)
   renderThemeControl()
 })
+elements['auth-mode'].addEventListener('change', renderAuthenticationOrigin)
+elements['auth-settings-form'].addEventListener('submit', event => { void saveAuthenticationSettings(event) })
+for (const button of document.querySelectorAll('.auth-session-actions button')) {
+  button.addEventListener('click', () => { void revokeAuthenticationSessions(button) })
+}
 elements['restart-dsh'].addEventListener('click', () => elements['restart-dialog'].showModal())
 elements['start-dsh'].addEventListener('click', () => { void act('start-dsh', { method: 'POST' }) })
 elements['stop-dsh'].addEventListener('click', () => elements['stop-dialog'].showModal())

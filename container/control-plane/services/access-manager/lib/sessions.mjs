@@ -38,7 +38,7 @@ export class BrowserSessionStore {
     }
   }
 
-  issue(kind, account, { origin, sourceDshOrigin = null } = {}) {
+  issue(kind, account, { origin, sourceDshOrigin = null, sourceDshSessionId = null } = {}) {
     const policy = this.policy[kind]
     if (policy === undefined) throw new TypeError('browser session kind is invalid')
     if (typeof origin !== 'string' || origin.length === 0 || origin.length > 2_048) {
@@ -59,6 +59,7 @@ export class BrowserSessionStore {
       managementAccessVersion: account.managementAccess.version,
       origin,
       sourceDshOrigin,
+      sourceDshSessionId,
       csrfDigest: digest(csrfToken),
       createdAt,
       lastSeenAt: createdAt,
@@ -95,6 +96,7 @@ export class BrowserSessionStore {
       accountId: session.accountId,
       origin: session.origin,
       sourceDshOrigin: session.sourceDshOrigin,
+      sourceDshSessionId: session.sourceDshSessionId,
       createdAt: new Date(session.createdAt).toISOString(),
       expiresAt: new Date(session.expiresAt).toISOString(),
     })
@@ -110,4 +112,59 @@ export class BrowserSessionStore {
       if (session.kind === kind) this.sessions.delete(key)
     }
   }
+
+  list(account, currentSessionId) {
+    this.prune()
+    return [...this.sessions.values()]
+      .filter(session => session.accountId === account.accountId
+        && session.mainCredentialVersion === account.mainCredential.version
+        && session.managementAccessVersion === account.managementAccess.version
+        && (session.kind !== 'management'
+          || session.managementAdditionalCredentialVersion === (account.managementAdditionalCredential.enabled
+            ? account.managementAdditionalCredential.version : null)))
+      .map(session => Object.freeze({
+        sessionId: session.sessionId,
+        kind: session.kind,
+        origin: session.origin,
+        current: session.sessionId === currentSessionId,
+        createdAt: new Date(session.createdAt).toISOString(),
+        lastSeenAt: new Date(session.lastSeenAt).toISOString(),
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      }))
+      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt))
+  }
+
+  revokeKindExcept(kind, sessionId) {
+    let revoked = 0
+    for (const [key, session] of this.sessions) {
+      if (session.kind !== kind || session.sessionId === sessionId) continue
+      this.sessions.delete(key)
+      revoked += 1
+    }
+    return revoked
+  }
+
+  sourceDshSessionId(sessionId) {
+    for (const session of this.sessions.values()) {
+      if (session.kind === 'management' && session.sessionId === sessionId) return session.sourceDshSessionId
+    }
+    return null
+  }
+
+  details(sessionId) {
+    this.prune()
+    for (const session of this.sessions.values()) {
+      if (session.sessionId !== sessionId) continue
+      return Object.freeze({
+        sessionId: session.sessionId,
+        kind: session.kind,
+        origin: session.origin,
+        sourceDshOrigin: session.sourceDshOrigin,
+        sourceDshSessionId: session.sourceDshSessionId,
+      })
+    }
+    return undefined
+  }
+
+  revokeAll() { this.sessions.clear() }
 }

@@ -121,7 +121,11 @@ export function createManagementServer({
   initialUserPluginTransaction,
   settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
-  updateManagementOrigin = async () => { throw new Error('Management origin configuration is not configured') },
+  createManagementOriginTransition = async () => { throw new Error('Management origin transition is not configured') },
+  commitManagementOriginTransition = async () => { throw new Error('Management origin transition is not configured') },
+  getAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
+  updateAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
+  revokeAuthenticationSessions = async () => { throw new Error('Authentication session management is not configured') },
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   listProxyProviders = async () => ({ schema: 1, source: 'unavailable', providers: [] }),
@@ -767,9 +771,25 @@ export function createManagementServer({
         })
         server.emit('management-state', value)
         send(response, 200, value)
-      } else if (request.method === 'PUT' && route === 'management-origin') {
+      } else if (request.method === 'GET' && route === 'auth-settings') {
+        send(response, 200, await getAuthenticationSettings(request))
+      } else if (request.method === 'PUT' && route === 'auth-settings') {
         const body = await jsonBody(request)
-        const value = await updateManagementOrigin(body, request)
+        const value = await updateAuthenticationSettings(body, request)
+        await audit('access.authentication.settings.changed', {})
+        send(response, 200, value)
+      } else if (request.method === 'POST' && route === 'auth-sessions/revoke') {
+        const body = await jsonBody(request)
+        const value = await revokeAuthenticationSessions(body, request)
+        await audit('access.sessions.revoked', { kind: body.kind ?? null, scope: body.scope ?? null, revoked: value.revoked ?? 0 })
+        send(response, 200, value)
+      } else if (request.method === 'POST' && route === 'management-origin/transitions') {
+        const body = await jsonBody(request)
+        const value = await createManagementOriginTransition(body, request)
+        await audit('access.management-transition.created', { mode: body.mode ?? null })
+        send(response, 201, value)
+      } else if (request.method === 'POST' && route === 'management-origin/transitions/commit') {
+        const value = await commitManagementOriginTransition(await jsonBody(request), request)
         await audit('access.management-origin.changed', { mode: value.account?.managementAccess?.mode ?? null })
         send(response, 200, value)
       } else if (request.method === 'POST' && route === 'holds/retry') {

@@ -21,8 +21,8 @@ export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'auth-settings', 'bundled-plugins', 'system-skills', 'user-skills', 'settings-document', 'user-plugins', 'proxy', 'proxy/provider-inventory', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'auth-sessions/revoke', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'proxy/test', 'terminal/sessions', 'files/upload', 'files/tasks'])],
-  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'auth-settings', 'proxy', 'settings-document', 'files/content'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'auth-sessions/revoke', 'management-origin/transitions', 'management-origin/transitions/commit', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'proxy/test', 'terminal/sessions', 'files/upload', 'files/tasks'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'auth-settings', 'proxy', 'settings-document', 'files/content'])],
 ])
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
@@ -38,6 +38,22 @@ function isMaintenanceRoute(pathname) {
   if (!pathname.startsWith(MANAGEMENT_PREFIX)) return false
   const route = pathname.slice(MANAGEMENT_PREFIX.length)
   return route.startsWith('files/') || route === 'terminal/sessions' || TERMINAL_SESSION_ROUTE.test(route)
+}
+
+function managementTrustedHosts(access) {
+  const entry = access.account?.managementAccess?.isolatedEntry
+  if (access.account?.managementAccess?.mode !== 'isolated' || entry?.kind !== 'public') {
+    return Object.freeze({ wildcard: false, authorities: Object.freeze([]) })
+  }
+  const parsed = new URL(entry.managementPublicOrigin)
+  return Object.freeze({
+    wildcard: false,
+    authorities: Object.freeze([Object.freeze({
+      anyPort: false,
+      hostname: parsed.hostname,
+      matchAuthority: parsed.host,
+    })]),
+  })
 }
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024
@@ -846,7 +862,18 @@ export function createGatewayServer({
   })
   async function handleRequest(request, response) {
     try {
-      const trust = inspectExternalRequest(request.headers, options.trustedHosts)
+      const url = new URL(request.url ?? '/', 'http://gateway.internal')
+      const pathname = url.pathname
+      const transitionProbe = surface === 'management'
+        && request.method === 'GET' && pathname === '/transition/probe'
+      const access = surface === 'management'
+        ? await options.browserAuthentication.status()
+        : null
+      const trust = inspectExternalRequest(request.headers,
+        surface === 'management' ? managementTrustedHosts(access) : options.trustedHosts, {
+        allowCrossOrigin: transitionProbe,
+        allowUntrustedAuthority: transitionProbe,
+      })
       if (!trust.accepted) {
         reportFailure(`gateway-http-trust-${trust.reason}`, 'gateway.request.rejected', {
           ...requestContext(request),
@@ -856,8 +883,6 @@ export function createGatewayServer({
         rejectHttp(response, 403, 'forbidden')
         return
       }
-      const url = new URL(request.url ?? '/', 'http://gateway.internal')
-      const pathname = url.pathname
       if (pathname === HEALTH_PATH) {
         if (options.isReady()) {
           response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
@@ -867,9 +892,9 @@ export function createGatewayServer({
         }
         return
       }
-      const access = await options.browserAuthentication.status()
-      const managementMode = access.account?.managementAccess?.mode ?? 'compat'
-      if ((surface === 'management' && managementMode !== 'isolated')
+      const currentAccess = access ?? await options.browserAuthentication.status()
+      const managementMode = currentAccess.account?.managementAccess?.mode ?? 'compat'
+      if ((surface === 'management' && managementMode !== 'isolated' && !transitionProbe)
         || (surface === 'compat' && managementMode === 'isolated'
           && isCompatibilityManagementPath(pathname))) {
         rejectHttp(response, 404, 'not found')
@@ -882,7 +907,7 @@ export function createGatewayServer({
         rejectHttp(response, 404, 'not found')
         return
       }
-      if (access.state !== 'initialized') {
+      if (currentAccess.state !== 'initialized') {
         rejectDshAuthentication(request, response, safeReturnPath)
         return
       }
@@ -1061,20 +1086,21 @@ export function createGatewayServer({
   }
   server.on('upgrade', (request, socket, head) => {
     try {
-      const trust = inspectExternalRequest(request.headers, options.trustedHosts)
-      if (!trust.accepted) {
-        reportFailure(`gateway-upgrade-trust-${trust.reason}`, 'gateway.upgrade-request.rejected', {
-          ...requestContext(request),
-          reason: trust.reason,
-          level: 'warning',
-        })
-        rejectUpgrade(socket, 403, 'Forbidden')
-        return
-      }
       const url = new URL(request.url ?? '/', 'http://gateway.internal')
       const pathname = url.pathname
       void (async () => {
         const access = await options.browserAuthentication.status()
+        const trust = inspectExternalRequest(request.headers,
+          surface === 'management' ? managementTrustedHosts(access) : options.trustedHosts)
+        if (!trust.accepted) {
+          reportFailure(`gateway-upgrade-trust-${trust.reason}`, 'gateway.upgrade-request.rejected', {
+            ...requestContext(request),
+            reason: trust.reason,
+            level: 'warning',
+          })
+          rejectUpgrade(socket, 403, 'Forbidden')
+          return
+        }
         if (access.state !== 'initialized') {
           rejectUpgrade(socket, 401, 'Unauthorized')
           return

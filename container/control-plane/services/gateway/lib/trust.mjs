@@ -27,19 +27,22 @@ function matchesTrustedAuthority(requestUrl, trustedHosts) {
   ))
 }
 
-export function inspectExternalRequest(headers, trustedHosts) {
+export function inspectExternalRequest(headers, trustedHosts, {
+  allowCrossOrigin = false,
+  allowUntrustedAuthority = false,
+} = {}) {
   const host = headers.host
   if (typeof host !== 'string') return Object.freeze({ accepted: false, reason: 'missing-host' })
   const hostUrl = parseRequestAuthority(host)
   if (hostUrl === undefined) return Object.freeze({ accepted: false, reason: 'invalid-host' })
-  if (!isLoopbackHostname(hostUrl.hostname) && !matchesTrustedAuthority(hostUrl, trustedHosts)) {
+  if (!allowUntrustedAuthority && !isLoopbackHostname(hostUrl.hostname) && !matchesTrustedAuthority(hostUrl, trustedHosts)) {
     return Object.freeze({ accepted: false, reason: 'untrusted-host' })
   }
-  if (headers['sec-fetch-site'] === 'cross-site') {
+  if (!allowCrossOrigin && headers['sec-fetch-site'] === 'cross-site') {
     return Object.freeze({ accepted: false, reason: 'cross-site' })
   }
   const origin = headers.origin
-  if (origin !== undefined) {
+  if (!allowCrossOrigin && origin !== undefined) {
     if (typeof origin !== 'string') return Object.freeze({ accepted: false, reason: 'invalid-origin' })
     try {
       if (new URL(origin).host !== hostUrl.host) {

@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const AUTH_PREFIX = '/_dsh_platform/auth/'
 export const ACCESS_PREFIX = '/_dsh_platform/access/'
+export const TRANSITION_PREFIX = '/_dsh_platform/transition/'
 export const DSH_SESSION_COOKIE = 'dsh_gateway_session'
 export const DSH_CSRF_COOKIE = 'dsh_gateway_csrf'
 export const AUTH_CSRF_COOKIE = 'dsh_auth_csrf'
@@ -70,6 +71,19 @@ export function requestOrigin(request, { requireHeader = false } = {}) {
   const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
   try { return new URL(`${protocol}://${String(request.headers.host ?? '')}`).origin }
   catch { return undefined }
+}
+
+function requestTargetOrigin(request) {
+  const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+  try { return new URL(`${protocol}://${String(request.headers.host ?? '')}`).origin }
+  catch { return undefined }
+}
+
+function canonicalOrigin(value) {
+  try {
+    const parsed = new URL(value)
+    return ['http:', 'https:'].includes(parsed.protocol) && parsed.origin === value ? parsed.origin : undefined
+  } catch { return undefined }
 }
 
 function secureCookie(origin) { return origin.startsWith('https://') ? '; Secure' : '' }
@@ -211,6 +225,7 @@ export function createBrowserAuthentication({
   paths: {
     authPrefix = AUTH_PREFIX,
     accessPrefix = ACCESS_PREFIX,
+    transitionPrefix = TRANSITION_PREFIX,
     consolePath = '/_dsh_platform/console/',
   } = {},
 }) {
@@ -314,6 +329,55 @@ export function createBrowserAuthentication({
   }
 
   async function handle(request, response, pathname, searchParams) {
+    if (pathname === transitionPrefix + 'probe' && request.method === 'GET') {
+      const sourceOrigin = canonicalOrigin(request.headers.origin)
+      const candidateOrigin = requestTargetOrigin(request)
+      if (sourceOrigin === undefined || candidateOrigin === undefined) {
+        sendJson(response, 400, { error: 'transition probe origin is invalid', code: 'TRANSITION_PROBE_INVALID' })
+        return true
+      }
+      try {
+        const result = await access.request('POST', '/v1/management/transitions/probe', {
+          transitionId: searchParams.get('transitionId'),
+          nonce: searchParams.get('nonce'),
+          sourceOrigin,
+          candidateOrigin,
+        })
+        sendJson(response, 200, result, {
+          'access-control-allow-origin': sourceOrigin,
+          'access-control-expose-headers': 'content-type',
+          vary: 'Origin',
+        })
+      } catch (error) {
+        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'TRANSITION_PROBE_INVALID' }, {
+          'access-control-allow-origin': sourceOrigin,
+          vary: 'Origin',
+        })
+      }
+      return true
+    }
+    if (pathname === transitionPrefix + 'continue' && request.method === 'GET') {
+      const origin = requestTargetOrigin(request)
+      const topLevel = request.headers['sec-fetch-mode'] === undefined
+        || (request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document')
+      if (!topLevel || origin === undefined) {
+        sendJson(response, 403, { error: 'Management continuation is forbidden', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      try {
+        const result = await access.request('POST', '/v1/management/continuations/consume', {
+          token: searchParams.get('token'), origin,
+        })
+        response.writeHead(303, {
+          'cache-control': 'no-store', location: consolePath,
+          'referrer-policy': 'no-referrer', 'set-cookie': managementCookies(result.session, origin, managementCookiePath),
+        })
+        response.end()
+      } catch (error) {
+        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'CONTINUATION_INVALID' })
+      }
+      return true
+    }
     if (pathname === accessPrefix + 'status' && request.method === 'GET') {
       const current = await status()
       sendJson(response, 200, { state: current.state })
