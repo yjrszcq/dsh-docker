@@ -21,9 +21,6 @@ class FakeServer extends EventEmitter {
 }
 
 const config = Object.freeze({
-  password: '',
-  platformPassword: '',
-  username: '',
   polyfill: true,
   trustedHosts: Object.freeze({ wildcard: false, authorities: Object.freeze([]) }),
 })

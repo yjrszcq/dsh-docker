@@ -11,9 +11,6 @@ function render(overrides = {}) {
     DSH_IMAGE_TAG: 'latest',
     DSH_LISTEN_ADDRESS: '0.0.0.0',
     DSH_PORT: '3080',
-    DSH_PROXY_USERNAME: '',
-    DSH_PROXY_PASSWORD: '',
-    DSH_PLATFORM_PASSWORD: '',
     DSH_PROXY_POLYFILL: 'true',
     DSH_TELEMETRY_DISABLED: 'true',
     DSH_TRUSTED_HOSTS: '',
@@ -24,7 +21,7 @@ function render(overrides = {}) {
 
   const result = spawnSync(
     'docker',
-    ['compose', '-f', 'docker-compose.yaml', 'config', '--format', 'json'],
+    ['compose', '--env-file', '/dev/null', '-f', 'docker-compose.yaml', 'config', '--format', 'json'],
     {
       encoding: 'utf8',
       env,
@@ -39,13 +36,13 @@ assert.equal(defaults.image, 'szcq/deepseek-harness:latest')
 assert.equal(defaults.container_name, 'deepseek-harness')
 assert.equal(defaults.ports[0].host_ip, '0.0.0.0')
 assert.equal(defaults.ports[0].published, '3080')
-assert.equal(defaults.environment.DSH_PROXY_USERNAME, '')
-assert.equal(defaults.environment.DSH_PROXY_PASSWORD, '')
-assert.equal(defaults.environment.DSH_PLATFORM_PASSWORD, '')
+assert.equal(Object.hasOwn(defaults.environment, 'DSH_PROXY_USERNAME'), false)
+assert.equal(Object.hasOwn(defaults.environment, 'DSH_PROXY_PASSWORD'), false)
+assert.equal(Object.hasOwn(defaults.environment, 'DSH_PLATFORM_PASSWORD'), false)
 assert.equal(defaults.environment.DSH_PROXY_POLYFILL, 'true')
 assert.equal(defaults.environment.DSH_TRUSTED_HOSTS, '')
 assert.equal(Object.hasOwn(defaults.environment, 'DSH_UPDATE_METADATA_URL'), false)
-assert.deepEqual(defaults.group_add, ['dsh-sudo-true'])
+assert.deepEqual(defaults.group_add, ['dsh-sudo-false'])
 assert.equal(defaults.environment.DSH_EXPERIMENTAL_PROBATION_SECONDS, '120')
 assert.equal(defaults.environment.DSH_LOG_MAX_BYTES, '104857600')
 assert.equal(defaults.environment.DSH_PLATFORM_DATA, '/data/platform')
@@ -59,9 +56,6 @@ const configured = render({
   DSH_IMAGE_TAG: '1.0.0',
   DSH_LISTEN_ADDRESS: '0.0.0.0',
   DSH_PORT: '4080',
-  DSH_PROXY_USERNAME: 'compose-user',
-  DSH_PROXY_PASSWORD: 'compose-secret',
-  DSH_PLATFORM_PASSWORD: 'platform-secret',
   DSH_PROXY_POLYFILL: 'false',
   DSH_SUDO_ENABLED: 'false',
   DSH_TELEMETRY_DISABLED: 'false',
@@ -70,9 +64,9 @@ const configured = render({
 assert.equal(configured.image, 'szcq/deepseek-harness:1.0.0')
 assert.equal(configured.ports[0].host_ip, '0.0.0.0')
 assert.equal(configured.ports[0].published, '4080')
-assert.equal(configured.environment.DSH_PROXY_USERNAME, 'compose-user')
-assert.equal(configured.environment.DSH_PROXY_PASSWORD, 'compose-secret')
-assert.equal(configured.environment.DSH_PLATFORM_PASSWORD, 'platform-secret')
+assert.equal(Object.hasOwn(configured.environment, 'DSH_PROXY_USERNAME'), false)
+assert.equal(Object.hasOwn(configured.environment, 'DSH_PROXY_PASSWORD'), false)
+assert.equal(Object.hasOwn(configured.environment, 'DSH_PLATFORM_PASSWORD'), false)
 assert.equal(configured.environment.DSH_PROXY_POLYFILL, 'false')
 assert.equal(configured.environment.DSH_TELEMETRY_DISABLED, 'false')
 assert.equal(configured.environment.DSH_TRUSTED_HOSTS, '192.168.1.10,dsh.example:8443')
