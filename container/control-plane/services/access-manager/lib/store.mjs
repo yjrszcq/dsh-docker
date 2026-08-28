@@ -62,7 +62,15 @@ export function validAccount(value) {
     ? access.isolatedEntry === null
     : access?.mode === 'isolated' && access.isolatedEntry !== null && typeof access.isolatedEntry === 'object'
       && (access.isolatedEntry.kind === 'local-only'
-        || (access.isolatedEntry.kind === 'public' && typeof access.isolatedEntry.managementPublicOrigin === 'string'))
+        || (access.isolatedEntry.kind === 'public' && (() => {
+          try {
+            const parsed = new URL(access.isolatedEntry.managementPublicOrigin)
+            return ['http:', 'https:'].includes(parsed.protocol) && parsed.origin !== 'null'
+              && parsed.username === '' && parsed.password === '' && parsed.pathname === '/'
+              && parsed.search === '' && parsed.hash === ''
+              && access.isolatedEntry.managementPublicOrigin === parsed.origin
+          } catch { return false }
+        })()))
   return value !== null && typeof value === 'object' && value.schema === 1
     && typeof value.revision === 'string' && Buffer.from(value.revision, 'base64url').byteLength === 32
     && typeof value.accountId === 'string' && Buffer.from(value.accountId, 'base64url').byteLength === 32
@@ -173,9 +181,9 @@ export class AccessStateStore {
     return { initialization: inspected.initialization, account: inspected.account, state: inspected.initialization.state }
   }
 
-  async initialize({ username, password }) {
+  async createAccount({ username, password }, allowedState) {
     const current = await this.state()
-    if (current.state !== 'never-initialized') {
+    if (current.state !== allowedState) {
       throw new AccessError('ALREADY_INITIALIZED', 'administrator initialization is unavailable', 409)
     }
     const normalized = normalizeUsername(username)
@@ -196,6 +204,10 @@ export class AccessStateStore {
     await this.transition(current.initialization, 'initialized')
     return account
   }
+
+  initialize(value) { return this.createAccount(value, 'never-initialized') }
+
+  migrate(value) { return this.createAccount(value, 'migration-required') }
 
   async replaceAccount(account, revision) {
     const current = await this.state()

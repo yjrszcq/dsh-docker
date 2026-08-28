@@ -1,15 +1,35 @@
 import { createServer } from 'node:http'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { timingSafeEqual } from 'node:crypto'
 import { AuthenticationLimiter } from './rate-limiter.mjs'
 import { AccessError, accessErrorBody } from './errors.mjs'
-import { normalizeUsername, verifyCredential } from './credentials.mjs'
+import { normalizePassword, normalizeUsername, verifyCredential } from './credentials.mjs'
 import { BrowserSessionStore } from './sessions.mjs'
 import { ManagementExchangeStore } from './exchanges.mjs'
 import { CapabilityStore } from './capabilities.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 function identifier() { return randomBytes(32).toString('base64url') }
+function digest(value) { return createHash('sha256').update(value).digest('base64url') }
+
+function normalizeManagementAccess(mode, entry) {
+  if (!['compat', 'isolated'].includes(mode)) throw new AccessError('ACCESS_MODE_INVALID', 'management access mode is invalid')
+  if (mode === 'compat') return null
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)
+    || !['local-only', 'public'].includes(entry.kind)) {
+    throw new AccessError('ACCESS_ENTRY_INVALID', 'isolated Management entry is invalid')
+  }
+  if (entry.kind === 'local-only') return { kind: 'local-only' }
+  try {
+    const parsed = new URL(entry.managementPublicOrigin)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin === 'null'
+      || parsed.username !== '' || parsed.password !== '' || parsed.pathname !== '/'
+      || parsed.search !== '' || parsed.hash !== '') throw new Error('invalid origin')
+    return { kind: 'public', managementPublicOrigin: parsed.origin }
+  } catch {
+    throw new AccessError('ACCESS_ENTRY_INVALID', 'isolated Management entry is invalid')
+  }
+}
 
 function sameToken(left, right) {
   const a = Buffer.from(left ?? '')
@@ -64,6 +84,7 @@ export class AccessService {
     verify = verifyCredential,
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
+    now = () => Date.now(),
   }) {
     this.store = store
     this.classificationToken = classificationToken
@@ -74,6 +95,8 @@ export class AccessService {
     this.verify = verify
     this.sleep = sleep
     this.report = report
+    this.now = now
+    this.migrationSetup = null
     this.transition = Promise.resolve()
   }
 
@@ -118,6 +141,32 @@ export class AccessService {
       const session = this.sessions.issue('dsh', account, { origin: value.origin })
       await this.report('access.initialization.completed', { accountId: account.accountId })
       await this.report('access.session.created', { accountId: account.accountId, kind: 'dsh' })
+      return { state: 'initialized', account: publicAccount(account), session }
+    })
+  }
+
+  beginMigration() {
+    return this.serialized(async () => {
+      const current = await this.store.state()
+      if (current.state !== 'migration-required') throw new AccessError('MIGRATION_UNAVAILABLE', 'administrator migration is unavailable', 409)
+      const key = `dshmk_${identifier()}`
+      this.migrationSetup = { digest: digest(key), expiresAt: this.now() + 10 * 60 * 1000 }
+      await this.report('access.migration.started')
+      return { key, expiresAt: new Date(this.migrationSetup.expiresAt).toISOString() }
+    })
+  }
+
+  migrateDsh(value) {
+    return this.serialized(async () => {
+      const setup = this.migrationSetup
+      this.migrationSetup = null
+      if (setup === null || setup.expiresAt <= this.now() || typeof value.setupKey !== 'string'
+        || !sameToken(setup.digest, digest(value.setupKey))) {
+        throw new AccessError('MIGRATION_KEY_INVALID', 'migration setup key is invalid or expired', 401)
+      }
+      const account = await this.store.migrate(value)
+      const session = this.sessions.issue('dsh', account, { origin: value.origin })
+      await this.report('access.migration.completed', { accountId: account.accountId })
       return { state: 'initialized', account: publicAccount(account), session }
     })
   }
@@ -327,22 +376,11 @@ export class AccessService {
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    const session = this.sessions.validate(value.managementToken, 'management', current.account, {
-      origin: value.origin,
-      csrfToken: value.csrfToken,
-      requireCsrf: true,
+    const authorization = this.capabilities.consume(value.internalCapability, current.account, {
+      audience: 'management', method: value.method, target: value.target,
     })
-    if (session === undefined) throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
-    if (!['compat', 'isolated'].includes(value.mode)) throw new AccessError('ACCESS_MODE_INVALID', 'management access mode is invalid')
-    let isolatedEntry = null
-    if (value.mode === 'isolated') {
-      if (value.isolatedEntry === null || typeof value.isolatedEntry !== 'object' || Array.isArray(value.isolatedEntry)
-        || !['local-only', 'public'].includes(value.isolatedEntry.kind)
-        || (value.isolatedEntry.kind === 'public' && typeof value.isolatedEntry.managementPublicOrigin !== 'string')) {
-        throw new AccessError('ACCESS_ENTRY_INVALID', 'isolated Management entry is invalid')
-      }
-      isolatedEntry = { ...value.isolatedEntry }
-    }
+    if (authorization === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid', 401)
+    const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
     const account = {
       ...current.account,
       revision: identifier(),
@@ -360,6 +398,68 @@ export class AccessService {
     await this.report('access.management-origin.changed', { mode: value.mode })
     return { account: publicAccount(next) }
   }
+
+  async updateAuthenticationSettings(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.capabilities.consume(value.internalCapability, current.account, {
+      audience: 'management', method: value.method, target: value.target,
+    })
+    if (authorization === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid', 401)
+    const account = { ...current.account, revision: identifier(), updatedAt: new Date().toISOString() }
+    if (value.username !== undefined) account.username = normalizeUsername(value.username)
+    if (value.password !== undefined) {
+      if (current.account.managementAdditionalCredential.enabled
+        && value.additionalPassword === undefined
+        && await this.verify(value.password, current.account.managementAdditionalCredential.verifier)) {
+        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+      }
+      const verifier = await this.store.createVerifier(value.password)
+      account.mainCredential = { ...verifier, version: current.account.mainCredential.version + 1 }
+    }
+    if (value.additionalPassword !== undefined || value.additionalEnabled !== undefined) {
+      const enabled = value.additionalEnabled === true
+      if (!enabled) {
+        account.managementAdditionalCredential = {
+          enabled: false,
+          version: current.account.managementAdditionalCredential.version + 1,
+          verifier: null,
+          changedAt: new Date().toISOString(),
+        }
+      } else if (value.additionalPassword !== undefined) {
+        if (typeof value.additionalPassword !== 'string') throw new AccessError('PASSWORD_REQUIRED', 'additional password is required')
+        const equalsMain = value.password !== undefined
+          ? normalizePassword(value.additionalPassword) === normalizePassword(value.password)
+          : await this.verify(value.additionalPassword, current.account.mainCredential)
+        if (equalsMain) throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+        const verifier = await this.store.createVerifier(value.additionalPassword)
+        account.managementAdditionalCredential = {
+          enabled: true,
+          version: current.account.managementAdditionalCredential.version + 1,
+          verifier: { ...verifier, version: current.account.managementAdditionalCredential.version + 1 },
+          changedAt: new Date().toISOString(),
+        }
+      } else if (!current.account.managementAdditionalCredential.enabled) {
+        throw new AccessError('PASSWORD_REQUIRED', 'additional password is required')
+      }
+    }
+    if (value.mode !== undefined) {
+      const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
+      account.managementAccess = {
+        mode: value.mode,
+        version: current.account.managementAccess.version + 1,
+        isolatedEntry,
+        changedAt: new Date().toISOString(),
+      }
+    }
+    const next = await this.store.replaceAccount(account, current.account.revision)
+    this.sessions.revokeAll?.()
+    this.exchanges.clear?.()
+    await this.report('access.authentication.settings.changed', { usernameChanged: value.username !== undefined })
+    return { account: publicAccount(next) }
+  }
 }
 
 export function createAccessHttpServer({ service, surface = 'access' }) {
@@ -374,6 +474,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-password') return send(response, 200, await service.resetRecoveryPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-management-password') return send(response, 200, await service.resetRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/begin-migration') return send(response, 201, await service.beginMigration())
         return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
       }
       const value = await body(request)
@@ -381,6 +482,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/initialize') return send(response, 201, await service.initialize(value))
       if (request.method === 'POST' && pathname === '/v1/authenticate') return send(response, 200, await service.authenticate(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/initialize') return send(response, 201, await service.initializeDsh(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/migrate') return send(response, 201, await service.migrateDsh(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
@@ -391,6 +493,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/capabilities') return send(response, 201, await service.issueCapability(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
       if (request.method === 'POST' && pathname === '/v1/management/access') return send(response, 200, await service.setManagementAccess(value))
+      if (request.method === 'POST' && pathname === '/v1/management/auth-settings') return send(response, 200, await service.updateAuthenticationSettings(value))
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {
       const status = error instanceof AccessError ? error.statusCode : 500

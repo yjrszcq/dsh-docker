@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|set-username|reset-password|reset-management-password|disable-management-password|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|set-username|reset-password|reset-management-password|disable-management-password|begin-migration|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -42,8 +42,8 @@ export function parseCli(argv) {
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 1 && ['create', 'status', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password'].includes(rest[0])) {
-    return { command, operation: 'create' }
+  if (command === 'access' && rest.length === 1 && ['status', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'begin-migration'].includes(rest[0])) {
+    return { command, operation: rest[0] }
   }
   throw new Error(usage())
 }
@@ -147,19 +147,19 @@ export async function runCli({
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   input = stdin,
   output = stdout,
+  getuid = () => process.getuid?.(),
 } = {}) {
   const parsed = parseCli(argv)
   if (parsed.command === 'access') {
-    if (parsed.operation === 'create') {
-      const value = await access.request('POST', '/v1/keys')
-      write(json(value))
-      return 0
-    }
-    if (typeof process.getuid === 'function' && process.getuid() !== 0) throw new Error('access recovery requires root')
+    if (getuid() !== 0) throw new Error('access recovery requires root')
     if (!input.isTTY || !output.isTTY) throw new Error('access recovery requires an interactive container console')
     const current = await access.request('GET', '/v1/recovery/status')
     if (parsed.operation === 'status') {
       write(json(current))
+      return 0
+    }
+    if (parsed.operation === 'begin-migration') {
+      write(json(await access.request('POST', '/v1/recovery/begin-migration')))
       return 0
     }
     if (current.account === null) throw new Error('administrator account is unavailable')

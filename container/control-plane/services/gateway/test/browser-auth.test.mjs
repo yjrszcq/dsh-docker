@@ -52,6 +52,14 @@ function fixture(initialState = 'never-initialized') {
         sessions.set('dshs_created', body.origin)
         return { session: { token: 'dshs_created', csrfToken: 'dshc_created' } }
       }
+      if (path === '/v1/dsh/migrate') {
+        if (body.setupKey !== 'dshmk_valid') throw Object.assign(new Error('migration setup key is invalid or expired'), {
+          code: 'MIGRATION_KEY_INVALID', statusCode: 401,
+        })
+        state = 'initialized'
+        sessions.set('dshs_migrated', body.origin)
+        return { session: { token: 'dshs_migrated', csrfToken: 'dshc_migrated' } }
+      }
       if (path === '/v1/dsh/login') {
         if (body.password !== 'correct password') throw Object.assign(new Error('username or password is incorrect'), {
           code: 'AUTHENTICATION_FAILED', statusCode: 401,
@@ -182,6 +190,32 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
     assert.equal(current.state(), 'initialized')
     assert.match(initialized.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_created`))
     assert.equal(current.calls.some(call => call.path === '/v1/dsh/initialize'), true)
+  } finally { await close(current.server) }
+})
+
+test('legacy migration exchanges a root-issued setup key for a DSH session', async () => {
+  const current = fixture('migration-required')
+  const port = await listen(current.server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}`, 'accept-language': 'en' },
+    })
+    assert.match(page.body, /name="setupKey"/)
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const migrated = await request(port, {
+      path: '/_dsh_platform/auth/migration', method: 'POST',
+      headers: {
+        host: `127.0.0.1:${port}`, origin, cookie: csrfCookie,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ setupKey: 'dshmk_valid', username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(migrated.status, 201)
+    assert.match(migrated.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_migrated`))
+    assert.equal(current.calls.some(call => call.path === '/v1/dsh/migrate'), true)
   } finally { await close(current.server) }
 })
 

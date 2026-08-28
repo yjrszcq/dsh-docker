@@ -68,6 +68,7 @@ async function fixture() {
     store,
     classificationToken: 'classification-token',
     limiter: new AuthenticationLimiter({ globalLimit: 10, accountLimit: 3, maxConcurrent: 2 }),
+    now: () => now.getTime(),
   })
   return { root, store, service, setNow: value => { now = new Date(value) } }
 }
@@ -116,6 +117,44 @@ test('publishes an account before converging initialization and rejects a second
     service.initialize({ username: 'other', password: 'another strong password' }),
     error => error.code === 'ALREADY_INITIALIZED',
   )
+})
+
+test('migrates a legacy deployment with one expiring single-use setup key', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
+  const first = await current.service.beginMigration()
+  const second = await current.service.beginMigration()
+  assert.match(second.key, /^dshmk_/)
+  assert.notEqual(first.key, second.key)
+  await assert.rejects(current.service.migrateDsh({
+    setupKey: first.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
+  await assert.rejects(current.service.migrateDsh({
+    setupKey: second.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  }), error => error.code === 'MIGRATION_KEY_INVALID')
+
+  const valid = await current.service.beginMigration()
+  const migrated = await current.service.migrateDsh({
+    setupKey: valid.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  assert.equal(migrated.state, 'initialized')
+  assert.equal(migrated.account.username, 'operator')
+  assert.match(migrated.session.token, /^dshs_/)
+  await assert.rejects(current.service.beginMigration(), error => error.code === 'MIGRATION_UNAVAILABLE')
+})
+
+test('rejects expired and malformed migration keys without exposing an internal error', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
+  const expired = await current.service.beginMigration()
+  current.setNow('2026-08-28T00:10:00.001Z')
+  await assert.rejects(current.service.migrateDsh({
+    setupKey: expired.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
+  await current.service.beginMigration()
+  await assert.rejects(current.service.migrateDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
 })
 
 test('normal and recovery sockets expose distinct bounded protocols without verifier material', async () => {
@@ -222,10 +261,19 @@ test('changes Management origin mode and invalidates the previous session', asyn
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
   const login = await service.loginManagement({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
-  const changed = await service.setManagementAccess({
+  const issued = await service.issueCapability({
     managementToken: login.session.token,
     origin: 'http://dsh.example:3080',
     csrfToken: login.session.csrfToken,
+    requireCsrf: true,
+    audience: 'management',
+    method: 'PUT',
+    target: '/_dsh_platform/api/v1/management-origin',
+  })
+  const changed = await service.setManagementAccess({
+    internalCapability: issued.capability.token,
+    method: 'PUT',
+    target: '/_dsh_platform/api/v1/management-origin',
     mode: 'isolated',
     isolatedEntry: { kind: 'local-only' },
   })
@@ -233,6 +281,62 @@ test('changes Management origin mode and invalidates the previous session', asyn
   assert.equal((await service.validateSession({
     token: login.session.token, kind: 'management', origin: 'http://dsh.example:3080',
   })).authenticated, false)
+})
+
+test('changes credentials and Management origin in one capability-bound transaction', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const login = await service.loginManagement({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
+  const issued = await service.issueCapability({
+    managementToken: login.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.session.csrfToken, requireCsrf: true,
+    audience: 'management', method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+  })
+  const changed = await service.updateAuthenticationSettings({
+    internalCapability: issued.capability.token,
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    username: 'operator', password: 'a different secure password',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  })
+  assert.equal(changed.account.username, 'operator')
+  assert.equal(changed.account.managementAccess.mode, 'isolated')
+  assert.match((await service.loginManagement({
+    username: 'operator', password: 'a different secure password', origin: 'https://manage.example',
+  })).session.token, /^dshms_/)
+  await assert.rejects(() => service.updateAuthenticationSettings({
+    internalCapability: issued.capability.token,
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'replay',
+  }), error => error.code === 'CAPABILITY_INVALID')
+})
+
+test('rejects equal administrator passwords and non-origin Management entries', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const capability = async () => {
+    const login = await service.loginManagement({
+      username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
+    })
+    return (await service.issueCapability({
+      managementToken: login.session.token, origin: 'http://dsh.example:3080',
+      csrfToken: login.session.csrfToken, requireCsrf: true,
+      audience: 'management', method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    })).capability.token
+  }
+  await assert.rejects(service.updateAuthenticationSettings({
+    internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    additionalEnabled: true, additionalPassword: 'correct horse battery staple',
+  }), error => error.code === 'PASSWORDS_MUST_DIFFER')
+  await assert.rejects(service.updateAuthenticationSettings({
+    internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example/path' },
+  }), error => error.code === 'ACCESS_ENTRY_INVALID')
+  const changed = await service.updateAuthenticationSettings({
+    internalCapability: await capability(), method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example:443' },
+  })
+  assert.equal(changed.account.managementAccess.isolatedEntry.managementPublicOrigin, 'https://manage.example')
 })
 
 test('initializes and logs into DSH with separately revocable browser sessions', async () => {

@@ -169,23 +169,23 @@ function authenticationPage(request, state, csrf, returnPath) {
     brand: 'HARNESS', username: '用户名', password: '密码', register: '注册', login: '登录',
     initializing: '正在创建管理员账户…', signingIn: '正在登录…',
     failed: '用户名或密码不正确，请重试。', concurrent: '管理员账户已创建，请使用现有账户登录。',
-    migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access begin-migration，然后返回此页面完成迁移。',
+    migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access begin-migration，然后使用一次性密钥创建新账户。', setupKey: '迁移密钥',
     recoveryTitle: '需要恢复管理员认证', recoveryDetail: '认证状态损坏或缺失。请从容器 Root 终端执行 dsh-platform access status 查看恢复指引。',
     waitingTitle: '正在准备认证服务', waitingDetail: '平台正在确认本地管理员状态，请稍候。',
   } : {
     brand: 'HARNESS', username: 'Username', password: 'Password', register: 'Register', login: 'Sign in',
     initializing: 'Creating the administrator account…', signingIn: 'Signing in…',
     failed: 'The username or password is incorrect. Try again.', concurrent: 'The administrator account already exists. Sign in with it.',
-    migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access begin-migration from a root container terminal, then return here to complete migration.',
+    migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access begin-migration from a root container terminal, then create a new account with the one-time key.', setupKey: 'Migration key',
     recoveryTitle: 'Administrator recovery required', recoveryDetail: 'Authentication state is missing or damaged. Run dsh-platform access status from a root container terminal for recovery guidance.',
     waitingTitle: 'Preparing authentication', waitingDetail: 'The platform is determining local administrator state. Please wait.',
   }
   let content
-  if (state === 'never-initialized' || state === 'initialized') {
+  if (state === 'never-initialized' || state === 'initialized' || state === 'migration-required') {
     const initialize = state === 'never-initialized'
-    content = `<form><label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" autofocus></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize ? 'new-password' : 'current-password'}" required maxlength="1024"></label><button type="submit">${initialize ? copy.register : copy.login}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(`${AUTH_PREFIX}session`)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='ALREADY_INITIALIZED'?${JSON.stringify(copy.concurrent)}:${JSON.stringify(copy.failed)};error.hidden=false}catch{error.textContent=${JSON.stringify(copy.failed)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(initialize ? copy.register : copy.login)}})</script>`
-  } else if (state === 'migration-required') {
-    content = `<h1>${copy.migrationTitle}</h1><p>${copy.migrationDetail}</p>`
+    const migration = state === 'migration-required'
+    const submit = initialize || migration ? copy.register : copy.login
+    content = `${migration ? `<h1>${copy.migrationTitle}</h1><p>${copy.migrationDetail}</p>` : ''}<form>${migration ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256"${migration ? '' : ' autofocus'}></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize || migration ? 'new-password' : 'current-password'}" required maxlength="1024"></label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;button.disabled=true;button.textContent=${JSON.stringify(initialize || migration ? copy.initializing : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(migration ? `${AUTH_PREFIX}migration` : `${AUTH_PREFIX}session`)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${migration ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='ALREADY_INITIALIZED'?${JSON.stringify(copy.concurrent)}:${JSON.stringify(copy.failed)};error.hidden=false}catch{error.textContent=${JSON.stringify(copy.failed)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}})</script>`
   } else if (state === 'recovery-required') {
     content = `<h1>${copy.recoveryTitle}</h1><p>${copy.recoveryDetail}</p>`
   } else content = `<h1>${copy.waitingTitle}</h1><p>${copy.waitingDetail}</p><script>setTimeout(()=>location.reload(),1000)</script>`
@@ -342,6 +342,23 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       } catch (error) {
         await report('gateway.access.login-failed', { code: error.code ?? null, level: 'warning' })
         sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
+      }
+      return true
+    }
+    if (pathname === AUTH_PREFIX + 'migration' && request.method === 'POST') {
+      const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
+      if (!validBrowserMutation(request, csrf)) {
+        sendJson(response, 403, { error: 'migration request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      const origin = requestOrigin(request, { requireHeader: true })
+      try {
+        const result = await access.request('POST', '/v1/dsh/migrate', { ...await jsonBody(request), origin })
+        await report('gateway.access.migrated')
+        sendJson(response, 201, { authenticated: true }, { 'set-cookie': sessionCookies(result.session, origin) })
+      } catch (error) {
+        await report('gateway.access.migration-failed', { code: error.code ?? null, level: 'warning' })
+        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'MIGRATION_FAILED' })
       }
       return true
     }
