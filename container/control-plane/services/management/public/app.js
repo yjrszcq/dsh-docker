@@ -1050,10 +1050,22 @@ function clearError() {
   elements.error.textContent = ''
 }
 
+function browserCookie(name) {
+  for (const part of document.cookie.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator >= 0 && part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim()
+  }
+  return ''
+}
+
 async function api(path, { method = 'GET', body } = {}) {
+  const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
   const response = await fetch(`${API}/${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: {
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(mutation ? { 'x-dsh-csrf': browserCookie('dsh_management_csrf') } : {}),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const value = await response.json()
@@ -3358,6 +3370,7 @@ async function uploadFiles(values) {
           const request = new XMLHttpRequest()
           uploadTask.request = request
           request.open('POST', `${API}/files/upload?path=${encodeURIComponent(destination)}&conflict=${conflict}`)
+          request.setRequestHeader('x-dsh-csrf', browserCookie('dsh_management_csrf'))
           request.upload.onprogress = event => {
             uploadTask.processedBytes = event.loaded
             if (event.lengthComputable) uploadTask.totalBytes = event.total
