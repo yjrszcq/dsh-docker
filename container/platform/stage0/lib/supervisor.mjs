@@ -108,6 +108,7 @@ export class BootstrapSupervisor {
     this.proxyLaunchToken = proxyLaunchToken
     this.child = undefined
     this.requests = new Map()
+    this.transition = Promise.resolve()
     this.fatal = new Promise(resolveFatal => { this.resolveFatal = resolveFatal })
   }
 
@@ -118,6 +119,12 @@ export class BootstrapSupervisor {
   rejectRequests(error) {
     for (const pending of this.requests.values()) pending.reject(error)
     this.requests.clear()
+  }
+
+  enqueueTransition(operation) {
+    const pending = this.transition.then(operation, operation)
+    this.transition = pending.catch(() => {})
+    return pending
   }
 
   async launch(recordId) {
@@ -203,7 +210,11 @@ export class BootstrapSupervisor {
     }
   }
 
-  async startWithRollback() {
+  startWithRollback() {
+    return this.enqueueTransition(() => this.startWithRollbackNow())
+  }
+
+  async startWithRollbackNow() {
     const state = await this.slots.state()
     if (state.current === null) throw new Error('no current Bootstrap is installed')
     try {
@@ -241,14 +252,18 @@ export class BootstrapSupervisor {
     }
   }
 
-  async restart() {
+  restart() {
+    return this.enqueueTransition(() => this.restartNow())
+  }
+
+  async restartNow() {
     this.emit('bootstrap.restart.started', { pid: this.child?.pid ?? null })
     const child = this.child
     this.child = undefined
     this.rejectRequests(new Error('Bootstrap restarted during recovery'))
     if (child !== undefined) await terminateChild(child)
     try {
-      const restarted = await this.startWithRollback()
+      const restarted = await this.startWithRollbackNow()
       this.emit('bootstrap.restart.completed', { pid: restarted.pid ?? null })
       return restarted
     } catch (error) {
@@ -257,7 +272,11 @@ export class BootstrapSupervisor {
     }
   }
 
-  async stop() {
+  stop() {
+    return this.enqueueTransition(() => this.stopNow())
+  }
+
+  async stopNow() {
     const child = this.child
     this.emit('bootstrap.stop.started', { pid: child?.pid ?? null })
     this.child = undefined

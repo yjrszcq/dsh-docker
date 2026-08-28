@@ -421,6 +421,55 @@ test('rolls back when the current Bootstrap exits before readiness', async () =>
   assert.equal(reports.some(entry => entry.message === 'bootstrap.stop.completed'), true)
 })
 
+test('serializes a staged Bootstrap restart behind initial readiness', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-supervisor-transition-'))
+  const image = await imageBootstrap(root, '1.0.0', 1, `
+    setTimeout(() => process.send({ type: 'ready', bootstrapApi: 1 }), 100)
+    setInterval(() => {}, 1000)
+  `)
+  const slots = bootstrapManager(root, image)
+  await slots.reconcileImage(image.record)
+  const candidate = await storeBootstrap(
+    slots,
+    '2.0.0',
+    2,
+    'process.send({ type: "ready", bootstrapApi: 1 }); setInterval(() => {}, 1000)',
+  )
+  const reports = []
+  let resolveLaunch
+  const launchStarted = new Promise(resolve => { resolveLaunch = resolve })
+  const supervisor = new BootstrapSupervisor({
+    slots,
+    dataRoot: root,
+    readyTimeoutMs: 1_000,
+    report: (message, fields) => {
+      reports.push({ message, fields })
+      if (message === 'bootstrap.launch.started' && fields.bootstrapVersion === '1.0.0') resolveLaunch()
+    },
+  })
+
+  const initial = supervisor.startWithRollback()
+  await launchStarted
+  await slots.promote(candidate.id)
+  const restart = supervisor.restart()
+  const initialChild = await initial
+  const restartedChild = await restart
+
+  assert.notEqual(initialChild.pid, restartedChild.pid)
+  assert.equal((await slots.state()).current, candidate.id)
+  assert.equal(reports.some(entry => entry.message === 'bootstrap.launch.failed'), false)
+  const initialReady = reports.findIndex(entry => (
+    entry.message === 'bootstrap.ready' && entry.fields.bootstrapVersion === '1.0.0'
+  ))
+  const restartStarted = reports.findIndex(entry => entry.message === 'bootstrap.restart.started')
+  assert.notEqual(initialReady, -1)
+  assert.equal(restartStarted > initialReady, true)
+  assert.equal(reports.some(entry => (
+    entry.message === 'bootstrap.ready' && entry.fields.bootstrapVersion === '2.0.0'
+  )), true)
+  await supervisor.stop()
+})
+
 test('rejects an in-flight recovery request when Bootstrap exits', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-recovery-exit-'))
   const behavior = `
