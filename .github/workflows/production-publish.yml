@@ -102,12 +102,14 @@ jobs:
             sequence=1
             channel_commit=
           fi
-          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
-          printf 'channel_commit=%s\n' "$channel_commit" >> "$GITHUB_OUTPUT"
-          printf 'keyring_sha256=%s\n' "$keyring_sha256" >> "$GITHUB_OUTPUT"
-          printf 'previous=%s\n' "$previous" >> "$GITHUB_OUTPUT"
-          printf 'reuse=%s\n' "$reuse" >> "$GITHUB_OUTPUT"
-          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
+          {
+            printf 'channel=%s\n' "$channel"
+            printf 'channel_commit=%s\n' "$channel_commit"
+            printf 'keyring_sha256=%s\n' "$keyring_sha256"
+            printf 'previous=%s\n' "$previous"
+            printf 'reuse=%s\n' "$reuse"
+            printf 'sequence=%s\n' "$sequence"
+          } >> "$GITHUB_OUTPUT"
           printf 'Target sequence: %s (reuse: %s)\n' "$sequence" "$reuse" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download reviewed DSH npm Artifact
@@ -208,6 +210,7 @@ jobs:
             mkdir -p "$target"
             cp -a "$RUNNER_TEMP/platform-release/." "$target/"
             for name in stable.json stable.sig.json keyring.json keyring.sig.json; do cp "$target/$name" "$CHANNEL/$name"; done
+            # shellcheck disable=SC2016
             jq -n --arg sourceCommit "$GITHUB_SHA" --arg keyringSha256 "$KEYRING_SHA256" \
               --arg dshVersion "$DSH_VERSION" --arg environmentVersion "$ENVIRONMENT_VERSION" \
               --argjson targetSequence "$TARGET_SEQUENCE" \
@@ -220,6 +223,7 @@ jobs:
             commit="$(git -C "$CHANNEL" rev-parse HEAD)"
             git -C "$CHANNEL" push origin HEAD:refs/heads/release-channel
           fi
+          # shellcheck disable=SC2016
           printf 'Published signed channel sequence `%s` at `%s`.\n' "$TARGET_SEQUENCE" "$commit" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish Environment Release
@@ -247,6 +251,7 @@ jobs:
           mkdir -p "$assets"
           cp "$RUNNER_TEMP/environment-release.json" "$assets/"
           notes="$RUNNER_TEMP/environment-release-notes.md"
+          # shellcheck disable=SC2016
           {
             printf 'Container Environment: `%s`\n\n' "$ENVIRONMENT_VERSION"
             printf 'Supported DSH at publication: `%s`\n\n' "$DSH_VERSION"

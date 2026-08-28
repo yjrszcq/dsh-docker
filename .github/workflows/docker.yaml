@@ -72,8 +72,11 @@ jobs:
             exit 1
           fi
           git -C channel checkout --detach "$channel_commit"
-          printf 'commit=%s\n' "$channel_commit" >> "$GITHUB_OUTPUT"
-          printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+          {
+            printf 'commit=%s\n' "$channel_commit"
+            printf 'source_commit=%s\n' "$source_commit"
+          } >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
           printf 'Using signed channel commit `%s` for source commit `%s`.\n' \
             "$channel_commit" "$source_commit" >> "$GITHUB_STEP_SUMMARY"
 
@@ -133,9 +136,11 @@ jobs:
           test "$(jq -er .targetSequence <<<"$verified")" = "$sequence"
           environment_version="$(jq -er .environmentVersion <<<"$verified")"
           test "$environment_version" = "$(jq -er .version container/environment/definition.json)"
-          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          printf 'environment_version=%s\n' "$environment_version" >> "$GITHUB_OUTPUT"
-          printf 'sequence=%s\n' "$sequence" >> "$GITHUB_OUTPUT"
+          {
+            printf 'version=%s\n' "$version"
+            printf 'environment_version=%s\n' "$environment_version"
+            printf 'sequence=%s\n' "$sequence"
+          } >> "$GITHUB_OUTPUT"
           cp "$image_input/recovery-root.spki.base64" container/platform/seed/trust/recovery-root.spki.base64
           cp "$release_dir/keyring.json" container/platform/seed/trust/keyring.json
           cp "$release_dir/keyring.sig.json" container/platform/seed/trust/keyring.sig.json
