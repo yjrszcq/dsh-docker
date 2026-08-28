@@ -45,12 +45,14 @@ export class PlatformActivator {
     bootstrap,
     stage0,
     builder,
+    sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   }) {
     this.dataRoot = dataRoot
     this.paths = new PlatformPaths(dataRoot, runRoot)
     this.bootstrap = bootstrap ?? new LocalApiClient(this.paths.bootstrapSocket)
     this.stage0 = stage0 ?? new LocalApiClient(this.paths.trustSocket)
     this.builder = builder ?? new ManagedDeploymentBuilder({ paths: this.paths })
+    this.sleep = sleep
     this.runtimeSlots = new RuntimeSlots(this.paths.runtimesRoot)
     this.environmentSlots = new RuntimeSlots(this.paths.environmentsRoot)
     this.systemPluginSlots = new RuntimeSlots(this.paths.systemPluginsRoot)
@@ -131,7 +133,14 @@ export class PlatformActivator {
   }
 
   async currentDeployment({ required = true } = {}) {
-    const { record } = await this.bootstrap.request('GET', '/v1/deployments/current')
+    let record
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      ({ record } = await this.bootstrap.request('GET', '/v1/deployments/current'))
+      if (record !== null || !required) break
+      const status = await this.bootstrap.request('GET', '/v1/status')
+      if (status.startupComplete === true) break
+      await this.sleep(100)
+    }
     if (record === null) {
       if (required) throw new Error('current Deployment is required')
       return null

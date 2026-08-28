@@ -347,6 +347,82 @@ test('hands Stable activation to Stage-0 when same-version Bootstrap content cha
   assert.equal(built, false)
 })
 
+test('waits for the initial Deployment while Bootstrap startup is incomplete', async () => {
+  const calls = []
+  let currentRequests = 0
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    sleep: async milliseconds => { calls.push(`sleep:${milliseconds}`) },
+    bootstrap: { request: async (method, path) => {
+      calls.push(`${method} ${path}`)
+      if (path === '/v1/deployments/current') {
+        currentRequests += 1
+        return currentRequests === 1
+          ? { record: null }
+          : { record: {
+              authority: 'stable', targetSequence: 1, dshVersion: '0.1.1-rc.2',
+              id: 'deployment-record-current', environmentVersion: '1.0.5',
+              snapshotId: null, receiptTokens: [],
+            } }
+      }
+      if (path === '/v1/status') return { startupComplete: false }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+
+  assert.deepEqual(await activator.currentDeployment(), {
+    authority: 'stable', targetSequence: 1, dsh: '0.1.1-rc.2',
+    runtime: 'deployment-record-current', environment: '1.0.5',
+    dataSnapshot: null, receiptTokens: [],
+  })
+  assert.deepEqual(calls, [
+    'GET /v1/deployments/current',
+    'GET /v1/status',
+    'sleep:100',
+    'GET /v1/deployments/current',
+  ])
+})
+
+test('does not hide a missing Deployment after Bootstrap startup completes', async () => {
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    bootstrap: { request: async (method, path) => {
+      if (path === '/v1/deployments/current') return { record: null }
+      if (path === '/v1/status') return { startupComplete: true }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+
+  await assert.rejects(activator.currentDeployment(), /current Deployment is required/)
+})
+
+test('bounds the initial Deployment startup wait', async () => {
+  let currentRequests = 0
+  let statusRequests = 0
+  const activator = new PlatformActivator({
+    dataRoot: '/unused',
+    sleep: async () => {},
+    bootstrap: { request: async (method, path) => {
+      if (path === '/v1/deployments/current') {
+        currentRequests += 1
+        return { record: null }
+      }
+      if (path === '/v1/status') {
+        statusRequests += 1
+        return { startupComplete: false }
+      }
+      throw new Error(`unexpected request: ${method} ${path}`)
+    } },
+    stage0: {},
+  })
+
+  await assert.rejects(activator.currentDeployment(), /current Deployment is required/)
+  assert.equal(currentRequests, 100)
+  assert.equal(statusRequests, 100)
+})
+
 test('coalesces overlapping metadata checks into one request', async () => {
   let checks = 0
   let complete
