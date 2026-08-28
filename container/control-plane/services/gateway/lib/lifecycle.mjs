@@ -43,6 +43,12 @@ export async function runGateway(config, {
   const management = managementClient ?? new LocalApiClient(managementSocketPath)
   const access = accessClient ?? new LocalApiClient(accessSocketPath)
   const browserAuthentication = createBrowserAuthentication({ access, safeReturnPath, report: record })
+  const isolatedBrowserAuthentication = createBrowserAuthentication({
+    access,
+    safeReturnPath,
+    report: record,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', consolePath: '/' },
+  })
   let lastPlatformStatus
   let lastPlatformStatusAt = 0
   const refreshPlatformStatus = async () => {
@@ -78,7 +84,7 @@ export async function runGateway(config, {
       trustedHosts: config.trustedHosts,
       managementSocketPath,
       maintenanceSocketPath,
-      browserAuthentication,
+      browserAuthentication: isolatedBrowserAuthentication,
       platformStatus,
       report: record,
       surface: 'management',

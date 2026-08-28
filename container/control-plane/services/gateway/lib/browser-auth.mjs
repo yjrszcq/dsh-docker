@@ -89,25 +89,25 @@ function clearSessionCookies(origin) {
   ]
 }
 
-function managementCookies(session, origin) {
+function managementCookies(session, origin, path = '/_dsh_platform/') {
   return [
-    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=/_dsh_platform/${secureCookie(origin)}`,
-    `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=/_dsh_platform/${secureCookie(origin)}`,
+    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
+    `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
     `${AUTH_CSRF_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 
-function clearManagementCookies(origin) {
+function clearManagementCookies(origin, path = '/_dsh_platform/') {
   return [
-    `${MANAGEMENT_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/_dsh_platform/; Max-Age=0${secureCookie(origin)}`,
-    `${MANAGEMENT_CSRF_COOKIE}=; SameSite=Strict; Path=/_dsh_platform/; Max-Age=0${secureCookie(origin)}`,
+    `${MANAGEMENT_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=0${secureCookie(origin)}`,
+    `${MANAGEMENT_CSRF_COOKIE}=; SameSite=Strict; Path=${path}; Max-Age=0${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 
-function pendingCookie(pending, origin) {
-  return `${MANAGEMENT_PENDING_COOKIE}=${pending.token}; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}${secureCookie(origin)}`
+function pendingCookie(pending, origin, authPrefix = AUTH_PREFIX) {
+  return `${MANAGEMENT_PENDING_COOKIE}=${pending.token}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`
 }
 
 function sendJson(response, status, value, headers = {}) {
@@ -192,7 +192,7 @@ function authenticationPage(request, state, csrf, returnPath) {
   return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(copy.brand)}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}.brand{text-align:center;margin:0 0 24px;font-size:18px;letter-spacing:.12em}h1{margin:0 0 8px;font-size:20px}p{margin:0;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><div class="brand">${htmlEscape(copy.brand)}</div>${content}</main></body></html>`
 }
 
-function managementLoginPage(request, csrf, { pending = false } = {}) {
+function managementLoginPage(request, csrf, { pending = false, authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
     title: 'DSH 管理中心', detail: pending ? '请输入管理中心附加密码。' : '使用本地管理员账户登录。',
@@ -201,10 +201,20 @@ function managementLoginPage(request, csrf, { pending = false } = {}) {
     title: 'DSH Management Console', detail: pending ? 'Enter the additional Management password.' : 'Sign in with the local administrator account.',
     username: 'Username', password: pending ? 'Additional password' : 'Password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
   }
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form>${pending ? '' : `<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" autofocus></label>`}<label>${copy.password}<input name="password" type="password" autocomplete="current-password" required maxlength="1024"${pending ? ' autofocus' : ''}></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(pending ? `${AUTH_PREFIX}management/pending` : `${AUTH_PREFIX}management/session`)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${pending ? '' : "username:values.get('username'),"}password:values.get('password')})});if(response.ok){location.replace(response.status===202?${JSON.stringify(`${AUTH_PREFIX}management/pending`)}:'/_dsh_platform/console/')}else{error.hidden=false;form.elements.password.select()}})</script></body></html>`
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form>${pending ? '' : `<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" autofocus></label>`}<label>${copy.password}<input name="password" type="password" autocomplete="current-password" required maxlength="1024"${pending ? ' autofocus' : ''}></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(pending ? `${authPrefix}management/pending` : `${authPrefix}management/session`)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${pending ? '' : "username:values.get('username'),"}password:values.get('password')})});if(response.ok){location.replace(response.status===202?${JSON.stringify(`${authPrefix}management/pending`)}:${JSON.stringify(consolePath)})}else{error.hidden=false;form.elements.password.select()}})</script></body></html>`
 }
 
-export function createBrowserAuthentication({ access, safeReturnPath, report = async () => {} }) {
+export function createBrowserAuthentication({
+  access,
+  safeReturnPath,
+  report = async () => {},
+  paths: {
+    authPrefix = AUTH_PREFIX,
+    accessPrefix = ACCESS_PREFIX,
+    consolePath = '/_dsh_platform/console/',
+  } = {},
+}) {
+  const managementCookiePath = consolePath === '/' ? '/' : '/_dsh_platform/'
   async function status() { return access.request('GET', '/v1/status') }
 
   async function validateDsh(request, { requireCsrf = false } = {}) {
@@ -252,7 +262,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
 
   function sendManagementLogin(request, response, origin, { pending = false } = {}) {
     const csrf = token('dshma')
-    const bytes = Buffer.from(managementLoginPage(request, csrf, { pending }))
+    const bytes = Buffer.from(managementLoginPage(request, csrf, { pending, authPrefix, consolePath }))
     response.writeHead(200, {
       'cache-control': 'no-store',
       'content-length': String(bytes.byteLength),
@@ -260,7 +270,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       'content-type': 'text/html; charset=utf-8',
       'cross-origin-opener-policy': 'same-origin',
       'referrer-policy': 'no-referrer',
-      'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}${secureCookie(origin)}`,
+      'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
       'x-content-type-options': 'nosniff',
     })
     response.end(bytes)
@@ -271,30 +281,45 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
     if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return }
     const valid = await validateDsh(request)
     if (!valid.authenticated) {
-      response.writeHead(303, { 'cache-control': 'no-store', location: `${AUTH_PREFIX}management` })
+      response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management` })
       response.end()
       return
     }
+    const current = await status()
+    const entry = current.account?.managementAccess?.isolatedEntry
+    if (current.account?.managementAccess?.mode === 'isolated' && entry?.kind === 'local-only') {
+      const zh = language(request) === 'zh'
+      const body = Buffer.from(`<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DSH Management</title><body><main><h1>${zh ? '管理中心仅允许本机访问' : 'Management is local-only'}</h1><p>${zh ? '请在容器宿主机映射 3081 端口，并通过实际 loopback 地址登录。' : 'Map container port 3081 on the host and sign in through the actual loopback address.'}</p></main></body></html>`)
+      response.writeHead(200, { 'cache-control': 'no-store', 'content-length': String(body.byteLength), 'content-type': 'text/html; charset=utf-8' })
+      response.end(body)
+      return
+    }
+    const targetOrigin = current.account?.managementAccess?.mode === 'isolated'
+      ? entry?.managementPublicOrigin
+      : origin
+    if (typeof targetOrigin !== 'string') { sendJson(response, 409, { error: 'Management entry is unavailable' }); return }
     const created = await access.request('POST', '/v1/management/handoffs', {
       dshToken: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
       dshOrigin: origin,
-      targetOrigin: origin,
+      targetOrigin,
     })
     response.writeHead(303, {
       'cache-control': 'no-store',
-      location: `${AUTH_PREFIX}management/handoff?token=${encodeURIComponent(created.handoff.token)}`,
+      location: current.account?.managementAccess?.mode === 'isolated'
+        ? `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}`
+        : `${AUTH_PREFIX}management/handoff?token=${encodeURIComponent(created.handoff.token)}`,
       'referrer-policy': 'no-referrer',
     })
     response.end()
   }
 
   async function handle(request, response, pathname, searchParams) {
-    if (pathname === ACCESS_PREFIX + 'status' && request.method === 'GET') {
+    if (pathname === accessPrefix + 'status' && request.method === 'GET') {
       const current = await status()
       sendJson(response, 200, { state: current.state })
       return true
     }
-    if (pathname === AUTH_PREFIX.slice(0, -1) || pathname === AUTH_PREFIX) {
+    if (pathname === authPrefix.slice(0, -1) || pathname === authPrefix) {
       if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) return false
       const current = await status()
       const valid = await validateDsh(request)
@@ -313,13 +338,13 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         'content-type': 'text/html; charset=utf-8',
         'referrer-policy': 'no-referrer',
-        'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}${secureCookie(origin)}`,
+        'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
         'x-content-type-options': 'nosniff',
       })
       response.end(request.method === 'HEAD' ? undefined : bytes)
       return true
     }
-    if (pathname === AUTH_PREFIX + 'session' && request.method === 'POST') {
+    if (pathname === authPrefix + 'session' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
       if (!validBrowserMutation(request, csrf)) {
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
@@ -345,7 +370,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       }
       return true
     }
-    if (pathname === AUTH_PREFIX + 'migration' && request.method === 'POST') {
+    if (pathname === authPrefix + 'migration' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
       if (!validBrowserMutation(request, csrf)) {
         sendJson(response, 403, { error: 'migration request rejected', code: 'REQUEST_FORBIDDEN' })
@@ -362,7 +387,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       }
       return true
     }
-    if (pathname === AUTH_PREFIX + 'logout' && request.method === 'POST') {
+    if (pathname === authPrefix + 'logout' && request.method === 'POST') {
       const valid = await validateDsh(request, { requireCsrf: true })
       const origin = requestOrigin(request, { requireHeader: true })
       if (!validBrowserMutation(request, cookieValue(request.headers.cookie, DSH_CSRF_COOKIE), DSH_CSRF_COOKIE)
@@ -376,17 +401,17 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearSessionCookies(origin) })
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+    if (pathname === authPrefix + 'management' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
       const origin = requestOrigin(request)
       if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return true }
       const valid = await validateManagement(request)
       if (valid.authenticated) {
-        response.writeHead(303, { 'cache-control': 'no-store', location: '/_dsh_platform/console/' })
+        response.writeHead(303, { 'cache-control': 'no-store', location: consolePath })
         response.end()
       } else sendManagementLogin(request, response, origin)
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management/session' && request.method === 'POST') {
+    if (pathname === authPrefix + 'management/session' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
       if (!validBrowserMutation(request, csrf)) {
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
@@ -396,14 +421,14 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       try {
         const result = await access.request('POST', '/v1/management/login', { ...await jsonBody(request), origin })
         if (result.pending !== undefined) {
-          sendJson(response, 202, { pending: true }, { 'set-cookie': pendingCookie(result.pending, origin) })
-        } else sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin) })
+          sendJson(response, 202, { pending: true }, { 'set-cookie': pendingCookie(result.pending, origin, authPrefix) })
+        } else sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
         sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
       }
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management/handoff' && request.method === 'GET') {
+    if (pathname === authPrefix + 'management/handoff' && request.method === 'GET') {
       const topLevel = request.headers['sec-fetch-mode'] === undefined
         || (request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document')
       const origin = requestOrigin(request)
@@ -417,13 +442,13 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
         })
         if (result.pending !== undefined) {
           response.writeHead(303, {
-            'cache-control': 'no-store', location: `${AUTH_PREFIX}management/pending`,
-            'referrer-policy': 'no-referrer', 'set-cookie': pendingCookie(result.pending, origin),
+            'cache-control': 'no-store', location: `${authPrefix}management/pending`,
+            'referrer-policy': 'no-referrer', 'set-cookie': pendingCookie(result.pending, origin, authPrefix),
           })
         } else {
           response.writeHead(303, {
-            'cache-control': 'no-store', location: '/_dsh_platform/console/',
-            'referrer-policy': 'no-referrer', 'set-cookie': managementCookies(result.session, origin),
+            'cache-control': 'no-store', location: consolePath,
+            'referrer-policy': 'no-referrer', 'set-cookie': managementCookies(result.session, origin, managementCookiePath),
           })
         }
         response.end()
@@ -432,15 +457,15 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       }
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management/pending' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+    if (pathname === authPrefix + 'management/pending' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
       const origin = requestOrigin(request)
       if (origin === undefined || cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE) === undefined) {
-        response.writeHead(303, { 'cache-control': 'no-store', location: `${AUTH_PREFIX}management` })
+        response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management` })
         response.end()
       } else sendManagementLogin(request, response, origin, { pending: true })
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management/pending' && request.method === 'POST') {
+    if (pathname === authPrefix + 'management/pending' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
       if (!validBrowserMutation(request, csrf)) {
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
@@ -452,13 +477,13 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
           ...await jsonBody(request), origin,
           pendingToken: cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE),
         })
-        sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin) })
+        sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
         sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
       }
       return true
     }
-    if (pathname === AUTH_PREFIX + 'management/logout' && request.method === 'POST') {
+    if (pathname === authPrefix + 'management/logout' && request.method === 'POST') {
       const valid = await validateManagement(request, { requireCsrf: true })
       const origin = requestOrigin(request, { requireHeader: true })
       if (!valid.authenticated || origin === undefined) {
@@ -468,7 +493,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
       await access.request('POST', '/v1/sessions/logout', {
         kind: 'management', token: cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE),
       })
-      sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearManagementCookies(origin) })
+      sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearManagementCookies(origin, managementCookiePath) })
       return true
     }
     return false

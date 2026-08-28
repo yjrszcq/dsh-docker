@@ -76,6 +76,7 @@ test('loadConfig owns only Gateway settings', async () => {
   assert.equal(Object.hasOwn(config, 'platformPassword'), false)
   assert.equal(Object.hasOwn(config, 'workspace'), false)
   assert.equal(Object.hasOwn(config, 'telemetryDisabled'), false)
+  assert.equal(config.managementPort, 3081)
   assert.doesNotReject(() => loadConfig({
     DSH_PROXY_USERNAME: 'invalid:name',
     DSH_PROXY_PASSWORD: 'secret',

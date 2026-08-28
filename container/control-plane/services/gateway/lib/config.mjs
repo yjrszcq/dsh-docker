@@ -63,7 +63,7 @@ export function parseTrustedHosts(environment = process.env) {
 
 export async function loadConfig(environment = process.env) {
   const managementPort = environment.DSH_MANAGEMENT_PORT === undefined || environment.DSH_MANAGEMENT_PORT.trim() === ''
-    ? null : Number(environment.DSH_MANAGEMENT_PORT)
+    ? 3081 : Number(environment.DSH_MANAGEMENT_PORT)
   if (managementPort !== null && (!Number.isInteger(managementPort) || managementPort < 1 || managementPort > 65535)) {
     throw new UsageError('DSH_MANAGEMENT_PORT must be an integer between 1 and 65535')
   }

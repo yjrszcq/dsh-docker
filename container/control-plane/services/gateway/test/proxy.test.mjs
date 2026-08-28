@@ -24,6 +24,25 @@ const AUTHENTICATED_BROWSER = Object.freeze({
   handle: async () => false,
 })
 
+function browserForMode(mode) {
+  return Object.freeze({
+    ...AUTHENTICATED_BROWSER,
+    status: async () => ({
+      state: 'initialized',
+      account: {
+        managementAccess: {
+          mode,
+          version: 1,
+          isolatedEntry: mode === 'isolated'
+            ? { kind: 'public', managementPublicOrigin: 'http://127.0.0.1:3081' }
+            : null,
+        },
+      },
+    }),
+    authorizeManagement: async () => ({ authorized: true, capability: { token: 'test-capability' } }),
+  })
+}
+
 function createGatewayServer(options) {
   return createGatewayServerBase({
     ...options,
@@ -890,17 +909,41 @@ test('management surface refuses DSH routes while retaining its console surface'
     trustedHosts: parseTrustedHosts({}),
     upstreamPort,
     surface: 'management',
+    browserAuthentication: browserForMode('isolated'),
   })
   const port = await listen(gateway)
   try {
-    const dsh = await request(port, '/', { accept: 'text/html', host: '127.0.0.1' })
+    const dsh = await request(port, '/dsh-page', { accept: 'text/html', host: '127.0.0.1' })
     assert.equal(dsh.status, 404)
-    const api = await request(port, '/api/v1/status', { host: '127.0.0.1' })
-    assert.equal(api.status, 404)
-    const consoleResponse = await request(port, '/_dsh_platform/console/', { host: '127.0.0.1' })
+    const consoleResponse = await request(port, '/', { accept: 'text/html', host: '127.0.0.1' })
     assert.notEqual(consoleResponse.status, 404)
   } finally {
     await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
+
+test('compatibility and isolated Management surfaces are mutually exclusive', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const compat = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'compat',
+    browserAuthentication: browserForMode('isolated'),
+  })
+  const management = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'management',
+    browserAuthentication: browserForMode('compat'),
+  })
+  const compatPort = await listen(compat)
+  const managementPort = await listen(management)
+  try {
+    assert.equal((await request(compatPort, '/_dsh_platform/console/', { host: '127.0.0.1' })).status, 404)
+    assert.equal((await request(compatPort, '/_dsh_platform/api/v1/status', { host: '127.0.0.1' })).status, 404)
+    assert.notEqual((await request(compatPort, '/_dsh_platform/plugin-api/v1/status', { host: '127.0.0.1' })).status, 404)
+    assert.equal((await request(managementPort, '/', { host: '127.0.0.1' })).status, 404)
+    assert.equal((await request(managementPort, '/api/v1/status', { host: '127.0.0.1' })).status, 404)
+  } finally {
+    await Promise.all([closeGatewayServer(compat), closeGatewayServer(management)])
     await close(upstream)
   }
 })

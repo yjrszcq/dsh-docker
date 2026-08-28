@@ -20,9 +20,9 @@ export const MANAGEMENT_PREFIX = '/_dsh_platform/api/v1/'
 export const MANAGEMENT_PLUGIN_PREFIX = '/_dsh_platform/plugin-api/v1/'
 export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
-  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'user-skills', 'settings-document', 'user-plugins', 'proxy', 'proxy/provider-inventory', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
-  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'proxy/test', 'terminal/sessions', 'files/upload', 'files/tasks'])],
-  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'proxy', 'settings-document', 'files/content'])],
+  ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'auth-settings', 'bundled-plugins', 'system-skills', 'user-skills', 'settings-document', 'user-plugins', 'proxy', 'proxy/provider-inventory', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
+  ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'auth-sessions/revoke', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'proxy/test', 'terminal/sessions', 'files/upload', 'files/tasks'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'auth-settings', 'proxy', 'settings-document', 'files/content'])],
 ])
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
@@ -31,7 +31,7 @@ const PROXY_TEST_TASK_ROUTE = /^proxy\/test\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-
 const PLUGIN_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'settings-document', 'proxy', 'proxy/provider-inventory'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'proxy/test'])],
-  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'proxy', 'settings-document'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'proxy', 'settings-document'])],
 ])
 
 function isMaintenanceRoute(pathname) {
@@ -675,8 +675,29 @@ function isExternalConsoleRoute(method, pathname) {
     && (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX))
 }
 
-function serializeUpgradeRequest(request, headers) {
-  const lines = [`${request.method ?? 'GET'} ${request.url ?? '/'} HTTP/${request.httpVersion}`]
+function managementSurfaceUpstream(url) {
+  const pathname = url.pathname
+  if (pathname === '/') return `${MANAGEMENT_UI_PREFIX}${url.search}`
+  if (pathname === '/app.js' || pathname === '/style.css' || pathname === '/theme-init.js'
+    || pathname.startsWith('/vendor/')) {
+    return `${MANAGEMENT_UI_PREFIX}${pathname.slice(1)}${url.search}`
+  }
+  if (pathname === '/api/v1' || pathname.startsWith('/api/v1/')) {
+    return `${MANAGEMENT_PREFIX}${pathname.slice('/api/v1/'.length)}${url.search}`
+  }
+  return null
+}
+
+function isCompatibilityManagementPath(pathname) {
+  return pathname === MANAGEMENT_UI_PREFIX.slice(0, -1)
+    || pathname.startsWith(MANAGEMENT_UI_PREFIX)
+    || pathname.startsWith(MANAGEMENT_PREFIX)
+    || pathname === '/_dsh_platform/auth/management'
+    || pathname.startsWith('/_dsh_platform/auth/management/')
+}
+
+function serializeUpgradeRequest(request, headers, target = request.url ?? '/') {
+  const lines = [`${request.method ?? 'GET'} ${target} HTTP/${request.httpVersion}`]
   for (const [name, value] of Object.entries(headers)) {
     if (Array.isArray(value)) {
       for (const item of value) lines.push(`${name}: ${item}`)
@@ -708,7 +729,7 @@ function proxyUpgrade(request, clientSocket, head, options) {
     connected = true
     options.reportRecovered(failureKey, 'gateway.websocket.recovered', { upstream: upstreamType })
     if (upstreamType === 'dsh') options.availability.observe(true)
-    upstreamSocket.write(serializeUpgradeRequest(request, headers))
+    upstreamSocket.write(serializeUpgradeRequest(request, headers, options.upstreamPath))
     if (head.length > 0) upstreamSocket.write(head)
     clientSocket.pipe(upstreamSocket).pipe(clientSocket)
   })
@@ -837,14 +858,6 @@ export function createGatewayServer({
       }
       const url = new URL(request.url ?? '/', 'http://gateway.internal')
       const pathname = url.pathname
-      if (surface === 'management'
-        && !pathname.startsWith('/_dsh_platform/auth/')
-        && !pathname.startsWith('/_dsh_platform/access/')
-        && !pathname.startsWith('/_dsh_platform/console')
-        && !pathname.startsWith('/_dsh_platform/api/v1/')) {
-        rejectHttp(response, 404, 'not found')
-        return
-      }
       if (pathname === HEALTH_PATH) {
         if (options.isReady()) {
           response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
@@ -854,12 +867,21 @@ export function createGatewayServer({
         }
         return
       }
-      if (await options.browserAuthentication.handle(request, response, pathname, url.searchParams)) return
-      if (pathname.startsWith('/_dsh_platform/auth/') || pathname.startsWith('/_dsh_platform/access/')) {
+      const access = await options.browserAuthentication.status()
+      const managementMode = access.account?.managementAccess?.mode ?? 'compat'
+      if ((surface === 'management' && managementMode !== 'isolated')
+        || (surface === 'compat' && managementMode === 'isolated'
+          && isCompatibilityManagementPath(pathname))) {
         rejectHttp(response, 404, 'not found')
         return
       }
-      const access = await options.browserAuthentication.status()
+      if (await options.browserAuthentication.handle(request, response, pathname, url.searchParams)) return
+      const authPrefix = surface === 'management' ? '/auth/' : '/_dsh_platform/auth/'
+      const accessPrefix = surface === 'management' ? '/access/' : '/_dsh_platform/access/'
+      if (pathname.startsWith(authPrefix) || pathname.startsWith(accessPrefix)) {
+        rejectHttp(response, 404, 'not found')
+        return
+      }
       if (access.state !== 'initialized') {
         rejectDshAuthentication(request, response, safeReturnPath)
         return
@@ -870,13 +892,13 @@ export function createGatewayServer({
         rejectDshAuthentication(request, response, safeReturnPath)
         return false
       }
-      const requireManagement = async audience => {
+      const requireManagement = async (audience, target = request.url ?? pathname) => {
         const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET')
         const authorization = typeof options.browserAuthentication.authorizeManagement === 'function'
           ? await options.browserAuthentication.authorizeManagement(request, {
             audience,
             method: request.method ?? 'GET',
-            target: request.url ?? pathname,
+            target,
             requireCsrf: mutation,
           })
           : { authorized: (await options.browserAuthentication.validateManagement(request)).authenticated === true }
@@ -884,6 +906,40 @@ export function createGatewayServer({
         if (isPageNavigation(request)) await options.browserAuthentication.enterManagement(request, response)
         else sendJson(response, 401, { error: 'management authentication required', code: 'MANAGEMENT_AUTHENTICATION_REQUIRED' })
         return undefined
+      }
+      if (surface === 'management') {
+        const upstreamPath = managementSurfaceUpstream(url)
+        if (upstreamPath === null) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        const upstreamUrl = new URL(upstreamPath, 'http://gateway.internal')
+        if (upstreamUrl.pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
+          if (!isExternalConsoleRoute(request.method, upstreamUrl.pathname)) {
+            rejectHttp(response, 404, 'not found')
+            return
+          }
+          const capability = await requireManagement('management', upstreamPath)
+          if (capability === undefined) return
+          proxyHttp(request, response, {
+            ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
+            ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
+          })
+          return
+        }
+        if (!isExternalManagementRoute(request.method, upstreamUrl.pathname)) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        const socketPath = isMaintenanceRoute(upstreamUrl.pathname) ? options.maintenanceSocketPath : options.managementSocketPath
+        const audience = socketPath === options.maintenanceSocketPath ? 'maintenance' : 'management'
+        const capability = await requireManagement(audience, upstreamPath)
+        if (capability === undefined) return
+        proxyHttp(request, response, {
+          ...options, socketPath, polyfill: false, upstreamPath,
+          ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
+        })
+        return
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
         if (!isExternalConsoleRoute(request.method, pathname)) {
@@ -1015,21 +1071,32 @@ export function createGatewayServer({
         rejectUpgrade(socket, 403, 'Forbidden')
         return
       }
-      const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
-      if (surface === 'management' && !pathname.startsWith('/_dsh_platform/api/v1/terminal/')) {
-        rejectUpgrade(socket, 404, 'Not Found')
-        return
-      }
+      const url = new URL(request.url ?? '/', 'http://gateway.internal')
+      const pathname = url.pathname
       void (async () => {
         const access = await options.browserAuthentication.status()
         if (access.state !== 'initialized') {
           rejectUpgrade(socket, 401, 'Unauthorized')
           return
         }
-        if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
+        const managementMode = access.account?.managementAccess?.mode ?? 'compat'
+        if ((surface === 'management' && managementMode !== 'isolated')
+          || (surface === 'compat' && managementMode === 'isolated'
+            && isCompatibilityManagementPath(pathname))) {
+          rejectUpgrade(socket, 404, 'Not Found')
+          return
+        }
+        const upstreamPath = surface === 'management' ? managementSurfaceUpstream(url) : request.url ?? pathname
+        const upstreamPathname = upstreamPath === null
+          ? null : new URL(upstreamPath, 'http://gateway.internal').pathname
+        if (surface === 'management' && upstreamPathname === null) {
+          rejectUpgrade(socket, 404, 'Not Found')
+          return
+        }
+        if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(upstreamPathname ?? pathname)) {
           const authorization = typeof options.browserAuthentication.authorizeManagement === 'function'
             ? await options.browserAuthentication.authorizeManagement(request, {
-              audience: 'maintenance', method: request.method ?? 'GET', target: request.url ?? pathname,
+              audience: 'maintenance', method: request.method ?? 'GET', target: upstreamPath,
             })
             : { authorized: (await options.browserAuthentication.validateManagement(request)).authenticated === true }
           if (!authorization.authorized) {
@@ -1040,12 +1107,13 @@ export function createGatewayServer({
           socket.once('close', () => upgradedSockets.delete(socket))
           proxyUpgrade(request, socket, head, {
             ...options, socketPath: options.maintenanceSocketPath,
+            upstreamPath,
             ...(typeof authorization.capability?.token === 'string'
               ? { internalCapability: authorization.capability.token } : {}),
           })
           return
         }
-        if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+        if ((upstreamPathname ?? pathname).startsWith(MANAGEMENT_PREFIX)) {
           rejectUpgrade(socket, 400, 'Bad Request')
           return
         }
