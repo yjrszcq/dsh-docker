@@ -32,6 +32,7 @@ import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
 import { ProviderInventory } from './provider-inventory.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
+import { cookieValue, requestOrigin } from '../gateway/lib/browser-auth.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -207,6 +208,16 @@ server = createManagementServer({
       })
       return result.authorized === true
     } catch { return false }
+  },
+  updateManagementOrigin: async (value, request) => {
+    const origin = requestOrigin(request, { requireHeader: false })
+    if (origin === undefined) throw new Error('Management origin is invalid')
+    return access.request('POST', '/v1/management/access', {
+      ...value,
+      managementToken: cookieValue(request.headers.cookie, 'dsh_management_compat_session'),
+      origin,
+      csrfToken: request.headers['x-dsh-csrf'],
+    })
   },
   platformStatus: async () => ({
     ...await readDeploymentStatus(paths.deploymentStatusPath),

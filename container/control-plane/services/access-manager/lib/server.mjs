@@ -321,6 +321,45 @@ export class AccessService {
       }
     })
   }
+
+  async setManagementAccess(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const session = this.sessions.validate(value.managementToken, 'management', current.account, {
+      origin: value.origin,
+      csrfToken: value.csrfToken,
+      requireCsrf: true,
+    })
+    if (session === undefined) throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
+    if (!['compat', 'isolated'].includes(value.mode)) throw new AccessError('ACCESS_MODE_INVALID', 'management access mode is invalid')
+    let isolatedEntry = null
+    if (value.mode === 'isolated') {
+      if (value.isolatedEntry === null || typeof value.isolatedEntry !== 'object' || Array.isArray(value.isolatedEntry)
+        || !['local-only', 'public'].includes(value.isolatedEntry.kind)
+        || (value.isolatedEntry.kind === 'public' && typeof value.isolatedEntry.managementPublicOrigin !== 'string')) {
+        throw new AccessError('ACCESS_ENTRY_INVALID', 'isolated Management entry is invalid')
+      }
+      isolatedEntry = { ...value.isolatedEntry }
+    }
+    const account = {
+      ...current.account,
+      revision: identifier(),
+      updatedAt: new Date().toISOString(),
+      managementAccess: {
+        mode: value.mode,
+        version: current.account.managementAccess.version + 1,
+        isolatedEntry,
+        changedAt: new Date().toISOString(),
+      },
+    }
+    const next = await this.store.replaceAccount(account, current.account.revision)
+    this.sessions.revokeAll?.()
+    this.exchanges.clear?.()
+    await this.report('access.management-origin.changed', { mode: value.mode })
+    return { account: publicAccount(next) }
+  }
 }
 
 export function createAccessHttpServer({ service, surface = 'access' }) {
@@ -351,6 +390,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities') return send(response, 201, await service.issueCapability(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
+      if (request.method === 'POST' && pathname === '/v1/management/access') return send(response, 200, await service.setManagementAccess(value))
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {
       const status = error instanceof AccessError ? error.statusCode : 500

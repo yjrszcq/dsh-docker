@@ -217,6 +217,24 @@ test('stores only digests for origin-bound DSH sessions with absolute and idle e
   assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
 })
 
+test('changes Management origin mode and invalidates the previous session', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const login = await service.loginManagement({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
+  const changed = await service.setManagementAccess({
+    managementToken: login.session.token,
+    origin: 'http://dsh.example:3080',
+    csrfToken: login.session.csrfToken,
+    mode: 'isolated',
+    isolatedEntry: { kind: 'local-only' },
+  })
+  assert.equal(changed.account.managementAccess.mode, 'isolated')
+  assert.equal((await service.validateSession({
+    token: login.session.token, kind: 'management', origin: 'http://dsh.example:3080',
+  })).authenticated, false)
+})
+
 test('initializes and logs into DSH with separately revocable browser sessions', async () => {
   const current = await fixture()
   await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })

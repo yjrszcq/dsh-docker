@@ -121,6 +121,7 @@ export function createManagementServer({
   initialUserPluginTransaction,
   settingsDocument,
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
+  updateManagementOrigin = async () => { throw new Error('Management origin configuration is not configured') },
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   listProxyProviders = async () => ({ schema: 1, source: 'unavailable', providers: [] }),
@@ -765,6 +766,11 @@ export function createManagementServer({
           notificationsEnabled: value.notificationsEnabled,
         })
         server.emit('management-state', value)
+        send(response, 200, value)
+      } else if (request.method === 'PUT' && route === 'management-origin') {
+        const body = await jsonBody(request)
+        const value = await updateManagementOrigin(body, request)
+        await audit('access.management-origin.changed', { mode: value.account?.managementAccess?.mode ?? null })
         send(response, 200, value)
       } else if (request.method === 'POST' && route === 'holds/retry') {
         const body = await jsonBody(request)
