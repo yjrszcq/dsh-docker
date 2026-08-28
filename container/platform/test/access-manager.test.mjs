@@ -17,6 +17,7 @@ import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.m
 import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
 import { CapabilityStore } from '../../control-plane/services/access-manager/lib/capabilities.mjs'
+import { ManagementTransitionStore } from '../../control-plane/services/access-manager/lib/transitions.mjs'
 
 const fastVerifier = (password, options = {}) => createCredential(password, {
   ...options,
@@ -53,6 +54,36 @@ test('privileged capabilities are single-use and bound to execution details', ()
   now += 101
   assert.equal(store.consume(third.token, account, {
     audience: 'management', method: 'GET', target: '/_dsh_platform/api/v1/status',
+  }), undefined)
+})
+
+test('Management origin transitions and continuations expire without changing authority', () => {
+  let now = 1_000
+  const transitions = new ManagementTransitionStore({ now: () => now, ttlMs: 100 })
+  const account = {
+    accountId: 'account', revision: 'revision',
+    managementAccess: { version: 3 },
+  }
+  const created = transitions.create({
+    account, instanceId: 'instance', sessionId: 'session',
+    sourceOrigin: 'https://dsh.example', sourceDshOrigin: 'https://dsh.example',
+    mode: 'isolated',
+    isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    candidateOrigin: 'https://manage.example',
+  })
+  now += 101
+  assert.equal(transitions.probe({
+    transitionId: created.transitionId, nonce: created.nonce,
+    sourceOrigin: 'https://dsh.example', candidateOrigin: 'https://manage.example',
+    instanceId: 'instance',
+  }), undefined)
+
+  const continuation = transitions.createContinuation({
+    account, targetOrigin: 'https://manage.example', sourceDshOrigin: 'https://dsh.example',
+  })
+  now += 101
+  assert.equal(transitions.consumeContinuation({
+    token: continuation.token, account, targetOrigin: 'https://manage.example',
   }), undefined)
 })
 
@@ -312,6 +343,36 @@ test('probes the current instance before atomically changing Management origin',
   await assert.rejects(service.consumeManagementContinuation({
     token: changed.continuation.token, origin: 'https://manage.example',
   }), error => error.code === 'CONTINUATION_INVALID')
+
+  const nextCapability = async target => (await service.issueCapability({
+    managementToken: continued.session.token,
+    origin: 'https://manage.example',
+    csrfToken: continued.session.csrfToken,
+    requireCsrf: true,
+    audience: 'management',
+    method: 'POST',
+    target,
+  })).capability.token
+  const moved = await service.createManagementTransition({
+    internalCapability: await nextCapability('/_dsh_platform/api/v1/management-origin/transitions'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'isolated',
+    isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage-two.example' },
+  })
+  const movedProof = await service.probeManagementTransition({
+    transitionId: moved.transition.transitionId,
+    nonce: moved.transition.nonce,
+    sourceOrigin: 'https://manage.example',
+    candidateOrigin: 'https://manage-two.example',
+  })
+  const relocated = await service.commitManagementTransition({
+    internalCapability: await nextCapability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: moved.transition.transitionId,
+    proof: movedProof.proof,
+  })
+  assert.equal(relocated.account.managementAccess.version, 3)
+  assert.equal(relocated.targetOrigin, 'https://manage-two.example')
 })
 
 test('verifies a loopback candidate without persisting it for local-only Management', async () => {

@@ -504,12 +504,14 @@ export class AccessService {
       }
       const transition = this.transitions.consume(transitionValue)
       if (transition === undefined) throw new AccessError('TRANSITION_INVALID', 'Management origin transition is invalid or expired', 409)
-      await this.verifyFreshAuthentication(
-        current.account,
-        value.currentPassword,
-        value.currentAdditionalPassword,
-        current.account.managementAdditionalCredential.enabled,
-      )
+      if (transition.mode !== current.account.managementAccess.mode) {
+        await this.verifyFreshAuthentication(
+          current.account,
+          value.currentPassword,
+          value.currentAdditionalPassword,
+          current.account.managementAdditionalCredential.enabled,
+        )
+      }
       const account = {
         ...current.account,
         revision: identifier(),

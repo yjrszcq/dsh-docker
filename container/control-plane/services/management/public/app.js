@@ -4199,16 +4199,17 @@ async function saveAuthenticationSettings(event) {
     if (additionalEnabled && additionalPassword !== '') body.additionalPassword = additionalPassword
     const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
     const nextAccess = selectedManagementAccess()
-    const modeChanged = elements['auth-mode'].value !== previousAccess.mode
+    const accessChanged = elements['auth-mode'].value !== previousAccess.mode
       || (nextAccess.mode === 'isolated' && nextAccess.candidateOrigin !== previousAccess.origin)
+    const isolationModeChanged = nextAccess.mode !== authenticationSettings?.account?.managementAccess?.mode
     const usernameChanged = body.username !== (authenticationSettings?.account?.username ?? '')
     const credentialsChanged = password !== '' || additionalEnabled !== priorAdditionalEnabled || additionalPassword !== ''
-    if (modeChanged && (usernameChanged || credentialsChanged)) throw new Error(t('authCombinedChange'))
-    if (usernameChanged || credentialsChanged || modeChanged) body.currentPassword = elements['auth-current-password'].value
-    if (priorAdditionalEnabled && (additionalEnabled !== priorAdditionalEnabled || additionalPassword !== '' || modeChanged)) {
+    if (accessChanged && (usernameChanged || credentialsChanged)) throw new Error(t('authCombinedChange'))
+    if (usernameChanged || credentialsChanged || isolationModeChanged) body.currentPassword = elements['auth-current-password'].value
+    if (priorAdditionalEnabled && (additionalEnabled !== priorAdditionalEnabled || additionalPassword !== '' || isolationModeChanged)) {
       body.currentAdditionalPassword = elements['auth-current-additional-password'].value
     }
-    if (modeChanged) {
+    if (accessChanged) {
       await changeManagementOrigin(nextAccess, body.currentPassword, body.currentAdditionalPassword ?? '')
       return
     }
