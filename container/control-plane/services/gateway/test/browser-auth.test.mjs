@@ -297,6 +297,77 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
   } finally { await close(current.server) }
 })
 
+test('login reports an unavailable Access Manager instead of a credential failure', async () => {
+  const access = {
+    request: async (_method, path) => {
+      if (path === '/v1/status') return { state: 'initialized' }
+      throw new Error('access socket unavailable')
+    },
+  }
+  const authentication = createBrowserAuthentication({ access, safeReturnPath })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void authentication.handle(incoming, response, url.pathname, url.searchParams)
+  })
+  const port = await listen(server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}` },
+    })
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host: `127.0.0.1:${port}`, origin, cookie: csrfCookie,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(response.status, 503)
+    assert.equal(JSON.parse(response.body).code, 'ACCESS_MANAGER_UNAVAILABLE')
+  } finally { await close(server) }
+})
+
+test('login preserves explicit Access Manager rate limits', async () => {
+  const access = {
+    request: async (_method, path) => {
+      if (path === '/v1/status') return { state: 'initialized' }
+      throw Object.assign(new Error('authentication is temporarily unavailable'), {
+        statusCode: 429,
+        code: 'AUTHENTICATION_RATE_LIMITED',
+      })
+    },
+  }
+  const authentication = createBrowserAuthentication({ access, safeReturnPath })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void authentication.handle(incoming, response, url.pathname, url.searchParams)
+  })
+  const port = await listen(server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}` },
+    })
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host: `127.0.0.1:${port}`, origin, cookie: csrfCookie,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'wrong password' }),
+    })
+    assert.equal(response.status, 429)
+    assert.equal(JSON.parse(response.body).code, 'AUTHENTICATION_RATE_LIMITED')
+  } finally { await close(server) }
+})
+
 test('legacy migration exchanges a root-issued setup key for a DSH session', async () => {
   const current = fixture('migration-required')
   const port = await listen(current.server)

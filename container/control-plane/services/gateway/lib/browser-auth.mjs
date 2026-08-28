@@ -230,18 +230,38 @@ export function createBrowserAuthentication({
   } = {},
 }) {
   const managementCookiePath = consolePath === '/' ? '/' : '/_dsh_platform/'
-  async function status() { return access.request('GET', '/v1/status') }
+  async function accessRequest(method, path, body) {
+    try { return await access.request(method, path, body) }
+    catch (error) {
+      if (error !== null && typeof error === 'object'
+        && (!Number.isInteger(error.statusCode) || error.statusCode >= 500)) {
+        error.browserAuthenticationBackend = true
+      }
+      throw error
+    }
+  }
+
+  const accessFailureStatus = error => Number.isInteger(error?.statusCode) ? error.statusCode : 503
+  const accessFailureCode = (error, fallback) => Number.isInteger(error?.statusCode)
+    ? error.code ?? fallback
+    : 'ACCESS_MANAGER_UNAVAILABLE'
+  const isAuthenticationDenial = error => [401, 403].includes(error?.statusCode)
+
+  async function status() { return accessRequest('GET', '/v1/status') }
 
   async function validateDsh(request, { requireCsrf = false } = {}) {
     const origin = requestOrigin(request)
     const value = cookieValue(request.headers.cookie, DSH_SESSION_COOKIE)
     if (origin === undefined || value === undefined) return { authenticated: false }
     if (requireCsrf && !validSessionMutation(request, DSH_CSRF_COOKIE)) return { authenticated: false }
-    return access.request('POST', '/v1/sessions/validate', {
+    return accessRequest('POST', '/v1/sessions/validate', {
       kind: 'dsh', token: value, origin,
       requireCsrf,
       csrfToken: requireCsrf ? request.headers['x-dsh-csrf'] : undefined,
-    }).catch(() => ({ authenticated: false }))
+    }).catch(error => {
+      if (isAuthenticationDenial(error)) return { authenticated: false }
+      throw error
+    })
   }
 
   async function validateManagement(request, { requireCsrf = false } = {}) {
@@ -249,11 +269,14 @@ export function createBrowserAuthentication({
     const value = cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE)
     if (origin === undefined || value === undefined) return { authenticated: false }
     if (requireCsrf && !validSessionMutation(request, MANAGEMENT_CSRF_COOKIE)) return { authenticated: false }
-    return access.request('POST', '/v1/sessions/validate', {
+    return accessRequest('POST', '/v1/sessions/validate', {
       kind: 'management', token: value, origin,
       requireCsrf,
       csrfToken: requireCsrf ? request.headers['x-dsh-csrf'] : undefined,
-    }).catch(() => ({ authenticated: false }))
+    }).catch(error => {
+      if (isAuthenticationDenial(error)) return { authenticated: false }
+      throw error
+    })
   }
 
   async function authorizeManagement(request, { audience, method, target, requireCsrf = false } = {}) {
@@ -262,7 +285,7 @@ export function createBrowserAuthentication({
     if (origin === undefined || managementToken === undefined) return { authorized: false }
     if (requireCsrf && !validSessionMutation(request, MANAGEMENT_CSRF_COOKIE)) return { authorized: false }
     try {
-      const result = await access.request('POST', '/v1/capabilities', {
+      const result = await accessRequest('POST', '/v1/capabilities', {
         managementToken,
         origin,
         csrfToken: requireCsrf ? request.headers['x-dsh-csrf'] : undefined,
@@ -272,7 +295,10 @@ export function createBrowserAuthentication({
         target,
       })
       return { authorized: true, capability: result.capability }
-    } catch { return { authorized: false } }
+    } catch (error) {
+      if (isAuthenticationDenial(error)) return { authorized: false }
+      throw error
+    }
   }
 
   function sendManagementLogin(request, response, origin, { pending = false } = {}) {
@@ -313,7 +339,7 @@ export function createBrowserAuthentication({
       ? entry?.managementPublicOrigin
       : origin
     if (typeof targetOrigin !== 'string') { sendJson(response, 409, { error: 'Management entry is unavailable' }); return }
-    const created = await access.request('POST', '/v1/management/handoffs', {
+    const created = await accessRequest('POST', '/v1/management/handoffs', {
       dshToken: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
       dshOrigin: origin,
       targetOrigin,
@@ -337,7 +363,7 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await access.request('POST', '/v1/management/transitions/probe', {
+        const result = await accessRequest('POST', '/v1/management/transitions/probe', {
           transitionId: searchParams.get('transitionId'),
           nonce: searchParams.get('nonce'),
           sourceOrigin,
@@ -349,7 +375,7 @@ export function createBrowserAuthentication({
           vary: 'Origin',
         })
       } catch (error) {
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'TRANSITION_PROBE_INVALID' }, {
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'TRANSITION_PROBE_INVALID') }, {
           'access-control-allow-origin': sourceOrigin,
           vary: 'Origin',
         })
@@ -365,7 +391,7 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await access.request('POST', '/v1/management/continuations/consume', {
+        const result = await accessRequest('POST', '/v1/management/continuations/consume', {
           token: searchParams.get('token'), origin,
         })
         response.writeHead(303, {
@@ -374,7 +400,7 @@ export function createBrowserAuthentication({
         })
         response.end()
       } catch (error) {
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'CONTINUATION_INVALID' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'CONTINUATION_INVALID') })
       }
       return true
     }
@@ -423,14 +449,14 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await access.request('POST', route, { ...value, origin })
+        const result = await accessRequest('POST', route, { ...value, origin })
         await report(current.state === 'never-initialized' ? 'gateway.access.initialized' : 'gateway.access.logged-in')
         sendJson(response, current.state === 'never-initialized' ? 201 : 200, { authenticated: true }, {
           'set-cookie': sessionCookies(result.session, origin),
         })
       } catch (error) {
         await report('gateway.access.login-failed', { code: error.code ?? null, level: 'warning' })
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
       }
       return true
     }
@@ -442,12 +468,12 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request, { requireHeader: true })
       try {
-        const result = await access.request('POST', '/v1/dsh/migrate', { ...await jsonBody(request), origin })
+        const result = await accessRequest('POST', '/v1/dsh/migrate', { ...await jsonBody(request), origin })
         await report('gateway.access.migrated')
         sendJson(response, 201, { authenticated: true }, { 'set-cookie': sessionCookies(result.session, origin) })
       } catch (error) {
         await report('gateway.access.migration-failed', { code: error.code ?? null, level: 'warning' })
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'MIGRATION_FAILED' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'MIGRATION_FAILED') })
       }
       return true
     }
@@ -459,7 +485,7 @@ export function createBrowserAuthentication({
         sendJson(response, 403, { error: 'logout request rejected', code: 'REQUEST_FORBIDDEN' })
         return true
       }
-      await access.request('POST', '/v1/sessions/logout', {
+      await accessRequest('POST', '/v1/sessions/logout', {
         kind: 'dsh', token: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
       })
       sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearSessionCookies(origin) })
@@ -483,12 +509,12 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request, { requireHeader: true })
       try {
-        const result = await access.request('POST', '/v1/management/login', { ...await jsonBody(request), origin })
+        const result = await accessRequest('POST', '/v1/management/login', { ...await jsonBody(request), origin })
         if (result.pending !== undefined) {
           sendJson(response, 202, { pending: true }, { 'set-cookie': pendingCookie(result.pending, origin, authPrefix) })
         } else sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
       }
       return true
     }
@@ -501,7 +527,7 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await access.request('POST', '/v1/management/handoffs/consume', {
+        const result = await accessRequest('POST', '/v1/management/handoffs/consume', {
           token: searchParams.get('token'), origin,
         })
         if (result.pending !== undefined) {
@@ -517,7 +543,7 @@ export function createBrowserAuthentication({
         }
         response.end()
       } catch (error) {
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'HANDOFF_INVALID' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'HANDOFF_INVALID') })
       }
       return true
     }
@@ -537,13 +563,13 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request, { requireHeader: true })
       try {
-        const result = await access.request('POST', '/v1/management/pending/complete', {
+        const result = await accessRequest('POST', '/v1/management/pending/complete', {
           ...await jsonBody(request), origin,
           pendingToken: cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE),
         })
         sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
-        sendJson(response, error.statusCode ?? 401, { error: error.message, code: error.code ?? 'AUTHENTICATION_FAILED' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
       }
       return true
     }
@@ -554,7 +580,7 @@ export function createBrowserAuthentication({
         sendJson(response, 403, { error: 'logout request rejected', code: 'REQUEST_FORBIDDEN' })
         return true
       }
-      await access.request('POST', '/v1/sessions/logout', {
+      await accessRequest('POST', '/v1/sessions/logout', {
         kind: 'management', token: cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE),
       })
       sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearManagementCookies(origin, managementCookiePath) })

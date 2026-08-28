@@ -1081,7 +1081,8 @@ export function createGatewayServer({
       proxyHttp(request, response, { ...options, trackDsh: true })
     } catch (error) {
       reportFailure('gateway-request', 'gateway.request.failed', { ...requestContext(request), error })
-      rejectHttp(response, 400, 'bad request')
+      if (error?.browserAuthenticationBackend === true) rejectHttp(response, 503, 'authentication service unavailable')
+      else rejectHttp(response, error?.statusCode ?? 400, 'bad request')
     }
   }
   server.on('upgrade', (request, socket, head) => {

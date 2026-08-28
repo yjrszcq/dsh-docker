@@ -57,6 +57,27 @@ test('Gateway fails closed without an authenticated browser session while health
   }
 })
 
+test('Gateway reports an unavailable authentication backend as a service failure', async () => {
+  const unavailable = new Error('access socket unavailable')
+  unavailable.browserAuthenticationBackend = true
+  const browserAuthentication = {
+    status: async () => { throw unavailable },
+    handle: async () => false,
+  }
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), browserAuthentication, upstreamPort: 1,
+  })
+  const port = await listen(gateway)
+  try {
+    assert.equal((await request(port, {
+      path: HEALTH_PATH, headers: { host: '127.0.0.1' },
+    })).status, 200)
+    const unavailable = await request(port, { headers: { host: '127.0.0.1', accept: 'text/html' } })
+    assert.equal(unavailable.status, 503)
+    assert.match(unavailable.body, /authentication service unavailable/)
+  } finally { await closeGatewayServer(gateway) }
+})
+
 test('DSH and Management sessions authorize only their own route surfaces', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-session-domains-'))
   const socketPath = join(root, 'management.sock')
