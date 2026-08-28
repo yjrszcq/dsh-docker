@@ -64,6 +64,7 @@ class SettingsNavigationController {
     this.compact = false
     this.modeInitialized = false
     this.view = 'directory'
+    this.directoryScrollTop = 0
     this.backMount = null
     this.resizeObserver = null
     this.mutationObserver = null
@@ -166,6 +167,7 @@ class SettingsNavigationController {
     this.compact = false
     this.modeInitialized = false
     this.view = 'directory'
+    this.directoryScrollTop = 0
     this.onChange()
   }
 
@@ -184,6 +186,7 @@ class SettingsNavigationController {
     const button = event.target.closest?.('button')
     if (!button || !this.match.navList.contains(button)) return
     this.match.current = button
+    this.directoryScrollTop = this.match.navList.scrollTop
     this.view = 'detail'
     this.match.dialog.dataset.dshSettingsNavigationView = this.view
     this.onChange()
@@ -196,7 +199,12 @@ class SettingsNavigationController {
     this.match.dialog.dataset.dshSettingsNavigationView = this.view
     this.onChange()
     const current = this.match.current
-    this.requestFrame(() => current?.focus())
+    const navList = this.match.navList
+    const scrollTop = this.directoryScrollTop
+    this.requestFrame(() => {
+      current?.focus({ preventScroll: true })
+      this.requestFrame(() => { navList.scrollTop = scrollTop })
+    })
   }
 
   snapshot() {
