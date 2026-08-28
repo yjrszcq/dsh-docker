@@ -53,6 +53,7 @@ export class PlatformPaths {
     this.bootstrapSocket = join(this.runRoot, 'bootstrap.sock')
     this.dshLifecycleSocket = join(this.runRoot, 'dsh-lifecycle.sock')
     this.managementSocket = join(this.runRoot, 'management.sock')
+    this.managementCliSocket = join(this.runRoot, 'management-cli.sock')
     this.maintenanceSocket = join(this.runRoot, 'maintenance.sock')
     this.userSkillSocket = join(this.runRoot, 'user-skills.sock')
     this.snapshotSocket = join(this.runRoot, 'snapshot.sock')
@@ -112,7 +113,9 @@ export async function resetRuntimeLayout(paths) {
   await symlink(join('..', 'deployment', 'system-plugins'), join(paths.systemPluginViewsRoot, 'current'), 'dir')
   if (process.getuid?.() === 0) {
     await chown(paths.runRoot, 0, 1000)
-    await chmod(paths.runRoot, 0o1770)
+    // Isolated service identities must traverse to their dedicated subtrees and
+    // immutable Bootstrap entrypoints without gaining the node group's socket access.
+    await chmod(paths.runRoot, 0o1771)
     await chown(paths.viewsRoot, 0, 0)
     await chmod(paths.viewsRoot, 0o755)
     await chown(paths.deploymentViewsRoot, 1000, 1000)

@@ -259,7 +259,7 @@ test('gates only managed Web launches and routes restart through Management', as
       json(response, 200, { disposition })
     }
   })
-  const management = await listen(join(runRoot, 'management.sock'), (request, response) => {
+  const management = await listen(join(runRoot, 'management-cli.sock'), (request, response) => {
     calls.push({ socket: 'management', path: request.url })
     if (request.url?.endsWith('/status')) json(response, 200, { dshLifecycle: { state: lifecycleState }, recoveryMode: null })
     else json(response, 202, { taskId: request.url?.endsWith('/start-dsh') ? 'start-task' : 'restart-task' })

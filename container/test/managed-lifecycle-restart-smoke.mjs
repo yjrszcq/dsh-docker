@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { spawn } from 'node:child_process'
 
-const MANAGEMENT_SOCKET = '/run/dsh-platform/management.sock'
+const MANAGEMENT_SOCKET = '/run/dsh-platform/management-cli.sock'
 const DSH_EXECUTABLE = '/run/dsh-platform/views/runtime/bin/dsh'
 const oldPid = Number.parseInt(process.env.CURRENT_DSH_PID ?? '', 10)
 

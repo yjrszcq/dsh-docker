@@ -137,7 +137,7 @@ function isRetryableControlPlaneError(error) {
 
 export async function runCli({
   argv = process.argv.slice(2),
-  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock'),
+  management = new LocalApiClient(process.env.DSH_PLATFORM_MANAGEMENT_CLI_SOCKET ?? '/run/dsh-platform/management-cli.sock'),
   trust = new LocalApiClient(process.env.DSH_PLATFORM_TRUST_SOCKET ?? '/run/dsh-platform/stage0-trust.sock'),
   reset = resetTrust,
   recovery = new LocalApiClient(process.env.DSH_PLATFORM_RECOVERY_SOCKET ?? '/run/dsh-platform/recovery.sock'),

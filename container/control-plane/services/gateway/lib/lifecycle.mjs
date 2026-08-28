@@ -30,6 +30,7 @@ export async function runGateway(config, {
   managementPort = null,
   managementHost = externalHost,
   managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock',
+  managementCliSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_CLI_SOCKET ?? '/run/dsh-platform/management-cli.sock',
   maintenanceSocketPath = process.env.DSH_PLATFORM_MAINTENANCE_SOCKET ?? '/run/dsh-platform/maintenance.sock',
   accessSocketPath = process.env.DSH_PLATFORM_ACCESS_SOCKET ?? '/run/dsh-platform/access/access.sock',
   accessClient,
@@ -40,7 +41,7 @@ export async function runGateway(config, {
   report = async () => {},
 } = {}) {
   const record = (message, fields = {}) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
-  const management = managementClient ?? new LocalApiClient(managementSocketPath)
+  const management = managementClient ?? new LocalApiClient(managementCliSocketPath)
   const access = accessClient ?? new LocalApiClient(accessSocketPath)
   const browserAuthentication = createBrowserAuthentication({ access, safeReturnPath, report: record })
   const isolatedBrowserAuthentication = createBrowserAuthentication({

@@ -300,7 +300,7 @@ function managedWeb(invocation) {
 }
 
 async function management(method, path) {
-	return requestJson(socketPath("management.sock"), method, API_PREFIX + path);
+	return requestJson(socketPath("management-cli.sock"), method, API_PREFIX + path);
 }
 
 export async function prepareManagedInvocation(invocation) {

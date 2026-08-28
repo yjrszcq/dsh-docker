@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { JsonlLogManager } from '../../modules/log-manager/index.mjs'
@@ -34,6 +35,7 @@ import { ProviderInventory } from './provider-inventory.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
 import { requestOrigin } from '../gateway/lib/browser-auth.mjs'
+import { createRestrictedCliServer, restrictedCliRoute } from './restricted-cli.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -194,11 +196,15 @@ const scheduler = new UpdateScheduler({
   onError: error => logs.diagnostic('updater', 'update.automatic-check.failed', { error }),
 })
 let server
+const restrictedCliToken = randomBytes(32).toString('base64url')
 server = createManagementServer({
   coordinator,
   logs,
   authorizeInternal: async request => {
     const token = request.headers['x-dsh-internal-capability']
+    const restrictedToken = request.headers['x-dsh-restricted-cli']
+    if (restrictedToken === restrictedCliToken
+      && restrictedCliRoute(request.method ?? 'GET', request.url ?? '/')) return true
     if (typeof token !== 'string') return false
     if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     return consumeInternalCapability(access, {
@@ -305,6 +311,11 @@ server = createManagementServer({
   cancelProxyTest: taskId => outboundProxy.cancelTest(taskId),
 })
 await listenManagement(server, paths.managementSocket)
+const restrictedCliServer = createRestrictedCliServer({
+  managementSocketPath: paths.managementSocket,
+  token: restrictedCliToken,
+})
+await listenManagement(restrictedCliServer, paths.managementCliSocket)
 void waitForBootstrapStartup()
   .then(markUserPluginsLoaded)
   .catch(error => logs.diagnostic('user-plugin-manager', 'user-plugin.loaded-state.capture.failed', { error }))
@@ -342,9 +353,13 @@ const stop = signal => {
   scheduler.stop()
   void logs.diagnostic('platform-management', 'management.stopping', { signal }).then(async () => {
     await updateFetch.close().catch(error => logs.diagnostic('platform-management', 'proxy.dispatcher.close.failed', { error }))
-    server.close(() => {
-      void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
-    })
+    let closed = 0
+    const finish = () => {
+      closed += 1
+      if (closed === 2) void logs.diagnostic('platform-management', 'management.stopped').finally(() => process.exit(0))
+    }
+    restrictedCliServer.close(finish)
+    server.close(finish)
   })
 }
 process.once('SIGINT', () => stop('SIGINT'))
