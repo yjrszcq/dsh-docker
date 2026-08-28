@@ -5,8 +5,20 @@ import { join } from 'node:path'
 import WebSocket from '/run/dsh-platform/views/bootstrap/control-plane/services/management/node_modules/ws/wrapper.mjs'
 
 const API = '/_dsh_platform/api/v1/'
-const auth = `Basic ${Buffer.from('smoke-user:smoke-password').toString('base64')}`
-const headers = Object.freeze({ authorization: auth, host: 'smoke.example' })
+const cookie = (await readFile('/tmp/dsh-smoke.cookies', 'utf8'))
+  .split('\n')
+  .map(line => line.startsWith('#HttpOnly_') ? line.slice('#HttpOnly_'.length) : line)
+  .filter(line => line !== '' && !line.startsWith('#'))
+  .map(line => line.split('\t'))
+  .filter(fields => fields.length === 7)
+  .map(fields => `${fields[5]}=${fields[6]}`)
+  .join('; ')
+const headers = Object.freeze({
+  cookie,
+  host: 'smoke.example',
+  origin: 'http://smoke.example',
+  'x-dsh-csrf': process.env.SMOKE_MANAGEMENT_CSRF,
+})
 
 function request(method, path, body) {
   return new Promise((resolve, reject) => {
@@ -51,7 +63,7 @@ async function waitFor(check, label, attempts = 300) {
 
 function connectTerminal(sessionId) {
   const socket = new WebSocket(`ws://127.0.0.1:3080${API}terminal/sessions/${sessionId}/stream`, {
-    headers: { ...headers, origin: 'http://smoke.example' },
+    headers,
   })
   let output = ''
   const waiters = new Set()

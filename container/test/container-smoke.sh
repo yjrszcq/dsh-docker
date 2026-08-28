@@ -36,20 +36,94 @@ wait_platform_ready() {
   echo "$((now - started))"
 }
 
+wait_control_ready() {
+  started="$(date +%s%3N)"
+  while ! docker exec "$container" curl --fail --silent \
+    --header 'Host: smoke.example' --header 'Accept: text/html' \
+    http://127.0.0.1:3080/_dsh_platform/auth/ >/dev/null 2>&1; do
+    now="$(date +%s%3N)"
+    if [ $((now - started)) -ge 10000 ]; then
+      docker logs "$container" >&2
+      echo "control-plane readiness exceeded 10 seconds" >&2
+      exit 1
+    fi
+    sleep 0.2
+  done
+}
+
+establish_sessions() {
+  action="$1"
+  expected=200
+  [ "$action" = login ] || expected=201
+  marker='autocomplete="current-password"'
+  [ "$action" = login ] || marker='autocomplete="new-password"'
+  session_cookie=/tmp/dsh-smoke.cookies
+  auth_page=/tmp/dsh-smoke-auth.html
+  started="$(date +%s%3N)"
+  while ! docker exec "$container" sh -c '
+    curl --fail --silent --header "Host: smoke.example" --header "Accept: text/html" \
+      http://127.0.0.1:3080/_dsh_platform/auth/ > "$1" \
+      && grep -F "$2" "$1" >/dev/null
+  ' _ "$auth_page" "$marker"; do
+    now="$(date +%s%3N)"
+    if [ $((now - started)) -ge 10000 ]; then
+      docker exec "$container" cat "$auth_page" >&2 || true
+      docker logs "$container" >&2
+      echo "authentication state did not become $action-ready" >&2
+      exit 1
+    fi
+    sleep 0.2
+  done
+  docker exec "$container" rm -f "$session_cookie"
+  docker exec "$container" curl --fail --silent \
+    --cookie-jar "$session_cookie" --header 'Host: smoke.example' --header 'Accept: text/html' \
+    http://127.0.0.1:3080/_dsh_platform/auth/ >/dev/null
+  auth_csrf="$(docker exec "$container" awk '$6 == "dsh_auth_csrf" { print $7 }' "$session_cookie")"
+  [ -n "$auth_csrf" ]
+  auth_response=/tmp/dsh-smoke-auth-response.json
+  status="$(docker exec "$container" curl --silent --output "$auth_response" --write-out '%{http_code}' \
+    --cookie "$session_cookie" --cookie-jar "$session_cookie" \
+    --header 'Host: smoke.example' --header 'Origin: http://smoke.example' \
+    --header 'Content-Type: application/json' --header "X-DSH-CSRF: $auth_csrf" \
+    --data '{"username":"smoke-admin","password":"smoke-password"}' \
+    http://127.0.0.1:3080/_dsh_platform/auth/session)"
+  if [ "$status" != "$expected" ]; then
+    docker exec "$container" cat "$auth_response" >&2 || true
+    echo "DSH authentication returned HTTP $status, expected $expected" >&2
+    exit 1
+  fi
+  docker exec "$container" curl --fail --silent \
+    --cookie "$session_cookie" --cookie-jar "$session_cookie" \
+    --header 'Host: smoke.example' --header 'Accept: text/html' \
+    http://127.0.0.1:3080/_dsh_platform/auth/management >/dev/null
+  auth_csrf="$(docker exec "$container" awk '$6 == "dsh_auth_csrf" { print $7 }' "$session_cookie")"
+  [ -n "$auth_csrf" ]
+  status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
+    --cookie "$session_cookie" --cookie-jar "$session_cookie" \
+    --header 'Host: smoke.example' --header 'Origin: http://smoke.example' \
+    --header 'Content-Type: application/json' --header "X-DSH-CSRF: $auth_csrf" \
+    --data '{"username":"smoke-admin","password":"smoke-password"}' \
+    http://127.0.0.1:3080/_dsh_platform/auth/management/session)"
+  [ "$status" = 200 ]
+  management_csrf="$(docker exec "$container" awk '$6 == "dsh_management_csrf" { print $7 }' "$session_cookie")"
+  [ -n "$management_csrf" ]
+}
+
 if [ "$#" -eq 0 ]; then
   docker build --tag "$image" .
 fi
 
 docker run --detach --name "$container" \
   --group-add dsh-sudo-false \
-  --env DSH_PROXY_USERNAME=smoke-user \
-  --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
   --volume "$platform_volume:/data/platform" \
   --volume "$home_volume:/data/dsh" \
   "$image" >/dev/null
 
+wait_control_ready
+establish_sessions initialize
 startup_one="$(wait_platform_ready)"
+
 if docker exec --user node "$container" sudo -n true >/dev/null 2>&1; then
   echo "DSH node identity unexpectedly retained sudo while DSH_SUDO_ENABLED=false" >&2
   exit 1
@@ -67,7 +141,8 @@ until docker logs "$container" 2>&1 \
 done
 docker logs "$container" 2>&1 \
   | grep -E '"source":"stage0".*"stream":"platform".*"message":"stage0.ready"' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?limit=5000' \
   | jq -e 'any(.entries[]; .source == "stage0" and .message == "stage0.ready")
     and any(.entries[]; .source == "bootstrap" and .message == "platform.ready")
@@ -92,25 +167,26 @@ status="$(docker exec "$container" curl --silent --output /dev/null --write-out 
 
 status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/)"
-[ "$status" = 401 ]
+[ "$status" = 303 ]
 
 status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
-  --user 'wrong-user:smoke-password' --header 'Host: smoke.example' \
-  http://127.0.0.1:3080/)"
+  --header 'Host: smoke.example' http://127.0.0.1:3080/)"
 [ "$status" = 401 ]
 
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | grep -F 'DSH Management Console' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.updateChannel == "stable"
     and .automaticCheck == {"enabled":true,"intervalSeconds":21600,"notificationsEnabled":true}
     and .latestAutomatic == {"stable":null,"upstream":null}' >/dev/null
 
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins == [{
     "id":"platform-management",
@@ -149,7 +225,8 @@ docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password'
     "protected":false,
     "reason":null
   }]' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills \
   | jq -e '.skills == [{
     "id":"dsh-docker-operations",
@@ -168,12 +245,14 @@ docker exec -i --user node \
   < "$(dirname "$0")/system-skill-discovery-smoke.mjs" \
   | jq -e '.name == "dsh-docker-operations" and .source == "bundled" and .provider == "filesystem" and .contentBytes > 500' >/dev/null
 skill_dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )"
-skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+skill_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"skillId":"dsh-docker-operations","action":"disable"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$skill_task" '.systemSkillOperation.taskId == $task and .systemSkillOperation.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -185,12 +264,14 @@ if docker exec "$container" test -e "$skill_view"; then
   exit 1
 fi
 [ "$skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
-skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+skill_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"skillId":"dsh-docker-operations","action":"enable"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/system-skills/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$skill_task" '.systemSkillOperation.taskId == $task and .systemSkillOperation.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -220,18 +301,21 @@ description: Smoke-test Management user skill actions.
 # Smoke Managed User Skill
 EOF
 '
-user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
 user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
 user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
 user_skill_dsh_pid="$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )"
-user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
     '{entryId:$entryId,revision:$revision,action:"disable"}')" \
   http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -240,17 +324,20 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker exec "$container" test -f /data/dsh/skills/.disabled/smoke-managed-user-skill/SKILL.md
 [ "$user_skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
-user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
 user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
 user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
-user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
     '{entryId:$entryId,revision:$revision,action:"enable"}')" \
   http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -259,17 +346,20 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
 done
 docker exec "$container" test -f /data/dsh/skills/smoke-managed-user-skill/SKILL.md
 [ "$user_skill_dsh_pid" = "$(docker exec "$container" pgrep -o -f '^node /run/dsh-platform/views/runtime/bin/dsh web ' )" ]
-user_skill_inventory="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_inventory="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills)"
 user_skill_id="$(echo "$user_skill_inventory" | jq -er '.skills[] | select(.name == "smoke-managed-user-skill") | .entryId')"
 user_skill_revision="$(echo "$user_skill_inventory" | jq -er .revision)"
-user_skill_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+user_skill_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data "$(jq -nc --arg entryId "$user_skill_id" --arg revision "$user_skill_revision" \
     '{entryId:$entryId,revision:$revision,action:"delete"}')" \
   http://127.0.0.1:3080/_dsh_platform/api/v1/user-skills/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$user_skill_task" '.userSkillOperation.taskId == $task and .userSkillOperation.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -284,11 +374,13 @@ fi
 docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.disable.completed"' >/dev/null
 docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.enable.completed"' >/dev/null
 docker logs "$container" 2>&1 | grep -E '"source":"audit".*"message":"user-skill.delete.completed"' >/dev/null
-settings_document="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+settings_document="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document)"
 [ "$(echo "$settings_document" | jq -r .exists)" = false ]
 settings_revision="$(echo "$settings_document" | jq -r .revision)"
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' --request PUT \
   --data "$(jq -nc --arg revision "$settings_revision" '{content:"{}\n",revision:$revision}')" \
   http://127.0.0.1:3080/_dsh_platform/api/v1/settings-document \
@@ -303,12 +395,14 @@ docker exec "$container" sh -c '
   grep -F "@dsh-docker/settings-document-editor" /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
 '
 dsh_pid_before_plugin_changes="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
-plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+plugin_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"platform-management","action":"uninstall"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$plugin_task" \
     '.systemPluginOperation.taskId == $task
@@ -318,16 +412,19 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   [ "$attempt" -lt 50 ] || exit 1
   sleep 0.2
 done
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
 
-recovery_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+recovery_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"platform-management","action":"uninstall"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/recovery-action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$recovery_task" \
     '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"' >/dev/null; do
@@ -335,19 +432,23 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | grep -F 'Standalone console' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | (.installed | not) and (.enabled | not) and .protected' >/dev/null
 
-recovery_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+recovery_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"platform-management","action":"install"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/recovery-action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$recovery_task" \
     '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"' >/dev/null; do
@@ -355,15 +456,18 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[0] | .installed and .enabled and .protected' >/dev/null
-plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+plugin_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"settings-document-editor","action":"disable"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$plugin_task" \
     '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"
@@ -372,30 +476,36 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins \
   | jq -e '.plugins[] | select(.id == "settings-document-editor") | .installed and (.enabled | not)' >/dev/null
 docker exec "$container" grep -F '@dsh-docker/settings-document-editor' \
   /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.systemPluginOperation.restartRequired == true' >/dev/null
 dsh_pid_before="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 [ "$dsh_pid_before_plugin_changes" = "$dsh_pid_before" ]
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/discard \
   | jq -e '.plugins[] | select(.id == "settings-document-editor") | .installed and .enabled and (.pendingRestart | not)' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.systemPluginOperation.restartRequired == false' >/dev/null
 [ "$dsh_pid_before" = "$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')" ]
-plugin_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+plugin_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --data '{"id":"settings-document-editor","action":"disable"}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/bundled-plugins/action | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$plugin_task" \
     '.systemPluginOperation.taskId == $task and .systemPluginOperation.status == "success"
@@ -404,11 +514,13 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
-restart_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+restart_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" \
     '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"
@@ -423,7 +535,8 @@ if docker exec "$container" grep -F '@dsh-docker/settings-document-editor' \
   /run/dsh-platform/views/system-plugins/cordis.patch.yml >/dev/null; then
   exit 1
 fi
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
 docker exec "$container" sh -c "
   grep -F '\"message\":\"component.stopping\"' /data/platform/logs/dsh-runtime.jsonl >/dev/null
@@ -435,7 +548,8 @@ bootstrap_pid="$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mj
 dsh_pid="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 docker exec "$container" kill -9 "$dsh_pid"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null \
   && [ "$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')" != "$dsh_pid" ]; do
@@ -446,11 +560,13 @@ done
 [ "$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
 [ "$(docker inspect --format '{{.RestartCount}}' "$container")" = 0 ]
 
-stop_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+stop_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/stop-dsh | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$stop_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "stopped"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -462,11 +578,19 @@ if docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/
   echo "DSH recovered after an explicit stop" >&2
   exit 1
 fi
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+wait_status="$(docker exec "$container" curl --silent --show-error --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' \
-  'http://127.0.0.1:3080/_dsh_gateway/wait?return=%2Fsessions%2Fcurrent' \
-  | grep -F 'DeepSeek Harness is stopped' >/dev/null
-docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
+  --output /tmp/dsh-smoke-wait.html --write-out '%{http_code}' \
+  'http://127.0.0.1:3080/_dsh_gateway/wait?return=%2Fsessions%2Fcurrent')"
+[ "$wait_status" = 200 ]
+if ! docker exec "$container" grep -E 'DeepSeek Harness is stopped|DeepSeek Harness 已停止' \
+  /tmp/dsh-smoke-wait.html >/dev/null; then
+  docker exec "$container" cat /tmp/dsh-smoke-wait.html >&2
+  exit 1
+fi
+docker exec -i --user node --env "SMOKE_MANAGEMENT_CSRF=$management_csrf" \
+  "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-file-management-smoke.mjs \
   | jq -e '.range == "3456" and .searched >= 2 and .attributes == 488 and .dshUnavailable == true' >/dev/null
 docker logs "$container" 2>&1 \
@@ -477,9 +601,11 @@ docker logs "$container" 2>&1 \
   | grep -E '"error":"size target changed".*"source":"audit".*"message":"files.size.failed"' >/dev/null
 docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"files.attributes.completed"' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Accept: text/html' --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
-if docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+if docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
   | jq -e 'any(.entries[]; .message == "gateway.upstream.failed" and .upstream == "dsh")' >/dev/null; then
   echo "explicit DSH stop was reported as an upstream failure" >&2
@@ -490,7 +616,8 @@ printf '%s\n' "$managed_start_output" | grep -F 'requested managed DSH start' >/
 start_task="$(printf '%s\n' "$managed_start_output" | sed -n 's/.*(task \([^)]*\)).*/\1/p')"
 [ -n "$start_task" ]
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$start_task" \
     '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null; do
@@ -499,16 +626,19 @@ until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-pas
   sleep 0.1
 done
 docker exec "$container" curl --fail --silent http://127.0.0.1:3079/ >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
-if docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+if docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' 'http://127.0.0.1:3080/_dsh_platform/api/v1/logs?source=gateway&limit=5000' \
   | jq -e 'any(.entries[]; .message == "gateway.upstream.recovered" and .upstream == "dsh")' >/dev/null; then
   echo "explicit DSH start was reported as outage recovery" >&2
   exit 1
 fi
 
-docker exec -i --user node "$container" /usr/local/bin/node --input-type=module \
+docker exec -i --user node --env "SMOKE_MANAGEMENT_CSRF=$management_csrf" \
+  "$container" /usr/local/bin/node --input-type=module \
   < container/test/standalone-recovery-smoke.mjs \
   | jq -e '.faultNames == ["smoke-fault-one","smoke-fault-two"]' >/dev/null
 docker logs "$container" 2>&1 \
@@ -519,7 +649,8 @@ docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
 docker exec "$container" curl --fail --silent --noproxy '*' http://127.0.0.1:3079/ >/dev/null
 
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check \
@@ -548,11 +679,13 @@ docker exec "$container" sh -c 'printf runtime-reset-smoke > /data/dsh/runtime-r
 docker exec "$container" cp /data/platform/state/deployments/slots.json /tmp/slots-before-runtime-reset.json
 runtime_hash="$(docker exec "$container" sha256sum /run/dsh-platform/views/runtime/package/package.json | cut -d ' ' -f 1)"
 docker exec "$container" sh -c 'printf "\ncorrupt-runtime-smoke" >> /run/dsh-platform/views/runtime/package/package.json'
-runtime_reset_task="$(docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+runtime_reset_task="$(docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/runtime/reset | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$runtime_reset_task" '.runtimeReset.taskId == $task and .runtimeReset.status == "success"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -587,7 +720,8 @@ docker exec --user node "$container" node -e '
 '
 restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
 attempt=0
-until docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"' >/dev/null; do
   attempt=$((attempt + 1))
@@ -637,17 +771,18 @@ if docker exec "$container" curl --fail --silent --max-time 2 --noproxy '*' \
   exit 1
 fi
 
-cleanup
+docker rm -f "$container" >/dev/null
 docker run --detach --name "$container" \
   --group-add dsh-sudo-true \
-  --env DSH_PROXY_USERNAME=smoke-user \
-  --env DSH_PROXY_PASSWORD=smoke-password \
   --env DSH_TRUSTED_HOSTS=smoke.example \
   --volume "$platform_volume:/data/platform" \
   --volume "$home_volume:/data/dsh" \
   "$image" >/dev/null
+wait_control_ready
 startup_two="$(wait_platform_ready)"
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+establish_sessions login
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --header 'Content-Type: application/json' \
   --request PUT --data '{"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}' \
   http://127.0.0.1:3080/_dsh_platform/api/v1/automatic-check >/dev/null
@@ -660,12 +795,22 @@ until docker exec "$container" dsh-platform status \
   [ "$attempt" -lt 60 ] || exit 1
   sleep 0.2
 done
+docker exec "$container" curl --fail --silent --noproxy '*' \
+  http://127.0.0.1:3080/_dsh_gateway/health >/dev/null
+if health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container")" \
+  && [ -n "$health_status" ] && [ "$health_status" != healthy ] && [ "$health_status" != starting ]; then
+  echo "container health became $health_status after an intentional DSH stop" >&2
+  exit 1
+fi
 docker exec "$container" chown root:root /data/platform/cache/npm
 docker restart "$container" >/dev/null
+wait_control_ready
 startup_three="$(wait_platform_ready)"
+establish_sessions login
 docker exec "$container" sh -c '[ "$(stat -c %u:%g /data/platform/cache/npm)" = 1000:1000 ]'
 docker exec "$container" sh -c '[ "$(cat /data/platform/state/updater/smoke)" = platform ] && [ "$(cat /data/dsh/smoke)" = home ]'
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.automaticCheck == {"enabled":false,"intervalSeconds":3600,"notificationsEnabled":false}
     and .dshLifecycle.state == "running"' >/dev/null
@@ -682,10 +827,12 @@ until docker exec --user node "$container" curl --fail --silent --unix-socket /r
 done
 docker exec --user node "$container" curl --fail --silent --unix-socket /run/dsh-platform/bootstrap.sock \
   --request POST http://localhost/v1/components/dsh-runtime/suspend >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/console/ \
   | grep -F 'DSH Management Console' >/dev/null
-docker exec "$container" curl --fail --silent --user 'smoke-user:smoke-password' \
+docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
+  --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status >/dev/null
 docker exec -i --user node "$container" /usr/local/bin/node --input-type=module <<'NODE'
 import { readFile } from 'node:fs/promises'

@@ -15,7 +15,7 @@ import { AccessService, createAccessHttpServer } from '../../control-plane/servi
 import { consumeInternalCapability } from '../lib/access-capability.mjs'
 import { BrowserSessionStore } from '../../control-plane/services/access-manager/lib/sessions.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
-import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
+import { collectAccessEvidence, parseAccessEvidence } from '../lib/access-evidence.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
 import { CapabilityStore } from '../../control-plane/services/access-manager/lib/capabilities.mjs'
 import { ManagementTransitionStore } from '../../control-plane/services/access-manager/lib/transitions.mjs'
@@ -753,4 +753,17 @@ test('collects only fixed boolean legacy evidence before DSH starts', async () =
   assert.equal(evidence.webProfile, true)
   assert.equal(evidence.legacyAuthenticationConfigured, true)
   assert.equal(Object.values(evidence).every(value => typeof value === 'boolean'), true)
+  assert.deepEqual(parseAccessEvidence(JSON.stringify(evidence)), evidence)
+  assert.throws(() => parseAccessEvidence('{"webProfile":false}'), /evidence is invalid/)
+})
+
+test('captures fresh-install evidence before Stage-0 creates platform records', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-access-fresh-evidence-'))
+  const dshHome = join(root, 'dsh')
+  const paths = new PlatformPaths(join(root, 'platform'), join(root, 'run'))
+  const evidence = await collectAccessEvidence({ dshHome, paths })
+  await mkdir(paths.deploymentStateRoot, { recursive: true })
+  await writeFile(join(paths.deploymentStateRoot, 'slots.json'), '{}')
+  assert.equal(evidence.deploymentState, false)
+  assert.equal(Object.values(evidence).some(Boolean), false)
 })

@@ -22,6 +22,7 @@ import { createRecoveryServer, listenRecovery } from './lib/recovery-server.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { consumeInternalCapability } from '../lib/access-capability.mjs'
+import { collectAccessEvidence } from '../lib/access-evidence.mjs'
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
 import { prepareUserSkillRoots, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
@@ -62,6 +63,13 @@ const platformGid = 1000
 const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
 const trustStateRoot = trustStateRootForAuthority(paths, inventory.authority)
+const accessEvidence = await collectAccessEvidence({
+  dshHome,
+  paths,
+  legacyAuthenticationConfigured: Boolean(
+    process.env.DSH_PROXY_USERNAME || process.env.DSH_PROXY_PASSWORD || process.env.DSH_PLATFORM_PASSWORD,
+  ),
+})
 await preparePersistentLayout(paths)
 const logs = new JsonlLogManager({
   root: paths.logsRoot,
@@ -185,9 +193,7 @@ const supervisor = new BootstrapSupervisor({
   home: process.getuid?.() === 0 ? '/home/node' : undefined,
   proxyLaunchToken,
   accessLaunchToken,
-  legacyAuthenticationConfigured: Boolean(
-    process.env.DSH_PROXY_USERNAME || process.env.DSH_PROXY_PASSWORD || process.env.DSH_PLATFORM_PASSWORD,
-  ),
+  accessEvidence,
   entrypoint: 'platform/bootstrap/index.mjs',
   seedRoot,
   report: (message, fields) => logs.diagnostic('stage0', message, fields),

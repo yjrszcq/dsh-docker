@@ -134,12 +134,45 @@ test('Stage-0 owns privileged User Skill mutations behind a constrained local AP
   assert.match(paths, /this\.userSkillSocket = join\(this\.runRoot, 'user-skills\.sock'\)/)
 })
 
-test('Docker health reports DSH readiness instead of control-plane liveness', async () => {
+test('isolated service identities can traverse the runtime root without inheriting platform socket access', async () => {
+  const paths = await readFile(new URL('../lib/paths.mjs', import.meta.url), 'utf8')
+  const accessLaunch = await readFile(new URL('../stage0/lib/access-launch-server.mjs', import.meta.url), 'utf8')
+  assert.match(paths, /chmod\(paths\.runRoot, 0o1771\)/)
+  assert.match(accessLaunch, /'--clear-groups'/)
+  assert.doesNotMatch(accessLaunch, /--groups=/)
+})
+
+test('Docker health reports Gateway control-plane liveness independently of DSH', async () => {
   const dockerfile = await readFile(new URL('../../../Dockerfile', import.meta.url), 'utf8')
   const healthcheck = dockerfile.split('HEALTHCHECK')[1]?.split('\n\n')[0] ?? ''
   assert.match(healthcheck, /--start-period=60s/)
-  assert.match(healthcheck, /127\.0\.0\.1:3079\//)
-  assert.doesNotMatch(healthcheck, /_dsh_gateway\/health|stage0-trust\.sock/)
+  assert.match(healthcheck, /127\.0\.0\.1:3080\/_dsh_gateway\/health/)
+  assert.doesNotMatch(healthcheck, /127\.0\.0\.1:3079\/|stage0-trust\.sock/)
+})
+
+test('Management readiness does not depend on an authenticated management API', async () => {
+  const component = JSON.parse(await readFile(new URL('../../control-plane/services/management/component.json', import.meta.url)))
+  assert.equal(component.health.type, 'exec')
+  assert.equal(component.health.command.executable, '/usr/local/bin/node')
+  assert.deepEqual(component.health.command.args, [
+    '/run/dsh-platform/views/bootstrap/control-plane/services/management/healthcheck.mjs',
+  ])
+  const probe = await readFile(new URL('../../control-plane/services/management/healthcheck.mjs', import.meta.url), 'utf8')
+  assert.match(probe, /\/_dsh_platform\/internal\/health/)
+  assert.doesNotMatch(probe, /\/_dsh_platform\/api\/v1/)
+})
+
+test('public platform CLI and Gateway status probes use a separate restricted Management socket', async () => {
+  const [paths, cli, management, gateway] = await Promise.all([
+    readFile(new URL('../lib/paths.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../control-plane/services/management/cli.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../control-plane/services/management/index.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../control-plane/services/gateway/lib/lifecycle.mjs', import.meta.url), 'utf8'),
+  ])
+  assert.match(paths, /this\.managementCliSocket = join\(this\.runRoot, 'management-cli\.sock'\)/)
+  assert.match(cli, /DSH_PLATFORM_MANAGEMENT_CLI_SOCKET.*management-cli\.sock/)
+  assert.match(management, /restrictedCliRoute/)
+  assert.match(gateway, /DSH_PLATFORM_MANAGEMENT_CLI_SOCKET.*management-cli\.sock/)
 })
 
 test('Docker installs locked Management dependencies inside the Seed stage only', async () => {

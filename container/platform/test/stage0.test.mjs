@@ -286,6 +286,16 @@ test('Proxy Manager launch failure returns after an already-exited child without
 })
 
 test('replaces the root login environment when lowering Bootstrap privileges', () => {
+  const accessEvidence = {
+    dshSettings: false,
+    webProfile: true,
+    dshSessions: false,
+    userSkills: false,
+    deploymentState: true,
+    managementState: false,
+    updaterState: false,
+    legacyAuthenticationConfigured: true,
+  }
   assert.deepEqual(bootstrapLaunchEnvironment({
     environment: {
       HOME: '/root', USER: 'root', LOGNAME: 'root', PATH: '/usr/local/bin:/usr/bin',
@@ -300,7 +310,7 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     user: 'node',
     home: '/home/node',
     proxyLaunchToken: 'new-token',
-    legacyAuthenticationConfigured: true,
+    accessEvidence,
   }), {
     HOME: '/home/node',
     USER: 'node',
@@ -314,7 +324,7 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     DSH_PLATFORM_SEED: '/opt/dsh-platform/seed',
     DSH_BOOTSTRAP_VERSION: '1.0.0',
     DSH_PROXY_LAUNCH_TOKEN: 'new-token',
-    DSH_LEGACY_AUTHENTICATION_CONFIGURED: 'true',
+    DSH_LEGACY_INSTALLATION_EVIDENCE: JSON.stringify(accessEvidence),
   })
 })
 

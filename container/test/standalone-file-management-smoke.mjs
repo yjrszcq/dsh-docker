@@ -1,17 +1,44 @@
 import assert from 'node:assert/strict'
-import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 
 const API = 'http://127.0.0.1:3080/_dsh_platform/api/v1'
+const cookie = (await readFile('/tmp/dsh-smoke.cookies', 'utf8'))
+  .split('\n')
+  .map(line => line.startsWith('#HttpOnly_') ? line.slice('#HttpOnly_'.length) : line)
+  .filter(line => line !== '' && !line.startsWith('#'))
+  .map(line => line.split('\t'))
+  .filter(fields => fields.length === 7)
+  .map(fields => `${fields[5]}=${fields[6]}`)
+  .join('; ')
 const headers = {
-  authorization: `Basic ${Buffer.from('smoke-user:smoke-password').toString('base64')}`,
+  cookie,
   host: 'smoke.example',
+  origin: 'http://smoke.example',
+  'x-dsh-csrf': process.env.SMOKE_MANAGEMENT_CSRF,
 }
 
 async function request(path, { method = 'GET', body, raw = false, extraHeaders = {} } = {}) {
-  const response = await fetch(`${API}/${path}`, {
-    method,
-    headers: { ...headers, ...extraHeaders, ...(body !== undefined && !raw ? { 'content-type': 'application/json' } : {}) },
-    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
+  const encoded = body === undefined ? undefined : raw ? body : Buffer.from(JSON.stringify(body))
+  const response = await new Promise((resolve, reject) => {
+    const outgoing = httpRequest(`${API}/${path}`, {
+      method,
+      headers: {
+        ...headers,
+        ...extraHeaders,
+        ...(body !== undefined && !raw ? { 'content-type': 'application/json' } : {}),
+        ...(encoded === undefined ? {} : { 'content-length': Buffer.byteLength(encoded) }),
+      },
+    }, incoming => {
+      const chunks = []
+      incoming.on('data', chunk => chunks.push(chunk))
+      incoming.once('end', () => resolve(new Response(Buffer.concat(chunks), {
+        status: incoming.statusCode,
+        headers: incoming.headers,
+      })))
+    })
+    outgoing.once('error', reject)
+    outgoing.end(encoded)
   })
   if (!response.ok) throw new Error(`${method} ${path} returned ${String(response.status)}: ${await response.text()}`)
   return raw ? response : response.json()

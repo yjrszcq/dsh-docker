@@ -30,7 +30,7 @@ import {
   clearOutboundProxyEnvironment,
   parseOutboundProxyEnvironment,
 } from '../lib/outbound-proxy.mjs'
-import { collectAccessEvidence } from './lib/access-evidence.mjs'
+import { parseAccessEvidence } from '../lib/access-evidence.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -46,11 +46,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
 const dshHome = process.env.DSH_HOME ?? '/data/dsh'
-const accessEvidence = await collectAccessEvidence({
-  dshHome,
-  paths,
-  legacyAuthenticationConfigured: process.env.DSH_LEGACY_AUTHENTICATION_CONFIGURED === 'true',
-})
+const accessEvidence = parseAccessEvidence(process.env.DSH_LEGACY_INSTALLATION_EVIDENCE)
 await logs.diagnostic('bootstrap', 'bootstrap.starting', {
   bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? null,
   imageBuildId: inventory.imageBuildId,

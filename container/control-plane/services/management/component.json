@@ -19,8 +19,8 @@
   "health": {
     "type": "exec",
     "command": {
-      "executable": "/usr/local/bin/dsh-platform",
-      "args": ["status"],
+      "executable": "/usr/local/bin/node",
+      "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/management/healthcheck.mjs"],
       "timeoutSeconds": 5
     },
     "intervalSeconds": 1,
