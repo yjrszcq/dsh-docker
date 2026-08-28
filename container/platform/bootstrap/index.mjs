@@ -155,6 +155,8 @@ const capture = (child, source, declaration) => logs.capture(
 )
 const proxyLaunchToken = process.env.DSH_PROXY_LAUNCH_TOKEN
 delete process.env.DSH_PROXY_LAUNCH_TOKEN
+const accessLaunchToken = process.env.DSH_ACCESS_LAUNCH_TOKEN
+delete process.env.DSH_ACCESS_LAUNCH_TOKEN
 const reportLifecycle = (message, fields) => logs.diagnostic(fields.componentId ?? 'bootstrap', message, fields)
 const managedNetworkEnvironment = async scope => {
   try {
@@ -189,6 +191,10 @@ const controlPlane = new EnvironmentRunner({
   loader: loadControlPlane,
   capture,
   prepareService: async component => {
+    if (component.id === 'access-manager') return {
+      environment: { DSH_ACCESS_LAUNCH_TOKEN: accessLaunchToken },
+      release: () => {},
+    }
     if (component.id === 'outbound-proxy') return {
         environment: { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken },
         release: () => {},
@@ -198,7 +204,7 @@ const controlPlane = new EnvironmentRunner({
       : await managedNetworkEnvironment('platform')
     return { environment: { ...environment, NODE_USE_ENV_PROXY: '1' }, release: () => {} }
   },
-  recoverableComponents: ['outbound-proxy'],
+  recoverableComponents: ['access-manager', 'outbound-proxy'],
   report: reportLifecycle,
 })
 const environment = new EnvironmentRunner({

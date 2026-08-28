@@ -35,6 +35,11 @@ import {
   listenProxyLaunch,
 } from './lib/proxy-launch-server.mjs'
 import {
+  AccessLaunchBroker,
+  createAccessLaunchServer,
+  listenAccessLaunch,
+} from './lib/access-launch-server.mjs'
+import {
   clearOutboundProxyEnvironment,
   outboundProxyEnvironment,
   outboundProxyScopeEnabled,
@@ -51,6 +56,8 @@ const agentsHome = process.env.DSH_AGENTS_HOME ?? '/home/node/.agents'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const proxyUid = 991
 const proxyGid = 991
+const accessUid = 992
+const accessGid = 992
 const platformGid = 1000
 const imageRecords = recordsFromImageInventory(inventory)
 const recoveryPublicKey = (await readFile(join(seedRoot, 'trust', 'recovery-root.spki.base64'), 'utf8')).trim()
@@ -113,6 +120,37 @@ await startup('proxy-state-root', async () => {
   if (process.getuid?.() === 0) await chown(paths.proxyStateRoot, proxyUid, proxyGid)
   await chmod(paths.proxyStateRoot, process.getuid?.() === 0 ? 0o700 : 0o700)
 })
+await startup('access-state-root', async () => {
+  await mkdir(paths.accessStateRoot, { recursive: true })
+  if (process.getuid?.() === 0) await chown(paths.accessStateRoot, accessUid, accessGid)
+  await chmod(paths.accessStateRoot, 0o700)
+})
+await startup('access-run-root', async () => {
+  await mkdir(paths.accessRunRoot, { recursive: true })
+  if (process.getuid?.() === 0) await chown(paths.accessRunRoot, accessUid, platformGid)
+  await chmod(paths.accessRunRoot, process.getuid?.() === 0 ? 0o710 : 0o700)
+})
+const accessLaunchToken = randomBytes(32).toString('base64url')
+const accessBroker = new AccessLaunchBroker({
+  token: accessLaunchToken,
+  dataRoot,
+  runRoot,
+  script: join(paths.viewsRoot, 'bootstrap', 'control-plane', 'services', 'access-manager', 'index.mjs'),
+  accessSocket: paths.accessSocket,
+  recoverySocket: paths.accessRecoverySocket,
+  uid: accessUid,
+  gid: accessGid,
+  platformGid,
+  capture: (child, source, declaration) => logs.capture(child, source, declaration),
+  report: (message, fields) => logs.diagnostic('access-manager', message, fields),
+})
+const accessLaunchServer = createAccessLaunchServer({
+  broker: accessBroker,
+  token: accessLaunchToken,
+  report: (message, fields) => logs.diagnostic('stage0', message, fields),
+})
+await startup('access-launch-api', () => listenAccessLaunch(accessLaunchServer, paths.accessLaunchSocket, platformGid))
+await logs.diagnostic('stage0', 'access-launch-api.ready')
 const proxyLaunchToken = randomBytes(32).toString('base64url')
 const proxyBroker = new ProxyLaunchBroker({
   token: proxyLaunchToken,
@@ -146,6 +184,7 @@ const supervisor = new BootstrapSupervisor({
   user: process.getuid?.() === 0 ? 'node' : undefined,
   home: process.getuid?.() === 0 ? '/home/node' : undefined,
   proxyLaunchToken,
+  accessLaunchToken,
   entrypoint: 'platform/bootstrap/index.mjs',
   seedRoot,
   report: (message, fields) => logs.diagnostic('stage0', message, fields),
@@ -296,6 +335,8 @@ try {
 }
 await proxyBroker.stop()
 await new Promise(resolve => proxyLaunchServer.close(resolve))
+await accessBroker.stop()
+await new Promise(resolve => accessLaunchServer.close(resolve))
 await logs.diagnostic('stage0', 'stage0.stopped')
 if (outcome.type === 'exit') {
   throw outcome.error

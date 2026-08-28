@@ -20,6 +20,13 @@ import {
   proxyLaunchCommand,
   proxyLaunchEnvironment,
 } from '../stage0/lib/proxy-launch-server.mjs'
+import {
+  AccessLaunchBroker,
+  accessLaunchCommand,
+  accessLaunchEnvironment,
+  createAccessLaunchServer,
+  listenAccessLaunch,
+} from '../stage0/lib/access-launch-server.mjs'
 import { TrustLedger } from '../stage0/lib/ledger.mjs'
 import { VerifiedObjectStore } from '../stage0/lib/artifacts.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
@@ -152,6 +159,67 @@ test('launches Proxy Manager with a dedicated identity and isolated environment'
     DSH_PLATFORM_DATA: '/data/platform', DSH_PLATFORM_RUN: '/run/dsh-platform',
     DSH_PROXY_MASTER_KEY: 'secret',
   })
+})
+
+test('launches Access Manager without platform supplementary groups or inherited secrets', () => {
+  assert.deepEqual(accessLaunchCommand({
+    node: '/usr/local/bin/node', script: '/opt/access/index.mjs', uid: 992, gid: 992,
+  }), {
+    executable: '/usr/bin/setpriv',
+    args: [
+      '--reuid=992', '--regid=992', '--clear-groups', '--',
+      '/usr/local/bin/node', '/opt/access/index.mjs',
+    ],
+  })
+  assert.throws(() => accessLaunchCommand({ node: 'node', script: 'access.mjs', uid: 0, gid: 0 }), /positive/)
+  assert.deepEqual(accessLaunchEnvironment({
+    environment: { PATH: '/usr/bin', HOME: '/root', DSH_PROXY_PASSWORD: 'secret', LEAK: 'value' },
+    dataRoot: '/data/platform', runRoot: '/run/dsh-platform',
+  }), {
+    HOME: '/nonexistent', USER: 'dsh-access', LOGNAME: 'dsh-access', PATH: '/usr/bin',
+    DSH_PLATFORM_DATA: '/data/platform', DSH_PLATFORM_RUN: '/run/dsh-platform',
+  })
+})
+
+test('Access Manager launch broker exposes only fixed lifecycle operations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-access-launch-'))
+  const worker = join(root, 'worker.mjs')
+  const socket = join(root, 'launch.sock')
+  const accessSocket = join(root, 'access.sock')
+  const recoverySocket = join(root, 'recovery.sock')
+  await writeFile(worker, `
+    import { writeFileSync } from 'node:fs'
+    writeFileSync(${JSON.stringify(accessSocket)}, '')
+    writeFileSync(${JSON.stringify(recoverySocket)}, '')
+    process.send({ type: 'ready', componentReady: true })
+    process.once('SIGTERM', () => process.exit(0))
+    setInterval(() => {}, 1000)
+  `)
+  const broker = new AccessLaunchBroker({
+    token: 'valid-token', dataRoot: root, runRoot: root, script: worker,
+    accessSocket, recoverySocket, uid: 992, gid: 992,
+    platformGid: process.getgid?.() ?? 1000,
+    spawnImpl: (_executable, _args, options) => spawn(process.execPath, [worker], {
+      ...options, env: process.env,
+    }),
+  })
+  const server = createAccessLaunchServer({ broker, token: 'valid-token' })
+  await listenAccessLaunch(server, socket)
+  const client = new LocalApiClient(socket)
+  try {
+    assert.deepEqual(await client.request('GET', '/v1/status'), {
+      running: false, componentReady: false, pid: null,
+    })
+    await assert.rejects(client.request('POST', '/v1/start', { token: 'invalid' }), error => error.statusCode === 403)
+    const started = await client.request('POST', '/v1/start', { token: 'valid-token' })
+    assert.equal(started.running, true)
+    assert.equal(started.componentReady, true)
+    await assert.rejects(client.request('POST', '/v1/arbitrary', { token: 'valid-token' }), error => error.statusCode === 404)
+    assert.equal((await client.request('POST', '/v1/stop', { token: 'valid-token' })).running, false)
+  } finally {
+    await broker.stop()
+    await new Promise(resolve => server.close(resolve))
+  }
 })
 
 test('Proxy Manager launch broker requires its token and exposes only fixed operations', async () => {

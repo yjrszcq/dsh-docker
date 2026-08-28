@@ -96,7 +96,7 @@ if (imageInput !== undefined) {
       { recursive: true },
     )
   }
-  for (const directory of ['management', 'gateway', 'outbound-proxy']) {
+  for (const directory of ['management', 'gateway', 'access-manager', 'outbound-proxy']) {
     await cp(
       join(containerRoot, 'control-plane', 'services', directory),
       join(bootstrapRoot, 'control-plane', 'services', directory),

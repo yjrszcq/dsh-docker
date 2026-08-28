@@ -18,6 +18,10 @@ test('creates state, store, cache, and logs without persistent runtime views', a
   assert.equal(paths.developmentTrustStateRoot, join(paths.trustStateRoot, 'development'))
   assert.equal(paths.proxyStateRoot, join(paths.stateRoot, 'proxy'))
   assert.equal(paths.proxyTestStatePath, join(paths.proxyStateRoot, 'test-tasks.json'))
+  assert.equal(paths.accessStateRoot, join(paths.stateRoot, 'access'))
+  assert.equal(paths.accessSocket, join(paths.runRoot, 'access', 'access.sock'))
+  assert.equal(paths.accessRecoverySocket, join(paths.runRoot, 'access', 'recovery.sock'))
+  assert.equal(paths.accessLaunchSocket, join(paths.runRoot, 'access-launch.sock'))
   assert.equal(paths.proxyProviderInventoryPath, join(paths.managementStateRoot, 'proxy-provider-inventory.json'))
   for (const path of [
     paths.trustStateRoot, paths.bootstrapStateRoot, paths.deploymentStateRoot, paths.updaterStateRoot,

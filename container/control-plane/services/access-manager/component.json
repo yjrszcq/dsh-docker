@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "access-manager",
+  "type": "service",
+  "command": {
+    "executable": "/usr/local/bin/node",
+    "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/access-manager/supervisor.mjs"],
+    "timeoutSeconds": 30
+  },
+  "environment": {},
+  "lifecycle": {
+    "prepare": null,
+    "preStart": null,
+    "postStart": null,
+    "preStop": null,
+    "stop": null,
+    "postStop": null
+  },
+  "health": {
+    "type": "exec",
+    "command": {
+      "executable": "/usr/local/bin/node",
+      "args": ["/run/dsh-platform/views/bootstrap/control-plane/services/access-manager/supervisor.mjs", "health"],
+      "timeoutSeconds": 5
+    },
+    "intervalSeconds": 1,
+    "timeoutSeconds": 30
+  },
+  "logging": { "stdout": true, "stderr": true }
+}
