@@ -537,7 +537,7 @@ Recovery private material must never enter GitHub secrets. CI receives only a si
 
 An authenticated DSH Session has full DSH authority. A separate Management Session additionally grants the Container terminal and Files tools root authority. An admitted administrator may read or replace model credentials, execute commands, and access any writable path in the container. The Host allowlist mitigates DNS rebinding; it is not user authentication.
 
-Before exposing the service to untrusted networks, use a strong Gateway password, authenticated reverse proxy, VPN, or another trusted boundary. An SSH tunnel can be combined with loopback-only publication:
+Before exposing the service to untrusted networks, use a strong local administrator password, authenticated reverse proxy, VPN, or another trusted boundary. An SSH tunnel can be combined with loopback-only publication:
 
 ```bash
 ssh -L 3080:127.0.0.1:3080 user@server
