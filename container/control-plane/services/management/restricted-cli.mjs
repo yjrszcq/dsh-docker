@@ -30,8 +30,10 @@ export function createRestrictedCliServer({ managementSocketPath, token }) {
       response.end(JSON.stringify({ error: 'CLI route is not available', code: 'CLI_ROUTE_NOT_AVAILABLE' }))
       return
     }
-    const headers = { ...request.headers, 'x-dsh-restricted-cli': token }
-    delete headers['x-dsh-internal-capability']
+    const headers = { 'x-dsh-restricted-cli': token }
+    for (const name of ['accept', 'content-length', 'content-type']) {
+      if (request.headers[name] !== undefined) headers[name] = request.headers[name]
+    }
     const upstream = httpRequest({
       socketPath: managementSocketPath,
       method: request.method,

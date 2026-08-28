@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,7 @@ test('restricted CLI channel forwards only documented public operations', async 
   const cliSocket = join(root, 'management-cli.sock')
   const seen = []
   const management = createServer((request, response) => {
-    seen.push({ method: request.method, url: request.url, token: request.headers['x-dsh-restricted-cli'] })
+    seen.push({ method: request.method, url: request.url, headers: request.headers })
     request.resume()
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end('{"ok":true}')
@@ -38,8 +38,32 @@ test('restricted CLI channel forwards only documented public operations', async 
       client.request('GET', '/_dsh_platform/api/v1/files/list?path=%2F'),
       error => error.statusCode === 404 && error.code === 'CLI_ROUTE_NOT_AVAILABLE',
     )
-    assert.equal(seen.length, 3)
-    assert.equal(seen.every(value => value.token === 'x'.repeat(32)), true)
+    await new Promise((resolve, reject) => {
+      const outgoing = httpRequest({
+        socketPath: cliSocket,
+        method: 'GET',
+        path: '/_dsh_platform/api/v1/status',
+        headers: {
+          authorization: 'Basic forged',
+          cookie: 'dsh_management=forged',
+          origin: 'https://forged.example',
+          'x-dsh-csrf': 'forged',
+          'x-dsh-internal-capability': 'forged',
+          'x-dsh-restricted-cli': 'forged',
+        },
+      }, response => {
+        response.resume()
+        response.once('end', resolve)
+      })
+      outgoing.once('error', reject)
+      outgoing.end()
+    })
+    assert.equal(seen.length, 4)
+    assert.equal(seen.every(value => value.headers['x-dsh-restricted-cli'] === 'x'.repeat(32)), true)
+    const hardened = seen.at(-1).headers
+    for (const name of ['authorization', 'cookie', 'origin', 'x-dsh-csrf', 'x-dsh-internal-capability']) {
+      assert.equal(hardened[name], undefined)
+    }
   } finally {
     await Promise.all([
       new Promise(resolve => cli.close(resolve)),
