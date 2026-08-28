@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -61,6 +62,65 @@ test('routes enabled update fetches through the fixed outbound proxy entry', asy
     )
   } finally {
     await unavailable.close()
+  }
+})
+
+test('restarts Proxy Manager after an unclean exit leaves its control socket behind', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-proxy-process-restart-'))
+  const runRoot = join(root, 'run')
+  const dataRoot = join(root, 'data')
+  await mkdir(runRoot)
+  const script = new URL('../../control-plane/services/outbound-proxy/index.mjs', import.meta.url).pathname
+  const launch = () => spawn(process.execPath, [script], {
+    env: { ...process.env, DSH_PLATFORM_DATA: dataRoot, DSH_PLATFORM_RUN: runRoot },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  })
+  const ready = child => {
+    const stderr = []
+    child.stderr.on('data', chunk => stderr.push(chunk))
+    return Promise.race([
+      once(child, 'message').then(([message]) => {
+        assert.equal(message.componentReady, true)
+      }),
+      once(child, 'exit').then(([code, signal]) => {
+        const detail = Buffer.concat(stderr).toString('utf8').trim()
+        throw new Error(`Proxy Manager exited before readiness (${String(code)}, ${String(signal)})${detail === '' ? '' : `: ${detail}`}`)
+      }),
+    ])
+  }
+  const first = launch()
+  let second
+  let blocker
+  let releaseBlocker
+  try {
+    await ready(first)
+    const routing = JSON.parse(await readFile(join(runRoot, 'outbound-proxy-routing.json'), 'utf8'))
+    assert.equal(routing.schema, 1)
+    assert.equal(routing.enabled, false)
+    assert.equal(routing.scopes.agentNetwork, false)
+    assert.deepEqual(routing.environment, { allProxy: null })
+    assert.deepEqual(routing.noProxy.system, ['localhost', '127.0.0.1', '::1'])
+    assert.equal(JSON.stringify(routing).includes('password'), false)
+    first.kill('SIGKILL')
+    await once(first, 'exit')
+    blocker = createServer()
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject)
+      blocker.listen(PROXY_SCOPE_PORTS.updates, '127.0.0.1', resolve)
+    })
+    releaseBlocker = setTimeout(() => blocker.close(), 100)
+    second = launch()
+    await ready(second)
+    assert.equal(second.exitCode, null)
+  } finally {
+    clearTimeout(releaseBlocker)
+    if (blocker?.listening) await new Promise(resolve => blocker.close(resolve))
+    if (first.exitCode === null) first.kill('SIGKILL')
+    if (second?.exitCode === null) {
+      second.kill('SIGTERM')
+      await once(second, 'exit')
+    }
+    await rm(root, { recursive: true, force: true })
   }
 })
 
