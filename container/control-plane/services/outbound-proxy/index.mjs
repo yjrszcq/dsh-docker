@@ -29,6 +29,37 @@ const proxyTests = new ProxyTestManager({
 })
 await proxyTests.initialize(async path => JSON.parse(await readFile(path, 'utf8')))
 
+const ENTRY_BIND_ATTEMPTS = 21
+const ENTRY_BIND_RETRY_MS = 50
+
+async function listenProxyEntry(server, port) {
+  for (let attempt = 1; attempt <= ENTRY_BIND_ATTEMPTS; attempt += 1) {
+    try {
+      await new Promise((resolve, reject) => {
+        const cleanup = () => {
+          server.off('error', onError)
+          server.off('listening', onListening)
+        }
+        const onError = error => {
+          cleanup()
+          reject(error)
+        }
+        const onListening = () => {
+          cleanup()
+          resolve()
+        }
+        server.once('error', onError)
+        server.once('listening', onListening)
+        server.listen(port, '127.0.0.1')
+      })
+      return
+    } catch (error) {
+      if (error?.code !== 'EADDRINUSE' || attempt === ENTRY_BIND_ATTEMPTS) throw error
+      await new Promise(resolve => setTimeout(resolve, ENTRY_BIND_RETRY_MS))
+    }
+  }
+}
+
 async function publishRoutingState(current) {
   const staging = `${paths.proxyRoutingStatePath}.${String(process.pid)}.tmp`
   const value = {
@@ -52,10 +83,7 @@ for (const [scope, port] of Object.entries(PROXY_PORTS)) {
   const server = createScopedProxyServer({
     scope, getSnapshot: () => snapshot, dnsCache, agentPool, routeHealth, providerHandles,
   })
-  await new Promise((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(port, '127.0.0.1', resolve)
-  })
+  await listenProxyEntry(server, port)
   listeners.push(server)
 }
 await Promise.all(Object.values(PROXY_PORTS).map(port => probeProxyEntry(port)))

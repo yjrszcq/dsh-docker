@@ -433,16 +433,23 @@ test('restarts Proxy Manager after an unclean exit leaves its control socket beh
     env: { ...process.env, DSH_PLATFORM_DATA: dataRoot, DSH_PLATFORM_RUN: runRoot },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
-  const ready = child => Promise.race([
-    once(child, 'message').then(([message]) => {
-      assert.equal(message.componentReady, true)
-    }),
-    once(child, 'exit').then(([code, signal]) => {
-      throw new Error(`Proxy Manager exited before readiness (${String(code)}, ${String(signal)})`)
-    }),
-  ])
+  const ready = child => {
+    const stderr = []
+    child.stderr.on('data', chunk => stderr.push(chunk))
+    return Promise.race([
+      once(child, 'message').then(([message]) => {
+        assert.equal(message.componentReady, true)
+      }),
+      once(child, 'exit').then(([code, signal]) => {
+        const detail = Buffer.concat(stderr).toString('utf8').trim()
+        throw new Error(`Proxy Manager exited before readiness (${String(code)}, ${String(signal)})${detail === '' ? '' : `: ${detail}`}`)
+      }),
+    ])
+  }
   const first = launch()
   let second
+  let blocker
+  let releaseBlocker
   try {
     await ready(first)
     const routing = JSON.parse(await readFile(join(runRoot, 'outbound-proxy-routing.json'), 'utf8'))
@@ -454,10 +461,18 @@ test('restarts Proxy Manager after an unclean exit leaves its control socket beh
     assert.equal(JSON.stringify(routing).includes('password'), false)
     first.kill('SIGKILL')
     await once(first, 'exit')
+    blocker = createServer()
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject)
+      blocker.listen(PROXY_PORTS.updates, '127.0.0.1', resolve)
+    })
+    releaseBlocker = setTimeout(() => blocker.close(), 100)
     second = launch()
     await ready(second)
     assert.equal(second.exitCode, null)
   } finally {
+    clearTimeout(releaseBlocker)
+    if (blocker?.listening) await new Promise(resolve => blocker.close(resolve))
     if (first.exitCode === null) first.kill('SIGKILL')
     if (second?.exitCode === null) {
       second.kill('SIGTERM')
