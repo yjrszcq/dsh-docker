@@ -84,8 +84,21 @@ jobs:
             git fetch origin refs/heads/release-channel
             channel_commit="$(git rev-parse FETCH_HEAD)"
             git worktree add --detach "$channel" "$channel_commit"
-            previous="$channel"
             current_sequence="$(jq -er .targetSequence "$channel/stable.json")"
+            previous="$channel/targets/$current_sequence"
+            test -d "$previous"
+            for name in \
+              stable.json \
+              stable.sig.json \
+              keyring.json \
+              keyring.sig.json \
+              bootstrap.manifest.json \
+              bootstrap.manifest.sig.json; do
+              test -f "$previous/$name"
+            done
+            for name in stable.json stable.sig.json keyring.json keyring.sig.json; do
+              cmp "$channel/$name" "$previous/$name"
+            done
             if test -f "$channel/channel.json" \
               && test "$(jq -er .sourceCommit "$channel/channel.json")" = "$GITHUB_SHA" \
               && test "$(jq -er .keyringSha256 "$channel/channel.json")" = "$keyring_sha256"; then
