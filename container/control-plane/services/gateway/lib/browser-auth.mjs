@@ -231,6 +231,25 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
     }).catch(() => ({ authenticated: false }))
   }
 
+  async function authorizeManagement(request, { audience, method, target, requireCsrf = false } = {}) {
+    const origin = requestOrigin(request)
+    const managementToken = cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE)
+    if (origin === undefined || managementToken === undefined) return { authorized: false }
+    if (requireCsrf && !validSessionMutation(request, MANAGEMENT_CSRF_COOKIE)) return { authorized: false }
+    try {
+      const result = await access.request('POST', '/v1/capabilities', {
+        managementToken,
+        origin,
+        csrfToken: requireCsrf ? request.headers['x-dsh-csrf'] : undefined,
+        requireCsrf,
+        audience,
+        method,
+        target,
+      })
+      return { authorized: true, capability: result.capability }
+    } catch { return { authorized: false } }
+  }
+
   function sendManagementLogin(request, response, origin, { pending = false } = {}) {
     const csrf = token('dshma')
     const bytes = Buffer.from(managementLoginPage(request, csrf, { pending }))
@@ -438,7 +457,7 @@ export function createBrowserAuthentication({ access, safeReturnPath, report = a
     return false
   }
 
-  return Object.freeze({ status, validateDsh, validateManagement, enterManagement, handle })
+  return Object.freeze({ status, validateDsh, validateManagement, authorizeManagement, enterManagement, handle })
 }
 
 export function rejectDshAuthentication(request, response, safeReturnPath) {

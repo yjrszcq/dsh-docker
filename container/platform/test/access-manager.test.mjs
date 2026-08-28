@@ -16,10 +16,44 @@ import { BrowserSessionStore } from '../../control-plane/services/access-manager
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
+import { CapabilityStore } from '../../control-plane/services/access-manager/lib/capabilities.mjs'
 
 const fastVerifier = (password, options = {}) => createCredential(password, {
   ...options,
   policy: { N: 16, r: 1, p: 1, keyLength: 32, maxmem: 2 * 1024 * 1024 },
+})
+
+test('privileged capabilities are single-use and bound to execution details', () => {
+  let now = 1_000
+  const store = new CapabilityStore({ now: () => now, random: size => Buffer.alloc(size, 7), ttlMs: 100 })
+  const account = {
+    accountId: 'account',
+    mainCredential: { version: 2 },
+    managementAdditionalCredential: { enabled: false, version: 1 },
+    managementAccess: { version: 3 },
+  }
+  const issued = store.issue({ sessionId: 'session' }, account, {
+    audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/restart-dsh',
+  })
+  assert.equal(store.consume(issued.token, account, {
+    audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/restart-dsh',
+  })?.sessionId, 'session')
+  assert.equal(store.consume(issued.token, account, {
+    audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/restart-dsh',
+  }), undefined)
+  const second = store.issue({ sessionId: 'session' }, account, {
+    audience: 'maintenance', method: 'GET', target: '/_dsh_platform/api/v1/files/list?path=%2Fworkspace',
+  })
+  assert.equal(store.consume(second.token, account, {
+    audience: 'maintenance', method: 'GET', target: '/_dsh_platform/api/v1/files/list?path=%2Fdata',
+  }), undefined)
+  const third = store.issue({ sessionId: 'session' }, account, {
+    audience: 'management', method: 'GET', target: '/_dsh_platform/api/v1/status',
+  })
+  now += 101
+  assert.equal(store.consume(third.token, account, {
+    audience: 'management', method: 'GET', target: '/_dsh_platform/api/v1/status',
+  }), undefined)
 })
 
 async function fixture() {

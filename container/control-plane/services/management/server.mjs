@@ -139,6 +139,7 @@ export function createManagementServer({
   fileEditor,
   fileLocations = Object.freeze({ defaultPath: '/workspace', shortcuts: Object.freeze(['/workspace', '/data/dsh', '/data/platform', '/']) }),
   privilegedMutationActive = () => false,
+  authorizeInternal = async () => true,
   stateHeartbeatMs = 15_000,
   restartDelayMs = 2_000,
   consoleRoot = join(import.meta.dirname, 'public'),
@@ -490,6 +491,15 @@ export function createManagementServer({
     try {
       const url = new URL(request.url ?? '/', 'http://management.internal')
       pathname = url.pathname
+      const internalHealth = pathname === '/_dsh_platform/internal/health'
+      if (internalHealth) {
+        if (request.method !== 'GET') return send(response, 405, { error: 'method not allowed' })
+        return send(response, 200, { ready: true })
+      }
+      const pluginRequest = pathname.startsWith('/_dsh_platform/plugin-api/')
+      if (!pluginRequest && !await authorizeInternal(request)) return send(response, 401, {
+        error: 'management capability required', code: 'CAPABILITY_REQUIRED',
+      })
       if (await sendConsoleAsset(request, response, url.pathname, {
         public: consoleRoot,
         dependencies: consoleDependencyRoot,

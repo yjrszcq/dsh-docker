@@ -40,6 +40,7 @@ const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const imageInventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const trust = new LocalApiClient(paths.trustSocket)
 const bootstrap = new LocalApiClient(paths.bootstrapSocket)
+const access = new LocalApiClient(paths.accessSocket)
 const snapshotApi = new LocalApiClient(paths.snapshotSocket)
 const userSkillApi = new LocalApiClient(paths.userSkillSocket)
 const outboundProxy = new OutboundProxyControlClient(paths.proxyControlSocket)
@@ -194,6 +195,19 @@ let server
 server = createManagementServer({
   coordinator,
   logs,
+  authorizeInternal: async request => {
+    const token = request.headers['x-dsh-internal-capability']
+    if (typeof token !== 'string') return false
+    try {
+      const result = await access.request('POST', '/v1/capabilities/consume', {
+        token,
+        audience: 'management',
+        method: request.method ?? 'GET',
+        target: request.url ?? '/',
+      })
+      return result.authorized === true
+    } catch { return false }
+  },
   platformStatus: async () => ({
     ...await readDeploymentStatus(paths.deploymentStatusPath),
     trust: await trust.status(),

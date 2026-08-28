@@ -5,16 +5,19 @@ export class LocalApiClient {
     this.socketPath = socketPath
   }
 
-  request(method, path, body) {
+  request(method, path, body, extraHeaders = {}) {
     return new Promise((resolve, reject) => {
       const bytes = body === undefined ? undefined : Buffer.from(JSON.stringify(body))
       const req = request({
         socketPath: this.socketPath,
         method,
         path,
-        headers: bytes === undefined ? {} : {
+        headers: {
+          ...extraHeaders,
+          ...(bytes === undefined ? {} : {
           'content-type': 'application/json',
           'content-length': bytes.byteLength,
+          }),
         },
       }, response => {
         const chunks = []

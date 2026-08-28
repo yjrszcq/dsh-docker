@@ -69,6 +69,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   'transfer-encoding',
   'upgrade',
 ])
+const INTERNAL_CAPABILITY_HEADER = 'x-dsh-internal-capability'
 
 function excludedHeaderNames(headers) {
   const excluded = new Set(HOP_BY_HOP_HEADERS)
@@ -137,6 +138,7 @@ export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
     rewritten.origin = `http://${INTERNAL_AUTHORITY}`
   }
   delete rewritten.authorization
+  delete rewritten[INTERNAL_CAPABILITY_HEADER]
   const cookies = stripReservedCookies(rewritten.cookie)
   if (cookies === undefined) delete rewritten.cookie
   else rewritten.cookie = cookies
@@ -590,9 +592,11 @@ function proxyHttp(request, response, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const context = requestContext(request)
   const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
+  if (typeof options.internalCapability === 'string') delete headers.cookie
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
   }
+  if (typeof options.internalCapability === 'string') headers[INTERNAL_CAPABILITY_HEADER] = options.internalCapability
   const upstream = httpRequest({
     ...(options.socketPath === undefined
       ? { hostname: options.upstreamHost, port: options.upstreamPort }
@@ -688,9 +692,11 @@ function proxyUpgrade(request, clientSocket, head, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const failureKey = `${upstreamType}-websocket`
   const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
+  if (typeof options.internalCapability === 'string') delete headers.cookie
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
   }
+  if (typeof options.internalCapability === 'string') headers[INTERNAL_CAPABILITY_HEADER] = options.internalCapability
   headers.connection = 'Upgrade'
   headers.upgrade = request.headers.upgrade ?? 'websocket'
   const upstreamSocket = options.socketPath === undefined
@@ -749,6 +755,7 @@ export function createGatewayServer({
     status: async () => ({ state: 'recovery-required' }),
     validateDsh: async () => ({ authenticated: false }),
     validateManagement: async () => ({ authenticated: false }),
+    authorizeManagement: async () => ({ authorized: false }),
     enterManagement: async (request, response) => rejectDshAuthentication(request, response, safeReturnPath),
     handle: async () => false,
   }),
@@ -854,21 +861,32 @@ export function createGatewayServer({
         rejectDshAuthentication(request, response, safeReturnPath)
         return false
       }
-      const requireManagement = async () => {
+      const requireManagement = async audience => {
         const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET')
-        const session = await options.browserAuthentication.validateManagement(request, { requireCsrf: mutation })
-        if (session.authenticated) return true
+        const authorization = typeof options.browserAuthentication.authorizeManagement === 'function'
+          ? await options.browserAuthentication.authorizeManagement(request, {
+            audience,
+            method: request.method ?? 'GET',
+            target: request.url ?? pathname,
+            requireCsrf: mutation,
+          })
+          : { authorized: (await options.browserAuthentication.validateManagement(request)).authenticated === true }
+        if (authorization.authorized) return authorization.capability?.token ?? null
         if (isPageNavigation(request)) await options.browserAuthentication.enterManagement(request, response)
         else sendJson(response, 401, { error: 'management authentication required', code: 'MANAGEMENT_AUTHENTICATION_REQUIRED' })
-        return false
+        return undefined
       }
       if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
         if (!isExternalConsoleRoute(request.method, pathname)) {
           rejectHttp(response, 404, 'not found')
           return
         }
-        if (!await requireManagement()) return
-        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        const capability = await requireManagement('management')
+        if (capability === undefined) return
+        proxyHttp(request, response, {
+          ...options, socketPath: options.managementSocketPath, polyfill: false,
+          ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
+        })
         return
       }
       if (pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) {
@@ -893,11 +911,13 @@ export function createGatewayServer({
           rejectHttp(response, 404, 'not found')
           return
         }
-        if (!await requireManagement()) return
         const socketPath = isMaintenanceRoute(pathname) ? options.maintenanceSocketPath : options.managementSocketPath
+        const audience = socketPath === options.maintenanceSocketPath ? 'maintenance' : 'management'
+        const capability = await requireManagement(audience)
+        if (capability === undefined) return
         proxyHttp(request, response, {
           ...options, socketPath, polyfill: false,
-          preserveAuthorization: socketPath === options.maintenanceSocketPath,
+          ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
         })
         return
       }
@@ -994,15 +1014,21 @@ export function createGatewayServer({
           return
         }
         if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
-          const managementSession = await options.browserAuthentication.validateManagement(request)
-          if (!managementSession.authenticated) {
+          const authorization = typeof options.browserAuthentication.authorizeManagement === 'function'
+            ? await options.browserAuthentication.authorizeManagement(request, {
+              audience: 'maintenance', method: request.method ?? 'GET', target: request.url ?? pathname,
+            })
+            : { authorized: (await options.browserAuthentication.validateManagement(request)).authenticated === true }
+          if (!authorization.authorized) {
             rejectUpgrade(socket, 401, 'Unauthorized')
             return
           }
           upgradedSockets.add(socket)
           socket.once('close', () => upgradedSockets.delete(socket))
           proxyUpgrade(request, socket, head, {
-            ...options, socketPath: options.maintenanceSocketPath, preserveAuthorization: true,
+            ...options, socketPath: options.maintenanceSocketPath,
+            ...(typeof authorization.capability?.token === 'string'
+              ? { internalCapability: authorization.capability.token } : {}),
           })
           return
         }

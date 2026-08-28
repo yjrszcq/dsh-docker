@@ -5,6 +5,7 @@ import { AccessError, accessErrorBody } from './errors.mjs'
 import { normalizeUsername, verifyCredential } from './credentials.mjs'
 import { BrowserSessionStore } from './sessions.mjs'
 import { ManagementExchangeStore } from './exchanges.mjs'
+import { CapabilityStore } from './capabilities.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 
@@ -57,6 +58,7 @@ export class AccessService {
     limiter = new AuthenticationLimiter(),
     sessions = new BrowserSessionStore(),
     exchanges = new ManagementExchangeStore(),
+    capabilities = new CapabilityStore(),
     verify = verifyCredential,
     sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
@@ -66,6 +68,7 @@ export class AccessService {
     this.limiter = limiter
     this.sessions = sessions
     this.exchanges = exchanges
+    this.capabilities = capabilities
     this.verify = verify
     this.sleep = sleep
     this.report = report
@@ -226,6 +229,31 @@ export class AccessService {
     await this.report('access.session.created', { accountId: current.account.accountId, kind: 'management' })
     return { session }
   }
+
+  async issueCapability(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const session = this.sessions.validate(value.managementToken, 'management', current.account, {
+      origin: value.origin,
+      csrfToken: value.csrfToken,
+      requireCsrf: value.requireCsrf === true,
+      touch: false,
+    })
+    if (session === undefined) throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
+    return { capability: this.capabilities.issue(session, current.account, value) }
+  }
+
+  async consumeCapability(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const capability = this.capabilities.consume(value.token, current.account, value)
+    if (capability === undefined) throw new AccessError('CAPABILITY_INVALID', 'Management capability is invalid or expired', 401)
+    return { authorized: true, capability }
+  }
 }
 
 export function createAccessHttpServer({ service, surface = 'access' }) {
@@ -246,6 +274,8 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/management/handoffs') return send(response, 201, await service.createManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/handoffs/consume') return send(response, 200, await service.consumeManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))
+      if (request.method === 'POST' && pathname === '/v1/capabilities') return send(response, 201, await service.issueCapability(value))
+      if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {
       const status = error instanceof AccessError ? error.statusCode : 500

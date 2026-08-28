@@ -22,7 +22,6 @@ import { createRecoveryServer, listenRecovery } from './lib/recovery-server.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
-import { createPasswordAccess } from '../../control-plane/services/gateway/lib/auth.mjs'
 import { prepareUserSkillRoots, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
 import { UserPluginSnapshots } from '../../control-plane/modules/plugin-manager/user-snapshots.mjs'
@@ -232,10 +231,7 @@ await startup('trust-api', () => listenUnix(trustServer, paths.trustSocket, {
 await logs.diagnostic('stage0', 'trust-api.ready')
 const management = new LocalApiClient(paths.managementSocket)
 const outboundProxy = new LocalApiClient(paths.proxyControlSocket)
-const gatewayAccess = new LocalApiClient(paths.gatewayAccessSocket)
-const gatewayPassword = createPasswordAccess(process.env.DSH_PROXY_PASSWORD ?? '', {
-  username: process.env.DSH_PROXY_USERNAME ?? '',
-})
+const access = new LocalApiClient(paths.accessSocket)
 const maintenance = await createMaintenanceServer({
   paths,
   dshHome,
@@ -260,11 +256,16 @@ const maintenance = await createMaintenanceServer({
     }
   },
   authorize: async request => {
-    if (gatewayPassword.enabled) return gatewayPassword.isAuthenticated(request)
+    const token = request.headers['x-dsh-internal-capability']
+    if (typeof token !== 'string') return false
     try {
-      return (await gatewayAccess.request('POST', '/v1/sessions/validate', {
-        cookie: request.headers.cookie ?? null,
-      })).authenticated === true
+      const result = await access.request('POST', '/v1/capabilities/consume', {
+        token,
+        audience: 'maintenance',
+        method: request.method ?? 'GET',
+        target: request.url ?? '/',
+      })
+      return result.authorized === true
     } catch { return false }
   },
   platformBusy: async () => {
