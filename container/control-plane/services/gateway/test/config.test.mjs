@@ -71,17 +71,14 @@ test('loadConfig owns only Gateway settings', async () => {
     DSH_PROXY_USERNAME: 'unused',
     DSH_PROXY_PASSWORD: '',
   })
-  assert.equal(config.password, '')
-  assert.equal(config.username, 'unused')
-  assert.equal(config.platformPassword, '')
+  assert.equal(Object.hasOwn(config, 'password'), false)
+  assert.equal(Object.hasOwn(config, 'username'), false)
+  assert.equal(Object.hasOwn(config, 'platformPassword'), false)
   assert.equal(Object.hasOwn(config, 'workspace'), false)
   assert.equal(Object.hasOwn(config, 'telemetryDisabled'), false)
-  await assert.rejects(() => loadConfig({
+  assert.doesNotReject(() => loadConfig({
     DSH_PROXY_USERNAME: 'invalid:name',
     DSH_PROXY_PASSWORD: 'secret',
-  }), UsageError)
-})
-
-test('loadConfig accepts a platform password', async () => {
-  assert.equal((await loadConfig({ DSH_PLATFORM_PASSWORD: 'direct' })).platformPassword, 'direct')
+    DSH_PLATFORM_PASSWORD: 'legacy-secret',
+  }))
 })

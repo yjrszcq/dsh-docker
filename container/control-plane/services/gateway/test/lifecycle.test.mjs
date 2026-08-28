@@ -28,10 +28,9 @@ const config = Object.freeze({
   trustedHosts: Object.freeze({ wildcard: false, authorities: Object.freeze([]) }),
 })
 
-test('gateway owns only its listener and forwards management socket configuration', async () => {
+test('gateway owns only its listener and binds browser authentication to Access Manager', async () => {
   const signalSource = new EventEmitter()
   const server = new FakeServer()
-  const accessServer = new FakeServer()
   let options
   const reports = []
   const running = runGateway(config, {
@@ -39,12 +38,7 @@ test('gateway owns only its listener and forwards management socket configuratio
     externalPort: 8080,
     managementSocketPath: '/run/platform.sock',
     maintenanceSocketPath: '/run/maintenance.sock',
-    gatewayAccessSocketPath: '/run/access.sock',
-    accessServerFactory: () => accessServer,
-    listenAccessServer: async (value, path) => {
-      value.listening = true
-      value.bound = path
-    },
+    accessClient: { request: async () => ({ state: 'recovery-required' }) },
     signalSource,
     report: (message, fields) => { reports.push({ message, fields }) },
     gatewayFactory: value => { options = value; return server },
@@ -53,12 +47,11 @@ test('gateway owns only its listener and forwards management socket configuratio
   assert.deepEqual(server.bound, { host: '127.0.0.1', port: 8080 })
   assert.equal(options.managementSocketPath, '/run/platform.sock')
   assert.equal(options.maintenanceSocketPath, '/run/maintenance.sock')
-  assert.equal(accessServer.bound, '/run/access.sock')
+  assert.equal(typeof options.browserAuthentication.handle, 'function')
   assert.equal(typeof options.platformStatus, 'function')
   signalSource.emit('SIGTERM')
   assert.equal(await running, 0)
   assert.equal(server.listening, false)
-  assert.equal(accessServer.listening, false)
   assert.deepEqual(reports.map(entry => entry.message), [
     'gateway.starting', 'gateway.ready', 'gateway.stopping', 'gateway.stopped',
   ])
@@ -67,13 +60,11 @@ test('gateway owns only its listener and forwards management socket configuratio
 
 test('gateway propagates listener failures without creating a DSH process', async () => {
   const server = new FakeServer()
-  const accessServer = new FakeServer()
   const reports = []
   server.listen = () => queueMicrotask(() => server.emit('error', new Error('bind failed')))
   await assert.rejects(runGateway(config, {
     gatewayFactory: () => server,
-    accessServerFactory: () => accessServer,
-    listenAccessServer: async () => {},
+    accessClient: { request: async () => ({ state: 'recovery-required' }) },
     signalSource: new EventEmitter(),
     report: (message, fields) => { reports.push({ message, fields }) },
   }), /bind failed/)
@@ -84,14 +75,12 @@ test('gateway propagates listener failures without creating a DSH process', asyn
 test('gateway retains a recent platform status while Management is handed off', async () => {
   const signalSource = new EventEmitter()
   const server = new FakeServer()
-  const accessServer = new FakeServer()
   const expected = { update: { status: 'building-candidate' } }
   let requests = 0
   let options
   const running = runGateway(config, {
     gatewayFactory: value => { options = value; return server },
-    accessServerFactory: () => accessServer,
-    listenAccessServer: async value => { value.listening = true },
+    accessClient: { request: async () => ({ state: 'recovery-required' }) },
     signalSource,
     managementClient: {
       request: async () => {

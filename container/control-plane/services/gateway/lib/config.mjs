@@ -62,17 +62,8 @@ export function parseTrustedHosts(environment = process.env) {
 }
 
 export async function loadConfig(environment = process.env) {
-  const username = environment.DSH_PROXY_USERNAME ?? ''
-  const password = environment.DSH_PROXY_PASSWORD ?? ''
-  const platformPassword = environment.DSH_PLATFORM_PASSWORD ?? ''
-  if (password !== '' && username.includes(':')) {
-    throw new UsageError('DSH_PROXY_USERNAME cannot contain a colon when authentication is enabled')
-  }
   return Object.freeze({
     trustedHosts: parseTrustedHosts(environment),
-    password,
-    platformPassword,
-    username,
     polyfill: parseBoolean('DSH_PROXY_POLYFILL', environment.DSH_PROXY_POLYFILL, true),
   })
 }

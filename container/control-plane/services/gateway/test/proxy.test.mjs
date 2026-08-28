@@ -11,14 +11,25 @@ import { DshAvailability } from '../lib/availability.mjs'
 import {
   closeGatewayServer,
   CLIENT_EVENT_PATH,
-  createGatewayServer,
+  createGatewayServer as createGatewayServerBase,
   HEALTH_PATH,
   INTERNAL_AUTHORITY,
   upstreamRequestHeaders,
 } from '../lib/proxy.mjs'
-import { PlatformAccess } from '../lib/platform-access.mjs'
+const AUTHENTICATED_BROWSER = Object.freeze({
+  status: async () => ({ state: 'initialized' }),
+  validateDsh: async () => ({ authenticated: true }),
+  validateManagement: async () => ({ authenticated: true }),
+  enterManagement: async () => { throw new Error('unexpected Management login') },
+  handle: async () => false,
+})
 
-const PLATFORM_ACCESS_ALLOWED = Object.freeze({ isAuthenticated: () => true })
+function createGatewayServer(options) {
+  return createGatewayServerBase({
+    ...options,
+    browserAuthentication: options.browserAuthentication ?? AUTHENTICATED_BROWSER,
+  })
+}
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -75,6 +86,17 @@ async function withServers(callback, { polyfill = true, report } = {}) {
     }
     if (incoming.url === '/delayed') {
       setTimeout(() => response.end('delayed'), 50)
+      return
+    }
+    if (incoming.url === '/cookies') {
+      response.writeHead(200, {
+        'set-cookie': [
+          'dsh_gateway_session=forged; Path=/',
+          'dsh_management_compat_session=forged; Path=/',
+          'dsh_application_cookie=preserved; Path=/',
+        ],
+      })
+      response.end('cookies')
       return
     }
     response.writeHead(200, { 'content-type': 'application/json' })
@@ -186,6 +208,14 @@ test('upstream headers remove connection tokens and gateway authorization', () =
   assert.equal(management.forwarded, 'for=198.51.100.4')
   assert.equal(management['x-forwarded-for'], '198.51.100.4')
   assert.equal(management['x-real-ip'], '198.51.100.4')
+})
+
+test('upstream responses cannot replace Gateway authentication cookies', async () => {
+  await withServers(async ({ gatewayPort }) => {
+    const response = await request(gatewayPort, '/cookies', { host: 'dsh.example' })
+    assert.equal(response.status, 200)
+    assert.deepEqual(response.headers['set-cookie'], ['dsh_application_cookie=preserved; Path=/'])
+  })
 })
 
 test('untrusted requests are rejected without reaching upstream', async () => {
@@ -563,7 +593,7 @@ test('bounded management and Console requests use the protected local socket ins
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     managementSocketPath: socketPath,
     maintenanceSocketPath,
-    platformAccess: PLATFORM_ACCESS_ALLOWED,
+    browserAuthentication: AUTHENTICATED_BROWSER,
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
@@ -715,23 +745,6 @@ test('WebSocket upgrades preserve the stream and receive loopback headers', asyn
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
-  const unauthorized = netConnect(gatewayPort, '127.0.0.1')
-  await new Promise((resolve, reject) => {
-    unauthorized.once('connect', resolve)
-    unauthorized.once('error', reject)
-  })
-  unauthorized.write([
-    'GET /_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000/stream HTTP/1.1',
-    'Host: dsh.example',
-    'Origin: https://dsh.example',
-    'Connection: Upgrade',
-    'Upgrade: websocket',
-    '',
-    '',
-  ].join('\r\n'))
-  const unauthorizedResponse = await new Promise(resolve => unauthorized.once('data', data => resolve(data.toString())))
-  assert.match(unauthorizedResponse, /^HTTP\/1\.1 401 Unauthorized/)
-  unauthorized.destroy()
   const client = netConnect(gatewayPort, '127.0.0.1')
   try {
     await new Promise((resolve, reject) => {
@@ -806,12 +819,10 @@ test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket',
   })
   const upstream = createServer((_incoming, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
-  const platformAccess = new PlatformAccess({ password: 'platform-secret' })
-  const platformSession = platformAccess.signIn('platform-secret')
   const gateway = createGatewayServer({
     trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
     maintenanceSocketPath: socketPath,
-    platformAccess,
+    browserAuthentication: AUTHENTICATED_BROWSER,
     upstreamPort,
   })
   const gatewayPort = await listen(gateway)
@@ -825,7 +836,6 @@ test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket',
       'GET /_dsh_platform/api/v1/terminal/sessions/123e4567-e89b-42d3-a456-426614174000/stream HTTP/1.1',
       'Host: dsh.example',
       'Origin: https://dsh.example',
-      `Cookie: dsh_platform_session=${platformSession}`,
       'Connection: Upgrade',
       'Upgrade: websocket',
       'Sec-WebSocket-Key: dGVzdA==',

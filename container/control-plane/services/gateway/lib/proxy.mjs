@@ -5,13 +5,7 @@ import { connect as netConnect } from 'node:net'
 import { join, resolve } from 'node:path'
 import { inspectExternalRequest } from './trust.mjs'
 import { injectRandomUuidPolyfill } from './polyfill.mjs'
-import { BASIC_AUTH_CHALLENGE, createPasswordAccess } from './auth.mjs'
-import {
-  handlePlatformAuthRequest,
-  PLATFORM_AUTH_PREFIX,
-  PlatformAccess,
-  rejectPlatformAccess,
-} from './platform-access.mjs'
+import { isReservedCookieName, rejectDshAuthentication, stripReservedCookies } from './browser-auth.mjs'
 import { availabilityPage, DshAvailability, probeDsh, stateMessage } from './availability.mjs'
 
 export const INTERNAL_HOST = '127.0.0.1'
@@ -143,6 +137,9 @@ export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
     rewritten.origin = `http://${INTERNAL_AUTHORITY}`
   }
   delete rewritten.authorization
+  const cookies = stripReservedCookies(rewritten.cookie)
+  if (cookies === undefined) delete rewritten.cookie
+  else rewritten.cookie = cookies
   return rewritten
 }
 
@@ -237,7 +234,18 @@ function rejectUpgrade(socket, status, reason, headers = {}) {
 }
 
 function proxyResponseHeaders(headers) {
-  return copyEndToEndHeaders(headers)
+  const copied = copyEndToEndHeaders(headers)
+  const cookies = copied['set-cookie']
+  if (cookies !== undefined) {
+    const values = Array.isArray(cookies) ? cookies : [cookies]
+    const kept = values.filter(value => {
+      const separator = value.indexOf('=')
+      return separator > 0 && !isReservedCookieName(value.slice(0, separator).trim())
+    })
+    if (kept.length === 0) delete copied['set-cookie']
+    else copied['set-cookie'] = kept
+  }
+  return copied
 }
 
 function createPluginBundleCache(maxBytes) {
@@ -737,10 +745,13 @@ export function createGatewayServer({
   probe = () => probeDsh({ host: upstreamHost, port: upstreamPort }),
   probeIntervalMs = 750,
   isReady = () => true,
-  password = '',
-  username = '',
-  passwordAccess = createPasswordAccess(password, { username }),
-  platformAccess = new PlatformAccess(),
+  browserAuthentication = Object.freeze({
+    status: async () => ({ state: 'recovery-required' }),
+    validateDsh: async () => ({ authenticated: false }),
+    validateManagement: async () => ({ authenticated: false }),
+    enterManagement: async (request, response) => rejectDshAuthentication(request, response, safeReturnPath),
+    handle: async () => false,
+  }),
   report = async () => {},
   now = () => Date.now(),
   failureLogIntervalMs = 30_000,
@@ -795,7 +806,7 @@ export function createGatewayServer({
   }
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, maintenanceSocketPath, systemPluginRoot, platformStatus,
-    availability, probe, isReady, passwordAccess, platformAccess, reportFailure, reportRecovered,
+    availability, probe, isReady, browserAuthentication, reportFailure, reportRecovered,
     now, pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs, pluginBundleMaxBytes,
     pluginBundleRecentWindowMs, pluginBundleCache: createPluginBundleCache(pluginBundleCacheMaxBytes),
     pluginRecoveryAvailable, consumePluginRecovery,
@@ -827,12 +838,70 @@ export function createGatewayServer({
         }
         return
       }
-      if (options.passwordAccess.handleHttp(request, response)) return
-      if (pathname === PLATFORM_AUTH_PREFIX.slice(0, -1) || pathname.startsWith(PLATFORM_AUTH_PREFIX)) {
-        if (await handlePlatformAuthRequest(request, response, options.platformAccess, pathname, { report: record })) return
+      if (await options.browserAuthentication.handle(request, response, pathname, url.searchParams)) return
+      if (pathname.startsWith('/_dsh_platform/auth/') || pathname.startsWith('/_dsh_platform/access/')) {
         rejectHttp(response, 404, 'not found')
         return
       }
+      const access = await options.browserAuthentication.status()
+      if (access.state !== 'initialized') {
+        rejectDshAuthentication(request, response, safeReturnPath)
+        return
+      }
+      const requireDsh = async () => {
+        const session = await options.browserAuthentication.validateDsh(request)
+        if (session.authenticated) return true
+        rejectDshAuthentication(request, response, safeReturnPath)
+        return false
+      }
+      const requireManagement = async () => {
+        const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET')
+        const session = await options.browserAuthentication.validateManagement(request, { requireCsrf: mutation })
+        if (session.authenticated) return true
+        if (isPageNavigation(request)) await options.browserAuthentication.enterManagement(request, response)
+        else sendJson(response, 401, { error: 'management authentication required', code: 'MANAGEMENT_AUTHENTICATION_REQUIRED' })
+        return false
+      }
+      if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
+        if (!isExternalConsoleRoute(request.method, pathname)) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        if (!await requireManagement()) return
+        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
+        return
+      }
+      if (pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) {
+        const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET')
+        const session = await options.browserAuthentication.validateDsh(request, { requireCsrf: mutation })
+        if (!session.authenticated) {
+          rejectDshAuthentication(request, response, safeReturnPath)
+          return
+        }
+        const upstreamPath = pluginManagementUpstreamPath(request.method, url)
+        if (upstreamPath === null) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        proxyHttp(request, response, {
+          ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
+        })
+        return
+      }
+      if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+        if (!isExternalManagementRoute(request.method, pathname)) {
+          rejectHttp(response, 404, 'not found')
+          return
+        }
+        if (!await requireManagement()) return
+        const socketPath = isMaintenanceRoute(pathname) ? options.maintenanceSocketPath : options.managementSocketPath
+        proxyHttp(request, response, {
+          ...options, socketPath, polyfill: false,
+          preserveAuthorization: socketPath === options.maintenanceSocketPath,
+        })
+        return
+      }
+      if (!await requireDsh()) return
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
       if (await proxyPluginBundle(request, response, options, pathname)) return
@@ -899,45 +968,6 @@ export function createGatewayServer({
         sendAvailabilityPage(request, response, 'plugin-failed', { poll: false })
         return
       }
-      if (pathname === MANAGEMENT_UI_PREFIX.slice(0, -1) || pathname.startsWith(MANAGEMENT_UI_PREFIX)) {
-        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
-          rejectPlatformAccess(request, response)
-          return
-        }
-        if (!isExternalConsoleRoute(request.method, pathname)) {
-          rejectHttp(response, 404, 'not found')
-          return
-        }
-        proxyHttp(request, response, { ...options, socketPath: options.managementSocketPath, polyfill: false })
-        return
-      }
-      if (pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) {
-        const upstreamPath = pluginManagementUpstreamPath(request.method, url)
-        if (upstreamPath === null) {
-          rejectHttp(response, 404, 'not found')
-          return
-        }
-        proxyHttp(request, response, {
-          ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
-        })
-        return
-      }
-      if (pathname.startsWith(MANAGEMENT_PREFIX)) {
-        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
-          rejectPlatformAccess(request, response)
-          return
-        }
-        if (!isExternalManagementRoute(request.method, pathname)) {
-          rejectHttp(response, 404, 'not found')
-          return
-        }
-        const socketPath = isMaintenanceRoute(pathname) ? options.maintenanceSocketPath : options.managementSocketPath
-        proxyHttp(request, response, {
-          ...options, socketPath, polyfill: false,
-          preserveAuthorization: socketPath === options.maintenanceSocketPath,
-        })
-        return
-      }
       proxyHttp(request, response, { ...options, trackDsh: true })
     } catch (error) {
       reportFailure('gateway-request', 'gateway.request.failed', { ...requestContext(request), error })
@@ -956,30 +986,44 @@ export function createGatewayServer({
         rejectUpgrade(socket, 403, 'Forbidden')
         return
       }
-      if (options.passwordAccess.enabled && !options.passwordAccess.isAuthenticated(request)) {
-        rejectUpgrade(socket, 401, 'Unauthorized', { 'WWW-Authenticate': BASIC_AUTH_CHALLENGE })
-        return
-      }
       const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
-      if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
-        if (!options.passwordAccess.enabled && !options.platformAccess.isAuthenticated(request)) {
+      void (async () => {
+        const access = await options.browserAuthentication.status()
+        if (access.state !== 'initialized') {
+          rejectUpgrade(socket, 401, 'Unauthorized')
+          return
+        }
+        if (request.method === 'GET' && TERMINAL_STREAM_ROUTE.test(pathname)) {
+          const managementSession = await options.browserAuthentication.validateManagement(request)
+          if (!managementSession.authenticated) {
+            rejectUpgrade(socket, 401, 'Unauthorized')
+            return
+          }
+          upgradedSockets.add(socket)
+          socket.once('close', () => upgradedSockets.delete(socket))
+          proxyUpgrade(request, socket, head, {
+            ...options, socketPath: options.maintenanceSocketPath, preserveAuthorization: true,
+          })
+          return
+        }
+        if (pathname.startsWith(MANAGEMENT_PREFIX)) {
+          rejectUpgrade(socket, 400, 'Bad Request')
+          return
+        }
+        const dshSession = await options.browserAuthentication.validateDsh(request)
+        if (!dshSession.authenticated) {
           rejectUpgrade(socket, 401, 'Unauthorized')
           return
         }
         upgradedSockets.add(socket)
         socket.once('close', () => upgradedSockets.delete(socket))
-        proxyUpgrade(request, socket, head, {
-          ...options, socketPath: options.maintenanceSocketPath, preserveAuthorization: true,
+        proxyUpgrade(request, socket, head, options)
+      })().catch(error => {
+        reportFailure('gateway-upgrade-authentication', 'gateway.upgrade-authentication.failed', {
+          ...requestContext(request), error,
         })
-        return
-      }
-      if (pathname.startsWith(MANAGEMENT_PREFIX)) {
-        rejectUpgrade(socket, 400, 'Bad Request')
-        return
-      }
-      upgradedSockets.add(socket)
-      socket.once('close', () => upgradedSockets.delete(socket))
-      proxyUpgrade(request, socket, head, options)
+        rejectUpgrade(socket, 503, 'Service Unavailable')
+      })
     } catch (error) {
       reportFailure('gateway-upgrade', 'gateway.upgrade-request.failed', { ...requestContext(request), error })
       rejectUpgrade(socket, 400, 'Bad Request')

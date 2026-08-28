@@ -3,8 +3,23 @@ import { createServer, request as httpRequest } from 'node:http'
 import { connect as netConnect } from 'node:net'
 import test from 'node:test'
 import { DshAvailability, availabilityPage, language } from '../lib/availability.mjs'
-import { closeGatewayServer, createGatewayServer, PLUGIN_FAILURE_PATH, READINESS_PATH, WAIT_PATH, safeReturnPath } from '../lib/proxy.mjs'
+import { closeGatewayServer, createGatewayServer as createGatewayServerBase, PLUGIN_FAILURE_PATH, READINESS_PATH, WAIT_PATH, safeReturnPath } from '../lib/proxy.mjs'
 import { parseTrustedHosts } from '../lib/config.mjs'
+
+const AUTHENTICATED_BROWSER = Object.freeze({
+  status: async () => ({ state: 'initialized' }),
+  validateDsh: async () => ({ authenticated: true }),
+  validateManagement: async () => ({ authenticated: true }),
+  enterManagement: async () => { throw new Error('unexpected Management login') },
+  handle: async () => false,
+})
+
+function createGatewayServer(options) {
+  return createGatewayServerBase({
+    ...options,
+    browserAuthentication: options.browserAuthentication ?? AUTHENTICATED_BROWSER,
+  })
+}
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
