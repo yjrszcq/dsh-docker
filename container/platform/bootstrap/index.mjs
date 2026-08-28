@@ -30,6 +30,7 @@ import {
   clearOutboundProxyEnvironment,
   parseOutboundProxyEnvironment,
 } from '../lib/outbound-proxy.mjs'
+import { collectAccessEvidence } from './lib/access-evidence.mjs'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -44,6 +45,12 @@ logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed'
 const seedRoot = process.env.DSH_PLATFORM_SEED ?? '/opt/dsh-platform/seed'
 const inventory = parseImageInventory(await readFile(join(seedRoot, 'inventory.json')))
 const imageRecords = recordsFromImageInventory(inventory)
+const dshHome = process.env.DSH_HOME ?? '/data/dsh'
+const accessEvidence = await collectAccessEvidence({
+  dshHome,
+  paths,
+  legacyAuthenticationConfigured: process.env.DSH_LEGACY_AUTHENTICATION_CONFIGURED === 'true',
+})
 await logs.diagnostic('bootstrap', 'bootstrap.starting', {
   bootstrapVersion: process.env.DSH_BOOTSTRAP_VERSION ?? null,
   imageBuildId: inventory.imageBuildId,
@@ -53,6 +60,7 @@ const deployments = new DeploymentManager({ paths, seedRoot, inventory })
 const trust = new LocalApiClient(paths.trustSocket)
 const outboundProxy = new LocalApiClient(paths.proxyControlSocket)
 const snapshots = new SnapshotClient(new LocalApiClient(paths.snapshotSocket), 'dsh')
+const access = new LocalApiClient(paths.accessSocket)
 try {
   await deployments.recoverActivation(trust)
 } catch (error) {
@@ -236,6 +244,10 @@ runtime = new BootstrapRuntime({
     })
   },
   prepareDeployment: applySystemPluginSelection,
+  beforeEnvironmentStart: async () => {
+    await access.request('POST', '/v1/classify', { token: accessLaunchToken, evidence: accessEvidence })
+    await logs.diagnostic('bootstrap', 'access.classification.submitted')
+  },
   ownsDshLifecycle: async () => await deployments.activation() !== undefined,
   onDshRecovered: async () => {
     await deployments.publishStatus({ recoveryMode: null })

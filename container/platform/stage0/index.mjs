@@ -185,6 +185,9 @@ const supervisor = new BootstrapSupervisor({
   home: process.getuid?.() === 0 ? '/home/node' : undefined,
   proxyLaunchToken,
   accessLaunchToken,
+  legacyAuthenticationConfigured: Boolean(
+    process.env.DSH_PROXY_USERNAME || process.env.DSH_PROXY_PASSWORD || process.env.DSH_PLATFORM_PASSWORD,
+  ),
   entrypoint: 'platform/bootstrap/index.mjs',
   seedRoot,
   report: (message, fields) => logs.diagnostic('stage0', message, fields),

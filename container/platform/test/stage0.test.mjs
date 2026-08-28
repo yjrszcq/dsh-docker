@@ -174,10 +174,11 @@ test('launches Access Manager without platform supplementary groups or inherited
   assert.throws(() => accessLaunchCommand({ node: 'node', script: 'access.mjs', uid: 0, gid: 0 }), /positive/)
   assert.deepEqual(accessLaunchEnvironment({
     environment: { PATH: '/usr/bin', HOME: '/root', DSH_PROXY_PASSWORD: 'secret', LEAK: 'value' },
-    dataRoot: '/data/platform', runRoot: '/run/dsh-platform',
+    dataRoot: '/data/platform', runRoot: '/run/dsh-platform', classificationToken: 'classification-token',
   }), {
     HOME: '/nonexistent', USER: 'dsh-access', LOGNAME: 'dsh-access', PATH: '/usr/bin',
     DSH_PLATFORM_DATA: '/data/platform', DSH_PLATFORM_RUN: '/run/dsh-platform',
+    DSH_ACCESS_CLASSIFICATION_TOKEN: 'classification-token',
   })
 })
 
@@ -289,6 +290,8 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     environment: {
       HOME: '/root', USER: 'root', LOGNAME: 'root', PATH: '/usr/local/bin:/usr/bin',
       DSH_PROXY_MASTER_KEY: 'must-not-leak', DSH_PROXY_LAUNCH_TOKEN: 'old-token',
+      DSH_PROXY_USERNAME: 'legacy-user', DSH_PROXY_PASSWORD: 'legacy-password',
+      DSH_PLATFORM_PASSWORD: 'legacy-platform-password',
     },
     dataRoot: '/data/platform',
     runRoot: '/run/dsh-platform',
@@ -297,6 +300,7 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     user: 'node',
     home: '/home/node',
     proxyLaunchToken: 'new-token',
+    legacyAuthenticationConfigured: true,
   }), {
     HOME: '/home/node',
     USER: 'node',
@@ -310,6 +314,7 @@ test('replaces the root login environment when lowering Bootstrap privileges', (
     DSH_PLATFORM_SEED: '/opt/dsh-platform/seed',
     DSH_BOOTSTRAP_VERSION: '1.0.0',
     DSH_PROXY_LAUNCH_TOKEN: 'new-token',
+    DSH_LEGACY_AUTHENTICATION_CONFIGURED: 'true',
   })
 })
 

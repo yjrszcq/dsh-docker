@@ -4,6 +4,7 @@ export class BootstrapRuntime {
     environment,
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
+    beforeEnvironmentStart = async () => {},
     onEnvironmentFatal = async () => {},
     onDshRecovered = async () => {},
     ownsDshLifecycle = async () => false,
@@ -33,6 +34,7 @@ export class BootstrapRuntime {
     this.recoveryAbort = new AbortController()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
+    this.beforeEnvironmentStart = beforeEnvironmentStart
     this.onEnvironmentFatal = onEnvironmentFatal
     this.onDshRecovered = onDshRecovered
     this.ownsDshLifecycle = ownsDshLifecycle
@@ -153,6 +155,7 @@ export class BootstrapRuntime {
   async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
     await this.controlPlane.start()
     try {
+      await this.beforeEnvironmentStart()
       await this.validateDeployment()
       await this.prepareDeployment()
       await this.environment.start()

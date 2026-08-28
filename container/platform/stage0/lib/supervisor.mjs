@@ -39,11 +39,15 @@ export function bootstrapLaunchEnvironment({
   home,
   proxyLaunchToken,
   accessLaunchToken,
+  legacyAuthenticationConfigured,
 }) {
   const inherited = { ...environment }
   delete inherited.DSH_PROXY_MASTER_KEY
   delete inherited.DSH_PROXY_LAUNCH_TOKEN
   delete inherited.DSH_ACCESS_LAUNCH_TOKEN
+  delete inherited.DSH_PROXY_USERNAME
+  delete inherited.DSH_PROXY_PASSWORD
+  delete inherited.DSH_PLATFORM_PASSWORD
   return {
     ...inherited,
     ...(home === undefined ? {} : {
@@ -59,6 +63,7 @@ export function bootstrapLaunchEnvironment({
     DSH_BOOTSTRAP_VERSION: bootstrapVersion,
     ...(proxyLaunchToken === undefined ? {} : { DSH_PROXY_LAUNCH_TOKEN: proxyLaunchToken }),
     ...(accessLaunchToken === undefined ? {} : { DSH_ACCESS_LAUNCH_TOKEN: accessLaunchToken }),
+    DSH_LEGACY_AUTHENTICATION_CONFIGURED: legacyAuthenticationConfigured === true ? 'true' : 'false',
   }
 }
 
@@ -94,6 +99,7 @@ export class BootstrapSupervisor {
     home,
     proxyLaunchToken,
     accessLaunchToken,
+    legacyAuthenticationConfigured = false,
   }) {
     this.slots = slots
     this.dataRoot = dataRoot
@@ -111,6 +117,7 @@ export class BootstrapSupervisor {
     this.home = home
     this.proxyLaunchToken = proxyLaunchToken
     this.accessLaunchToken = accessLaunchToken
+    this.legacyAuthenticationConfigured = legacyAuthenticationConfigured
     this.child = undefined
     this.requests = new Map()
     this.transition = Promise.resolve()
@@ -157,6 +164,7 @@ export class BootstrapSupervisor {
         home: this.home,
         proxyLaunchToken: this.proxyLaunchToken,
         accessLaunchToken: this.accessLaunchToken,
+        legacyAuthenticationConfigured: this.legacyAuthenticationConfigured,
       }),
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     })

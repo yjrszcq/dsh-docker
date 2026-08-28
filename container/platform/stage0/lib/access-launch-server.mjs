@@ -44,7 +44,7 @@ export function accessLaunchCommand({ node, script, uid, gid }) {
   }
 }
 
-export function accessLaunchEnvironment({ environment = process.env, dataRoot, runRoot }) {
+export function accessLaunchEnvironment({ environment = process.env, dataRoot, runRoot, classificationToken }) {
   return {
     HOME: '/nonexistent',
     USER: 'dsh-access',
@@ -52,6 +52,7 @@ export function accessLaunchEnvironment({ environment = process.env, dataRoot, r
     PATH: environment.PATH ?? '/usr/local/bin:/usr/bin:/bin',
     DSH_PLATFORM_DATA: dataRoot,
     DSH_PLATFORM_RUN: runRoot,
+    DSH_ACCESS_CLASSIFICATION_TOKEN: classificationToken,
   }
 }
 
@@ -105,7 +106,9 @@ export class AccessLaunchBroker {
     if (this.status().running) return this.status()
     const command = accessLaunchCommand({ node: this.node, script: this.script, uid: this.uid, gid: this.gid })
     const child = this.spawnImpl(command.executable, command.args, {
-      env: accessLaunchEnvironment({ dataRoot: this.dataRoot, runRoot: this.runRoot }),
+      env: accessLaunchEnvironment({
+        dataRoot: this.dataRoot, runRoot: this.runRoot, classificationToken: this.token,
+      }),
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     })
     this.child = child
@@ -118,6 +121,9 @@ export class AccessLaunchBroker {
       )))
       child.on('message', message => {
         if (message?.type === 'ready' && message.componentReady === true) resolve()
+        if (message?.type === 'diagnostic' && typeof message.message === 'string') {
+          void this.report(message.message, message.fields ?? {})
+        }
       })
     })
     let timer
