@@ -72,6 +72,34 @@ test('gateway propagates listener failures without creating a DSH process', asyn
     && entry.fields.error.message === 'bind failed'), true)
 })
 
+test('gateway can expose an isolated Management listener from the same process', async () => {
+  const signalSource = new EventEmitter()
+  const servers = []
+  const running = runGateway(config, {
+    externalHost: '127.0.0.1',
+    externalPort: 8080,
+    managementPort: 8081,
+    managementHost: '127.0.0.1',
+    gatewayFactory: options => {
+      const server = new FakeServer()
+      server.options = options
+      servers.push(server)
+      return server
+    },
+    accessClient: { request: async () => ({ state: 'recovery-required' }) },
+    signalSource,
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(servers.length, 2)
+  assert.deepEqual(servers[0].bound, { host: '127.0.0.1', port: 8080 })
+  assert.deepEqual(servers[1].bound, { host: '127.0.0.1', port: 8081 })
+  assert.equal(servers[0].options.surface, 'compat')
+  assert.equal(servers[1].options.surface, 'management')
+  signalSource.emit('SIGTERM')
+  assert.equal(await running, 0)
+  assert.equal(servers.every(server => server.listening === false), true)
+})
+
 test('gateway retains a recent platform status while Management is handed off', async () => {
   const signalSource = new EventEmitter()
   const server = new FakeServer()

@@ -21,7 +21,7 @@ const report = (message, fields) => logs.diagnostic('gateway', message, fields)
 
 try {
   const config = await loadConfig()
-  process.exitCode = await runGateway(config, { report })
+  process.exitCode = await runGateway(config, { report, managementPort: config.managementPort })
 } catch (error) {
   if (error instanceof UsageError) {
     await logs.diagnostic('gateway', 'gateway.configuration.failed', { error, level: 'warning' })

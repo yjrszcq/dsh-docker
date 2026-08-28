@@ -22,7 +22,7 @@ export const MANAGEMENT_UI_PREFIX = '/_dsh_platform/console/'
 const EXTERNAL_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'user-skills', 'settings-document', 'user-plugins', 'proxy', 'proxy/provider-inventory', 'files/config', 'files/list', 'files/stat', 'files/content', 'files/download', 'files/tasks'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'start-dsh', 'stop-dsh', 'restart-dsh', 'runtime/reset', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'user-skills/action', 'user-plugins/apply', 'proxy/test', 'terminal/sessions', 'files/upload', 'files/tasks'])],
-  ['PUT', new Set(['channel', 'automatic-check', 'proxy', 'settings-document', 'files/content'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'proxy', 'settings-document', 'files/content'])],
 ])
 const TERMINAL_SESSION_ROUTE = /^terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const TERMINAL_STREAM_ROUTE = /^\/_dsh_platform\/api\/v1\/terminal\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/stream$/
@@ -31,7 +31,7 @@ const PROXY_TEST_TASK_ROUTE = /^proxy\/test\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-
 const PLUGIN_MANAGEMENT_ROUTES = new Map([
   ['GET', new Set(['status', 'events', 'logs', 'logs/stream', 'rollback-plan', 'bundled-plugins', 'system-skills', 'settings-document', 'proxy', 'proxy/provider-inventory'])],
   ['POST', new Set(['check', 'update', 'holds/retry', 'rollback', 'return-stable', 'restart-dsh', 'bundled-plugins/action', 'bundled-plugins/toggle', 'bundled-plugins/recovery-action', 'bundled-plugins/discard', 'system-skills/action', 'proxy/test'])],
-  ['PUT', new Set(['channel', 'automatic-check', 'proxy', 'settings-document'])],
+  ['PUT', new Set(['channel', 'automatic-check', 'management-origin', 'proxy', 'settings-document'])],
 ])
 
 function isMaintenanceRoute(pathname) {
@@ -767,6 +767,7 @@ export function createGatewayServer({
   pluginBundleMaxBytes = DEFAULT_PLUGIN_BUNDLE_MAX_BYTES,
   pluginBundleCacheMaxBytes = DEFAULT_PLUGIN_BUNDLE_CACHE_MAX_BYTES,
   pluginBundleRecentWindowMs = 30_000,
+  surface = 'compat',
 }) {
   const failures = new Map()
   // Permit two reloads for each running Deployment. A third structured browser
@@ -836,6 +837,14 @@ export function createGatewayServer({
       }
       const url = new URL(request.url ?? '/', 'http://gateway.internal')
       const pathname = url.pathname
+      if (surface === 'management'
+        && !pathname.startsWith('/_dsh_platform/auth/')
+        && !pathname.startsWith('/_dsh_platform/access/')
+        && !pathname.startsWith('/_dsh_platform/console')
+        && !pathname.startsWith('/_dsh_platform/api/v1/')) {
+        rejectHttp(response, 404, 'not found')
+        return
+      }
       if (pathname === HEALTH_PATH) {
         if (options.isReady()) {
           response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
@@ -1007,6 +1016,10 @@ export function createGatewayServer({
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://gateway.internal').pathname
+      if (surface === 'management' && !pathname.startsWith('/_dsh_platform/api/v1/terminal/')) {
+        rejectUpgrade(socket, 404, 'Not Found')
+        return
+      }
       void (async () => {
         const access = await options.browserAuthentication.status()
         if (access.state !== 'initialized') {

@@ -27,6 +27,8 @@ export async function runGateway(config, {
   gatewayFactory = createGatewayServer,
   externalHost = EXTERNAL_HOST,
   externalPort = EXTERNAL_PORT,
+  managementPort = null,
+  managementHost = externalHost,
   managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock',
   maintenanceSocketPath = process.env.DSH_PLATFORM_MAINTENANCE_SOCKET ?? '/run/dsh-platform/maintenance.sock',
   accessSocketPath = process.env.DSH_PLATFORM_ACCESS_SOCKET ?? '/run/dsh-platform/access/access.sock',
@@ -67,7 +69,20 @@ export async function runGateway(config, {
     browserAuthentication,
     platformStatus,
     report: record,
+    surface: 'compat',
   })
+  const managementServer = managementPort === null || managementPort === undefined
+    ? null
+    : gatewayFactory({
+      polyfill: false,
+      trustedHosts: config.trustedHosts,
+      managementSocketPath,
+      maintenanceSocketPath,
+      browserAuthentication,
+      platformStatus,
+      report: record,
+      surface: 'management',
+    })
   const platformStatusTimer = setInterval(() => {
     void refreshPlatformStatus().catch(() => {})
   }, platformStatusPollMs)
@@ -81,20 +96,29 @@ export async function runGateway(config, {
   signalSource.once('SIGINT', onSigint)
   signalSource.once('SIGTERM', onSigterm)
   try {
-    await record('gateway.starting', { externalHost, externalPort })
+    await record('gateway.starting', {
+      externalHost, externalPort,
+      ...(managementServer === null ? {} : { managementHost, managementPort }),
+    })
     await listen(server, externalPort, externalHost)
-    await record('gateway.ready', { externalHost, externalPort })
+    if (managementServer !== null) await listen(managementServer, managementPort, managementHost)
+    await record('gateway.ready', {
+      externalHost, externalPort,
+      ...(managementServer === null ? {} : { managementHost, managementPort }),
+    })
     const serverFailed = new Promise((_, reject) => server.once('error', reject))
     const signal = await Promise.race([receivedSignal, serverFailed])
     await record('gateway.stopping', { signal })
     await closeGatewayServer(server)
+    if (managementServer !== null) await closeGatewayServer(managementServer)
     await record('gateway.stopped')
     return 0
   } catch (error) {
     await record('gateway.fatal', { error })
-    if (server.listening) {
+    if (server.listening || managementServer?.listening) {
       try {
-        await closeGatewayServer(server)
+        if (server.listening) await closeGatewayServer(server)
+        if (managementServer?.listening) await closeGatewayServer(managementServer)
       } catch (closeError) {
         await record('gateway.stop.failed', { error: closeError, cause: error instanceof Error ? error.message : String(error) })
       }

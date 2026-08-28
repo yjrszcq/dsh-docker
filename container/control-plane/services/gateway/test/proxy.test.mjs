@@ -882,3 +882,25 @@ test('only exact terminal WebSocket upgrades reach the Maintenance Unix socket',
     await Promise.all([closeGatewayServer(gateway), close(upstream), close(maintenance)])
   }
 })
+
+test('management surface refuses DSH routes while retaining its console surface', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}),
+    upstreamPort,
+    surface: 'management',
+  })
+  const port = await listen(gateway)
+  try {
+    const dsh = await request(port, '/', { accept: 'text/html', host: '127.0.0.1' })
+    assert.equal(dsh.status, 404)
+    const api = await request(port, '/api/v1/status', { host: '127.0.0.1' })
+    assert.equal(api.status, 404)
+    const consoleResponse = await request(port, '/_dsh_platform/console/', { host: '127.0.0.1' })
+    assert.notEqual(consoleResponse.status, 404)
+  } finally {
+    await closeGatewayServer(gateway)
+    await close(upstream)
+  }
+})
