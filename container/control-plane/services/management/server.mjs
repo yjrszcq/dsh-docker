@@ -912,20 +912,25 @@ export function createManagementServer({
   })
   server.on('upgrade', (request, socket, head) => {
     let pathname = 'invalid-url'
-    try {
+    void (async () => {
       pathname = new URL(request.url ?? '/', 'http://management.internal').pathname
+      if (!await authorizeInternal(request)) {
+        socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+        return
+      }
       if (!pathname.startsWith(API_PREFIX)) throw new Error('not found')
       const match = TERMINAL_STREAM_ROUTE.exec(pathname.slice(API_PREFIX.length))
       if (match === null) throw new Error('not found')
       terminalSessions.upgrade(request, socket, head, match[1])
-    } catch (error) {
+    })().catch(error => {
       void logs.diagnostic('platform-management', 'management.terminal-upgrade.failed', {
         error,
         level: error?.statusCode === 404 ? 'warning' : 'error',
         pathname,
       })
-      if (!socket.destroyed) socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
-    }
+      const status = error?.statusCode === 503 ? '503 Service Unavailable' : '404 Not Found'
+      if (!socket.destroyed) socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
+    })
   })
   server.once('close', () => { proxyWatchClosed = true })
   if (recoverUserPluginTransaction !== undefined) server.once('listening', () => {

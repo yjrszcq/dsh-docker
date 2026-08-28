@@ -12,6 +12,7 @@ import {
 } from '../../control-plane/services/access-manager/lib/credentials.mjs'
 import { AuthenticationLimiter } from '../../control-plane/services/access-manager/lib/rate-limiter.mjs'
 import { AccessService, createAccessHttpServer } from '../../control-plane/services/access-manager/lib/server.mjs'
+import { consumeInternalCapability } from '../lib/access-capability.mjs'
 import { BrowserSessionStore } from '../../control-plane/services/access-manager/lib/sessions.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { collectAccessEvidence } from '../bootstrap/lib/access-evidence.mjs'
@@ -84,6 +85,43 @@ test('privileged capabilities are single-use and bound to execution details', ()
   assert.equal(store.consume(third.token, account, {
     audience: 'management', method: 'GET', target: '/_dsh_platform/api/v1/status',
   }), undefined)
+})
+
+test('final execution capability checks distinguish denial from Access Manager failure', async () => {
+  const calls = []
+  const access = {
+    async request(method, path, body) {
+      calls.push({ method, path, body })
+      return { authorized: true }
+    },
+  }
+  assert.equal(await consumeInternalCapability(access, {
+    token: 'token', audience: 'management', method: 'POST', target: '/target',
+  }), true)
+  assert.deepEqual(calls, [{
+    method: 'POST', path: '/v1/capabilities/consume',
+    body: { token: 'token', audience: 'management', method: 'POST', target: '/target' },
+  }])
+
+  for (const statusCode of [401, 409, 500]) {
+    const failingAccess = {
+      async request() { throw Object.assign(new Error(`access ${statusCode}`), { statusCode }) },
+    }
+    if (statusCode === 401) {
+      assert.equal(await consumeInternalCapability(failingAccess, {
+        token: 'token', audience: 'maintenance', method: 'GET', target: '/target',
+      }), false)
+    } else {
+      await assert.rejects(consumeInternalCapability(failingAccess, {
+        token: 'token', audience: 'maintenance', method: 'GET', target: '/target',
+      }), error => error.statusCode === (statusCode === 500 ? 503 : statusCode))
+    }
+  }
+  await assert.rejects(consumeInternalCapability({
+    async request() { throw Object.assign(new Error('socket unavailable'), { code: 'ECONNREFUSED' }) },
+  }, {
+    token: 'token', audience: 'management', method: 'GET', target: '/target',
+  }), error => error.statusCode === 503 && error.code === 'ECONNREFUSED')
 })
 
 test('Management origin transitions and continuations expire without changing authority', () => {

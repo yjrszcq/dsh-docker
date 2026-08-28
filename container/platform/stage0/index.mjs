@@ -21,6 +21,7 @@ import { readDeploymentStatus } from '../lib/deployment-status.mjs'
 import { createRecoveryServer, listenRecovery } from './lib/recovery-server.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
+import { consumeInternalCapability } from '../lib/access-capability.mjs'
 import { createMaintenanceServer, listenMaintenance } from './lib/maintenance-server.mjs'
 import { prepareUserSkillRoots, UserSkillManager } from '../../control-plane/services/management/user-skills.mjs'
 import { PersistentStateSnapshots } from '../../control-plane/modules/updater/lib/snapshots.mjs'
@@ -258,15 +259,9 @@ const maintenance = await createMaintenanceServer({
   authorize: async request => {
     const token = request.headers['x-dsh-internal-capability']
     if (typeof token !== 'string') return false
-    try {
-      const result = await access.request('POST', '/v1/capabilities/consume', {
-        token,
-        audience: 'maintenance',
-        method: request.method ?? 'GET',
-        target: request.url ?? '/',
-      })
-      return result.authorized === true
-    } catch { return false }
+    return consumeInternalCapability(access, {
+      token, audience: 'maintenance', method: request.method ?? 'GET', target: request.url ?? '/',
+    })
   },
   platformBusy: async () => {
     try {

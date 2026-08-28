@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { JsonlLogManager } from '../../modules/log-manager/index.mjs'
 import { createManagementServer, listenManagement } from './server.mjs'
 import { LocalApiClient } from '../../modules/updater/lib/client.mjs'
+import { consumeInternalCapability } from '../../../platform/lib/access-capability.mjs'
 import { MetadataClient, NpmRegistryClient } from '../../modules/updater/lib/metadata.mjs'
 import { TargetPreparer } from '../../modules/updater/lib/preparer.mjs'
 import { UpdateCoordinator } from '../../modules/updater/lib/coordinator.mjs'
@@ -200,15 +201,9 @@ server = createManagementServer({
     const token = request.headers['x-dsh-internal-capability']
     if (typeof token !== 'string') return false
     if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
-    try {
-      const result = await access.request('POST', '/v1/capabilities/consume', {
-        token,
-        audience: 'management',
-        method: request.method ?? 'GET',
-        target: request.url ?? '/',
-      })
-      return result.authorized === true
-    } catch { return false }
+    return consumeInternalCapability(access, {
+      token, audience: 'management', method: request.method ?? 'GET', target: request.url ?? '/',
+    })
   },
   createManagementOriginTransition: async (value, request) => {
     return access.request('POST', '/v1/management/transitions', {

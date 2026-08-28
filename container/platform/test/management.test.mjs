@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { request as httpRequest } from 'node:http'
-import { appendFile, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { createConnection } from 'node:net'
+import { appendFile, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -74,6 +75,48 @@ function rawRequest(socketPath, path, method = 'GET') {
     request.end()
   })
 }
+
+function rawUpgrade(socketPath, path) {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(socketPath)
+    const chunks = []
+    socket.once('connect', () => socket.write([
+      `GET ${path} HTTP/1.1`,
+      'Host: management.internal',
+      'Connection: Upgrade',
+      'Upgrade: websocket',
+      'Sec-WebSocket-Key: dGVzdC1rZXk=',
+      'Sec-WebSocket-Version: 13',
+      '', '',
+    ].join('\r\n')))
+    socket.on('data', chunk => chunks.push(chunk))
+    socket.once('error', reject)
+    socket.once('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
+}
+
+test('management preserves capability backend failures for HTTP and WebSocket requests', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-capability-'))
+  const logs = new JsonlLogManager({ root: join(root, 'logs') })
+  const authorizeInternal = async () => {
+    throw Object.assign(new Error('Access Manager unavailable'), { statusCode: 503 })
+  }
+  const server = createManagementServer({
+    coordinator: new Coordinator(), logs, authorizeInternal,
+    terminalSessions: { upgrade() { assert.fail('unauthorized terminal upgrade reached execution point') } },
+  })
+  const socketPath = join(root, 'management.sock')
+  await listenManagement(server, socketPath)
+  try {
+    const response = await rawRequest(socketPath, `${API_PREFIX}status`)
+    assert.equal(response.status, 503)
+    assert.equal(JSON.parse(response.body).error, 'Access Manager unavailable')
+    assert.match(await rawUpgrade(socketPath, `${API_PREFIX}terminal/sessions/00000000-0000-4000-8000-000000000000/stream`), /^HTTP\/1\.1 503 Service Unavailable/m)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('management socket exposes status, check, update, logs, and local rollback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-'))
