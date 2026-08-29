@@ -285,6 +285,14 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     })
     assert.equal(authenticated.authenticated, true)
     assert.doesNotMatch(JSON.stringify(authenticated), /salt|hash|password|verifier/i)
+    const recoveryStatus = await recovery.request('GET', '/v1/recovery/status')
+    const reset = await recovery.request('POST', '/v1/recovery/reset-access', {
+      revision: recoveryStatus.account.revision,
+      password: 'replacement administrator password',
+      managementPasswordAction: 'preserve',
+    })
+    assert.equal(reset.account.mainCredentialVersion, 2)
+    assert.doesNotMatch(JSON.stringify(reset), /salt|hash|password|verifier/i)
     await assert.rejects(
       recovery.request('POST', '/v1/initialize', { username: 'other', password: 'another password' }),
       error => error.statusCode === 404,
@@ -295,6 +303,68 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
       new Promise(resolve => recoveryServer.close(resolve)),
     ])
   }
+})
+
+test('atomically resets administrator access with an explicit additional-password action', async () => {
+  const { service, store } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'original administrator password', origin: 'https://dsh.example',
+  })
+  const additional = await service.resetRecoveryManagementPassword({
+    revision: initialized.account.revision,
+    password: 'original management password',
+  })
+
+  const preserved = await service.resetRecoveryAccess({
+    revision: additional.account.revision,
+    username: 'operator',
+    password: 'replacement administrator password',
+    managementPasswordAction: 'preserve',
+  })
+  let state = await store.state()
+  assert.equal(preserved.account.username, 'operator')
+  assert.equal(preserved.account.mainCredentialVersion, 2)
+  assert.equal(preserved.account.managementAdditionalCredential.version, 2)
+  assert.equal(await verifyCredential('replacement administrator password', state.account.mainCredential), true)
+  assert.equal(await verifyCredential('original management password', state.account.managementAdditionalCredential.verifier), true)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+
+  const disabled = await service.resetRecoveryAccess({
+    revision: preserved.account.revision,
+    managementPasswordAction: 'disable',
+  })
+  assert.deepEqual(disabled.account.managementAdditionalCredential, { enabled: false, version: 3 })
+
+  const reset = await service.resetRecoveryAccess({
+    revision: disabled.account.revision,
+    managementPasswordAction: 'reset',
+    managementPassword: 'replacement management password',
+  })
+  state = await store.state()
+  assert.deepEqual(reset.account.managementAdditionalCredential, { enabled: true, version: 4 })
+  assert.equal(await verifyCredential('replacement management password', state.account.managementAdditionalCredential.verifier), true)
+
+  const revision = reset.account.revision
+  await assert.rejects(service.resetRecoveryAccess({
+    revision,
+    managementPasswordAction: 'reset',
+    managementPassword: 'replacement administrator password',
+  }), error => error.code === 'PASSWORDS_MUST_DIFFER')
+  assert.equal((await service.recoveryStatus()).account.revision, revision)
+  await assert.rejects(service.resetRecoveryAccess({
+    revision,
+    password: 'another administrator password',
+    managementPasswordAction: 'unknown',
+  }), error => error.code === 'REQUEST_INVALID')
+  assert.equal((await service.recoveryStatus()).account.revision, revision)
+  await assert.rejects(service.resetRecoveryAccess({
+    revision,
+    managementPasswordAction: 'preserve',
+  }), error => error.code === 'REQUEST_INVALID')
+  assert.equal((await service.recoveryStatus()).account.revision, revision)
 })
 
 test('authenticates normalized usernames without exposing which credential failed', async () => {

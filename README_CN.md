@@ -154,7 +154,7 @@ docker run -d \
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
-docker exec -it --user root deepseek-harness dsh-platform access reset-password
+docker exec -it --user root deepseek-harness dsh-platform access reset
 ```
 
 常用命令：

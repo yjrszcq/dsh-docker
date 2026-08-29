@@ -2073,6 +2073,7 @@ test('management CLI creates a root-only one-time migration setup key', async ()
     getuid: () => 0,
     input: tty,
     output: tty,
+    ask: async () => 'y',
     write: line => output.push(line),
   }), 0)
   assert.deepEqual(calls, [
@@ -2086,6 +2087,270 @@ test('management CLI creates a root-only one-time migration setup key', async ()
     argv: ['access', 'begin-migration'], access: { request: async () => ({}) },
     getuid: () => 1000, input: tty, output: tty,
   }), /requires root/)
+})
+
+test('management CLI defaults every direct access mutation to no', async () => {
+  const tty = { isTTY: true }
+  for (const operation of [
+    'set-username',
+    'reset-password',
+    'reset-management-password',
+    'disable-management-password',
+    'begin-migration',
+  ]) {
+    const calls = []
+    const prompts = []
+    const output = []
+    assert.equal(await runCli({
+      argv: ['access', operation],
+      access: {
+        request: async (method, path, body) => {
+          calls.push({ method, path, body })
+          return {
+            state: 'initialized',
+            account: {
+              revision: 'revision-a',
+              managementAdditionalCredential: { enabled: true, version: 2 },
+            },
+          }
+        },
+      },
+      getuid: () => 0,
+      input: tty,
+      output: tty,
+      ask: async prompt => {
+        prompts.push(prompt)
+        return ''
+      },
+      readPassword: async () => { throw new Error('password must not be requested') },
+      write: line => output.push(line),
+    }), 0)
+    assert.deepEqual(calls, [
+      { method: 'GET', path: '/v1/recovery/status', body: undefined },
+    ])
+    assert.equal(prompts.length, 1)
+    assert.match(prompts[0], /y\/\[n\]: $/)
+    assert.deepEqual(JSON.parse(output[0]), { status: 'cancelled' })
+  }
+})
+
+test('management CLI resets administrator access through one atomic recovery request', async () => {
+  assert.deepEqual(parseCli(['access', 'reset']), { command: 'access', operation: 'reset' })
+  const calls = []
+  const prompts = []
+  const output = []
+  const passwords = ['new administrator password', 'new management password']
+  const answers = ['y', 'operator', 'y', '3']
+  const tty = { isTTY: true }
+  assert.equal(await runCli({
+    argv: ['access', 'reset'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push({ method, path, body })
+        if (method === 'GET') return {
+          state: 'initialized',
+          account: {
+            revision: 'revision-a',
+            managementAdditionalCredential: { enabled: true, version: 2 },
+          },
+        }
+        return { account: { revision: 'revision-b', mainCredentialVersion: 2 } }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    readPassword: async (_input, _output, prompt) => {
+      prompts.push(prompt)
+      return passwords.shift()
+    },
+    ask: async prompt => {
+      prompts.push(prompt)
+      return answers.shift()
+    },
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(prompts, [
+    'Change administrator username? y/[n]: ',
+    'New administrator username: ',
+    'Change administrator password? y/[n]: ',
+    'New administrator password: ',
+    'Management additional password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+    'New management password: ',
+  ])
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/v1/recovery/status', body: undefined },
+    {
+      method: 'POST',
+      path: '/v1/recovery/reset-access',
+      body: {
+        revision: 'revision-a',
+        username: 'operator',
+        password: 'new administrator password',
+        managementPasswordAction: 'reset',
+        managementPassword: 'new management password',
+      },
+    },
+  ])
+  assert.equal(JSON.parse(output[0]).account.mainCredentialVersion, 2)
+})
+
+test('management CLI skips the additional-password choice when it is disabled', async () => {
+  const calls = []
+  const answers = ['n', 'y']
+  const tty = { isTTY: true }
+  assert.equal(await runCli({
+    argv: ['access', 'reset'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push({ method, path, body })
+        if (method === 'GET') return {
+          state: 'initialized',
+          account: {
+            revision: 'revision-a',
+            managementAdditionalCredential: { enabled: false, version: 1 },
+          },
+        }
+        return { account: { revision: 'revision-b' } }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    readPassword: async () => 'new administrator password',
+    ask: async () => answers.shift(),
+    write: () => {},
+  }), 0)
+  assert.deepEqual(calls.at(-1), {
+    method: 'POST',
+    path: '/v1/recovery/reset-access',
+    body: {
+      revision: 'revision-a',
+      password: 'new administrator password',
+      managementPasswordAction: 'preserve',
+    },
+  })
+})
+
+test('management CLI preserves or disables an existing additional password by choice', async () => {
+  const tty = { isTTY: true }
+  for (const [choice, action] of [['', 'preserve'], ['2', 'disable']]) {
+    let submitted
+    const answers = ['n', 'y', choice]
+    assert.equal(await runCli({
+      argv: ['access', 'reset'],
+      access: {
+        request: async (method, _path, body) => {
+          if (method === 'GET') return {
+            state: 'initialized',
+            account: {
+              revision: 'revision-a',
+              managementAdditionalCredential: { enabled: true, version: 2 },
+            },
+          }
+          submitted = body
+          return { account: { revision: 'revision-b' } }
+        },
+      },
+      getuid: () => 0,
+      input: tty,
+      output: tty,
+      readPassword: async () => 'new administrator password',
+      ask: async () => answers.shift(),
+      write: () => {},
+    }), 0)
+    assert.equal(submitted.managementPasswordAction, action)
+    assert.equal('managementPassword' in submitted, false)
+  }
+})
+
+test('management CLI rejects ambiguous choices and cancels an empty combined reset', async () => {
+  const tty = { isTTY: true }
+  for (const answers of [['yes'], ['n', 'n', '4']]) {
+    const calls = []
+    await assert.rejects(runCli({
+      argv: ['access', 'reset'],
+      access: {
+        request: async (method, path, body) => {
+          calls.push({ method, path, body })
+          return {
+            state: 'initialized',
+            account: {
+              revision: 'revision-a',
+              managementAdditionalCredential: { enabled: true, version: 2 },
+            },
+          }
+        },
+      },
+      getuid: () => 0,
+      input: tty,
+      output: tty,
+      ask: async () => answers.shift(),
+      readPassword: async () => { throw new Error('password must not be requested') },
+      write: () => {},
+    }), /choice must be y or n|management password choice must be 1, 2, or 3/)
+    assert.deepEqual(calls, [
+      { method: 'GET', path: '/v1/recovery/status', body: undefined },
+    ])
+  }
+
+  const calls = []
+  const output = []
+  const answers = ['n', 'n', '']
+  assert.equal(await runCli({
+    argv: ['access', 'reset'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push({ method, path, body })
+        return {
+          state: 'initialized',
+          account: {
+            revision: 'revision-a',
+            managementAdditionalCredential: { enabled: true, version: 2 },
+          },
+        }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async () => answers.shift(),
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/v1/recovery/status', body: undefined },
+  ])
+  assert.deepEqual(JSON.parse(output[0]), { status: 'cancelled' })
+})
+
+test('management CLI does not submit partially collected access recovery input', async () => {
+  const calls = []
+  const answers = ['y', 'operator', 'y']
+  const tty = { isTTY: true }
+  await assert.rejects(runCli({
+    argv: ['access', 'reset'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push({ method, path, body })
+        return {
+          state: 'initialized',
+          account: {
+            revision: 'revision-a',
+            managementAdditionalCredential: { enabled: true, version: 2 },
+          },
+        }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async () => answers.shift(),
+    readPassword: async () => { throw new Error('access recovery cancelled') },
+    write: () => {},
+  }), /access recovery cancelled/)
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/v1/recovery/status', body: undefined },
+  ])
 })
 
 test('update wait ignores a terminal state from an older task', async () => {

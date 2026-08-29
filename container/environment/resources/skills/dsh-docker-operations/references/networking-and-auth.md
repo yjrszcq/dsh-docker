@@ -30,10 +30,10 @@ Lost credentials can only be recovered by Root from an interactive container TTY
 
 ```sh
 docker exec -it --user root <container> dsh-platform access status
-docker exec -it --user root <container> dsh-platform access reset-password
+docker exec -it --user root <container> dsh-platform access reset
 ```
 
-Other recovery commands include `access set-username`, `access reset-management-password`, and `access disable-management-password`. Existing deployments without a new account enter `migration-required`; `access begin-migration` issues a single-use, ten-minute setup key from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
+The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the additional Management password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. Existing deployments without a new account enter `migration-required`; `access begin-migration` issues a single-use, ten-minute setup key from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
 
 Do not read configured passwords from environment files, `/proc`, process listings, or service memory. Ask the user to authenticate through the normal browser flow.
 

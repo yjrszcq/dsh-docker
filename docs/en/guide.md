@@ -332,11 +332,14 @@ Administrator recovery is Root-only and requires an interactive TTY. Passwords a
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access reset
 docker exec -it --user root deepseek-harness dsh-platform access set-username
 docker exec -it --user root deepseek-harness dsh-platform access reset-password
 docker exec -it --user root deepseek-harness dsh-platform access reset-management-password
 docker exec -it --user root deepseek-harness dsh-platform access disable-management-password
 ```
+
+`access reset` is the recommended combined recovery command. It independently asks whether to change the username and main password. When an additional Management password is enabled, the same atomic operation presents a numbered choice to preserve it, disable it, or replace it. Nothing is saved until every selected prompt is complete, so cancelling or losing the TTY halfway through does not partially update the account. All yes/no recovery prompts accept only `y` or `n` and show their default in brackets. The narrower interactive commands remain available for single-credential recovery. A completed account recovery invalidates existing DSH and Management browser sessions.
 
 An existing pre-account deployment enters `migration-required`. Run `dsh-platform access begin-migration` from the same Root TTY to issue a single-use setup key valid for ten minutes, then use the browser migration page to set the new username and main password. A new key invalidates the previous key. Legacy environment passwords are evidence only: their values are stripped before Bootstrap and DSH start and are never retained as a hidden login bypass.
 

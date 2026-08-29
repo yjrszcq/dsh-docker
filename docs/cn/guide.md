@@ -332,11 +332,14 @@ Access Manager 在 `/data/platform/state/access` 中持有一个持久化本地�
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
+docker exec -it --user root deepseek-harness dsh-platform access reset
 docker exec -it --user root deepseek-harness dsh-platform access set-username
 docker exec -it --user root deepseek-harness dsh-platform access reset-password
 docker exec -it --user root deepseek-harness dsh-platform access reset-management-password
 docker exec -it --user root deepseek-harness dsh-platform access disable-management-password
 ```
+
+推荐使用组合恢复命令 `access reset`。它会分别询问是否修改用户名和主密码；当前已启用管理中心附加密码时，还会用编号菜单选择保留、关闭或重设附加密码。所有选定输入完成前不会保存，途中取消或 TTY 断开不会留下只改了一半的账户状态。所有是/否恢复提示只接受 `y` 或 `n`，方括号标识默认项。原有细分交互命令继续用于单项凭据恢复。成功完成账户恢复后，现有 DSH 与 Management 浏览器会话都会失效。
 
 已有但没有新版账户的部署进入 `migration-required`。在同一个 Root TTY 中执行 `dsh-platform access begin-migration`，生成十分钟有效且单次使用的 setup key，再通过浏览器迁移页设置新用户名和主密码；新 key 会使旧 key 失效。旧环境密码只作为迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 

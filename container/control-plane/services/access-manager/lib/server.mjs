@@ -428,6 +428,43 @@ export class AccessService {
     })
   }
 
+  async resetRecoveryAccess(value) {
+    const action = value.managementPasswordAction
+    if (!['preserve', 'disable', 'reset'].includes(action)) {
+      throw new AccessError('REQUEST_INVALID', 'management password action is invalid')
+    }
+    const username = value.username === undefined ? null : normalizeUsername(value.username)
+    const mainPassword = value.password === undefined ? null : normalizePassword(value.password)
+    const managementPassword = action === 'reset' ? normalizePassword(value.managementPassword) : null
+    if (username === null && mainPassword === null && action === 'preserve') {
+      throw new AccessError('REQUEST_INVALID', 'no access changes were selected')
+    }
+    if (managementPassword !== null && mainPassword !== null && managementPassword === mainPassword) {
+      throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+    }
+    return this.replaceRecoveryAccount(value, async (account, current) => {
+      if (managementPassword !== null && mainPassword === null
+        && await verifyCredential(managementPassword, current.mainCredential)) {
+        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+      }
+      if (username !== null) account.username = username
+      if (mainPassword !== null) {
+        const verifier = await this.store.createVerifier(mainPassword)
+        account.mainCredential = { ...verifier, version: account.mainCredential.version + 1 }
+      }
+      if (action === 'preserve') return
+      const version = account.managementAdditionalCredential.version + 1
+      account.managementAdditionalCredential = action === 'disable'
+        ? { enabled: false, version, verifier: null, changedAt: new Date().toISOString() }
+        : {
+            enabled: true,
+            version,
+            verifier: { ...await this.store.createVerifier(managementPassword), version },
+            changedAt: new Date().toISOString(),
+          }
+    })
+  }
+
   async resetRecoveryManagementPassword(value) {
     const verifier = await this.store.createVerifier(value.password)
     return this.replaceRecoveryAccount(value, async account => {
@@ -650,6 +687,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
         const value = await body(request)
         if (request.method === 'GET' && pathname === '/v1/recovery/status') return send(response, 200, await service.recoveryStatus())
         if (request.method === 'POST' && pathname === '/v1/recovery/set-username') return send(response, 200, await service.setRecoveryUsername(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/reset-access') return send(response, 200, await service.resetRecoveryAccess(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-password') return send(response, 200, await service.resetRecoveryPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-management-password') return send(response, 200, await service.resetRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))

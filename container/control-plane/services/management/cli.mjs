@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|set-username|reset-password|reset-management-password|disable-management-password|begin-migration|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|reset|set-username|reset-password|reset-management-password|disable-management-password|begin-migration|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -42,7 +42,7 @@ export function parseCli(argv) {
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 1 && ['status', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'begin-migration'].includes(rest[0])) {
+  if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'begin-migration'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
   throw new Error(usage())
@@ -107,6 +107,21 @@ function json(value) {
   return JSON.stringify(value)
 }
 
+function managementPasswordAction(value) {
+  const normalized = value.trim()
+  if (['', '1'].includes(normalized)) return 'preserve'
+  if (normalized === '2') return 'disable'
+  if (normalized === '3') return 'reset'
+  throw new Error('management password choice must be 1, 2, or 3')
+}
+
+function affirmative(value, label) {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'y') return true
+  if (['', 'n'].includes(normalized)) return false
+  throw new Error(`${label} choice must be y or n`)
+}
+
 async function readSecret(input, output, prompt) {
   output.write(prompt)
   if (typeof input.setRawMode !== 'function') throw new Error('password input must be an interactive TTY')
@@ -148,6 +163,11 @@ export async function runCli({
   input = stdin,
   output = stdout,
   getuid = () => process.getuid?.(),
+  readPassword = readSecret,
+  ask = async question => {
+    const prompt = createInterface({ input, output })
+    try { return await prompt.question(question) } finally { prompt.close() }
+  },
 } = {}) {
   const parsed = parseCli(argv)
   if (parsed.command === 'access') {
@@ -158,24 +178,63 @@ export async function runCli({
       write(json(current))
       return 0
     }
+    const confirm = async question => affirmative(await ask(question), 'confirmation')
+    const cancel = () => {
+      write(json({ status: 'cancelled' }))
+      return 0
+    }
     if (parsed.operation === 'begin-migration') {
+      if (!await confirm('Begin administrator access migration? y/[n]: ')) return cancel()
       write(json(await access.request('POST', '/v1/recovery/begin-migration')))
       return 0
     }
     if (current.account === null) throw new Error('administrator account is unavailable')
     const revision = current.account.revision
     if (parsed.operation === 'set-username') {
-      const prompt = createInterface({ input, output })
-      const username = await prompt.question('New administrator username: ')
-      prompt.close()
+      if (!await confirm('Change administrator username? y/[n]: ')) return cancel()
+      const username = await ask('New administrator username: ')
       write(json(await access.request('POST', '/v1/recovery/set-username', { revision, username })))
       return 0
     }
     if (parsed.operation === 'disable-management-password') {
+      if (!await confirm('Disable management password? y/[n]: ')) return cancel()
       write(json(await access.request('POST', '/v1/recovery/disable-management-password', { revision })))
       return 0
     }
-    const password = await readSecret(input, output, parsed.operation === 'reset-management-password'
+    if (parsed.operation === 'reset') {
+      let username
+      let password
+      if (affirmative(await ask('Change administrator username? y/[n]: '), 'username')) {
+        username = await ask('New administrator username: ')
+      }
+      if (affirmative(await ask('Change administrator password? y/[n]: '), 'password')) {
+        password = await readPassword(input, output, 'New administrator password: ')
+      }
+      let action = 'preserve'
+      let managementPassword
+      if (current.account.managementAdditionalCredential.enabled) {
+        action = managementPasswordAction(await ask(
+          'Management additional password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+        ))
+        if (action === 'reset') {
+          managementPassword = await readPassword(input, output, 'New management password: ')
+        }
+      }
+      if (username === undefined && password === undefined && action === 'preserve') return cancel()
+      write(json(await access.request('POST', '/v1/recovery/reset-access', {
+        revision,
+        ...(username === undefined ? {} : { username }),
+        ...(password === undefined ? {} : { password }),
+        managementPasswordAction: action,
+        ...(managementPassword === undefined ? {} : { managementPassword }),
+      })))
+      return 0
+    }
+    const confirmed = parsed.operation === 'reset-management-password'
+      ? await confirm('Set or change management password? y/[n]: ')
+      : await confirm('Change administrator password? y/[n]: ')
+    if (!confirmed) return cancel()
+    const password = await readPassword(input, output, parsed.operation === 'reset-management-password'
       ? 'New management password: ' : 'New administrator password: ')
     const route = parsed.operation === 'reset-management-password'
       ? '/v1/recovery/reset-management-password' : '/v1/recovery/reset-password'
