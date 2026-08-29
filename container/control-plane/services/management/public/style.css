@@ -77,6 +77,7 @@ button { letter-spacing: 0; }
 .auth-additional-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .auth-additional-heading > .toggle { width: auto; }
 .auth-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-subsection-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .auth-origin-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
 .auth-origin-field label { display: grid; gap: 7px; }
 .auth-security-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }

@@ -322,7 +322,7 @@ docker run -d \
 
 Access Manager 在 `/data/platform/state/access` 中持有一个持久化本地管理员账户。全新安装会阻断 DSH、API、WebSocket 和管理中心，直到浏览器注册用户名和主密码；并发注册只会收敛到一个账户。已初始化状态损坏时进入 `recovery-required`，不会静默创建替代账户。
 
-登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接，并创建同时绑定其 Origin 和来源 DSH Session 的独立 Management Session。无论兼容模式还是强隔离 Origin，直接访问管理中心都必须先回到经过验证的 DSH Origin 完成主密码登录；已启用的管理中心密码只构成第二层验证，不能替代主登录。DSH 注销、会话过期或凭据失效会传递使关联 Management Session 失效。“认证设置”仍可分别撤销两类会话，修改凭据会通过 credential version 使旧会话失效。
+登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接，并创建同时绑定其 Origin 和来源 DSH Session 的独立 Management Session。无论兼容模式还是强隔离 Origin，直接访问管理中心都必须先回到经过验证的 DSH Origin 完成主密码登录；已启用的管理中心密码只构成第二层验证，不能替代主登录。认证设置使用当前主密码确认用户名、主密码和管理中心密码的修改，不要求再次输入旧管理中心密码；重设或关闭管理中心密码会注销现有 Management Session。DSH 注销、会话过期或凭据失效会传递使关联 Management Session 失效。“认证设置”仍可分别撤销两类会话，修改凭据会通过 credential version 使旧会话失效。
 
 DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览器导航会在认证前收到 Gateway 的通用等待或恢复页。页面不泄露 Runtime 错误细节，并提供管理中心恢复入口；非页面、API 和 WebSocket 请求继续返回对应的服务不可用响应，不会收到 HTML。DSH 恢复 Ready 后，普通页面访问仍须持有有效的 DSH Session。
 

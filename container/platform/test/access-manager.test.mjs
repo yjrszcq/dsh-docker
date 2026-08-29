@@ -218,6 +218,7 @@ async function fixture(options = {}) {
 async function loginManagement(service, {
   dshOrigin = 'http://dsh.example:3080',
   targetOrigin = dshOrigin,
+  managementPassword,
 } = {}) {
   const dsh = await service.loginDsh({
     username: 'admin', password: 'correct horse battery staple', origin: dshOrigin,
@@ -225,9 +226,16 @@ async function loginManagement(service, {
   const handoff = await service.createManagementHandoff({
     dshToken: dsh.session.token, dshOrigin, targetOrigin,
   })
-  const management = await service.consumeManagementHandoff({
+  let management = await service.consumeManagementHandoff({
     token: handoff.handoff.token, origin: targetOrigin,
   })
+  if (management.pending !== undefined && managementPassword !== undefined) {
+    management = await service.completeManagementLogin({
+      pendingToken: management.pending.token,
+      origin: targetOrigin,
+      password: managementPassword,
+    })
+  }
   return { dsh, management }
 }
 
@@ -500,8 +508,12 @@ test('stores only digests for origin-bound DSH sessions with absolute and idle e
 test('probes the current instance before atomically changing Management origin', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
-  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const login = await loginManagement(service)
+  const initialized = await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  await service.resetRecoveryManagementPassword({
+    revision: initialized.account.revision,
+    password: 'separate management password',
+  })
+  const login = await loginManagement(service, { managementPassword: 'separate management password' })
   const issued = await service.issueCapability({
     managementToken: login.management.session.token,
     origin: 'http://dsh.example:3080',
@@ -716,6 +728,47 @@ test('requires fresh authentication and applies credential-specific session revo
   assert.equal((await service.validateSession({
     kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
   })).authenticated, false)
+})
+
+test('changes the Management console password using only the current main password', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const target = '/_dsh_platform/api/v1/auth-settings'
+  const update = async (managementPassword, body) => {
+    const login = await loginManagement(service, { managementPassword })
+    const capability = await service.issueCapability({
+      managementToken: login.management.session.token,
+      origin: 'http://dsh.example:3080',
+      csrfToken: login.management.session.csrfToken,
+      requireCsrf: true,
+      audience: 'management', method: 'PUT', target,
+    })
+    return service.updateAuthenticationSettings({
+      internalCapability: capability.capability.token,
+      method: 'PUT', target,
+      currentPassword: 'correct horse battery staple',
+      ...body,
+    })
+  }
+
+  const enabled = await update(undefined, {
+    additionalEnabled: true,
+    additionalPassword: 'first management console password',
+  })
+  assert.equal(enabled.account.managementAdditionalCredential.enabled, true)
+  assert.equal(enabled.currentManagementSessionRevoked, true)
+
+  const reset = await update('first management console password', {
+    additionalEnabled: true,
+    additionalPassword: 'replacement management password',
+  })
+  assert.equal(reset.account.managementAdditionalCredential.enabled, true)
+  assert.equal(reset.currentManagementSessionRevoked, true)
+
+  const disabled = await update('replacement management password', { additionalEnabled: false })
+  assert.equal(disabled.account.managementAdditionalCredential.enabled, false)
+  assert.equal(disabled.currentManagementSessionRevoked, true)
 })
 
 test('lists and independently revokes DSH and Management browser sessions', async () => {

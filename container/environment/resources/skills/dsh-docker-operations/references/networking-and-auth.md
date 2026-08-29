@@ -26,6 +26,8 @@ Use the built-in asynchronous proxy test before saving uncertain settings. A fai
 
 Access Manager owns the single local administrator account. A fresh installation stays in an initialization page until the browser sets a username and main password. DSH login creates a DSH Session; the standalone Management Console consumes a one-time handoff and creates a separate Management Session that remains valid only while its source DSH Session is active. Direct Management access always completes the main DSH login first, including on an isolated Management Origin. An optional Management console password is a second layer. DSH logout or session expiry also invalidates linked Management sessions. During a classified DSH outage, top-level navigation may show a generic Gateway recovery page before login so the Management entry remains reachable; it does not grant a session or expose failure details. Do not look for Gateway Basic Auth, `DSH_PROXY_PASSWORD`, `DSH_PLATFORM_PASSWORD`, or a temporary login key: those legacy login paths are removed.
 
+Authentication Settings use the current main password to authorize username, main-password, and Management-console-password changes. Resetting or disabling the Management console password does not require the old Management console password and revokes existing Management Sessions.
+
 Lost credentials can only be recovered by Root from an interactive container TTY:
 
 ```sh

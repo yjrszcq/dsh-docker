@@ -214,16 +214,14 @@ export class AccessService {
     } finally { admission.release(authenticated) }
   }
 
-  async verifyFreshAuthentication(account, mainPassword, additionalPassword, requireAdditional) {
+  async verifyFreshAuthentication(account, mainPassword) {
     const admission = this.limiter.enter(account.accountId)
     let authenticated = false
     try {
       if (admission.delayMs > 0) await this.sleep(admission.delayMs)
       const mainMatches = typeof mainPassword === 'string'
         && await this.verify(mainPassword, account.mainCredential)
-      const additionalMatches = !requireAdditional || (typeof additionalPassword === 'string'
-        && await this.verify(additionalPassword, account.managementAdditionalCredential.verifier))
-      authenticated = mainMatches && additionalMatches
+      authenticated = mainMatches
       if (!authenticated) {
         await this.report('access.fresh-authentication.failed', { accountId: account.accountId, level: 'warning' })
         throw new AccessError('FRESH_AUTH_FAILED', 'current administrator credentials are incorrect', 401)
@@ -604,12 +602,7 @@ export class AccessService {
       const transition = this.transitions.consume(transitionValue)
       if (transition === undefined) throw new AccessError('TRANSITION_INVALID', 'Management origin transition is invalid or expired', 409)
       if (transition.mode !== current.account.managementAccess.mode) {
-        await this.verifyFreshAuthentication(
-          current.account,
-          value.currentPassword,
-          value.currentAdditionalPassword,
-          current.account.managementAdditionalCredential.enabled,
-        )
+        await this.verifyFreshAuthentication(current.account, value.currentPassword)
       }
       const sourceDshSession = this.sessions.details(transition.sourceDshSessionId)
       if (sourceDshSession?.kind !== 'dsh' || sourceDshSession.origin !== transition.sourceDshOrigin) {
@@ -688,12 +681,7 @@ export class AccessService {
       throw new AccessError('TRANSITION_REQUIRED', 'Management access changes require a verified transition', 409)
     }
     if (usernameChanged || mainPasswordChanged || additionalChanged) {
-      await this.verifyFreshAuthentication(
-        current.account,
-        value.currentPassword,
-        value.currentAdditionalPassword,
-        additionalChanged && current.account.managementAdditionalCredential.enabled,
-      )
+      await this.verifyFreshAuthentication(current.account, value.currentPassword)
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
     if (value.password !== undefined) {
