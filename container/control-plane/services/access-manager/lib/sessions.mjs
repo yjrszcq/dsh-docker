@@ -164,6 +164,15 @@ export class BrowserSessionStore {
     return revoked
   }
 
+  countKind(kind) {
+    this.prune()
+    let count = 0
+    for (const session of this.sessions.values()) {
+      if (session.kind === kind) count += 1
+    }
+    return count
+  }
+
   list(account, currentSessionId) {
     this.prune()
     const currentDshSessionId = this.sourceDshSessionId(currentSessionId) ?? currentSessionId

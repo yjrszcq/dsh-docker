@@ -805,6 +805,31 @@ test('changes the Management console password using only the current main passwo
   assert.equal(disabled.currentManagementSessionRevoked, true)
 })
 
+test('Root recovery password changes revoke the matching browser sessions', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const enabled = await service.resetRecoveryManagementPassword({
+    revision: initialized.account.revision,
+    password: 'original management password',
+  })
+  const loggedIn = await loginManagement(service, { managementPassword: 'original management password' })
+  const changed = await service.resetRecoveryManagementPassword({
+    revision: enabled.account.revision,
+    password: 'replacement management password',
+  })
+  assert.equal(changed.allSessionsRevoked, false)
+  assert.equal(changed.managementSessionsRevoked, 1)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: loggedIn.management.session.token, origin: 'http://dsh.example:3080',
+  })).authenticated, false)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: loggedIn.dsh.session.token, origin: 'http://dsh.example:3080',
+  })).authenticated, true)
+})
+
 test('lists login devices and revokes each DSH session with its linked Management session', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })

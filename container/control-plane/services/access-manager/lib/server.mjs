@@ -454,16 +454,26 @@ export class AccessService {
     }
   }
 
-  async replaceRecoveryAccount(value, operation) {
+  async replaceRecoveryAccount(value, operation, { revoke = 'none' } = {}) {
     const current = await this.store.state()
     if (current.account === undefined) throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
     if (value.revision !== current.account.revision) throw new AccessError('REVISION_CONFLICT', 'account revision changed', 409)
     const account = { ...current.account, revision: identifier(), updatedAt: new Date().toISOString() }
     await operation(account, current.account)
     const next = await this.store.replaceAccount(account, current.account.revision)
-    this.sessions.revokeAll?.()
+    const managementSessionsBefore = this.sessions.countKind?.('management') ?? 0
+    const allSessionsRevoked = revoke === 'all'
+    const managementSessionsRevoked = revoke === 'management'
+      ? this.sessions.revokeKind('management')
+      : allSessionsRevoked ? managementSessionsBefore : 0
+    if (allSessionsRevoked) this.sessions.revokeAll()
     this.exchanges.clear?.()
-    return { account: publicAccount(next) }
+    return {
+      account: publicAccount(next),
+      currentManagementSessionRevoked: managementSessionsRevoked > 0,
+      managementSessionsRevoked,
+      allSessionsRevoked,
+    }
   }
 
   async setRecoveryUsername(value) {
@@ -475,7 +485,7 @@ export class AccessService {
     const verifier = await this.store.createVerifier(value.password)
     return this.replaceRecoveryAccount(value, async account => {
       account.mainCredential = { ...verifier, version: account.mainCredential.version + 1 }
-    })
+    }, { revoke: 'all' })
   }
 
   async resetRecoveryAccess(value) {
@@ -492,6 +502,7 @@ export class AccessService {
     if (managementPassword !== null && mainPassword !== null && managementPassword === mainPassword) {
       throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
     }
+    const revoke = mainPassword !== null ? 'all' : action === 'preserve' ? 'none' : 'management'
     return this.replaceRecoveryAccount(value, async (account, current) => {
       if (managementPassword !== null && mainPassword === null
         && await verifyCredential(managementPassword, current.mainCredential)) {
@@ -512,7 +523,7 @@ export class AccessService {
             verifier: { ...await this.store.createVerifier(managementPassword), version },
             changedAt: new Date().toISOString(),
           }
-    })
+    }, { revoke })
   }
 
   async resetRecoveryManagementPassword(value) {
@@ -524,7 +535,7 @@ export class AccessService {
         verifier: { ...verifier, version: account.managementAdditionalCredential.version + 1 },
         changedAt: new Date().toISOString(),
       }
-    })
+    }, { revoke: 'management' })
   }
 
   async disableRecoveryManagementPassword(value) {
@@ -535,7 +546,7 @@ export class AccessService {
         verifier: null,
         changedAt: new Date().toISOString(),
       }
-    })
+    }, { revoke: 'management' })
   }
 
   async createManagementTransition(value) {
