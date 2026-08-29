@@ -1523,7 +1523,7 @@ test('standalone console keeps localized feature parity on the shared Management
   }
   const extensionTabs = [
     'tab-maintenance', 'tab-files', 'tab-terminal', 'tab-plugins',
-    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-proxy', 'tab-auth-settings', 'tab-updates',
+    'tab-skills', 'tab-user-plugins', 'tab-user-skills', 'tab-proxy', 'tab-updates', 'tab-auth-settings',
   ]
     .map(id => html.indexOf(`id="${id}"`))
   assert.deepEqual(extensionTabs, [...extensionTabs].sort((left, right) => left - right))

@@ -2332,7 +2332,7 @@ function PlatformManagement({ t }) {
         h('p', { className: css.intro }, t('intro'))),
 
       h('div', { ref: tabsRef, className: css.tabs, role: 'tablist', 'aria-label': t('managementSections') },
-        ['maintenance', 'plugins', 'skills', 'authentication', 'proxy', 'updates'].map(tab => h('button', {
+        ['maintenance', 'plugins', 'skills', 'proxy', 'updates', 'authentication'].map(tab => h('button', {
           key: tab,
           id: `platform-tab-${tab}-button`,
           type: 'button',
