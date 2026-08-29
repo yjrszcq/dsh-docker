@@ -4097,6 +4097,24 @@ function renderAuthenticationFormatError(id) {
   return valid
 }
 
+function validatePasswordConfirmation(passwordId, confirmationId) {
+  const password = elements[passwordId]
+  const confirmation = elements[confirmationId]
+  const error = elements[`${confirmationId}-error`]
+  if (password.value === '' && confirmation.value === '') {
+    error.hidden = true
+    return true
+  }
+  if (password.value !== confirmation.value) {
+    error.textContent = t('authPasswordMismatch')
+    error.hidden = false
+    return false
+  }
+  error.textContent = t('authPasswordFormat')
+  error.hidden = true
+  return true
+}
+
 function validateAuthenticationSettingsFormat() {
   const usernameValid = renderAuthenticationFormatError('auth-username')
   const passwordsValid = AUTHENTICATION_PASSWORD_FIELDS
@@ -4330,17 +4348,17 @@ async function changeManagementOrigin(access, currentPassword) {
 
 async function saveAccountSettings() {
   if (!validateAuthenticationSettingsFormat()) return
+  if (!validatePasswordConfirmation('auth-password', 'auth-password-confirm')
+    || !validatePasswordConfirmation('auth-additional-password', 'auth-additional-password-confirm')) return
   const button = elements['auth-account-save']
   button.disabled = true
   try {
     const body = { username: elements['auth-username'].value }
     const password = elements['auth-password'].value
-    if (password !== elements['auth-password-confirm'].value) throw new Error(t('authPasswordMismatch'))
     if (password !== '') body.password = password
     const additionalEnabled = elements['auth-additional-enabled'].checked
     const priorAdditionalEnabled = authenticationSettings?.account?.managementAdditionalCredential?.enabled === true
     const additionalPassword = elements['auth-additional-password'].value
-    if (additionalPassword !== elements['auth-additional-password-confirm'].value) throw new Error(t('authPasswordMismatch'))
     if (additionalEnabled !== priorAdditionalEnabled || additionalPassword !== '') body.additionalEnabled = additionalEnabled
     if (additionalEnabled && additionalPassword !== '') body.additionalPassword = additionalPassword
     const usernameChanged = body.username !== (authenticationSettings?.account?.username ?? '')
@@ -4350,7 +4368,10 @@ async function saveAccountSettings() {
     elements['auth-settings-status'].textContent = t('authSaved')
     elements['auth-settings-status'].hidden = false
     if (result.currentManagementSessionRevoked === true) {
-      window.setTimeout(() => { window.location.assign(managementLoginPath()) }, 900)
+      window.setTimeout(() => {
+        const returnPath = `${window.location.pathname}${window.location.search}`
+        window.location.replace(`${managementLoginPath()}/start?return=${encodeURIComponent(returnPath)}`)
+      }, 900)
     } else {
       authenticationSettings.account = result.account
       button.disabled = false

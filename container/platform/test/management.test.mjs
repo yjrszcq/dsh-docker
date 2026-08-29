@@ -1572,6 +1572,10 @@ test('standalone console keeps localized feature parity on the shared Management
     assert.match(html, new RegExp(`id="${id}-error"[^>]+data-i18n="authPasswordFormat"[^>]+hidden`))
   }
   assert.match(script, /function validateAuthenticationSettingsFormat\(\)/)
+  assert.match(script, /function validatePasswordConfirmation\(passwordId, confirmationId\)/)
+  assert.match(script, /validatePasswordConfirmation\('auth-password', 'auth-password-confirm'\)/)
+  assert.match(script, /validatePasswordConfirmation\('auth-additional-password', 'auth-additional-password-confirm'\)/)
+  assert.match(script, /window\.location\.replace\(`\$\{managementLoginPath\(\)\}\/start\?return=/)
   assert.match(script, /function renderAdditionalPasswordFields\(\)[\s\S]*auth-additional-fields'/)
   assert.match(script, /auth-additional-enabled'\]\.addEventListener\('change', renderAdditionalPasswordFields\)/)
   assert.match(script, /authMainPasswordTitle: '管理员账户'/)
