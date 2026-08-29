@@ -209,6 +209,7 @@ async function fixture(options = {}) {
     store,
     classificationToken: 'classification-token',
     limiter: new AuthenticationLimiter({ globalLimit: 10, accountLimit: 3, maxConcurrent: 2 }),
+    sessions: new BrowserSessionStore({ now: () => now.getTime() }),
     now: () => now.getTime(),
     ...options,
   })
@@ -771,14 +772,16 @@ test('changes the Management console password using only the current main passwo
   assert.equal(disabled.currentManagementSessionRevoked, true)
 })
 
-test('lists and independently revokes DSH and Management browser sessions', async () => {
+test('lists login devices and revokes each DSH session with its linked Management session', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   const firstDsh = await service.initializeDsh({
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    client: { ip: '192.0.2.10', userAgent: 'Browser One' },
   })
   const secondDsh = await service.loginDsh({
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    client: { ip: '192.0.2.11', userAgent: 'Browser Two' },
   })
   const handoff = await service.createManagementHandoff({
     dshToken: firstDsh.session.token, dshOrigin: 'https://dsh.example', targetOrigin: 'https://dsh.example',
@@ -796,20 +799,42 @@ test('lists and independently revokes DSH and Management browser sessions', asyn
   assert.equal(typeof settings.dshRootCapabilityEffective, 'boolean')
   assert.equal(settings.agentIsolationEffective, false)
   assert.equal(settings.details.agentIsolationReason, 'shared-node-process-identity')
-  assert.equal(settings.sessions.filter(value => value.kind === 'dsh').length, 2)
-  assert.equal(settings.sessions.filter(value => value.kind === 'management').length, 1)
+  assert.equal(settings.sessions.length, 2)
+  assert.deepEqual(settings.sessions.find(value => value.current), {
+    sessionId: firstDsh.session.sessionId,
+    origin: 'https://dsh.example',
+    current: true,
+    managementActive: true,
+    ip: '192.0.2.10',
+    userAgent: 'Browser One',
+    createdAt: '2026-08-28T00:00:00.000Z',
+    lastSeenAt: '2026-08-28T00:00:00.000Z',
+    expiresAt: '2026-08-28T12:00:00.000Z',
+  })
+  assert.equal(settings.sessions.find(value => value.sessionId === secondDsh.session.sessionId)?.managementActive, false)
 
   const result = await service.revokeBrowserSessions({
     internalCapability: await issue('POST', '/_dsh_platform/api/v1/auth-sessions/revoke'),
     method: 'POST', target: '/_dsh_platform/api/v1/auth-sessions/revoke',
-    kind: 'dsh', scope: 'others',
+    sessionId: secondDsh.session.sessionId,
   })
   assert.equal(result.revoked, 1)
+  assert.equal(result.currentSessionRevoked, false)
   assert.equal((await service.validateSession({
     kind: 'dsh', token: firstDsh.session.token, origin: 'https://dsh.example',
   })).authenticated, true)
   assert.equal((await service.validateSession({
     kind: 'dsh', token: secondDsh.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+
+  const current = await service.revokeBrowserSessions({
+    internalCapability: await issue('POST', '/_dsh_platform/api/v1/auth-sessions/revoke'),
+    method: 'POST', target: '/_dsh_platform/api/v1/auth-sessions/revoke',
+    sessionId: firstDsh.session.sessionId,
+  })
+  assert.equal(current.currentSessionRevoked, true)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
   })).authenticated, false)
 })
 

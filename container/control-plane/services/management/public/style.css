@@ -84,7 +84,16 @@ button { letter-spacing: 0; }
 .auth-password-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .auth-password-grid label { display: grid; gap: 7px; }
 .field-error { color: var(--danger); font-size: 12px; font-weight: 400; }
-.auth-session-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.auth-session-list { overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
+.auth-session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 12px; }
+.auth-session-row + .auth-session-row { border-top: 1px solid var(--border); }
+.auth-session-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.auth-session-device { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.auth-session-current, .auth-session-management { padding: 2px 7px; border-radius: 999px; background: var(--hover); color: var(--muted); font-size: 11px; line-height: 16px; }
+.auth-session-current { color: var(--success); }
+.auth-session-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.auth-session-revoke { align-self: center; gap: 7px; color: var(--danger); }
+.auth-session-revoke svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .auth-comparison-table { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(80px, .7fr)); margin-top: 14px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; font-size: 12px; line-height: 18px; }
 .auth-comparison-table > * { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .auth-comparison-table > :nth-child(3n + 2), .auth-comparison-table > :nth-child(3n + 3) { border-left: 1px solid var(--border); text-align: center; }
@@ -871,7 +880,8 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .auth-origin-field { grid-template-columns: 1fr; }
   .auth-comparison-table { grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(64px, .7fr)); }
   .auth-comparison-table > * { padding: 7px 6px; }
-  .auth-session-actions { display: grid; grid-template-columns: 1fr; }
+  .auth-session-row { grid-template-columns: minmax(0, 1fr); }
+  .auth-session-revoke { justify-self: start; }
   .resource-heading-detail { align-items: stretch; flex-direction: column; gap: 8px; }
   .resource-search { width: 100%; margin-left: 0; }
   .proxy-form-grid, .proxy-rules-grid, .proxy-scope-grid { grid-template-columns: 1fr; }

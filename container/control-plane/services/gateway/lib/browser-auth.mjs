@@ -79,6 +79,16 @@ function requestTargetOrigin(request) {
   catch { return undefined }
 }
 
+function loginClient(request) {
+  const remoteAddress = request.socket?.remoteAddress
+  const ip = typeof remoteAddress === 'string' && remoteAddress.length <= 128
+    ? remoteAddress.replace(/^::ffff:/, '') : null
+  const header = request.headers['user-agent']
+  const userAgent = typeof header === 'string' && header.length > 0
+    ? header.slice(0, 512) : null
+  return { ip, userAgent }
+}
+
 function canonicalOrigin(value) {
   try {
     const parsed = new URL(value)
@@ -503,7 +513,7 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await accessRequest('POST', route, { ...value, origin })
+        const result = await accessRequest('POST', route, { ...value, origin, client: loginClient(request) })
         await report(current.state === 'never-initialized' ? 'gateway.access.initialized' : 'gateway.access.logged-in')
         sendJson(response, current.state === 'never-initialized' ? 201 : 200, { authenticated: true }, {
           'set-cookie': sessionCookies(result.session, origin),
@@ -522,7 +532,9 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request, { requireHeader: true })
       try {
-        const result = await accessRequest('POST', '/v1/dsh/migrate', { ...await jsonBody(request), origin })
+        const result = await accessRequest('POST', '/v1/dsh/migrate', {
+          ...await jsonBody(request), origin, client: loginClient(request),
+        })
         await report('gateway.access.migrated')
         sendJson(response, 201, { authenticated: true }, { 'set-cookie': sessionCookies(result.session, origin) })
       } catch (error) {

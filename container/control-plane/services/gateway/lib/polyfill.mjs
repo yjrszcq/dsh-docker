@@ -10,6 +10,14 @@ var events=new EventSource(api+"/events");events.addEventListener("state",inspec
 }catch(e){}
 })();</script>`
 
+export const SESSION_VALIDITY_GUARD = `<script>(function(){
+try{
+var checking=false;
+async function inspect(){if(checking)return;checking=true;try{var response=await fetch("/_dsh_platform/auth/session-context",{cache:"no-store",credentials:"same-origin"});if(response.status===401)location.reload()}catch(e){}finally{checking=false}}
+setInterval(inspect,5000);addEventListener("focus",inspect);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")inspect()});
+}catch(e){}
+})();</script>`
+
 export const PLUGIN_RECOVERY_GUARD = `<script>(function(){
 try{
 var nativeFetch=globalThis.fetch.bind(globalThis),markerKey="dsh-platform:plugin-load-recovery",waitPath="/_dsh_gateway/wait",failurePath="/_dsh_gateway/plugin-failure",navigating=false;
@@ -45,7 +53,7 @@ addEventListener("unhandledrejection",function(event){handleError({reason:event.
 
 export function injectRandomUuidPolyfill(html) {
   const match = /<head(?:\s[^>]*)?>/i.exec(html)
-  const injected = `${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${PLUGIN_RECOVERY_GUARD}`
+  const injected = `${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${SESSION_VALIDITY_GUARD}${PLUGIN_RECOVERY_GUARD}`
   if (match === null) return `${injected}${html}`
   const end = match.index + match[0].length
   return `${html.slice(0, end)}${injected}${html.slice(end)}`

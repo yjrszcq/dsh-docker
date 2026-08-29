@@ -164,7 +164,7 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/auth-settings')).account.username, 'admin')
     assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/auth-settings', { username: 'operator' })).account.username, 'operator')
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-sessions/revoke', {
-      kind: 'dsh', scope: 'others',
+      sessionId: 'session-two',
     })).revoked, 1)
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/management-origin/transitions', {
       mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
@@ -1557,8 +1557,12 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(html, /id="auth-current-additional-password"/)
   assert.match(html, /id="auth-additional-fields" class="auth-password-grid" hidden/)
   assert.doesNotMatch(html, />Require an additional password for Management</)
+  assert.match(html, /id="auth-session-list" class="auth-session-list"/)
+  assert.doesNotMatch(html, /auth-revoke-(?:other|all)-(?:dsh|management)/)
   assert.match(style, /\.auth-settings-form \{ display: grid; width: 100%; gap: 16px; \}/)
   assert.doesNotMatch(style, /\.auth-settings-form \{[^}]*max-width:/)
+  assert.match(style, /\.auth-session-revoke \{[^}]*color: var\(--danger\);/)
+  assert.match(script, /body: \{ sessionId: button\.dataset\.sessionId \}/)
   assert.match(html, /id="auth-username"[^>]+pattern="\[\^\\p\{Cc\}/)
   assert.match(html, /id="auth-username-error"[^>]+data-i18n="authUsernameFormat"[^>]+hidden/)
   for (const id of ['auth-current-password', 'auth-password', 'auth-password-confirm', 'auth-additional-password', 'auth-additional-password-confirm']) {

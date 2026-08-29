@@ -780,7 +780,10 @@ export function createManagementServer({
       } else if (request.method === 'POST' && route === 'auth-sessions/revoke') {
         const body = await jsonBody(request)
         const value = await revokeAuthenticationSessions(body, request)
-        await audit('access.sessions.revoked', { kind: body.kind ?? null, scope: body.scope ?? null, revoked: value.revoked ?? 0 })
+        await audit('access.sessions.revoked', {
+          sessionId: body.sessionId ?? null,
+          currentSessionRevoked: value.currentSessionRevoked === true,
+        })
         send(response, 200, value)
       } else if (request.method === 'POST' && route === 'management-origin/transitions') {
         const body = await jsonBody(request)

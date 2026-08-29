@@ -336,14 +336,16 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
       headers: {
         host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`,
         cookie: csrfCookie, 'content-type': 'application/json', 'x-dsh-csrf': csrf,
-        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'user-agent': 'Session Test Browser',
       },
       body: JSON.stringify({ username: 'admin', password: 'correct password' }),
     })
     assert.equal(initialized.status, 201)
     assert.equal(current.state(), 'initialized')
     assert.match(initialized.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_created`))
-    assert.equal(current.calls.some(call => call.path === '/v1/dsh/initialize'), true)
+    const initialization = current.calls.find(call => call.path === '/v1/dsh/initialize')
+    assert.equal(initialization.body.client.userAgent, 'Session Test Browser')
+    assert.equal(initialization.body.client.ip, '127.0.0.1')
   } finally { await close(current.server) }
 })
 

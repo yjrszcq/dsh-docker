@@ -152,7 +152,7 @@ export class AccessService {
   initializeDsh(value) {
     return this.serialized(async () => {
       const account = await this.store.initialize(value)
-      const session = this.sessions.issue('dsh', account, { origin: value.origin })
+      const session = this.sessions.issue('dsh', account, { origin: value.origin, client: value.client })
       await this.report('access.initialization.completed', { accountId: account.accountId })
       await this.report('access.session.created', { accountId: account.accountId, kind: 'dsh' })
       return { state: 'initialized', account: publicAccount(account), session }
@@ -180,7 +180,7 @@ export class AccessService {
       }
       const account = await this.store.migrate(value)
       this.migrationSetup = null
-      const session = this.sessions.issue('dsh', account, { origin: value.origin })
+      const session = this.sessions.issue('dsh', account, { origin: value.origin, client: value.client })
       await this.report('access.migration.completed', { accountId: account.accountId })
       return { state: 'initialized', account: publicAccount(account), session }
     })
@@ -234,7 +234,7 @@ export class AccessService {
   async loginDsh(value) {
     const authenticated = await this.authenticate(value)
     const current = await this.store.state()
-    const session = this.sessions.issue('dsh', current.account, { origin: value.origin })
+    const session = this.sessions.issue('dsh', current.account, { origin: value.origin, client: value.client })
     await this.report('access.session.created', { accountId: authenticated.accountId, kind: 'dsh' })
     return { ...authenticated, session }
   }
@@ -419,18 +419,15 @@ export class AccessService {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
     const authorization = this.consumeInternalCapability(value, current.account)
-    if (!['dsh', 'management'].includes(value.kind) || !['others', 'all'].includes(value.scope)) {
+    if (typeof value.sessionId !== 'string' || value.sessionId.length === 0 || value.sessionId.length > 128) {
       throw new AccessError('SESSION_ACTION_INVALID', 'session action is invalid')
     }
-    const preservedSessionId = value.kind === 'dsh'
-      ? this.sessions.sourceDshSessionId(authorization.sessionId)
-      : authorization.sessionId
-    const revoked = value.scope === 'all'
-      ? (this.sessions.list(current.account, null).filter(session => session.kind === value.kind).length)
-      : this.sessions.revokeKindExcept(value.kind, preservedSessionId)
-    if (value.scope === 'all') this.sessions.revokeKind(value.kind)
-    await this.report('access.sessions.revoked', { kind: value.kind, scope: value.scope, revoked })
-    return { revoked, currentSessionRevoked: value.scope === 'all' && value.kind === 'management' }
+    const currentDshSessionId = this.sessions.sourceDshSessionId(authorization.sessionId)
+    const revoked = this.sessions.revokeDshSession(value.sessionId, current.account.accountId)
+    if (!revoked) throw new AccessError('SESSION_NOT_FOUND', 'browser session was not found', 404)
+    const currentSessionRevoked = value.sessionId === currentDshSessionId
+    await this.report('access.sessions.revoked', { sessionId: value.sessionId, currentSessionRevoked })
+    return { revoked: 1, currentSessionRevoked }
   }
 
   async recoveryStatus() {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import vm from 'node:vm'
-import { injectRandomUuidPolyfill, LIFECYCLE_TRANSITION_GUARD, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL } from '../lib/polyfill.mjs'
+import { injectRandomUuidPolyfill, LIFECYCLE_TRANSITION_GUARD, PLUGIN_RECOVERY_GUARD, RANDOM_UUID_POLYFILL, SESSION_VALIDITY_GUARD } from '../lib/polyfill.mjs'
 
 async function simulatePluginError(bundlePath, { eventType = 'error', storage = new Map() } = {}) {
   let replacement
@@ -52,12 +52,12 @@ async function simulatePluginError(bundlePath, { eventType = 'error', storage = 
 test('polyfill is inserted immediately after the head tag', () => {
   assert.equal(
     injectRandomUuidPolyfill('<html><head data-x="1"><title>x</title></head></html>'),
-    `<html><head data-x="1">${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${PLUGIN_RECOVERY_GUARD}<title>x</title></head></html>`,
+    `<html><head data-x="1">${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${SESSION_VALIDITY_GUARD}${PLUGIN_RECOVERY_GUARD}<title>x</title></head></html>`,
   )
 })
 
 test('polyfill falls back to the start when no head exists', () => {
-  assert.equal(injectRandomUuidPolyfill('<main>x</main>'), `${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${PLUGIN_RECOVERY_GUARD}<main>x</main>`)
+  assert.equal(injectRandomUuidPolyfill('<main>x</main>'), `${RANDOM_UUID_POLYFILL}${LIFECYCLE_TRANSITION_GUARD}${SESSION_VALIDITY_GUARD}${PLUGIN_RECOVERY_GUARD}<main>x</main>`)
 })
 
 test('gateway lifecycle guard moves an already-open DSH page into the holding flow', async () => {
@@ -94,6 +94,13 @@ test('plugin recovery guard runs before DSH modules and bounds lifecycle recover
   assert.match(PLUGIN_RECOVERY_GUARD, /unhandledrejection/)
   assert.doesNotMatch(PLUGIN_RECOVERY_GUARD, /Failed to load plugins/)
   assert.doesNotMatch(PLUGIN_RECOVERY_GUARD, /localStorage/)
+})
+
+test('Gateway session guard reloads DSH pages only after Access Manager rejects the session', () => {
+  assert.doesNotThrow(() => new Function(SESSION_VALIDITY_GUARD.slice('<script>'.length, -'</script>'.length)))
+  assert.match(SESSION_VALIDITY_GUARD, /auth\/session-context/)
+  assert.match(SESSION_VALIDITY_GUARD, /response\.status===401/)
+  assert.doesNotMatch(SESSION_VALIDITY_GUARD, /innerText|textContent/)
 })
 
 test('plugin recovery guard catches official and third-party dynamic import failures', async () => {

@@ -13,6 +13,16 @@ function sameDigest(value, expected) {
   return actual.byteLength === expected.byteLength && timingSafeEqual(actual, expected)
 }
 
+function sessionClient(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return Object.freeze({ ip: null, userAgent: null })
+  const bounded = (field, maximum) => typeof field === 'string' && field.length > 0 && field.length <= maximum
+    ? field : null
+  return Object.freeze({
+    ip: bounded(value.ip, 128),
+    userAgent: bounded(value.userAgent, 512),
+  })
+}
+
 export class BrowserSessionStore {
   constructor({
     now = Date.now,
@@ -51,7 +61,7 @@ export class BrowserSessionStore {
     return undefined
   }
 
-  issue(kind, account, { origin, sourceDshOrigin = null, sourceDshSessionId = null } = {}) {
+  issue(kind, account, { origin, sourceDshOrigin = null, sourceDshSessionId = null, client = null } = {}) {
     const policy = this.policy[kind]
     if (policy === undefined) throw new TypeError('browser session kind is invalid')
     if (typeof origin !== 'string' || origin.length === 0 || origin.length > 2_048) {
@@ -68,6 +78,7 @@ export class BrowserSessionStore {
     const csrfToken = `dshc_${identifier(this.random)}`
     const sessionId = identifier(this.random, 16)
     const createdAt = this.now()
+    const sourceClient = sourceDshSession === undefined ? sessionClient(client) : sourceDshSession.client
     this.sessions.set(digest(token).toString('hex'), {
       sessionId,
       kind,
@@ -79,6 +90,7 @@ export class BrowserSessionStore {
       origin,
       sourceDshOrigin,
       sourceDshSessionId,
+      client: sourceClient,
       csrfDigest: digest(csrfToken),
       createdAt,
       lastSeenAt: createdAt,
@@ -151,18 +163,22 @@ export class BrowserSessionStore {
 
   list(account, currentSessionId) {
     this.prune()
+    const currentDshSessionId = this.sourceDshSessionId(currentSessionId) ?? currentSessionId
+    const managementSources = new Set([...this.sessions.values()]
+      .filter(session => session.kind === 'management')
+      .map(session => session.sourceDshSessionId))
     return [...this.sessions.values()]
       .filter(session => session.accountId === account.accountId
+        && session.kind === 'dsh'
         && session.mainCredentialVersion === account.mainCredential.version
-        && session.managementAccessVersion === account.managementAccess.version
-        && (session.kind !== 'management'
-          || session.managementAdditionalCredentialVersion === (account.managementAdditionalCredential.enabled
-            ? account.managementAdditionalCredential.version : null)))
+        && session.managementAccessVersion === account.managementAccess.version)
       .map(session => Object.freeze({
         sessionId: session.sessionId,
-        kind: session.kind,
         origin: session.origin,
-        current: session.sessionId === currentSessionId,
+        current: session.sessionId === currentDshSessionId,
+        managementActive: managementSources.has(session.sessionId),
+        ip: session.client.ip,
+        userAgent: session.client.userAgent,
         createdAt: new Date(session.createdAt).toISOString(),
         lastSeenAt: new Date(session.lastSeenAt).toISOString(),
         expiresAt: new Date(session.expiresAt).toISOString(),
@@ -170,17 +186,15 @@ export class BrowserSessionStore {
       .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt))
   }
 
-  revokeKindExcept(kind, sessionId) {
-    let revoked = 0
-    const dshSessionIds = []
+  revokeDshSession(sessionId, accountId) {
+    if (typeof sessionId !== 'string' || typeof accountId !== 'string') return false
     for (const [key, session] of this.sessions) {
-      if (session.kind !== kind || session.sessionId === sessionId) continue
+      if (session.kind !== 'dsh' || session.sessionId !== sessionId || session.accountId !== accountId) continue
       this.sessions.delete(key)
-      if (kind === 'dsh') dshSessionIds.push(session.sessionId)
-      revoked += 1
+      this.revokeManagementFromDsh(session.sessionId)
+      return true
     }
-    for (const dshSessionId of dshSessionIds) this.revokeManagementFromDsh(dshSessionId)
-    return revoked
+    return false
   }
 
   revokeManagementFromDsh(sessionId) {
