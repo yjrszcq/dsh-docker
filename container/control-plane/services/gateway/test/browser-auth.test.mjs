@@ -254,7 +254,7 @@ test('isolated Management continuation creates root-path cookies and redirects t
 
 test('renders state-driven initialization and recovery pages without exposing account material', async () => {
   for (const [state, expected] of [
-    ['never-initialized', /Create administrator account/],
+    ['never-initialized', /autocomplete="new-password"/],
     ['migration-required', /Administrator migration required/],
     ['recovery-required', /Administrator recovery required/],
   ]) {
@@ -279,7 +279,10 @@ test('renders state-driven initialization and recovery pages without exposing ac
         if (state === 'never-initialized' || state === 'migration-required') {
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
         }
-        if (state === 'never-initialized') assert.doesNotMatch(response.body, /name="setupKey"/)
+        if (state === 'never-initialized') {
+          assert.doesNotMatch(response.body, /name="setupKey"/)
+          assert.doesNotMatch(response.body, /<h1>/)
+        }
       } else {
         assert.match(response.body, /href="\/_dsh_platform\/auth\/reset\?return=/)
         assert.doesNotMatch(response.body, /name="setupKey"/)
@@ -518,6 +521,8 @@ test('login sessions are origin-bound and safe return paths remain local', async
       path: '/_dsh_platform/auth/?return=%2Fsettings%3Fsection%3Dplugins',
       headers: { host: `127.0.0.1:${port}` },
     })
+    assert.doesNotMatch(page.body, /Administrator sign in|Enter the local administrator account/)
+    assert.doesNotMatch(page.body, /<h1>/)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const csrf = csrfCookie.split('=')[1]
     const login = await request(port, {
