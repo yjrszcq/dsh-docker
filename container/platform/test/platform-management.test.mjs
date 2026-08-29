@@ -816,12 +816,15 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /updateNotifications: '更新提醒'/)
   assert.match(source, /updateNotificationsDetail: '自动检查发现新版本时，弹窗提醒更新。'/)
   assert.match(source, /updateNotifications: 'Update notifications'/)
+  assert.match(source, /status\?\.updateChannel === 'stable' && status\?\.latestAutomatic\?\.stable/)
+  assert.match(source, /status\?\.updateChannel === 'experimental' && upstream/)
   assert.match(source, /stableNoticeBothTitle: '正式更新：DSH 与 Environment'/)
   assert.match(source, /updateNoticeDshLine: 'DSH：\{version\}\{state\}'/)
   assert.match(source, /updateNoticeEnvironmentLine: 'ENV：\{version\}\{state\}'/)
   assert.match(source, /stableNoticeBothTitle: 'Supported update: DSH and Environment'/)
   assert.match(source, /updateNoticeDshLine: 'DSH: \{version\}\{state\}'/)
   assert.match(source, /updateNoticeEnvironmentLine: 'ENV: \{version\}\{state\}'/)
+  assert.doesNotMatch(source, /noticeUnchanged|保持不变|\(unchanged\)/)
   assert.match(source, /不再提醒此版本/)
   assert.match(source, /Do not remind for this version/)
   assert.match(source, /source = 'manual'/)
@@ -830,11 +833,26 @@ test('Platform Management is embedded in the official settings.section slot', as
 
 test('update reminders identify DSH, Environment, or combined changes', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const candidatesSource = source.slice(
+    source.indexOf('function candidateIdentity('),
+    source.indexOf('\nfunction clearSatisfiedDismissals('),
+  )
+  const eligibleCandidates = new Function('storageValue', `${candidatesSource}; return eligibleCandidates`)(() => null)
   const modelSource = source.slice(
     source.indexOf('function updateNoticeModel('),
     source.indexOf('\nfunction UpdateReminder('),
   )
   const updateNoticeModel = new Function(`${modelSource}; return updateNoticeModel`)()
+
+  const automatic = {
+    notificationsEnabled: true,
+  }
+  const latestAutomatic = {
+    stable: { dsh: '0.1.1-rc.2', environment: '1.0.6', targetSequence: 2 },
+    upstream: { version: '0.1.1-rc.3' },
+  }
+  assert.deepEqual(eligibleCandidates({ automaticCheck: automatic, latestAutomatic, updateChannel: 'stable' }).map(candidate => candidate.kind), ['stable'])
+  assert.deepEqual(eligibleCandidates({ automaticCheck: automatic, latestAutomatic, updateChannel: 'experimental', holds: [] }).map(candidate => candidate.kind), ['upstream'])
 
   assert.deepEqual(updateNoticeModel({
     kind: 'stable', dsh: '0.1.1-rc.2', environment: '1.0.6',
@@ -853,8 +871,7 @@ test('update reminders identify DSH, Environment, or combined changes', async ()
     current: { dsh: '0.1.1-rc.1', environment: '1.0.6' },
     supported: { environment: '1.0.6' },
   }), {
-    kind: 'upstream', scope: 'dsh', dsh: '0.1.1-rc.2', environment: '1.0.6',
-    dshChanged: true, environmentChanged: false,
+    kind: 'upstream', scope: 'dsh', dsh: '0.1.1-rc.2', dshChanged: true,
   })
 })
 
