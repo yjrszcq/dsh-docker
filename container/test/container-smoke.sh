@@ -92,18 +92,11 @@ establish_sessions() {
     echo "DSH authentication returned HTTP $status, expected $expected" >&2
     exit 1
   fi
-  docker exec "$container" curl --fail --silent \
+  status="$(docker exec "$container" curl --fail --silent --location \
+    --output /dev/null --write-out '%{http_code}' \
     --cookie "$session_cookie" --cookie-jar "$session_cookie" \
     --header 'Host: smoke.example' --header 'Accept: text/html' \
-    http://127.0.0.1:3080/_dsh_platform/auth/management >/dev/null
-  auth_csrf="$(docker exec "$container" awk '$6 == "dsh_auth_csrf" { print $7 }' "$session_cookie")"
-  [ -n "$auth_csrf" ]
-  status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
-    --cookie "$session_cookie" --cookie-jar "$session_cookie" \
-    --header 'Host: smoke.example' --header 'Origin: http://smoke.example' \
-    --header 'Content-Type: application/json' --header "X-DSH-CSRF: $auth_csrf" \
-    --data '{"username":"smoke-admin","password":"smoke-password"}' \
-    http://127.0.0.1:3080/_dsh_platform/auth/management/session)"
+    http://127.0.0.1:3080/_dsh_platform/auth/management/start)"
   [ "$status" = 200 ]
   management_csrf="$(docker exec "$container" awk '$6 == "dsh_management_csrf" { print $7 }' "$session_cookie")"
   [ -n "$management_csrf" ]

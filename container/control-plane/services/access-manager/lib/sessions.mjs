@@ -36,6 +36,19 @@ export class BrowserSessionStore {
     for (const [key, session] of this.sessions) {
       if (session.expiresAt <= now || session.lastSeenAt + session.idleMs <= now) this.sessions.delete(key)
     }
+    for (const [key, session] of this.sessions) {
+      if (session.kind === 'management' && this.activeDshSession(session.sourceDshSessionId, session.accountId) === undefined) {
+        this.sessions.delete(key)
+      }
+    }
+  }
+
+  activeDshSession(sessionId, accountId) {
+    if (typeof sessionId !== 'string') return undefined
+    for (const session of this.sessions.values()) {
+      if (session.kind === 'dsh' && session.sessionId === sessionId && session.accountId === accountId) return session
+    }
+    return undefined
   }
 
   issue(kind, account, { origin, sourceDshOrigin = null, sourceDshSessionId = null } = {}) {
@@ -45,6 +58,12 @@ export class BrowserSessionStore {
       throw new TypeError('browser session origin is invalid')
     }
     this.prune()
+    const sourceDshSession = kind === 'management'
+      ? this.activeDshSession(sourceDshSessionId, account.accountId)
+      : undefined
+    if (kind === 'management' && (sourceDshSession === undefined || sourceDshSession.origin !== sourceDshOrigin)) {
+      throw new TypeError('Management session requires an active DSH session')
+    }
     const token = `${kind === 'dsh' ? 'dshs' : 'dshms'}_${identifier(this.random)}`
     const csrfToken = `dshc_${identifier(this.random)}`
     const sessionId = identifier(this.random, 16)
@@ -63,7 +82,7 @@ export class BrowserSessionStore {
       csrfDigest: digest(csrfToken),
       createdAt,
       lastSeenAt: createdAt,
-      expiresAt: createdAt + policy.absoluteMs,
+      expiresAt: Math.min(createdAt + policy.absoluteMs, sourceDshSession?.expiresAt ?? Number.POSITIVE_INFINITY),
       idleMs: policy.idleMs,
     })
     return Object.freeze({
@@ -89,6 +108,15 @@ export class BrowserSessionStore {
       || (requireCsrf && !sameDigest(csrfToken, session.csrfDigest))) {
       return undefined
     }
+    if (kind === 'management') {
+      const source = this.activeDshSession(session.sourceDshSessionId, account.accountId)
+      if (source === undefined || source.origin !== session.sourceDshOrigin
+        || source.mainCredentialVersion !== account.mainCredential.version
+        || source.managementAccessVersion !== account.managementAccess.version) {
+        this.sessions.delete(key)
+        return undefined
+      }
+    }
     if (touch) session.lastSeenAt = this.now()
     return Object.freeze({
       sessionId: session.sessionId,
@@ -104,13 +132,21 @@ export class BrowserSessionStore {
 
   revoke(token) {
     if (typeof token !== 'string' || token.length > 512) return false
-    return this.sessions.delete(digest(token).toString('hex'))
+    const key = digest(token).toString('hex')
+    const session = this.sessions.get(key)
+    if (!this.sessions.delete(key)) return false
+    if (session.kind === 'dsh') this.revokeManagementFromDsh(session.sessionId)
+    return true
   }
 
   revokeKind(kind) {
+    const dshSessionIds = []
     for (const [key, session] of this.sessions) {
-      if (session.kind === kind) this.sessions.delete(key)
+      if (session.kind !== kind) continue
+      this.sessions.delete(key)
+      if (kind === 'dsh') dshSessionIds.push(session.sessionId)
     }
+    for (const sessionId of dshSessionIds) this.revokeManagementFromDsh(sessionId)
   }
 
   list(account, currentSessionId) {
@@ -136,11 +172,14 @@ export class BrowserSessionStore {
 
   revokeKindExcept(kind, sessionId) {
     let revoked = 0
+    const dshSessionIds = []
     for (const [key, session] of this.sessions) {
       if (session.kind !== kind || session.sessionId === sessionId) continue
       this.sessions.delete(key)
+      if (kind === 'dsh') dshSessionIds.push(session.sessionId)
       revoked += 1
     }
+    for (const dshSessionId of dshSessionIds) this.revokeManagementFromDsh(dshSessionId)
     return revoked
   }
 
@@ -159,6 +198,14 @@ export class BrowserSessionStore {
       if (session.kind === 'management' && session.sessionId === sessionId) return session.sourceDshSessionId
     }
     return null
+  }
+
+  refreshDshSession(sessionId, account) {
+    const session = this.activeDshSession(sessionId, account.accountId)
+    if (session === undefined) return false
+    session.mainCredentialVersion = account.mainCredential.version
+    session.managementAccessVersion = account.managementAccess.version
+    return true
   }
 
   details(sessionId) {

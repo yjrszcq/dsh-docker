@@ -175,6 +175,7 @@ test('Management origin transitions and continuations expire without changing au
   const created = transitions.create({
     account, instanceId: 'instance', sessionId: 'session',
     sourceOrigin: 'https://dsh.example', sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: 'dsh-session',
     mode: 'isolated',
     isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
     candidateOrigin: 'https://manage.example',
@@ -188,6 +189,7 @@ test('Management origin transitions and continuations expire without changing au
 
   const continuation = transitions.createContinuation({
     account, targetOrigin: 'https://manage.example', sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: 'dsh-session',
   })
   now += 101
   assert.equal(transitions.consumeContinuation({
@@ -211,6 +213,22 @@ async function fixture(options = {}) {
     ...options,
   })
   return { root, store, service, setNow: value => { now = new Date(value) } }
+}
+
+async function loginManagement(service, {
+  dshOrigin = 'http://dsh.example:3080',
+  targetOrigin = dshOrigin,
+} = {}) {
+  const dsh = await service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: dshOrigin,
+  })
+  const handoff = await service.createManagementHandoff({
+    dshToken: dsh.session.token, dshOrigin, targetOrigin,
+  })
+  const management = await service.consumeManagementHandoff({
+    token: handoff.handoff.token, origin: targetOrigin,
+  })
+  return { dsh, management }
 }
 
 test('normalizes administrator usernames and preserves password whitespace', () => {
@@ -470,11 +488,11 @@ test('probes the current instance before atomically changing Management origin',
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const login = await service.loginManagement({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
+  const login = await loginManagement(service)
   const issued = await service.issueCapability({
-    managementToken: login.session.token,
+    managementToken: login.management.session.token,
     origin: 'http://dsh.example:3080',
-    csrfToken: login.session.csrfToken,
+    csrfToken: login.management.session.csrfToken,
     requireCsrf: true,
     audience: 'management',
     method: 'POST',
@@ -494,9 +512,9 @@ test('probes the current instance before atomically changing Management origin',
     candidateOrigin: 'https://manage.example',
   })
   const commitCapability = await service.issueCapability({
-    managementToken: login.session.token,
+    managementToken: login.management.session.token,
     origin: 'http://dsh.example:3080',
-    csrfToken: login.session.csrfToken,
+    csrfToken: login.management.session.csrfToken,
     requireCsrf: true,
     audience: 'management',
     method: 'POST',
@@ -513,7 +531,7 @@ test('probes the current instance before atomically changing Management origin',
   assert.equal(changed.targetOrigin, 'https://manage.example')
   assert.equal(changed.loginOrigin, 'https://manage.example')
   assert.equal((await service.validateSession({
-    token: login.session.token, kind: 'management', origin: 'http://dsh.example:3080',
+    token: login.management.session.token, kind: 'management', origin: 'http://dsh.example:3080',
   })).authenticated, false)
   const continued = await service.consumeManagementContinuation({
     token: changed.continuation.token, origin: 'https://manage.example',
@@ -558,12 +576,10 @@ test('verifies a loopback candidate without persisting it for local-only Managem
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const login = await service.loginManagement({
-    username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
-  })
+  const login = await loginManagement(service)
   const capability = async target => (await service.issueCapability({
-    managementToken: login.session.token, origin: 'http://dsh.example:3080',
-    csrfToken: login.session.csrfToken, requireCsrf: true,
+    managementToken: login.management.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.management.session.csrfToken, requireCsrf: true,
     audience: 'management', method: 'POST', target,
   })).capability.token
   const created = await service.createManagementTransition({
@@ -591,12 +607,10 @@ test('consumes a Management transition when fresh authentication fails', async (
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const login = await service.loginManagement({
-    username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
-  })
+  const login = await loginManagement(service)
   const capability = async target => (await service.issueCapability({
-    managementToken: login.session.token, origin: 'http://dsh.example:3080',
-    csrfToken: login.session.csrfToken, requireCsrf: true,
+    managementToken: login.management.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.management.session.csrfToken, requireCsrf: true,
     audience: 'management', method: 'POST', target,
   })).capability.token
   const created = await service.createManagementTransition({
@@ -622,10 +636,10 @@ test('requires Management origin changes to use the verified transition protocol
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
-  const login = await service.loginManagement({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
+  const login = await loginManagement(service)
   const issued = await service.issueCapability({
-    managementToken: login.session.token, origin: 'http://dsh.example:3080',
-    csrfToken: login.session.csrfToken, requireCsrf: true,
+    managementToken: login.management.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: login.management.session.csrfToken, requireCsrf: true,
     audience: 'management', method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
   })
   await assert.rejects(service.updateAuthenticationSettings({
@@ -738,12 +752,10 @@ test('rejects equal administrator passwords and non-origin Management entries', 
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
   const capability = async (method = 'PUT', target = '/_dsh_platform/api/v1/auth-settings') => {
-    const login = await service.loginManagement({
-      username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080',
-    })
+    const login = await loginManagement(service)
     return (await service.issueCapability({
-      managementToken: login.session.token, origin: 'http://dsh.example:3080',
-      csrfToken: login.session.csrfToken, requireCsrf: true,
+      managementToken: login.management.session.token, origin: 'http://dsh.example:3080',
+      csrfToken: login.management.session.csrfToken, requireCsrf: true,
       audience: 'management', method, target,
     })).capability.token
   }
@@ -837,6 +849,36 @@ test('exchanges one DSH session for one origin-bound Management session', async 
     current.service.consumeManagementHandoff({ token: created.handoff.token, origin: 'https://dsh.example' }),
     error => error.code === 'HANDOFF_INVALID',
   )
+})
+
+test('rejects an additional Management password after its source DSH session ends', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await current.service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  await current.service.resetRecoveryManagementPassword({
+    revision: initialized.account.revision,
+    password: 'separate management password',
+  })
+  const dsh = await current.service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const handoff = await current.service.createManagementHandoff({
+    dshToken: dsh.session.token,
+    dshOrigin: 'https://dsh.example',
+    targetOrigin: 'https://manage.example',
+  })
+  const pending = await current.service.consumeManagementHandoff({
+    token: handoff.handoff.token, origin: 'https://manage.example',
+  })
+  assert.match(pending.pending.token, /^dshmp_/)
+  await current.service.logout({ kind: 'dsh', token: dsh.session.token })
+  await assert.rejects(current.service.completeManagementLogin({
+    pendingToken: pending.pending.token,
+    origin: 'https://manage.example',
+    password: 'separate management password',
+  }), error => error.code === 'PENDING_LOGIN_INVALID')
 })
 
 test('revokes Management sessions linked to the current DSH browser without widening access', async () => {

@@ -53,14 +53,23 @@ export function validInitialization(value) {
 export function validAccount(value) {
   const additional = value?.managementAdditionalCredential
   const access = value?.managementAccess
+  const validOrigin = origin => {
+    try {
+      const parsed = new URL(origin)
+      return ['http:', 'https:'].includes(parsed.protocol) && parsed.origin !== 'null'
+        && parsed.username === '' && parsed.password === '' && parsed.pathname === '/'
+        && parsed.search === '' && parsed.hash === '' && origin === parsed.origin
+    } catch { return false }
+  }
   const additionalValid = additional !== null && typeof additional === 'object'
     && typeof additional.enabled === 'boolean'
     && Number.isInteger(additional.version) && additional.version >= 1
     && Number.isFinite(Date.parse(additional.changedAt))
     && (additional.enabled ? validCredential(additional.verifier) : additional.verifier === null)
   const isolatedEntryValid = access?.mode === 'compat'
-    ? access.isolatedEntry === null
+    ? access.isolatedEntry === null && access.dshPublicOrigin === null
     : access?.mode === 'isolated' && access.isolatedEntry !== null && typeof access.isolatedEntry === 'object'
+      && validOrigin(access.dshPublicOrigin)
       && (access.isolatedEntry.kind === 'local-only'
         || (access.isolatedEntry.kind === 'public' && (() => {
           try {
@@ -196,7 +205,9 @@ export class AccessStateStore {
       username: normalized,
       mainCredential: verifier,
       managementAdditionalCredential: { enabled: false, version: 1, verifier: null, changedAt: now },
-      managementAccess: { mode: 'compat', version: 1, isolatedEntry: null, changedAt: now },
+      managementAccess: {
+        mode: 'compat', version: 1, isolatedEntry: null, dshPublicOrigin: null, changedAt: now,
+      },
       createdAt: now,
       updatedAt: now,
     }

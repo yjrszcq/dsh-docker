@@ -23,7 +23,7 @@ export class ManagementTransitionStore {
     for (const [key, value] of this.continuations) if (value.expiresAt <= now) this.continuations.delete(key)
   }
 
-  create({ account, instanceId, sessionId, sourceOrigin, sourceDshOrigin, mode, isolatedEntry, candidateOrigin }) {
+  create({ account, instanceId, sessionId, sourceOrigin, sourceDshOrigin, sourceDshSessionId, mode, isolatedEntry, candidateOrigin }) {
     this.prune()
     const transitionId = token('dshmt', this.random, 16)
     const nonce = candidateOrigin === null ? null : token('dshmn', this.random)
@@ -36,6 +36,7 @@ export class ManagementTransitionStore {
       sessionId,
       sourceOrigin,
       sourceDshOrigin,
+      sourceDshSessionId,
       mode,
       isolatedEntry,
       candidateOrigin,
@@ -82,7 +83,7 @@ export class ManagementTransitionStore {
     return transition
   }
 
-  createContinuation({ account, targetOrigin, sourceDshOrigin }) {
+  createContinuation({ account, targetOrigin, sourceDshOrigin, sourceDshSessionId }) {
     if (targetOrigin === null) return null
     this.prune()
     const continuation = token('dshmc', this.random)
@@ -93,6 +94,7 @@ export class ManagementTransitionStore {
       managementAccessVersion: account.managementAccess.version,
       targetOrigin,
       sourceDshOrigin,
+      sourceDshSessionId,
       expiresAt,
     })
     return Object.freeze({ token: continuation, expiresAt: new Date(expiresAt).toISOString() })

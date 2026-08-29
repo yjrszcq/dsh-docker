@@ -14,6 +14,14 @@ const AUTHENTICATED_BROWSER = Object.freeze({
   handle: async () => false,
 })
 
+const UNAUTHENTICATED_BROWSER = Object.freeze({
+  status: async () => ({ state: 'initialized' }),
+  validateDsh: async () => ({ authenticated: false }),
+  validateManagement: async () => ({ authenticated: false }),
+  enterManagement: async () => { throw new Error('unexpected Management login') },
+  handle: async () => false,
+})
+
 function createGatewayServer(options) {
   return createGatewayServerBase({
     ...options,
@@ -78,6 +86,28 @@ test('an intentional stopped state does not report an upstream proxy failure', a
     assert.equal(reports.some(entry => entry.message === 'gateway.upstream.failed'), false)
   } finally {
     await closeGatewayServer(context.gateway)
+  }
+})
+
+test('an unauthenticated top-level navigation sees classified DSH recovery before the login page', async () => {
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort: 1,
+    platformStatus: async () => ({ dshLifecycle: { state: 'failed', error: 'private runtime detail' } }),
+    probe: async () => false,
+    browserAuthentication: UNAUTHENTICATED_BROWSER,
+    probeIntervalMs: 60_000,
+  })
+  const port = await listen(gateway)
+  try {
+    const page = await request(port)
+    assert.equal(page.status, 200)
+    assert.match(page.body, /DeepSeek Harness could not start/)
+    assert.match(page.body, /href="\/_dsh_platform\/console\/"/)
+    assert.doesNotMatch(page.body, /private runtime detail|autocomplete="current-password"/)
+    assert.equal((await request(port, '/api/sessions', { accept: 'application/json' })).status, 503)
+  } finally {
+    await closeGatewayServer(gateway)
   }
 })
 

@@ -283,19 +283,13 @@ export class AccessService {
     return { authenticated: value.scope !== 'all', dshRevoked, managementRevoked }
   }
 
-  async managementResult(account, { origin, sourceDshOrigin = null, sourceDshSessionId = null }) {
+  async managementResult(account, { origin, sourceDshOrigin, sourceDshSessionId }) {
     if (account.managementAdditionalCredential.enabled) {
       return { pending: this.exchanges.createPending(account, { targetOrigin: origin, sourceDshOrigin, sourceDshSessionId }) }
     }
     const session = this.sessions.issue('management', account, { origin, sourceDshOrigin, sourceDshSessionId })
     await this.report('access.session.created', { accountId: account.accountId, kind: 'management' })
     return { session }
-  }
-
-  async loginManagement(value) {
-    await this.authenticate(value)
-    const current = await this.store.state()
-    return this.managementResult(current.account, { origin: value.origin })
   }
 
   async createManagementHandoff(value) {
@@ -317,6 +311,10 @@ export class AccessService {
     }
     const handoff = this.exchanges.consumeHandoff(value.token, current.account, value.origin)
     if (handoff === undefined) throw new AccessError('HANDOFF_INVALID', 'management handoff is invalid or expired', 401)
+    const source = this.sessions.details(handoff.dshSessionId)
+    if (source?.kind !== 'dsh' || source.origin !== handoff.sourceDshOrigin) {
+      throw new AccessError('HANDOFF_INVALID', 'management handoff is invalid or expired', 401)
+    }
     await this.report('access.handoff.consumed', { accountId: current.account.accountId })
     return this.managementResult(current.account, {
       origin: value.origin,
@@ -333,6 +331,11 @@ export class AccessService {
     }
     const pending = this.exchanges.inspectPending(value.pendingToken, current.account, value.origin)
     if (pending === undefined) throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
+    const source = this.sessions.details(pending.value.sourceDshSessionId)
+    if (source?.kind !== 'dsh' || source.origin !== pending.value.sourceDshOrigin) {
+      this.exchanges.consumePending(pending.key)
+      throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
+    }
     const valid = await this.verify(value.password, current.account.managementAdditionalCredential.verifier)
     if (!valid) throw new AccessError('AUTHENTICATION_FAILED', 'username or password is incorrect', 401)
     this.exchanges.consumePending(pending.key)
@@ -564,6 +567,7 @@ export class AccessService {
       sessionId: authorization.sessionId,
       sourceOrigin: session.origin,
       sourceDshOrigin: session.sourceDshOrigin,
+      sourceDshSessionId: session.sourceDshSessionId,
       mode: value.mode,
       isolatedEntry,
       candidateOrigin,
@@ -606,6 +610,10 @@ export class AccessService {
           current.account.managementAdditionalCredential.enabled,
         )
       }
+      const sourceDshSession = this.sessions.details(transition.sourceDshSessionId)
+      if (sourceDshSession?.kind !== 'dsh' || sourceDshSession.origin !== transition.sourceDshOrigin) {
+        throw new AccessError('SESSION_INVALID', 'source DSH session is invalid', 401)
+      }
       const account = {
         ...current.account,
         revision: identifier(),
@@ -614,15 +622,20 @@ export class AccessService {
           mode: transition.mode,
           version: current.account.managementAccess.version + 1,
           isolatedEntry: transition.isolatedEntry,
+          dshPublicOrigin: transition.mode === 'isolated' ? transition.sourceDshOrigin : null,
           changedAt: new Date().toISOString(),
         },
       }
       const next = await this.store.replaceAccount(account, current.account.revision)
+      this.sessions.refreshDshSession(transition.sourceDshSessionId, next)
       const targetOrigin = transition.mode === 'isolated'
         ? (transition.isolatedEntry.kind === 'public' ? transition.candidateOrigin : null)
         : transition.sourceDshOrigin
       const continuation = this.transitions.createContinuation({
-        account: next, targetOrigin, sourceDshOrigin: transition.sourceDshOrigin,
+        account: next,
+        targetOrigin,
+        sourceDshOrigin: transition.sourceDshOrigin,
+        sourceDshSessionId: transition.sourceDshSessionId,
       })
       this.sessions.revokeKind('management')
       this.exchanges.clear?.()
@@ -645,8 +658,14 @@ export class AccessService {
       token: value.token, account: current.account, targetOrigin: value.origin,
     })
     if (continuation === undefined) throw new AccessError('CONTINUATION_INVALID', 'Management continuation is invalid or expired', 401)
+    const source = this.sessions.details(continuation.sourceDshSessionId)
+    if (source?.kind !== 'dsh' || source.origin !== continuation.sourceDshOrigin) {
+      throw new AccessError('CONTINUATION_INVALID', 'Management continuation is invalid or expired', 401)
+    }
     const session = this.sessions.issue('management', current.account, {
-      origin: value.origin, sourceDshOrigin: continuation.sourceDshOrigin,
+      origin: value.origin,
+      sourceDshOrigin: continuation.sourceDshOrigin,
+      sourceDshSessionId: continuation.sourceDshSessionId,
     })
     await this.report('access.management-continuation.consumed')
     return { session }
@@ -749,7 +768,6 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/browser-logout') return send(response, 200, await service.logoutDshBrowser(value))
-      if (request.method === 'POST' && pathname === '/v1/management/login') return send(response, 200, await service.loginManagement(value))
       if (request.method === 'POST' && pathname === '/v1/management/handoffs') return send(response, 201, await service.createManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/handoffs/consume') return send(response, 200, await service.consumeManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))

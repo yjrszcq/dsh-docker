@@ -43,7 +43,7 @@ function assertInlineScriptsCompile(html) {
   for (const script of scripts) assert.doesNotThrow(() => new Function(script))
 }
 
-function fixture(initialState = 'never-initialized') {
+function fixture(initialState = 'never-initialized', options = {}) {
   let state = initialState
   const sessions = new Map()
   const managementSessions = new Map()
@@ -58,7 +58,11 @@ function fixture(initialState = 'never-initialized') {
       if (path === '/v1/status') return {
         state,
         account: state === 'initialized'
-          ? { managementAdditionalCredential: { enabled: true } }
+          ? {
+              managementAdditionalCredential: { enabled: true },
+              managementAccess: options.managementAccess
+                ?? { mode: 'compat', isolatedEntry: null, dshPublicOrigin: null },
+            }
           : null,
       }
       if (path === '/v1/dsh/initialize') {
@@ -84,11 +88,19 @@ function fixture(initialState = 'never-initialized') {
       if (path === '/v1/sessions/validate') return {
         authenticated: body.kind === 'dsh'
           ? sessions.get(body.token) === body.origin
-          : managementSessions.get(body.token) === body.origin,
+          : managementSessions.get(body.token) === body.origin
+            && sessions.has(managementSources.get(body.token)),
       }
       if (path === '/v1/sessions/logout') {
-        sessions.delete(body.token)
+        if (sessions.delete(body.token)) {
+          for (const [token, source] of managementSources) {
+            if (source !== body.token) continue
+            managementSources.delete(token)
+            managementSessions.delete(token)
+          }
+        }
         managementSessions.delete(body.token)
+        managementSources.delete(body.token)
         return { authenticated: false }
       }
       if (path === '/v1/dsh/browser-logout') {
@@ -111,13 +123,6 @@ function fixture(initialState = 'never-initialized') {
           throw Object.assign(new Error('session invalid'), { statusCode: 401 })
         }
         return { capability: { token: 'dshcap_plugin', expiresAt: new Date(Date.now() + 5_000).toISOString() } }
-      }
-      if (path === '/v1/management/login') {
-        if (body.password !== 'correct password') throw Object.assign(new Error('username or password is incorrect'), {
-          code: 'AUTHENTICATION_FAILED', statusCode: 401,
-        })
-        managementSessions.set('dshms_direct', body.origin)
-        return { session: { token: 'dshms_direct', csrfToken: 'dshc_management' } }
       }
       if (path === '/v1/management/handoffs') {
         if (sessions.get(body.dshToken) !== body.dshOrigin) throw Object.assign(new Error('session invalid'), { statusCode: 401 })
@@ -464,20 +469,26 @@ test('login sessions are origin-bound and safe return paths remain local', async
   } finally { await close(current.server) }
 })
 
-test('direct Management login creates and explicitly revokes only a Management session', async () => {
+test('direct Management access requires a DSH login before exchanging a Management session', async () => {
   const current = fixture('initialized')
   const port = await listen(current.server)
   try {
     const origin = `http://127.0.0.1:${port}`
-    const page = await request(port, {
+    const entry = await request(port, {
       path: '/_dsh_platform/auth/management', headers: { host: `127.0.0.1:${port}` },
     })
-    assertInlineScriptsCompile(page.body)
-    assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/session">/)
+    assert.equal(entry.status, 303)
+    const loginEntry = new URL(entry.headers.location)
+    assert.equal(loginEntry.origin, origin)
+    assert.equal(loginEntry.pathname, '/_dsh_platform/auth/')
+    assert.equal(loginEntry.searchParams.get('return'), '/_dsh_platform/auth/management/start')
+    const page = await request(port, {
+      path: `${loginEntry.pathname}${loginEntry.search}`, headers: { host: `127.0.0.1:${port}` },
+    })
     const loginCsrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const loginCsrf = loginCsrfCookie.split('=')[1]
-    const login = await request(port, {
-      path: '/_dsh_platform/auth/management/session', method: 'POST',
+    const dshLogin = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
       headers: {
         host: `127.0.0.1:${port}`, origin, cookie: loginCsrfCookie,
         'content-type': 'application/json', 'x-dsh-csrf': loginCsrf,
@@ -485,30 +496,43 @@ test('direct Management login creates and explicitly revokes only a Management s
       },
       body: JSON.stringify({ username: 'admin', password: 'correct password' }),
     })
-    assert.equal(login.status, 200)
-    const managementCookie = login.headers['set-cookie'][0].split(';')[0]
-    const managementCsrfCookie = login.headers['set-cookie'][1].split(';')[0]
-    const managementCsrf = managementCsrfCookie.split('=')[1]
-    assert.match(managementCookie, new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_direct`))
-    assert.equal((await current.authentication.validateManagement({ headers: {
-      host: `127.0.0.1:${port}`, cookie: managementCookie,
-    } })).authenticated, true)
-
-    const logout = await request(port, {
-      path: '/_dsh_platform/auth/management/logout', method: 'POST',
-      headers: {
-        host: `127.0.0.1:${port}`, origin,
-        cookie: `${managementCookie}; ${managementCsrfCookie}`,
-        'content-type': 'application/json', 'x-dsh-csrf': managementCsrf,
-        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
-      },
-      body: '{}',
+    assert.equal(dshLogin.status, 200)
+    const dshCookie = dshLogin.headers['set-cookie'][0].split(';')[0]
+    const start = await request(port, {
+      path: '/_dsh_platform/auth/management/start',
+      headers: { host: `127.0.0.1:${port}`, cookie: dshCookie },
     })
-    assert.equal(logout.status, 200)
-    assert.equal((await current.authentication.validateManagement({ headers: {
-      host: `127.0.0.1:${port}`, cookie: managementCookie,
-    } })).authenticated, false)
+    assert.equal(start.status, 303)
+    assert.match(start.headers.location, /management\/handoff\?token=dshh_created$/)
+    assert.equal(current.calls.some(call => call.path === '/v1/management/login'), false)
+    assert.equal((await request(port, {
+      path: '/_dsh_platform/auth/management/session', method: 'POST',
+      headers: { host: `127.0.0.1:${port}`, origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })).status, 404)
   } finally { await close(current.server) }
+})
+
+test('isolated Management sends the first login layer to the verified DSH Origin', async () => {
+  const current = fixture('initialized', {
+    managementAccess: {
+      mode: 'isolated',
+      dshPublicOrigin: 'https://dsh.example',
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    },
+  })
+  const isolated = createBrowserAuthentication({
+    access: current.access,
+    safeReturnPath,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
+  })
+  const response = { writeHead(status, headers) { this.status = status; this.headers = headers }, end() {} }
+  await isolated.enterManagement({ headers: { host: 'manage.example' } }, response)
+  assert.equal(response.status, 303)
+  const entry = new URL(response.headers.location)
+  assert.equal(entry.origin, 'https://dsh.example')
+  assert.equal(entry.pathname, '/_dsh_platform/auth/')
+  assert.equal(entry.searchParams.get('return'), '/_dsh_platform/auth/management/start')
 })
 
 test('DSH browser logout exposes only additional-password state and revokes the requested sessions', async () => {
@@ -597,15 +621,21 @@ test('DSH browser sessions authorize only path-bound Plugin API capabilities', a
   }, { method: 'GET', target: '/_dsh_platform/api/v1/status' })).authorized, false)
 })
 
-test('Management login page routes a pending additional-password result to its challenge', () => {
+test('Management pending page asks only for the additional password', () => {
   const current = fixture('initialized')
   return listen(current.server).then(async port => {
     try {
       const page = await request(port, {
-        path: '/_dsh_platform/auth/management', headers: { host: `127.0.0.1:${port}` },
+        path: '/_dsh_platform/auth/management/pending',
+        headers: {
+          host: `127.0.0.1:${port}`,
+          cookie: 'dsh_management_pending=dshmp_pending',
+        },
       })
-      assert.match(page.body, /response\.status===202/)
-      assert.match(page.body, /management\/pending/)
+      assert.equal(page.status, 200)
+      assertInlineScriptsCompile(page.body)
+      assert.match(page.body, /Additional password/)
+      assert.doesNotMatch(page.body, /name="username"|management\/session/)
     } finally { await close(current.server) }
   })
 })

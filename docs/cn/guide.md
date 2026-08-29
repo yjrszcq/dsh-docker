@@ -322,7 +322,9 @@ docker run -d \
 
 Access Manager 在 `/data/platform/state/access` 中持有一个持久化本地管理员账户。全新安装会阻断 DSH、API、WebSocket 和管理中心，直到浏览器注册用户名和主密码；并发注册只会收敛到一个账户。已初始化状态损坏时进入 `recovery-required`，不会静默创建替代账户。
 
-登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接并创建绑定 Origin 的独立 Management Session。“认证设置”可以要求额外的管理密码，并分别撤销 DSH 或 Management 会话。修改凭据会通过 credential version 使旧会话失效。
+登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接，并创建同时绑定其 Origin 和来源 DSH Session 的独立 Management Session。无论兼容模式还是强隔离 Origin，直接访问管理中心都必须先回到经过验证的 DSH Origin 完成主密码登录；已启用的管理中心附加密码只构成第二层验证，不能替代主登录。DSH 注销、会话过期或凭据失效会传递使关联 Management Session 失效。“认证设置”仍可分别撤销两类会话，修改凭据会通过 credential version 使旧会话失效。
+
+DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览器导航会在认证前收到 Gateway 的通用等待或恢复页。页面不泄露 Runtime 错误细节，并提供管理中心恢复入口；非页面、API 和 WebSocket 请求继续返回对应的服务不可用响应，不会收到 HTML。DSH 恢复 Ready 后，普通页面访问仍须持有有效的 DSH Session。
 
 默认兼容模式在 `3080` 的 `/_dsh_platform/console/` 提供管理中心。可选强隔离模式从单独发布的 `3081` Origin 根路径提供管理中心，且该入口不提供 DSH upstream。平台会先校验候选 Origin 和当前实例，再切换并注销旧 Management Session。仓库 Compose 默认不发布 `3081`，需要由运维人员显式映射或反向代理。当 DSH 可以取得容器 Root 时，界面会如实说明进程级隔离无效并锁定模式切换；Origin 分离仍能阻止同源 DSH 客户端插件取得 Management Session。
 

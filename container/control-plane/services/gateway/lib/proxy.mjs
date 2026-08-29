@@ -920,6 +920,16 @@ export function createGatewayServer({
       const requireDsh = async () => {
         const session = await options.browserAuthentication.validateDsh(request)
         if (session.authenticated) return true
+        const result = await readiness(options)
+        if (!result.ready && result.state !== 'unknown') {
+          if (isPageNavigation(request)) {
+            sendAvailabilityPage(request, response, result.state, {
+              lifecycle: result.platform.dshLifecycle,
+              returnPath: safeReturnPath(url.searchParams.get('return')),
+            })
+          } else rejectHttp(response, 503, stateMessage(result.state, request.headers, result.platform.dshLifecycle))
+          return false
+        }
         rejectDshAuthentication(request, response, safeReturnPath)
         return false
       }
@@ -1021,6 +1031,30 @@ export function createGatewayServer({
         })
         return
       }
+      if (pathname === PLUGIN_FAILURE_PATH) {
+        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+          rejectHttp(response, 405, 'method not allowed')
+          return
+        }
+        sendAvailabilityPage(request, response, 'plugin-failed', { poll: false })
+        return
+      }
+      if (pathname === READINESS_PATH) {
+        const result = await readiness(options)
+        if (result.ready) sendJson(response, 200, {
+          ready: true,
+          state: 'ready',
+          pluginRecoveryEligible: result.pluginRecoveryEligible,
+        })
+        else {
+          sendJson(response, result.state === 'unknown' ? 502 : 503, {
+            ready: false,
+            state: result.state,
+            message: stateMessage(result.state, request.headers, result.platform.dshLifecycle),
+          })
+        }
+        return
+      }
       if (!await requireDsh()) return
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
@@ -1046,22 +1080,6 @@ export function createGatewayServer({
         response.end()
         return
       }
-      if (pathname === READINESS_PATH) {
-        const result = await readiness(options)
-        if (result.ready) sendJson(response, 200, {
-          ready: true,
-          state: 'ready',
-          pluginRecoveryEligible: result.pluginRecoveryEligible,
-        })
-        else {
-          sendJson(response, result.state === 'unknown' ? 502 : 503, {
-            ready: false,
-            state: result.state,
-            message: stateMessage(result.state, request.headers, result.platform.dshLifecycle),
-          })
-        }
-        return
-      }
       if (pathname === WAIT_PATH) {
         if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
           rejectHttp(response, 405, 'method not allowed')
@@ -1078,14 +1096,6 @@ export function createGatewayServer({
           lifecycle: result.platform.dshLifecycle,
           returnPath,
         })
-        return
-      }
-      if (pathname === PLUGIN_FAILURE_PATH) {
-        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
-          rejectHttp(response, 405, 'method not allowed')
-          return
-        }
-        sendAvailabilityPage(request, response, 'plugin-failed', { poll: false })
         return
       }
       proxyHttp(request, response, { ...options, trackDsh: true })

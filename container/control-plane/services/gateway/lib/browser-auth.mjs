@@ -207,17 +207,17 @@ function authenticationPage(request, state, csrf, returnPath) {
   return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(copy.brand)}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}.brand{text-align:center;margin:0 0 24px;font-size:18px;letter-spacing:.12em}h1{margin:0 0 8px;font-size:20px}p{margin:0;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><div class="brand">${htmlEscape(copy.brand)}</div>${content}</main></body></html>`
 }
 
-function managementLoginPage(request, csrf, { pending = false, authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
+function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
-    title: 'DSH 管理中心', detail: pending ? '请输入管理中心附加密码。' : '使用本地管理员账户登录。',
-    username: '用户名', password: pending ? '附加密码' : '密码', submit: '登录', failed: '验证失败，请重试。',
+    title: 'DSH 管理中心', detail: '请输入管理中心附加密码。',
+    password: '附加密码', submit: '登录', failed: '验证失败，请重试。',
   } : {
-    title: 'DSH Management Console', detail: pending ? 'Enter the additional Management password.' : 'Sign in with the local administrator account.',
-    username: 'Username', password: pending ? 'Additional password' : 'Password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
+    title: 'DSH Management Console', detail: 'Enter the additional Management password.',
+    password: 'Additional password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
   }
-  const submitPath = pending ? `${authPrefix}management/pending` : `${authPrefix}management/session`
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}">${pending ? '' : `<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" autofocus></label>`}<label>${copy.password}<input name="password" type="password" autocomplete="current-password" required maxlength="1024"${pending ? ' autofocus' : ''}></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${pending ? '' : "username:values.get('username'),"}password:values.get('password')})});if(response.ok){location.replace(response.status===202?${JSON.stringify(`${authPrefix}management/pending`)}:${JSON.stringify(consolePath)})}else{error.hidden=false;form.elements.password.select()}})</script></body></html>`
+  const submitPath = `${authPrefix}management/pending`
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}"><label>${copy.password}<input name="password" type="password" autocomplete="current-password" required maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(consolePath)})}else{error.hidden=false;form.elements.password.select()}})</script></body></html>`
 }
 
 export function createBrowserAuthentication({
@@ -324,9 +324,9 @@ export function createBrowserAuthentication({
     }
   }
 
-  function sendManagementLogin(request, response, origin, { pending = false } = {}) {
+  function sendManagementLogin(request, response, origin) {
     const csrf = token('dshma')
-    const bytes = Buffer.from(managementLoginPage(request, csrf, { pending, authPrefix, consolePath }))
+    const bytes = Buffer.from(managementLoginPage(request, csrf, { authPrefix, consolePath }))
     response.writeHead(200, {
       'cache-control': 'no-store',
       'content-length': String(bytes.byteLength),
@@ -343,13 +343,24 @@ export function createBrowserAuthentication({
   async function enterManagement(request, response) {
     const origin = requestOrigin(request)
     if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return }
+    const current = await status()
     const valid = await validateDsh(request)
     if (!valid.authenticated) {
-      response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management` })
+      const dshOrigin = current.account?.managementAccess?.mode === 'isolated'
+        ? current.account.managementAccess.dshPublicOrigin
+        : origin
+      if (typeof dshOrigin !== 'string') {
+        sendJson(response, 409, { error: 'DSH authentication entry is unavailable' })
+        return
+      }
+      response.writeHead(303, {
+        'cache-control': 'no-store',
+        location: `${dshOrigin}${AUTH_PREFIX}?return=${encodeURIComponent(`${AUTH_PREFIX}management/start`)}`,
+        'referrer-policy': 'no-referrer',
+      })
       response.end()
       return
     }
-    const current = await status()
     const entry = current.account?.managementAccess?.isolatedEntry
     if (current.account?.managementAccess?.mode === 'isolated' && entry?.kind === 'local-only') {
       const zh = language(request) === 'zh'
@@ -549,34 +560,17 @@ export function createBrowserAuthentication({
       await accessRequest('POST', '/v1/sessions/logout', {
         kind: 'dsh', token: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
       })
-      sendJson(response, 200, { authenticated: false }, { 'set-cookie': clearSessionCookies(origin) })
+      sendJson(response, 200, { authenticated: false }, {
+        'set-cookie': [...clearSessionCookies(origin), ...clearManagementCookies(origin, managementCookiePath)],
+      })
       return true
     }
     if (pathname === authPrefix + 'management' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
-      const origin = requestOrigin(request)
-      if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return true }
-      const valid = await validateManagement(request)
-      if (valid.authenticated) {
-        response.writeHead(303, { 'cache-control': 'no-store', location: consolePath })
-        response.end()
-      } else sendManagementLogin(request, response, origin)
+      await enterManagement(request, response)
       return true
     }
-    if (pathname === authPrefix + 'management/session' && request.method === 'POST') {
-      const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
-      if (!validBrowserMutation(request, csrf)) {
-        sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
-        return true
-      }
-      const origin = requestOrigin(request, { requireHeader: true })
-      try {
-        const result = await accessRequest('POST', '/v1/management/login', { ...await jsonBody(request), origin })
-        if (result.pending !== undefined) {
-          sendJson(response, 202, { pending: true }, { 'set-cookie': pendingCookie(result.pending, origin, authPrefix) })
-        } else sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
-      } catch (error) {
-        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
-      }
+    if (pathname === authPrefix + 'management/start' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+      await enterManagement(request, response)
       return true
     }
     if (pathname === authPrefix + 'management/handoff' && request.method === 'GET') {
@@ -613,7 +607,7 @@ export function createBrowserAuthentication({
       if (origin === undefined || cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE) === undefined) {
         response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management` })
         response.end()
-      } else sendManagementLogin(request, response, origin, { pending: true })
+      } else sendManagementLogin(request, response, origin)
       return true
     }
     if (pathname === authPrefix + 'management/pending' && request.method === 'POST') {
