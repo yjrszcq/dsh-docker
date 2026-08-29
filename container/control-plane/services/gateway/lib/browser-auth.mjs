@@ -182,14 +182,22 @@ function authenticationPage(request, state, csrf, returnPath) {
   const copy = zh ? {
     brand: 'HARNESS', username: '用户名', password: '密码', register: '注册', login: '登录',
     initializing: '正在创建管理员账户…', signingIn: '正在登录…',
-    failed: '用户名或密码不正确，请重试。', concurrent: '管理员账户已创建，请使用现有账户登录。',
+    failed: '用户名或密码不正确，请重试。', registrationFailed: '无法创建管理员账户，请检查填写内容后重试。',
+    concurrent: '管理员账户已创建，请使用现有账户登录。',
+    invalidUsername: '用户名不能为空，且不能包含控制字符，最多 64 个字符。',
+    invalidPassword: '密码必须包含 8 至 1024 个字符。',
+    invalidMigrationKey: '迁移密钥无效、已过期或已使用，请重新生成。',
     migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access begin-migration，然后使用一次性密钥创建新账户。', setupKey: '迁移密钥',
     recoveryTitle: '需要恢复管理员认证', recoveryDetail: '认证状态损坏或缺失。请从容器 Root 终端执行 dsh-platform access status 查看恢复指引。',
     waitingTitle: '正在准备认证服务', waitingDetail: '平台正在确认本地管理员状态，请稍候。',
   } : {
     brand: 'HARNESS', username: 'Username', password: 'Password', register: 'Register', login: 'Sign in',
     initializing: 'Creating the administrator account…', signingIn: 'Signing in…',
-    failed: 'The username or password is incorrect. Try again.', concurrent: 'The administrator account already exists. Sign in with it.',
+    failed: 'The username or password is incorrect. Try again.', registrationFailed: 'The administrator account could not be created. Check the entered values and try again.',
+    concurrent: 'The administrator account already exists. Sign in with it.',
+    invalidUsername: 'The username is required, cannot contain control characters, and must be at most 64 characters.',
+    invalidPassword: 'The password must contain between 8 and 1024 characters.',
+    invalidMigrationKey: 'The migration key is invalid, expired, or already used. Generate a new key.',
     migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access begin-migration from a root container terminal, then create a new account with the one-time key.', setupKey: 'Migration key',
     recoveryTitle: 'Administrator recovery required', recoveryDetail: 'Authentication state is missing or damaged. Run dsh-platform access status from a root container terminal for recovery guidance.',
     waitingTitle: 'Preparing authentication', waitingDetail: 'The platform is determining local administrator state. Please wait.',
@@ -200,7 +208,14 @@ function authenticationPage(request, state, csrf, returnPath) {
     const migration = state === 'migration-required'
     const submit = initialize || migration ? copy.register : copy.login
     const submitPath = migration ? `${AUTH_PREFIX}migration` : `${AUTH_PREFIX}session`
-    content = `${migration ? `<h1>${copy.migrationTitle}</h1><p>${copy.migrationDetail}</p>` : ''}<form method="post" action="${htmlEscape(submitPath)}">${migration ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256"${migration ? '' : ' autofocus'}></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize || migration ? 'new-password' : 'current-password'}" required maxlength="1024"></label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;button.disabled=true;button.textContent=${JSON.stringify(initialize || migration ? copy.initializing : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${migration ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='ALREADY_INITIALIZED'?${JSON.stringify(copy.concurrent)}:${JSON.stringify(copy.failed)};error.hidden=false}catch{error.textContent=${JSON.stringify(copy.failed)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    const registrationErrors = {
+      ALREADY_INITIALIZED: copy.concurrent,
+      USERNAME_INVALID: copy.invalidUsername,
+      PASSWORD_POLICY_VIOLATION: copy.invalidPassword,
+      MIGRATION_KEY_INVALID: copy.invalidMigrationKey,
+    }
+    const fallbackError = initialize || migration ? copy.registrationFailed : copy.failed
+    content = `${migration ? `<h1>${copy.migrationTitle}</h1><p>${copy.migrationDetail}</p>` : ''}<form method="post" action="${htmlEscape(submitPath)}">${migration ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256"${migration ? '' : ' autofocus'}></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize || migration ? 'new-password' : 'current-password'}" required minlength="8" maxlength="1024"></label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;button.disabled=true;button.textContent=${JSON.stringify(initialize || migration ? copy.initializing : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${migration ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     content = `<h1>${copy.recoveryTitle}</h1><p>${copy.recoveryDetail}</p>`
   } else content = `<h1>${copy.waitingTitle}</h1><p>${copy.waitingDetail}</p><script>setTimeout(()=>location.reload(),1000)</script>`

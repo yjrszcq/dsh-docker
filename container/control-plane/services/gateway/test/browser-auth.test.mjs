@@ -421,6 +421,11 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
       path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}`, 'accept-language': 'en' },
     })
     assert.match(page.body, /name="setupKey"/)
+    assert.match(page.body, /method="post"/)
+    assert.match(page.body, /The password must contain between 8 and 1024 characters\./)
+    assert.match(page.body, /The migration key is invalid, expired, or already used\./)
+    assert.doesNotMatch(page.body, /name="password"[^>]*value=/)
+    assertInlineScriptsCompile(page.body)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const csrf = csrfCookie.split('=')[1]
     const migrated = await request(port, {
@@ -436,6 +441,25 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
     assert.match(migrated.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_migrated`))
     assert.equal(current.calls.some(call => call.path === '/v1/dsh/migrate'), true)
   } finally { await close(current.server) }
+})
+
+test('migration and initialization pages distinguish registration errors from login failures', async () => {
+  for (const [state, language, expected] of [
+    ['never-initialized', 'zh-CN', ['密码必须包含 8 至 1024 个字符。', '无法创建管理员账户，请检查填写内容后重试。']],
+    ['migration-required', 'zh-CN', ['迁移密钥无效、已过期或已使用，请重新生成。', '密码必须包含 8 至 1024 个字符。']],
+    ['never-initialized', 'en', ['The password must contain between 8 and 1024 characters.', 'The administrator account could not be created.']],
+  ]) {
+    const current = fixture(state)
+    const port = await listen(current.server)
+    try {
+      const page = await request(port, {
+        path: '/_dsh_platform/auth/',
+        headers: { host: `127.0.0.1:${port}`, 'accept-language': language },
+      })
+      for (const message of expected) assert.match(page.body, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      assertInlineScriptsCompile(page.body)
+    } finally { await close(current.server) }
+  }
 })
 
 test('login sessions are origin-bound and safe return paths remain local', async () => {

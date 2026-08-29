@@ -287,18 +287,29 @@ test('migrates a legacy deployment with one expiring single-use setup key', asyn
   await assert.rejects(current.service.migrateDsh({
     setupKey: first.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
-  await assert.rejects(current.service.migrateDsh({
-    setupKey: second.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
-  }), error => error.code === 'MIGRATION_KEY_INVALID')
-
-  const valid = await current.service.beginMigration()
   const migrated = await current.service.migrateDsh({
-    setupKey: valid.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    setupKey: second.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   assert.equal(migrated.state, 'initialized')
-  assert.equal(migrated.account.username, 'operator')
+  assert.equal(migrated.account.username, 'admin')
   assert.match(migrated.session.token, /^dshs_/)
   await assert.rejects(current.service.beginMigration(), error => error.code === 'MIGRATION_UNAVAILABLE')
+})
+
+test('keeps a valid migration key usable while new account fields are corrected', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
+  const setup = await current.service.beginMigration()
+  await assert.rejects(current.service.migrateDsh({
+    setupKey: setup.key, username: 'operator', password: 'four', origin: 'https://dsh.example',
+  }), error => error.code === 'PASSWORD_POLICY_VIOLATION')
+  const migrated = await current.service.migrateDsh({
+    setupKey: setup.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  assert.equal(migrated.account.username, 'operator')
+  await assert.rejects(current.service.migrateDsh({
+    setupKey: setup.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  }), error => error.code === 'MIGRATION_KEY_INVALID')
 })
 
 test('rejects expired and malformed migration keys without exposing an internal error', async () => {

@@ -173,12 +173,13 @@ export class AccessService {
   migrateDsh(value) {
     return this.serialized(async () => {
       const setup = this.migrationSetup
-      this.migrationSetup = null
       if (setup === null || setup.expiresAt <= this.now() || typeof value.setupKey !== 'string'
         || !sameToken(setup.digest, digest(value.setupKey))) {
+        if (setup !== null && setup.expiresAt <= this.now()) this.migrationSetup = null
         throw new AccessError('MIGRATION_KEY_INVALID', 'migration setup key is invalid or expired', 401)
       }
       const account = await this.store.migrate(value)
+      this.migrationSetup = null
       const session = this.sessions.issue('dsh', account, { origin: value.origin })
       await this.report('access.migration.completed', { accountId: account.accountId })
       return { state: 'initialized', account: publicAccount(account), session }
