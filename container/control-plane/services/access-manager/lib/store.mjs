@@ -184,7 +184,7 @@ export class AccessStateStore {
   async state() {
     const inspected = await this.inspect()
     if (inspected.initialization === undefined) {
-      return { initialization: undefined, account: undefined, state: 'recovery-required' }
+      return { initialization: undefined, account: undefined, state: 'classification-pending' }
     }
     if (inspected.initialization.state === 'initialized' && inspected.account === undefined) {
       return { initialization: inspected.initialization, account: undefined, state: 'recovery-required' }

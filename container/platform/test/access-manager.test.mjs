@@ -262,6 +262,7 @@ test('creates salted scrypt credentials and verifies them in constant-length for
 
 test('classifies fresh and legacy installations exactly once', async () => {
   const fresh = await fixture()
+  assert.equal((await fresh.store.state()).state, 'classification-pending')
   assert.equal((await fresh.store.classify({ dshProfile: false, legacyAuthenticationConfigured: false })).initialization.state, 'never-initialized')
   assert.equal((await fresh.store.classify({ dshProfile: true, legacyAuthenticationConfigured: true })).initialization.state, 'never-initialized')
 

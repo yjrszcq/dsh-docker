@@ -254,7 +254,9 @@ test('isolated Management continuation creates root-path cookies and redirects t
 
 test('renders state-driven initialization and recovery pages without exposing account material', async () => {
   for (const [state, expected] of [
+    ['classification-pending', /Preparing authentication/],
     ['never-initialized', /autocomplete="new-password"/],
+    ['initialized', /autocomplete="current-password"/],
     ['migration-required', /Administrator migration required/],
     ['recovery-required', /Administrator recovery required/],
   ]) {
@@ -270,14 +272,20 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.match(response.headers['cache-control'], /no-store/)
       assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
-      if (state !== 'recovery-required') {
+      if (state === 'classification-pending') {
+        assert.match(response.body, /setTimeout\(\(\)=>location\.reload\(\),1000\)/)
+        assert.doesNotMatch(response.body, /<form/)
+      } else if (state !== 'recovery-required') {
         assertInlineScriptsCompile(response.body)
         assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session|reset)" novalidate>/)
-        assert.match(response.body, /class="field-error" data-field-error="username"[^>]*hidden/)
-        assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
         assert.doesNotMatch(response.body, /elements\.username\.addEventListener\('input'/)
         if (state === 'never-initialized' || state === 'migration-required') {
+          assert.match(response.body, /class="field-error" data-field-error="username"[^>]*hidden/)
+          assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
+        } else {
+          assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
+          assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
         }
         if (state === 'never-initialized') {
           assert.doesNotMatch(response.body, /name="setupKey"/)
@@ -551,8 +559,11 @@ test('direct Management access requires a DSH login before exchanging a Manageme
   const port = await listen(current.server)
   try {
     const origin = `http://127.0.0.1:${port}`
+    const staleCookies = `${DSH_SESSION_COOKIE}=dshs_previous_instance; ${MANAGEMENT_SESSION_COOKIE}=dshms_previous_instance`
     const entry = await request(port, {
-      path: '/_dsh_platform/auth/management', headers: { host: `127.0.0.1:${port}` },
+      path: '/_dsh_platform/auth/management', headers: {
+        host: `127.0.0.1:${port}`, cookie: staleCookies,
+      },
     })
     assert.equal(entry.status, 303)
     const loginEntry = new URL(entry.headers.location)
@@ -560,8 +571,12 @@ test('direct Management access requires a DSH login before exchanging a Manageme
     assert.equal(loginEntry.pathname, '/_dsh_platform/auth/')
     assert.equal(loginEntry.searchParams.get('return'), '/_dsh_platform/auth/management/start')
     const page = await request(port, {
-      path: `${loginEntry.pathname}${loginEntry.search}`, headers: { host: `127.0.0.1:${port}` },
+      path: `${loginEntry.pathname}${loginEntry.search}`, headers: {
+        host: `127.0.0.1:${port}`, cookie: staleCookies,
+      },
     })
+    assert.doesNotMatch(page.body, /field-error|invalidUsername|invalidPassword|validateField/)
+    assert.doesNotMatch(page.body, /minlength="8"|pattern="/)
     const loginCsrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const loginCsrf = loginCsrfCookie.split('=')[1]
     const dshLogin = await request(port, {
@@ -713,8 +728,7 @@ test('Management pending page asks only for the additional password', () => {
       assertInlineScriptsCompile(page.body)
       assert.match(page.body, /Management console password/)
       assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/pending" novalidate>/)
-      assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
-      assert.match(page.body, /class="field-error" role="alert" hidden>Use 8 to 1024 characters\./)
+      assert.doesNotMatch(page.body, /minlength="8"|pattern="|field-error|Use 8 to 1024 characters/)
       assert.doesNotMatch(page.body, /name="username"|management\/session/)
     } finally { await close(current.server) }
   })
