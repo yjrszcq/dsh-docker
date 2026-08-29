@@ -153,12 +153,15 @@ export class BrowserSessionStore {
 
   revokeKind(kind) {
     const dshSessionIds = []
+    let revoked = 0
     for (const [key, session] of this.sessions) {
       if (session.kind !== kind) continue
       this.sessions.delete(key)
+      revoked += 1
       if (kind === 'dsh') dshSessionIds.push(session.sessionId)
     }
     for (const sessionId of dshSessionIds) this.revokeManagementFromDsh(sessionId)
+    return revoked
   }
 
   list(account, currentSessionId) {
@@ -237,5 +240,9 @@ export class BrowserSessionStore {
     return undefined
   }
 
-  revokeAll() { this.sessions.clear() }
+  revokeAll() {
+    const revoked = this.sessions.size
+    this.sessions.clear()
+    return revoked
+  }
 }

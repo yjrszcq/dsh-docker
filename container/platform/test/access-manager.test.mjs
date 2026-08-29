@@ -752,6 +752,8 @@ test('requires fresh authentication and applies credential-specific session revo
     password: 'a different secure password', currentPassword: 'correct horse battery staple',
   })
   assert.equal(changed.currentManagementSessionRevoked, true)
+  assert.equal(changed.allSessionsRevoked, true)
+  assert.equal(changed.managementSessionsRevoked, 2)
   assert.equal((await service.validateSession({
     kind: 'management', token: management.session.token, origin: 'https://dsh.example',
   })).authenticated, false)
@@ -788,6 +790,8 @@ test('changes the Management console password using only the current main passwo
   })
   assert.equal(enabled.account.managementAdditionalCredential.enabled, true)
   assert.equal(enabled.currentManagementSessionRevoked, true)
+  assert.equal(enabled.allSessionsRevoked, false)
+  assert.equal(enabled.managementSessionsRevoked, 1)
 
   const reset = await update('first management console password', {
     additionalEnabled: true,

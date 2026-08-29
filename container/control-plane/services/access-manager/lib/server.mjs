@@ -723,13 +723,16 @@ export class AccessService {
       }
     }
     const next = await this.store.replaceAccount(account, current.account.revision)
-    if (mainPasswordChanged) this.sessions.revokeAll()
-    else if (additionalChanged) this.sessions.revokeKind('management')
+    const revokedSessionCount = mainPasswordChanged
+      ? this.sessions.revokeAll()
+      : additionalChanged ? this.sessions.revokeKind('management') : 0
     this.exchanges.clear?.()
     await this.report('access.authentication.settings.changed', { usernameChanged })
     return {
       account: publicAccount(next),
       currentManagementSessionRevoked: mainPasswordChanged || additionalChanged,
+      managementSessionsRevoked: mainPasswordChanged || additionalChanged ? revokedSessionCount : 0,
+      allSessionsRevoked: mainPasswordChanged,
     }
   }
 }
