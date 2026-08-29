@@ -1549,6 +1549,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
   assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-agent-warning"/)
   assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="" novalidate>/)
+  assert.match(style, /\.auth-settings-form \{ display: grid; width: 100%; gap: 16px; \}/)
+  assert.doesNotMatch(style, /\.auth-settings-form \{[^}]*max-width:/)
   assert.match(html, /id="auth-username"[^>]+pattern="\[\^\\p\{Cc\}/)
   assert.match(html, /id="auth-username-error"[^>]+data-i18n="authUsernameFormat"[^>]+hidden/)
   for (const id of ['auth-current-password', 'auth-password', 'auth-password-confirm', 'auth-current-additional-password', 'auth-additional-password', 'auth-additional-password-confirm']) {
