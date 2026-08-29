@@ -999,7 +999,7 @@ function parsedStorage(key) {
 function candidateIdentity(candidate) {
   return candidate.kind === 'stable'
     ? `stable:${String(candidate.targetSequence)}`
-    : `upstream:${candidate.version}`
+    : `upstream:${candidate.version}:${candidate.environment ?? ''}`
 }
 
 function eligibleCandidates(status) {
@@ -1011,7 +1011,11 @@ function eligibleCandidates(status) {
   const upstream = status?.latestAutomatic?.upstream
   const held = upstream !== null && upstream !== undefined && (status?.holds ?? []).some(hold => hold.dshVersion === upstream.version)
   if (status?.updateChannel === 'experimental' && upstream !== null && upstream !== undefined && !held) {
-    candidates.push({ kind: 'upstream', ...upstream })
+    candidates.push({
+      kind: 'upstream',
+      ...upstream,
+      environment: status?.supported?.environment ?? status?.current?.environment,
+    })
   }
   return candidates.filter(candidate => storageValue(`dsh-platform:update-notice-dismissed:${candidate.kind}`) !== candidateIdentity(candidate))
 }
@@ -1023,6 +1027,15 @@ function clearSatisfiedDismissals(status) {
   writeStorage('dsh-platform:update-notice-dismissed:stable', null)
   writeStorage('dsh-platform:update-notice-dismissed:upstream', null)
   writeStorage('dsh-platform:update-notice-cleared-completion', completion)
+}
+
+function updateNoticeModel(candidate, status) {
+  const dsh = candidate.kind === 'stable' ? candidate.dsh : candidate.version
+  const environment = candidate.environment ?? status?.supported?.environment ?? status?.current?.environment
+  const dshChanged = dsh !== status?.current?.dsh
+  const environmentChanged = environment !== status?.current?.environment
+  const scope = dshChanged && environmentChanged ? 'both' : environmentChanged ? 'environment' : 'dsh'
+  return { kind: candidate.kind, scope, dsh, environment, dshChanged, environmentChanged }
 }
 
 function UpdateReminder({ t }) {
@@ -1095,6 +1108,14 @@ function UpdateReminder({ t }) {
   }, [identity, ownsNotice])
 
   if (!ownsNotice || candidate === undefined) return null
+  const notice = updateNoticeModel(candidate, status)
+  const scopeName = `${notice.scope[0].toUpperCase()}${notice.scope.slice(1)}`
+  const title = t(`${notice.kind}Notice${scopeName}Title`)
+  const body = t('updateNoticeBody')
+    .replace('{dsh}', display(notice.dsh))
+    .replace('{dshState}', t(notice.dshChanged ? 'noticeWillUpdate' : 'noticeUnchanged'))
+    .replace('{environment}', displayEnvironment(notice.environment))
+    .replace('{environmentState}', t(notice.environmentChanged ? 'noticeWillUpdate' : 'noticeUnchanged'))
   const dismiss = permanent => {
     if (permanent) writeStorage(`dsh-platform:update-notice-dismissed:${candidate.kind}`, identity)
     else writeStorage(NOTICE_SNOOZE_KEY, JSON.stringify({ identity, until: Date.now() + 3_600_000 }))
@@ -1102,10 +1123,8 @@ function UpdateReminder({ t }) {
     setTick(tick + 1)
   }
   return h('aside', { className: css.updateReminder, role: 'status', 'aria-live': 'polite' },
-    h('strong', null, candidate.kind === 'stable' ? t('stableNoticeTitle') : t('upstreamNoticeTitle')),
-    h('p', null, candidate.kind === 'stable'
-      ? t('stableNoticeBody').replace('{version}', candidate.dsh)
-      : t('upstreamNoticeBody').replace('{version}', candidate.version)),
+    h('strong', null, title),
+    h('p', null, body),
     h('div', { className: css.reminderActions },
       h('button', { type: 'button', onClick: () => dismiss(false) }, t('later')),
       h('button', { type: 'button', onClick: () => dismiss(true) }, t('dismissVersion'))))
@@ -2556,7 +2575,7 @@ function apply(ctx) {
       systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的 Agent 操作指引；修改会立即生效。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', searchSystemSkills: '搜索系统技能', noMatchingResources: '没有符合搜索条件的项目。', itemsPerPage: '每页数量', itemsPerPageSuffix: '条/页', previousPage: '上一页', nextPage: '下一页', totalItems: '共 {total} 条', goToPage: '前往', pageUnit: '页',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
-      stableNoticeTitle: '正式版本可更新', stableNoticeBody: '最新支持版本 {version} 已可用。', upstreamNoticeTitle: '上游版本可更新', upstreamNoticeBody: 'DSH 官方版本 {version} 已可用。', later: '稍后提醒', dismissVersion: '不再提醒此版本',
+      stableNoticeDshTitle: '正式更新：DSH', stableNoticeEnvironmentTitle: '正式更新：Environment', stableNoticeBothTitle: '正式更新：DSH 与 Environment', upstreamNoticeDshTitle: '上游更新：DSH', upstreamNoticeEnvironmentTitle: '上游更新：Environment', upstreamNoticeBothTitle: '上游更新：DSH 与 Environment', updateNoticeBody: 'DSH：{dsh}{dshState}；Environment：{environment}{environmentState}。', noticeWillUpdate: '（将更新）', noticeUnchanged: '（保持不变）', later: '稍后提醒', dismissVersion: '不再提醒此版本',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
     },
     en: {
@@ -2588,7 +2607,7 @@ function apply(ctx) {
       systemSkills: 'System skills', systemSkillsDetail: 'Manage Agent guidance supplied by DSH Docker. Changes take effect immediately.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', searchSystemSkills: 'Search System Skills', noMatchingResources: 'No items match this search.', itemsPerPage: 'Items per page', itemsPerPageSuffix: '/ page', previousPage: 'Previous', nextPage: 'Next', totalItems: '{total} total', goToPage: 'Go to', pageUnit: 'page',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
-      stableNoticeTitle: 'Supported update available', stableNoticeBody: 'Supported version {version} is now available.', upstreamNoticeTitle: 'Upstream update available', upstreamNoticeBody: 'Official DSH version {version} is now available.', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
+      stableNoticeDshTitle: 'Supported update: DSH', stableNoticeEnvironmentTitle: 'Supported update: Environment', stableNoticeBothTitle: 'Supported update: DSH and Environment', upstreamNoticeDshTitle: 'Upstream update: DSH', upstreamNoticeEnvironmentTitle: 'Upstream update: Environment', upstreamNoticeBothTitle: 'Upstream update: DSH and Environment', updateNoticeBody: 'DSH: {dsh}{dshState}; Environment: {environment}{environmentState}.', noticeWillUpdate: ' (will update)', noticeUnchanged: ' (unchanged)', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
     },
   }), 'dsh-platform-management: locale')

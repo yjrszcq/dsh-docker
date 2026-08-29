@@ -816,10 +816,44 @@ test('Platform Management is embedded in the official settings.section slot', as
   assert.match(source, /updateNotifications: '更新提醒'/)
   assert.match(source, /updateNotificationsDetail: '自动检查发现新版本时，弹窗提醒更新。'/)
   assert.match(source, /updateNotifications: 'Update notifications'/)
+  assert.match(source, /stableNoticeBothTitle: '正式更新：DSH 与 Environment'/)
+  assert.match(source, /updateNoticeBody: 'DSH：\{dsh\}\{dshState\}；Environment：\{environment\}\{environmentState\}。'/)
+  assert.match(source, /stableNoticeBothTitle: 'Supported update: DSH and Environment'/)
+  assert.match(source, /updateNoticeBody: 'DSH: \{dsh\}\{dshState\}; Environment: \{environment\}\{environmentState\}.'/)
   assert.match(source, /不再提醒此版本/)
   assert.match(source, /Do not remind for this version/)
   assert.match(source, /source = 'manual'/)
   assert.doesNotMatch(source, /detail: t\(detailKey\)/)
+})
+
+test('update reminders identify DSH, Environment, or combined changes', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const modelSource = source.slice(
+    source.indexOf('function updateNoticeModel('),
+    source.indexOf('\nfunction UpdateReminder('),
+  )
+  const updateNoticeModel = new Function(`${modelSource}; return updateNoticeModel`)()
+
+  assert.deepEqual(updateNoticeModel({
+    kind: 'stable', dsh: '0.1.1-rc.2', environment: '1.0.6',
+  }, {
+    current: { dsh: '0.1.1-rc.1', environment: '1.0.5' },
+  }), {
+    kind: 'stable', scope: 'both', dsh: '0.1.1-rc.2', environment: '1.0.6',
+    dshChanged: true, environmentChanged: true,
+  })
+  assert.equal(updateNoticeModel({
+    kind: 'stable', dsh: '0.1.1-rc.1', environment: '1.0.6',
+  }, {
+    current: { dsh: '0.1.1-rc.1', environment: '1.0.5' },
+  }).scope, 'environment')
+  assert.deepEqual(updateNoticeModel({ kind: 'upstream', version: '0.1.1-rc.2' }, {
+    current: { dsh: '0.1.1-rc.1', environment: '1.0.6' },
+    supported: { environment: '1.0.6' },
+  }), {
+    kind: 'upstream', scope: 'dsh', dsh: '0.1.1-rc.2', environment: '1.0.6',
+    dshChanged: true, environmentChanged: false,
+  })
 })
 
 test('Platform Management compacts multiline JSON only in the log presentation', async () => {
