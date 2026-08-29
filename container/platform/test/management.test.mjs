@@ -1548,11 +1548,16 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
   assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-agent-warning"/)
-  assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="">/)
+  assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="" novalidate>/)
   assert.match(html, /id="auth-username"[^>]+pattern="\[\^\\p\{Cc\}/)
+  assert.match(html, /id="auth-username-error"[^>]+data-i18n="authUsernameFormat"[^>]+hidden/)
   for (const id of ['auth-current-password', 'auth-password', 'auth-password-confirm', 'auth-current-additional-password', 'auth-additional-password', 'auth-additional-password-confirm']) {
     assert.match(html, new RegExp(`id="${id}"[^>]+minlength="8"[^>]+pattern="\\[\\^\\\\p\\{Cc\\}`))
+    assert.match(html, new RegExp(`id="${id}-error"[^>]+data-i18n="authPasswordFormat"[^>]+hidden`))
   }
+  assert.match(script, /function validateAuthenticationSettingsFormat\(\)/)
+  assert.match(script, /AUTHENTICATION_PASSWORD_FIELDS[\s\S]*addEventListener\('input'/)
+  assert.doesNotMatch(script, /auth-username'\]\.addEventListener\('input'/)
   assert.match(html, /id="auth-origin"[\s\S]*id="auth-origin-detect"/)
   assert.match(html, /id="auth-isolation-dialog"[\s\S]*class="auth-comparison-table"/)
   assert.match(html, /id="auth-isolation-confirm-dialog"[\s\S]*data-i18n="authIsolationConfirm"/)

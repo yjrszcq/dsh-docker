@@ -79,6 +79,7 @@ button { letter-spacing: 0; }
 .auth-security-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .auth-password-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .auth-password-grid label { display: grid; gap: 7px; }
+.field-error { color: var(--danger); font-size: 12px; font-weight: 400; }
 .auth-session-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .auth-comparison-table { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(80px, .7fr)); margin-top: 14px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; font-size: 12px; line-height: 18px; }
 .auth-comparison-table > * { padding: 8px 10px; border-bottom: 1px solid var(--border); }
