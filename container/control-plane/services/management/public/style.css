@@ -69,10 +69,13 @@ button { letter-spacing: 0; }
 .theme-switch[data-theme-preference="dark"] [data-theme-icon="dark"] { display: block; }
 
 .auth-settings-form { display: grid; width: 100%; gap: 16px; }
-.auth-settings-form > label, .auth-subsection > label:not(.setting-row) { display: grid; gap: 7px; }
+.auth-settings-form > label, .auth-subsection > label:not(.setting-row), .auth-additional > label { display: grid; gap: 7px; }
 .auth-settings-form input, .auth-settings-form select { min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); }
 .auth-subsection { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .auth-subsection h3 { margin: 0; font-size: 14px; }
+.auth-additional { display: grid; gap: 12px; margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--border); }
+.auth-additional-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-additional-heading > .toggle { width: auto; }
 .auth-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .auth-origin-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
 .auth-origin-field label { display: grid; gap: 7px; }

@@ -234,7 +234,7 @@ export async function runCli({
       let managementPassword
       if (current.account.managementAdditionalCredential.enabled) {
         action = managementPasswordAction(await ask(
-          'Management additional password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+          'Management console password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
         ))
         if (action === 'reset') {
           managementPassword = await readPassword(input, output, 'New management password: ')

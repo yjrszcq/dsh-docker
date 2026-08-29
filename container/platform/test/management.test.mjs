@@ -1549,6 +1549,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
   assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-agent-warning"/)
   assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="" novalidate>/)
+  assert.match(html, /class="auth-additional-heading"[^>]*>[\s\S]*data-i18n="authAdditionalTitle"[\s\S]*class="toggle"[^>]*data-i18n-aria-label="authAdditionalEnabled"[\s\S]*id="auth-additional-enabled"/)
+  assert.match(html, /id="auth-current-additional-field" hidden/)
+  assert.match(html, /id="auth-additional-fields" class="auth-password-grid" hidden/)
+  assert.doesNotMatch(html, />Require an additional password for Management</)
   assert.match(style, /\.auth-settings-form \{ display: grid; width: 100%; gap: 16px; \}/)
   assert.doesNotMatch(style, /\.auth-settings-form \{[^}]*max-width:/)
   assert.match(html, /id="auth-username"[^>]+pattern="\[\^\\p\{Cc\}/)
@@ -1558,6 +1562,15 @@ test('standalone console keeps localized feature parity on the shared Management
     assert.match(html, new RegExp(`id="${id}-error"[^>]+data-i18n="authPasswordFormat"[^>]+hidden`))
   }
   assert.match(script, /function validateAuthenticationSettingsFormat\(\)/)
+  assert.match(script, /function renderAdditionalPasswordFields\(\)[\s\S]*auth-current-additional-field'[\s\S]*auth-additional-fields'/)
+  assert.match(script, /auth-additional-enabled'\]\.addEventListener\('change', renderAdditionalPasswordFields\)/)
+  assert.match(script, /authMainPasswordTitle: '账户密码'/)
+  assert.match(script, /authMainPasswordTitle: 'Account password'/)
+  assert.match(script, /authAdditionalTitle: '管理中心密码'/)
+  assert.match(script, /authAdditionalTitle: 'Management console password'/)
+  assert.match(script, /authCurrentAdditionalPassword: '当前管理中心密码'/)
+  assert.match(script, /authAdditionalPassword: '新管理中心密码'/)
+  assert.match(script, /authConfirmAdditionalPassword: '确认新管理中心密码'/)
   assert.match(script, /AUTHENTICATION_PASSWORD_FIELDS[\s\S]*addEventListener\('input'/)
   assert.doesNotMatch(script, /auth-username'\]\.addEventListener\('input'/)
   assert.match(html, /id="auth-origin"[\s\S]*id="auth-origin-detect"/)
@@ -2206,7 +2219,7 @@ test('management CLI resets administrator access through one atomic recovery req
     'New administrator username: ',
     'Change administrator password? y/[n]: ',
     'New administrator password: ',
-    'Management additional password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+    'Management console password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
     'New management password: ',
   ])
   assert.deepEqual(calls, [

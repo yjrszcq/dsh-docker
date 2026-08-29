@@ -666,7 +666,7 @@ test('Management pending page asks only for the additional password', () => {
       })
       assert.equal(page.status, 200)
       assertInlineScriptsCompile(page.body)
-      assert.match(page.body, /Additional password/)
+      assert.match(page.body, /Management console password/)
       assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/pending" novalidate>/)
       assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
       assert.match(page.body, /class="field-error" role="alert" hidden>Use 8 to 1024 characters\./)

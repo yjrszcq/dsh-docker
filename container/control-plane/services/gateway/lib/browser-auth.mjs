@@ -228,12 +228,12 @@ function authenticationPage(request, state, csrf, returnPath) {
 function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
-    title: 'DSH 管理中心', detail: '请输入管理中心附加密码。',
-    password: '附加密码', submit: '登录', failed: '验证失败，请重试。',
+    title: 'DSH 管理中心', detail: '请输入管理中心密码。',
+    password: '管理中心密码', submit: '登录', failed: '验证失败，请重试。',
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
   } : {
-    title: 'DSH Management Console', detail: 'Enter the additional Management password.',
-    password: 'Additional password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
+    title: 'DSH Management Console', detail: 'Enter the Management console password.',
+    password: 'Management console password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
   }
   const submitPath = `${authPrefix}management/pending`

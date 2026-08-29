@@ -489,12 +489,12 @@ export class AccessService {
       throw new AccessError('REQUEST_INVALID', 'no access changes were selected')
     }
     if (managementPassword !== null && mainPassword !== null && managementPassword === mainPassword) {
-      throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+      throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
     }
     return this.replaceRecoveryAccount(value, async (account, current) => {
       if (managementPassword !== null && mainPassword === null
         && await verifyCredential(managementPassword, current.mainCredential)) {
-        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
       }
       if (username !== null) account.username = username
       if (mainPassword !== null) {
@@ -700,7 +700,7 @@ export class AccessService {
       if (current.account.managementAdditionalCredential.enabled
         && value.additionalPassword === undefined
         && await this.verify(value.password, current.account.managementAdditionalCredential.verifier)) {
-        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+        throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
       }
       const verifier = await this.store.createVerifier(value.password)
       account.mainCredential = { ...verifier, version: current.account.mainCredential.version + 1 }
@@ -715,11 +715,11 @@ export class AccessService {
           changedAt: new Date().toISOString(),
         }
       } else if (value.additionalPassword !== undefined) {
-        if (typeof value.additionalPassword !== 'string') throw new AccessError('PASSWORD_REQUIRED', 'additional password is required')
+        if (typeof value.additionalPassword !== 'string') throw new AccessError('PASSWORD_REQUIRED', 'Management console password is required')
         const equalsMain = value.password !== undefined
           ? normalizePassword(value.additionalPassword) === normalizePassword(value.password)
           : await this.verify(value.additionalPassword, current.account.mainCredential)
-        if (equalsMain) throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and additional passwords must differ')
+        if (equalsMain) throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
         const verifier = await this.store.createVerifier(value.additionalPassword)
         account.managementAdditionalCredential = {
           enabled: true,
@@ -728,7 +728,7 @@ export class AccessService {
           changedAt: new Date().toISOString(),
         }
       } else if (!current.account.managementAdditionalCredential.enabled) {
-        throw new AccessError('PASSWORD_REQUIRED', 'additional password is required')
+        throw new AccessError('PASSWORD_REQUIRED', 'Management console password is required')
       }
     }
     const next = await this.store.replaceAccount(account, current.account.revision)
