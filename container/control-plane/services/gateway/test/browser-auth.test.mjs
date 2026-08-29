@@ -37,6 +37,12 @@ function request(port, { path = '/', method = 'GET', headers = {}, body } = {}) 
   })
 }
 
+function assertInlineScriptsCompile(html) {
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1])
+  assert.ok(scripts.length > 0, 'expected at least one inline script')
+  for (const script of scripts) assert.doesNotThrow(() => new Function(script))
+}
+
 function fixture(initialState = 'never-initialized') {
   let state = initialState
   const sessions = new Map()
@@ -230,6 +236,10 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.match(response.headers['cache-control'], /no-store/)
       assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
+      if (state !== 'recovery-required') {
+        assertInlineScriptsCompile(response.body)
+        assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session|migration)">/)
+      }
     } finally { await close(current.server) }
   }
 })
@@ -433,6 +443,8 @@ test('direct Management login creates and explicitly revokes only a Management s
     const page = await request(port, {
       path: '/_dsh_platform/auth/management', headers: { host: `127.0.0.1:${port}` },
     })
+    assertInlineScriptsCompile(page.body)
+    assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/session">/)
     const loginCsrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const loginCsrf = loginCsrfCookie.split('=')[1]
     const login = await request(port, {

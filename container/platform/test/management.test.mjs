@@ -5,9 +5,10 @@ import { createConnection } from 'node:net'
 import { appendFile, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
-import { parseCli, recoverImageBaseline, resetTrust, runCli } from '../../control-plane/services/management/cli.mjs'
+import { parseCli, readSecret, recoverImageBaseline, resetTrust, runCli } from '../../control-plane/services/management/cli.mjs'
 import { API_PREFIX, createManagementServer, listenManagement } from '../../control-plane/services/management/server.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import { UpdateConflictError } from '../../control-plane/modules/updater/lib/coordinator.mjs'
@@ -1547,6 +1548,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
   assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-agent-warning"/)
+  assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="">/)
   assert.match(html, /id="auth-origin"[\s\S]*id="auth-origin-detect"/)
   assert.match(html, /id="auth-isolation-dialog"[\s\S]*class="auth-comparison-table"/)
   assert.match(html, /id="auth-isolation-confirm-dialog"[\s\S]*data-i18n="authIsolationConfirm"/)
@@ -2087,6 +2089,24 @@ test('management CLI creates a root-only one-time migration setup key', async ()
     argv: ['access', 'begin-migration'], access: { request: async () => ({}) },
     getuid: () => 1000, input: tty, output: tty,
   }), /requires root/)
+})
+
+test('hidden access input preserves the TTY stream for subsequent prompts', async () => {
+  const input = new PassThrough()
+  input.isTTY = true
+  input.setRawMode = value => { input.isRaw = value }
+  const output = new PassThrough()
+  output.isTTY = true
+  const first = readSecret(input, output, 'First password: ')
+  input.write('first secret\n')
+  assert.equal(await first, 'first secret')
+  assert.equal(input.destroyed, false)
+  assert.equal(input.isRaw, false)
+  const second = readSecret(input, output, 'Second password: ')
+  input.write('second secret\n')
+  assert.equal(await second, 'second secret')
+  assert.equal(input.destroyed, false)
+  assert.equal(input.isRaw, false)
 })
 
 test('management CLI defaults every direct access mutation to no', async () => {

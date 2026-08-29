@@ -122,26 +122,46 @@ function affirmative(value, label) {
   throw new Error(`${label} choice must be y or n`)
 }
 
-async function readSecret(input, output, prompt) {
+export async function readSecret(input, output, prompt) {
   output.write(prompt)
   if (typeof input.setRawMode !== 'function') throw new Error('password input must be an interactive TTY')
   input.setRawMode(true)
   input.resume()
-  let value = ''
-  try {
-    for await (const chunk of input) {
+  return new Promise((resolve, reject) => {
+    let value = ''
+    const cleanup = () => {
+      input.off('data', onData)
+      input.off('end', onEnd)
+      input.off('error', onError)
+      input.setRawMode(false)
+      input.pause()
+    }
+    const finish = (error, result) => {
+      cleanup()
+      if (error === undefined) resolve(result)
+      else reject(error)
+    }
+    const onData = chunk => {
       for (const character of String(chunk)) {
         if (character === '\r' || character === '\n') {
           output.write('\n')
-          return value
+          finish(undefined, value)
+          return
         }
-        if (character === '\u0003') throw new Error('access recovery cancelled')
+        if (character === '\u0003') {
+          finish(new Error('access recovery cancelled'))
+          return
+        }
         if (character === '\u007f') value = value.slice(0, -1)
         else if (character >= ' ') value += character
       }
     }
-    throw new Error('password input ended before confirmation')
-  } finally { input.setRawMode(false); input.pause() }
+    const onEnd = () => finish(new Error('password input ended before confirmation'))
+    const onError = error => finish(error)
+    input.on('data', onData)
+    input.once('end', onEnd)
+    input.once('error', onError)
+  })
 }
 
 const RETRYABLE_CONTROL_PLANE_ERRORS = new Set(['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE'])
