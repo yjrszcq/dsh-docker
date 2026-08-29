@@ -981,6 +981,7 @@ a.secondaryButton { text-decoration: none; }
 }
 .updateReminder strong { display: block; font-size: 14px; line-height: 22px; }
 .updateReminder p { margin: 4px 0 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.updateReminderVersions span { display: block; }
 .reminderActions { display: flex; justify-content: flex-end; gap: 8px; }
 .reminderActions button {
   min-height: 30px;
