@@ -155,7 +155,10 @@ docker run -d \
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
+docker exec -it --user root deepseek-harness dsh-platform access generate-key
 ```
+
+全新空卷直接显示普通管理员注册页，不需要密钥。只有旧部署迁移或认证状态损坏时，才使用 `access generate-key` 生成十分钟有效、单次使用的认证重置密钥；恢复页可据此重新创建管理员账户。
 
 常用命令：
 

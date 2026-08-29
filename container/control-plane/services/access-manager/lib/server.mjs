@@ -108,7 +108,7 @@ export class AccessService {
     this.report = report
     this.now = now
     this.runtimeCapabilities = runtimeCapabilities
-    this.migrationSetup = null
+    this.authenticationReset = null
     this.transition = Promise.resolve()
   }
 
@@ -159,29 +159,35 @@ export class AccessService {
     })
   }
 
-  beginMigration() {
+  generateAuthenticationResetKey() {
     return this.serialized(async () => {
       const current = await this.store.state()
-      if (current.state !== 'migration-required') throw new AccessError('MIGRATION_UNAVAILABLE', 'administrator migration is unavailable', 409)
-      const key = `dshmk_${identifier()}`
-      this.migrationSetup = { digest: digest(key), expiresAt: this.now() + 10 * 60 * 1000 }
-      await this.report('access.migration.started')
-      return { key, expiresAt: new Date(this.migrationSetup.expiresAt).toISOString() }
+      if (!['migration-required', 'recovery-required'].includes(current.state)) {
+        throw new AccessError('AUTHENTICATION_RESET_UNAVAILABLE', 'administrator authentication reset is unavailable', 409)
+      }
+      const key = `dshak_${identifier()}`
+      this.authenticationReset = { digest: digest(key), expiresAt: this.now() + 10 * 60 * 1000 }
+      await this.report('access.authentication-reset-key.generated', { state: current.state })
+      return { key, expiresAt: new Date(this.authenticationReset.expiresAt).toISOString() }
     })
   }
 
-  migrateDsh(value) {
+  resetDshAuthentication(value) {
     return this.serialized(async () => {
-      const setup = this.migrationSetup
+      const setup = this.authenticationReset
       if (setup === null || setup.expiresAt <= this.now() || typeof value.setupKey !== 'string'
         || !sameToken(setup.digest, digest(value.setupKey))) {
-        if (setup !== null && setup.expiresAt <= this.now()) this.migrationSetup = null
-        throw new AccessError('MIGRATION_KEY_INVALID', 'migration setup key is invalid or expired', 401)
+        if (setup !== null && setup.expiresAt <= this.now()) this.authenticationReset = null
+        throw new AccessError('AUTHENTICATION_RESET_KEY_INVALID', 'authentication reset key is invalid or expired', 401)
       }
-      const account = await this.store.migrate(value)
-      this.migrationSetup = null
+      const current = await this.store.state()
+      let account
+      if (current.state === 'migration-required') account = await this.store.migrate(value)
+      else if (current.state === 'recovery-required') account = await this.store.recover(value)
+      else throw new AccessError('AUTHENTICATION_RESET_UNAVAILABLE', 'administrator authentication reset is unavailable', 409)
+      this.authenticationReset = null
       const session = this.sessions.issue('dsh', account, { origin: value.origin, client: value.client })
-      await this.report('access.migration.completed', { accountId: account.accountId })
+      await this.report('access.authentication-reset.completed', { accountId: account.accountId, previousState: current.state })
       return { state: 'initialized', account: publicAccount(account), session }
     })
   }
@@ -741,7 +747,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-password') return send(response, 200, await service.resetRecoveryPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-management-password') return send(response, 200, await service.resetRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))
-        if (request.method === 'POST' && pathname === '/v1/recovery/begin-migration') return send(response, 201, await service.beginMigration())
+        if (request.method === 'POST' && pathname === '/v1/recovery/generate-key') return send(response, 201, await service.generateAuthenticationResetKey())
         return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
       }
       const value = await body(request)
@@ -749,7 +755,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/initialize') return send(response, 201, await service.initialize(value))
       if (request.method === 'POST' && pathname === '/v1/authenticate') return send(response, 200, await service.authenticate(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/initialize') return send(response, 201, await service.initializeDsh(value))
-      if (request.method === 'POST' && pathname === '/v1/dsh/migrate') return send(response, 201, await service.migrateDsh(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/reset-authentication') return send(response, 201, await service.resetDshAuthentication(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))

@@ -2094,20 +2094,20 @@ test('CLI parser keeps rollback local and update wait behavior explicit', async 
   assert.match(output[0], /rollback-task/)
 })
 
-test('management CLI creates a root-only one-time migration setup key', async () => {
-  assert.deepEqual(parseCli(['access', 'begin-migration']), { command: 'access', operation: 'begin-migration' })
+test('management CLI creates a root-only one-time authentication reset key', async () => {
+  assert.deepEqual(parseCli(['access', 'generate-key']), { command: 'access', operation: 'generate-key' })
   assert.throws(() => parseCli(['access', 'create']))
   assert.throws(() => parseCli(['access']))
   const calls = []
   const output = []
   const tty = { isTTY: true }
   assert.equal(await runCli({
-    argv: ['access', 'begin-migration'],
+    argv: ['access', 'generate-key'],
     access: {
       request: async (method, path) => {
         calls.push([method, path])
         if (method === 'GET') return { state: 'migration-required', account: null }
-        return { key: 'dshmk_example', expiresAt: '2026-08-28T00:10:00.000Z' }
+        return { key: 'dshak_example', expiresAt: '2026-08-28T00:10:00.000Z' }
       },
     },
     getuid: () => 0,
@@ -2118,13 +2118,13 @@ test('management CLI creates a root-only one-time migration setup key', async ()
   }), 0)
   assert.deepEqual(calls, [
     ['GET', '/v1/recovery/status'],
-    ['POST', '/v1/recovery/begin-migration'],
+    ['POST', '/v1/recovery/generate-key'],
   ])
   assert.deepEqual(JSON.parse(output[0]), {
-    key: 'dshmk_example', expiresAt: '2026-08-28T00:10:00.000Z',
+    key: 'dshak_example', expiresAt: '2026-08-28T00:10:00.000Z',
   })
   await assert.rejects(runCli({
-    argv: ['access', 'begin-migration'], access: { request: async () => ({}) },
+    argv: ['access', 'generate-key'], access: { request: async () => ({}) },
     getuid: () => 1000, input: tty, output: tty,
   }), /requires root/)
 })
@@ -2154,7 +2154,7 @@ test('management CLI defaults every direct access mutation to no', async () => {
     'reset-password',
     'reset-management-password',
     'disable-management-password',
-    'begin-migration',
+    'generate-key',
   ]) {
     const calls = []
     const prompts = []

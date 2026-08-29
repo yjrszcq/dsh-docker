@@ -190,49 +190,63 @@ function htmlEscape(value) {
 const USERNAME_INPUT_PATTERN = String.raw`[^\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]{1,64}`
 const PASSWORD_INPUT_PATTERN = String.raw`[^\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]{8,1024}`
 
-function authenticationPage(request, state, csrf, returnPath) {
+function authenticationPage(request, state, csrf, returnPath, { resetForm = false } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
     brand: 'HARNESS', username: '用户名', password: '密码', register: '注册', login: '登录',
-    initializing: '正在创建管理员账户…', signingIn: '正在登录…',
+    initializeTitle: '创建管理员账户', initializeDetail: '首次使用需要创建本地管理员账户。',
+    loginTitle: '管理员登录', loginDetail: '请输入本地管理员账户。',
+    initializing: '正在创建管理员账户…', signingIn: '正在登录…', resetting: '正在重置管理员认证…',
     failed: '用户名或密码不正确，请重试。', registrationFailed: '无法创建管理员账户，请检查填写内容后重试。',
     concurrent: '管理员账户已创建，请使用现有账户登录。',
     invalidUsername: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。',
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
-    invalidMigrationKey: '迁移密钥无效、已过期或已使用，请重新生成。',
-    migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access begin-migration，然后使用一次性密钥创建新账户。', setupKey: '迁移密钥',
-    recoveryTitle: '需要恢复管理员认证', recoveryDetail: '认证状态损坏或缺失。请从容器 Root 终端执行 dsh-platform access status 查看恢复指引。',
+    invalidResetKey: '认证重置密钥无效、已过期或已使用，请重新生成。',
+    migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access generate-key，然后使用一次性密钥创建新账户。',
+    resetTitle: '重置管理员认证', resetDetail: '请先在容器 Root 终端运行 dsh-platform access generate-key。重置会替换损坏或缺失的管理员账户。', setupKey: '认证重置密钥',
+    recoveryTitle: '需要恢复管理员认证', recoveryDetail: '认证状态损坏或缺失。请使用 Root 终端生成认证重置密钥，然后重新创建管理员账户。', recoveryAction: '重置管理员认证',
     waitingTitle: '正在准备认证服务', waitingDetail: '平台正在确认本地管理员状态，请稍候。',
   } : {
     brand: 'HARNESS', username: 'Username', password: 'Password', register: 'Register', login: 'Sign in',
-    initializing: 'Creating the administrator account…', signingIn: 'Signing in…',
+    initializeTitle: 'Create administrator account', initializeDetail: 'Create the local administrator account to continue.',
+    loginTitle: 'Administrator sign in', loginDetail: 'Enter the local administrator account.',
+    initializing: 'Creating the administrator account…', signingIn: 'Signing in…', resetting: 'Resetting administrator authentication…',
     failed: 'The username or password is incorrect. Try again.', registrationFailed: 'The administrator account could not be created. Check the entered values and try again.',
     concurrent: 'The administrator account already exists. Sign in with it.',
     invalidUsername: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.',
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
-    invalidMigrationKey: 'The migration key is invalid, expired, or already used. Generate a new key.',
-    migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access begin-migration from a root container terminal, then create a new account with the one-time key.', setupKey: 'Migration key',
-    recoveryTitle: 'Administrator recovery required', recoveryDetail: 'Authentication state is missing or damaged. Run dsh-platform access status from a root container terminal for recovery guidance.',
+    invalidResetKey: 'The authentication reset key is invalid, expired, or already used. Generate a new key.',
+    migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access generate-key from a root container terminal, then create a new account with the one-time key.',
+    resetTitle: 'Reset administrator authentication', resetDetail: 'First run dsh-platform access generate-key from a root container terminal. Resetting replaces the missing or damaged administrator account.', setupKey: 'Authentication reset key',
+    recoveryTitle: 'Administrator recovery required', recoveryDetail: 'Authentication state is missing or damaged. Generate an authentication reset key from a root container terminal, then recreate the administrator account.', recoveryAction: 'Reset administrator authentication',
     waitingTitle: 'Preparing authentication', waitingDetail: 'The platform is determining local administrator state. Please wait.',
   }
   let content
-  if (state === 'never-initialized' || state === 'initialized' || state === 'migration-required') {
+  if (state === 'never-initialized' || state === 'initialized' || state === 'migration-required'
+    || (state === 'recovery-required' && resetForm)) {
     const initialize = state === 'never-initialized'
-    const migration = state === 'migration-required'
-    const submit = initialize || migration ? copy.register : copy.login
-    const submitPath = migration ? `${AUTH_PREFIX}migration` : `${AUTH_PREFIX}session`
+    const reset = state === 'migration-required' || state === 'recovery-required'
+    const submit = initialize ? copy.register : reset ? copy.recoveryAction : copy.login
+    const submitPath = reset ? `${AUTH_PREFIX}reset` : `${AUTH_PREFIX}session`
     const registrationErrors = {
       ALREADY_INITIALIZED: copy.concurrent,
       USERNAME_INVALID: copy.invalidUsername,
       PASSWORD_POLICY_VIOLATION: copy.invalidPassword,
-      MIGRATION_KEY_INVALID: copy.invalidMigrationKey,
+      AUTHENTICATION_RESET_KEY_INVALID: copy.invalidResetKey,
     }
-    const fallbackError = initialize || migration ? copy.registrationFailed : copy.failed
-    content = `${migration ? `<h1>${copy.migrationTitle}</h1><p>${copy.migrationDetail}</p>` : ''}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${migration ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" pattern="${htmlEscape(USERNAME_INPUT_PATTERN)}"${migration ? '' : ' autofocus'}><small class="field-error" data-field-error="username" role="alert" hidden>${htmlEscape(copy.invalidUsername)}</small></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize || migration ? 'new-password' : 'current-password'}" required minlength="8" maxlength="1024" pattern="${htmlEscape(PASSWORD_INPUT_PATTERN)}"><small class="field-error" data-field-error="password" role="alert" hidden>${htmlEscape(copy.invalidPassword)}</small></label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)};function validateField(name){const input=form.elements[name],message=form.querySelector('[data-field-error="'+name+'"]'),valid=input.validity.valid;message.hidden=valid;return valid}${initialize || migration ? ";form.elements.password.addEventListener('input',()=>validateField('password'))" : ''};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const validUsername=validateField('username'),validPassword=validateField('password');if(!validUsername||!validPassword)return;button.disabled=true;button.textContent=${JSON.stringify(initialize || migration ? copy.initializing : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${migration ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    const fallbackError = initialize || reset ? copy.registrationFailed : copy.failed
+    const title = initialize ? copy.initializeTitle : reset
+      ? (state === 'migration-required' ? copy.migrationTitle : copy.resetTitle)
+      : copy.loginTitle
+    const detail = initialize ? copy.initializeDetail : reset
+      ? (state === 'migration-required' ? copy.migrationDetail : copy.resetDetail)
+      : copy.loginDetail
+    content = `<h1>${title}</h1><p class="detail">${detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" required maxlength="256" pattern="${htmlEscape(USERNAME_INPUT_PATTERN)}"${reset ? '' : ' autofocus'}><small class="field-error" data-field-error="username" role="alert" hidden>${htmlEscape(copy.invalidUsername)}</small></label><label>${copy.password}<input name="password" type="password" autocomplete="${initialize || reset ? 'new-password' : 'current-password'}" required minlength="8" maxlength="1024" pattern="${htmlEscape(PASSWORD_INPUT_PATTERN)}"><small class="field-error" data-field-error="password" role="alert" hidden>${htmlEscape(copy.invalidPassword)}</small></label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)};function validateField(name){const input=form.elements[name],message=form.querySelector('[data-field-error="'+name+'"]'),valid=input.validity.valid;message.hidden=valid;return valid}${initialize || reset ? ";form.elements.password.addEventListener('input',()=>validateField('password'))" : ''};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const validUsername=validateField('username'),validPassword=validateField('password');if(!validUsername||!validPassword)return;button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
-    content = `<h1>${copy.recoveryTitle}</h1><p>${copy.recoveryDetail}</p>`
+    const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
+    content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
   } else content = `<h1>${copy.waitingTitle}</h1><p>${copy.waitingDetail}</p><script>setTimeout(()=>location.reload(),1000)</script>`
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(copy.brand)}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}.brand{text-align:center;margin:0 0 24px;font-size:18px;letter-spacing:.12em}h1{margin:0 0 8px;font-size:20px}p{margin:0;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}.field-error{font-size:12px;font-weight:400;color:#ff7777}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><div class="brand">${htmlEscape(copy.brand)}</div>${content}</main></body></html>`
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(copy.brand)}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}.brand{text-align:center;margin:0 0 24px;font-size:18px;letter-spacing:.12em}h1{margin:0 0 8px;font-size:20px}p{margin:0;color:#aaaab0}.detail{margin-bottom:20px}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}.field-error{font-size:12px;font-weight:400;color:#ff7777}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button,.button{display:block;width:100%;padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;text-align:center;text-decoration:none;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button,.button{background:#202124;color:#fff}}</style></head><body><main class="card"><div class="brand">${htmlEscape(copy.brand)}</div>${content}</main></body></html>`
 }
 
 function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
@@ -473,7 +487,9 @@ export function createBrowserAuthentication({
       sendJson(response, 200, { state: current.state })
       return true
     }
-    if (pathname === authPrefix.slice(0, -1) || pathname === authPrefix) {
+    const authenticationEntry = pathname === authPrefix.slice(0, -1) || pathname === authPrefix
+    const authenticationReset = pathname === authPrefix + 'reset'
+    if (authenticationEntry || (authenticationReset && ['GET', 'HEAD'].includes(request.method ?? 'GET'))) {
       if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) return false
       const current = await status()
       const valid = await validateDsh(request)
@@ -485,7 +501,13 @@ export function createBrowserAuthentication({
       }
       const csrf = token('dsha')
       const origin = requestOrigin(request) ?? 'http://invalid.local'
-      const bytes = Buffer.from(authenticationPage(request, current.state, csrf, returnPath))
+      const resetForm = authenticationReset && current.state === 'recovery-required'
+      if (authenticationReset && !resetForm) {
+        response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}?return=${encodeURIComponent(returnPath)}` })
+        response.end()
+        return true
+      }
+      const bytes = Buffer.from(authenticationPage(request, current.state, csrf, returnPath, { resetForm }))
       response.writeHead(200, {
         'cache-control': 'no-store',
         'content-length': String(bytes.byteLength),
@@ -524,22 +546,27 @@ export function createBrowserAuthentication({
       }
       return true
     }
-    if (pathname === authPrefix + 'migration' && request.method === 'POST') {
+    if (pathname === authPrefix + 'reset' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
       if (!validBrowserMutation(request, csrf)) {
-        sendJson(response, 403, { error: 'migration request rejected', code: 'REQUEST_FORBIDDEN' })
+        sendJson(response, 403, { error: 'authentication reset request rejected', code: 'REQUEST_FORBIDDEN' })
         return true
       }
       const origin = requestOrigin(request, { requireHeader: true })
+      const current = await status()
+      if (!['migration-required', 'recovery-required'].includes(current.state)) {
+        sendJson(response, 409, { error: 'administrator authentication reset is unavailable', code: 'AUTHENTICATION_RESET_UNAVAILABLE' })
+        return true
+      }
       try {
-        const result = await accessRequest('POST', '/v1/dsh/migrate', {
+        const result = await accessRequest('POST', '/v1/dsh/reset-authentication', {
           ...await jsonBody(request), origin, client: loginClient(request),
         })
-        await report('gateway.access.migrated')
+        await report('gateway.access.authentication-reset', { previousState: current.state })
         sendJson(response, 201, { authenticated: true }, { 'set-cookie': sessionCookies(result.session, origin) })
       } catch (error) {
-        await report('gateway.access.migration-failed', { code: error.code ?? null, level: 'warning' })
-        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'MIGRATION_FAILED') })
+        await report('gateway.access.authentication-reset-failed', { code: error.code ?? null, level: 'warning' })
+        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_RESET_FAILED') })
       }
       return true
     }

@@ -70,13 +70,13 @@ function fixture(initialState = 'never-initialized', options = {}) {
         sessions.set('dshs_created', body.origin)
         return { session: { token: 'dshs_created', csrfToken: 'dshc_created' } }
       }
-      if (path === '/v1/dsh/migrate') {
-        if (body.setupKey !== 'dshmk_valid') throw Object.assign(new Error('migration setup key is invalid or expired'), {
-          code: 'MIGRATION_KEY_INVALID', statusCode: 401,
+      if (path === '/v1/dsh/reset-authentication') {
+        if (body.setupKey !== 'dshak_valid') throw Object.assign(new Error('authentication reset key is invalid or expired'), {
+          code: 'AUTHENTICATION_RESET_KEY_INVALID', statusCode: 401,
         })
         state = 'initialized'
-        sessions.set('dshs_migrated', body.origin)
-        return { session: { token: 'dshs_migrated', csrfToken: 'dshc_migrated' } }
+        sessions.set('dshs_reset', body.origin)
+        return { session: { token: 'dshs_reset', csrfToken: 'dshc_reset' } }
       }
       if (path === '/v1/dsh/login') {
         if (body.password !== 'correct password') throw Object.assign(new Error('username or password is incorrect'), {
@@ -254,7 +254,7 @@ test('isolated Management continuation creates root-path cookies and redirects t
 
 test('renders state-driven initialization and recovery pages without exposing account material', async () => {
   for (const [state, expected] of [
-    ['never-initialized', /autocomplete="new-password"/],
+    ['never-initialized', /Create administrator account/],
     ['migration-required', /Administrator migration required/],
     ['recovery-required', /Administrator recovery required/],
   ]) {
@@ -272,13 +272,17 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
       if (state !== 'recovery-required') {
         assertInlineScriptsCompile(response.body)
-        assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session|migration)" novalidate>/)
+        assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session|reset)" novalidate>/)
         assert.match(response.body, /class="field-error" data-field-error="username"[^>]*hidden/)
         assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
         assert.doesNotMatch(response.body, /elements\.username\.addEventListener\('input'/)
         if (state === 'never-initialized' || state === 'migration-required') {
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
         }
+        if (state === 'never-initialized') assert.doesNotMatch(response.body, /name="setupKey"/)
+      } else {
+        assert.match(response.body, /href="\/_dsh_platform\/auth\/reset\?return=/)
+        assert.doesNotMatch(response.body, /name="setupKey"/)
       }
     } finally { await close(current.server) }
   }
@@ -420,7 +424,7 @@ test('login preserves explicit Access Manager rate limits', async () => {
   } finally { await close(server) }
 })
 
-test('legacy migration exchanges a root-issued setup key for a DSH session', async () => {
+test('legacy migration exchanges a root-issued authentication reset key for a DSH session', async () => {
   const current = fixture('migration-required')
   const port = await listen(current.server)
   try {
@@ -431,7 +435,7 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
     assert.match(page.body, /name="setupKey"/)
     assert.match(page.body, /method="post"/)
     assert.match(page.body, /Use 8 to 1024 characters\. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not\./)
-    assert.match(page.body, /The migration key is invalid, expired, or already used\./)
+    assert.match(page.body, /The authentication reset key is invalid, expired, or already used\./)
     assert.match(page.body, /name="username"[^>]+pattern="\[\^\\p\{Cc\}/)
     assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
     assert.doesNotMatch(page.body, /name="password"[^>]*value=/)
@@ -439,24 +443,24 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const csrf = csrfCookie.split('=')[1]
     const migrated = await request(port, {
-      path: '/_dsh_platform/auth/migration', method: 'POST',
+      path: '/_dsh_platform/auth/reset', method: 'POST',
       headers: {
         host: `127.0.0.1:${port}`, origin, cookie: csrfCookie,
         'content-type': 'application/json', 'x-dsh-csrf': csrf,
         'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
       },
-      body: JSON.stringify({ setupKey: 'dshmk_valid', username: 'admin', password: 'correct password' }),
+      body: JSON.stringify({ setupKey: 'dshak_valid', username: 'admin', password: 'correct password' }),
     })
     assert.equal(migrated.status, 201)
-    assert.match(migrated.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_migrated`))
-    assert.equal(current.calls.some(call => call.path === '/v1/dsh/migrate'), true)
+    assert.match(migrated.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_reset`))
+    assert.equal(current.calls.some(call => call.path === '/v1/dsh/reset-authentication'), true)
   } finally { await close(current.server) }
 })
 
 test('migration and initialization pages distinguish registration errors from login failures', async () => {
   for (const [state, language, expected] of [
     ['never-initialized', 'zh-CN', ['密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。', '无法创建管理员账户，请检查填写内容后重试。']],
-    ['migration-required', 'zh-CN', ['迁移密钥无效、已过期或已使用，请重新生成。', '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。']],
+    ['migration-required', 'zh-CN', ['认证重置密钥无效、已过期或已使用，请重新生成。', '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。']],
     ['never-initialized', 'en', ['Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.', 'The administrator account could not be created.']],
   ]) {
     const current = fixture(state)
@@ -470,6 +474,40 @@ test('migration and initialization pages distinguish registration errors from lo
       assertInlineScriptsCompile(page.body)
     } finally { await close(current.server) }
   }
+})
+
+test('damaged authentication requires an explicit reset page and never places credentials in its URL', async () => {
+  const current = fixture('recovery-required')
+  const port = await listen(current.server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    const recovery = await request(port, {
+      path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}`, 'accept-language': 'en' },
+    })
+    assert.match(recovery.body, /Reset administrator authentication/)
+    assert.doesNotMatch(recovery.body, /name="(?:setupKey|username|password)"/)
+
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/reset?return=%2Fsettings',
+      headers: { host: `127.0.0.1:${port}`, 'accept-language': 'en' },
+    })
+    assert.equal(page.status, 200)
+    assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/reset" novalidate>/)
+    assert.doesNotMatch(page.body, /dshak_valid|username=|password=/)
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const reset = await request(port, {
+      path: '/_dsh_platform/auth/reset', method: 'POST',
+      headers: {
+        host: `127.0.0.1:${port}`, origin, cookie: csrfCookie,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ setupKey: 'dshak_valid', username: 'recovered', password: 'correct password' }),
+    })
+    assert.equal(reset.status, 201)
+    assert.equal(current.calls.some(call => call.path === '/v1/dsh/reset-authentication'), true)
+  } finally { await close(current.server) }
 })
 
 test('login sessions are origin-bound and safe return paths remain local', async () => {

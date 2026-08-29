@@ -155,7 +155,10 @@ Lost credentials are recovered only from an interactive Root console. Passwords 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
+docker exec -it --user root deepseek-harness dsh-platform access generate-key
 ```
+
+A fresh empty volume opens the normal administrator registration page and needs no key. Only legacy migration or damaged authentication state uses `access generate-key` to issue a single-use authentication reset key valid for ten minutes; the recovery page can then recreate the administrator account.
 
 Useful commands:
 

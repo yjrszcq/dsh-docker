@@ -265,6 +265,12 @@ test('classifies fresh and legacy installations exactly once', async () => {
   assert.equal((await fresh.store.classify({ dshProfile: false, legacyAuthenticationConfigured: false })).initialization.state, 'never-initialized')
   assert.equal((await fresh.store.classify({ dshProfile: true, legacyAuthenticationConfigured: true })).initialization.state, 'never-initialized')
 
+  const emptyWithLegacyEnvironment = await fixture()
+  assert.equal((await emptyWithLegacyEnvironment.store.classify({
+    dshProfile: false,
+    legacyAuthenticationConfigured: true,
+  })).initialization.state, 'never-initialized')
+
   const legacy = await fixture()
   const classified = await legacy.store.classify({ dshProfile: true, legacyAuthenticationConfigured: false })
   assert.equal(classified.initialization.state, 'migration-required')
@@ -288,53 +294,75 @@ test('publishes an account before converging initialization and rejects a second
   )
 })
 
-test('migrates a legacy deployment with one expiring single-use setup key', async () => {
+test('migrates a legacy deployment with one expiring single-use authentication reset key', async () => {
   const current = await fixture()
   await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
-  const first = await current.service.beginMigration()
-  const second = await current.service.beginMigration()
-  assert.match(second.key, /^dshmk_/)
+  const first = await current.service.generateAuthenticationResetKey()
+  const second = await current.service.generateAuthenticationResetKey()
+  assert.match(second.key, /^dshak_/)
   assert.notEqual(first.key, second.key)
-  await assert.rejects(current.service.migrateDsh({
+  await assert.rejects(current.service.resetDshAuthentication({
     setupKey: first.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
-  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
-  const migrated = await current.service.migrateDsh({
+  }), error => error.code === 'AUTHENTICATION_RESET_KEY_INVALID' && error.statusCode === 401)
+  const migrated = await current.service.resetDshAuthentication({
     setupKey: second.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   assert.equal(migrated.state, 'initialized')
   assert.equal(migrated.account.username, 'admin')
   assert.match(migrated.session.token, /^dshs_/)
-  await assert.rejects(current.service.beginMigration(), error => error.code === 'MIGRATION_UNAVAILABLE')
+  await assert.rejects(current.service.generateAuthenticationResetKey(), error => error.code === 'AUTHENTICATION_RESET_UNAVAILABLE')
 })
 
-test('keeps a valid migration key usable while new account fields are corrected', async () => {
+test('keeps a valid authentication reset key usable while new account fields are corrected', async () => {
   const current = await fixture()
   await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
-  const setup = await current.service.beginMigration()
-  await assert.rejects(current.service.migrateDsh({
+  const setup = await current.service.generateAuthenticationResetKey()
+  await assert.rejects(current.service.resetDshAuthentication({
     setupKey: setup.key, username: 'operator', password: 'four', origin: 'https://dsh.example',
   }), error => error.code === 'PASSWORD_POLICY_VIOLATION')
-  const migrated = await current.service.migrateDsh({
+  const migrated = await current.service.resetDshAuthentication({
     setupKey: setup.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   assert.equal(migrated.account.username, 'operator')
-  await assert.rejects(current.service.migrateDsh({
+  await assert.rejects(current.service.resetDshAuthentication({
     setupKey: setup.key, username: 'operator', password: 'correct horse battery staple', origin: 'https://dsh.example',
-  }), error => error.code === 'MIGRATION_KEY_INVALID')
+  }), error => error.code === 'AUTHENTICATION_RESET_KEY_INVALID')
 })
 
-test('rejects expired and malformed migration keys without exposing an internal error', async () => {
+test('rejects expired and malformed authentication reset keys without exposing an internal error', async () => {
   const current = await fixture()
   await current.service.classify({ token: 'classification-token', evidence: { dshProfile: true } })
-  const expired = await current.service.beginMigration()
+  const expired = await current.service.generateAuthenticationResetKey()
   current.setNow('2026-08-28T00:10:00.001Z')
-  await assert.rejects(current.service.migrateDsh({
+  await assert.rejects(current.service.resetDshAuthentication({
     setupKey: expired.key, username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
-  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
-  await current.service.beginMigration()
-  await assert.rejects(current.service.migrateDsh({
+  }), error => error.code === 'AUTHENTICATION_RESET_KEY_INVALID' && error.statusCode === 401)
+  await current.service.generateAuthenticationResetKey()
+  await assert.rejects(current.service.resetDshAuthentication({
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
-  }), error => error.code === 'MIGRATION_KEY_INVALID' && error.statusCode === 401)
+  }), error => error.code === 'AUTHENTICATION_RESET_KEY_INVALID' && error.statusCode === 401)
+})
+
+test('recreates a damaged administrator account with a root-issued authentication reset key', async () => {
+  const current = await fixture()
+  await current.store.prepare()
+  await writeFile(join(current.root, 'initialization.json'), JSON.stringify({
+    schema: 1,
+    instanceId: Buffer.alloc(32, 7).toString('base64url'),
+    state: 'recovery-required',
+    createdAt: '2026-08-28T00:00:00.000Z',
+    updatedAt: '2026-08-28T00:00:00.000Z',
+  }))
+  const setup = await current.service.generateAuthenticationResetKey()
+  const recovered = await current.service.resetDshAuthentication({
+    setupKey: setup.key,
+    username: 'recovered-admin',
+    password: 'correct horse battery staple',
+    origin: 'https://dsh.example',
+  })
+  assert.equal(recovered.state, 'initialized')
+  assert.equal(recovered.account.username, 'recovered-admin')
+  assert.equal((await current.store.state()).state, 'initialized')
 })
 
 test('normal and recovery sockets expose distinct bounded protocols without verifier material', async () => {

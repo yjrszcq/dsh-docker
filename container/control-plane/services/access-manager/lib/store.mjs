@@ -164,10 +164,12 @@ export class AccessStateStore {
       await atomicJson(this.initializationPath, initialization)
       return { initialization, account: undefined }
     }
+    const persistentEvidence = Object.entries(evidence)
+      .some(([key, value]) => key !== 'legacyAuthenticationConfigured' && value)
     const initialization = {
       schema: 1,
       instanceId: identifier(this.random),
-      state: Object.values(evidence).some(Boolean) ? 'migration-required' : 'never-initialized',
+      state: persistentEvidence ? 'migration-required' : 'never-initialized',
       createdAt: timestamp(this.now),
       updatedAt: timestamp(this.now),
     }
@@ -219,6 +221,8 @@ export class AccessStateStore {
   initialize(value) { return this.createAccount(value, 'never-initialized') }
 
   migrate(value) { return this.createAccount(value, 'migration-required') }
+
+  recover(value) { return this.createAccount(value, 'recovery-required') }
 
   async replaceAccount(account, revision) {
     const current = await this.state()
