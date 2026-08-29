@@ -25,7 +25,8 @@ export function normalizePassword(input) {
   if (typeof input !== 'string') throw new AccessError('PASSWORD_POLICY_VIOLATION', 'password does not meet policy')
   const value = input.normalize('NFC')
   const length = codePoints(value)
-  if (length < 8 || length > 1024 || Buffer.byteLength(value, 'utf8') > 1024) {
+  if (length < 8 || length > 1024 || Buffer.byteLength(value, 'utf8') > 1024
+    || CONTROL_CHARACTERS.test(value) || BIDI_CONTROLS.test(value)) {
     throw new AccessError('PASSWORD_POLICY_VIOLATION', 'password does not meet policy')
   }
   return value

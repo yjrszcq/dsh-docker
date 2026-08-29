@@ -422,8 +422,10 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
     })
     assert.match(page.body, /name="setupKey"/)
     assert.match(page.body, /method="post"/)
-    assert.match(page.body, /The password must contain between 8 and 1024 characters\./)
+    assert.match(page.body, /The password must contain between 8 and 1024 characters and cannot contain control or bidirectional-control characters\./)
     assert.match(page.body, /The migration key is invalid, expired, or already used\./)
+    assert.match(page.body, /name="username"[^>]+pattern="\[\^\\p\{Cc\}/)
+    assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
     assert.doesNotMatch(page.body, /name="password"[^>]*value=/)
     assertInlineScriptsCompile(page.body)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
@@ -445,9 +447,9 @@ test('legacy migration exchanges a root-issued setup key for a DSH session', asy
 
 test('migration and initialization pages distinguish registration errors from login failures', async () => {
   for (const [state, language, expected] of [
-    ['never-initialized', 'zh-CN', ['密码必须包含 8 至 1024 个字符。', '无法创建管理员账户，请检查填写内容后重试。']],
-    ['migration-required', 'zh-CN', ['迁移密钥无效、已过期或已使用，请重新生成。', '密码必须包含 8 至 1024 个字符。']],
-    ['never-initialized', 'en', ['The password must contain between 8 and 1024 characters.', 'The administrator account could not be created.']],
+    ['never-initialized', 'zh-CN', ['密码必须包含 8 至 1024 个字符，且不能包含控制字符或双向控制字符。', '无法创建管理员账户，请检查填写内容后重试。']],
+    ['migration-required', 'zh-CN', ['迁移密钥无效、已过期或已使用，请重新生成。', '密码必须包含 8 至 1024 个字符，且不能包含控制字符或双向控制字符。']],
+    ['never-initialized', 'en', ['The password must contain between 8 and 1024 characters and cannot contain control or bidirectional-control characters.', 'The administrator account could not be created.']],
   ]) {
     const current = fixture(state)
     const port = await listen(current.server)
@@ -659,6 +661,7 @@ test('Management pending page asks only for the additional password', () => {
       assert.equal(page.status, 200)
       assertInlineScriptsCompile(page.body)
       assert.match(page.body, /Additional password/)
+      assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
       assert.doesNotMatch(page.body, /name="username"|management\/session/)
     } finally { await close(current.server) }
   })

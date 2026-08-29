@@ -237,6 +237,8 @@ test('normalizes administrator usernames and preserves password whitespace', () 
   assert.throws(() => normalizeUsername('admin\nroot'), error => error.code === 'USERNAME_INVALID')
   assert.throws(() => normalizeUsername(`admin\u202eroot`), error => error.code === 'USERNAME_INVALID')
   assert.throws(() => normalizePassword('short'), error => error.code === 'PASSWORD_POLICY_VIOLATION')
+  assert.throws(() => normalizePassword('password\nvalue'), error => error.code === 'PASSWORD_POLICY_VIOLATION')
+  assert.throws(() => normalizePassword(`password\u202evalue`), error => error.code === 'PASSWORD_POLICY_VIOLATION')
 })
 
 test('creates salted scrypt credentials and verifies them in constant-length form', async () => {
