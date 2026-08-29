@@ -202,13 +202,14 @@ server = createManagementServer({
   logs,
   authorizeInternal: async request => {
     const token = request.headers['x-dsh-internal-capability']
+    const audience = request.headers['x-dsh-internal-capability-audience'] === 'plugin' ? 'plugin' : 'management'
     const restrictedToken = request.headers['x-dsh-restricted-cli']
     if (restrictedToken === restrictedCliToken
       && restrictedCliRoute(request.method ?? 'GET', request.url ?? '/')) return true
     if (typeof token !== 'string') return false
     if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     return consumeInternalCapability(access, {
-      token, audience: 'management', method: request.method ?? 'GET', target: request.url ?? '/',
+      token, audience, method: request.method ?? 'GET', target: request.url ?? '/',
     })
   },
   createManagementOriginTransition: async (value, request) => {

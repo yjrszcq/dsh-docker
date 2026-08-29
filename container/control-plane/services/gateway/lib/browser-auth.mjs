@@ -303,6 +303,27 @@ export function createBrowserAuthentication({
     }
   }
 
+  async function authorizePlugin(request, { method, target, requireCsrf = false } = {}) {
+    const origin = requestOrigin(request)
+    const dshToken = cookieValue(request.headers.cookie, DSH_SESSION_COOKIE)
+    if (origin === undefined || dshToken === undefined) return { authorized: false }
+    if (requireCsrf && !validSessionMutation(request, DSH_CSRF_COOKIE)) return { authorized: false }
+    try {
+      const result = await accessRequest('POST', '/v1/dsh/capabilities', {
+        dshToken,
+        origin,
+        csrfToken: requireCsrf ? request.headers['x-dsh-csrf'] : undefined,
+        requireCsrf,
+        method,
+        target,
+      })
+      return { authorized: true, capability: result.capability }
+    } catch (error) {
+      if (isAuthenticationDenial(error)) return { authorized: false }
+      throw error
+    }
+  }
+
   function sendManagementLogin(request, response, origin, { pending = false } = {}) {
     const csrf = token('dshma')
     const bytes = Buffer.from(managementLoginPage(request, csrf, { pending, authPrefix, consolePath }))
@@ -479,6 +500,44 @@ export function createBrowserAuthentication({
       }
       return true
     }
+    if (pathname === authPrefix + 'session-context' && request.method === 'GET') {
+      const valid = await validateDsh(request)
+      if (!valid.authenticated) {
+        sendJson(response, 401, { error: 'authentication required', code: 'AUTHENTICATION_REQUIRED' })
+        return true
+      }
+      const current = await status()
+      sendJson(response, 200, {
+        managementAdditionalPasswordEnabled:
+          current.account?.managementAdditionalCredential?.enabled === true,
+      })
+      return true
+    }
+    if (pathname === authPrefix + 'browser-logout' && request.method === 'POST') {
+      const valid = await validateDsh(request, { requireCsrf: true })
+      const origin = requestOrigin(request, { requireHeader: true })
+      if (!valid.authenticated || origin === undefined) {
+        sendJson(response, 403, { error: 'logout request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      const value = await jsonBody(request)
+      if (!['management', 'all'].includes(value.scope)) {
+        sendJson(response, 400, { error: 'logout scope is invalid', code: 'REQUEST_INVALID' })
+        return true
+      }
+      const result = await accessRequest('POST', '/v1/dsh/browser-logout', {
+        scope: value.scope,
+        dshToken: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
+        dshOrigin: origin,
+        managementToken: cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE),
+      })
+      const cookies = value.scope === 'all'
+        ? [...clearSessionCookies(origin), ...clearManagementCookies(origin, managementCookiePath)]
+        : clearManagementCookies(origin, managementCookiePath)
+      await report('gateway.access.browser-sessions-logged-out', { scope: value.scope })
+      sendJson(response, 200, result, { 'set-cookie': cookies })
+      return true
+    }
     if (pathname === authPrefix + 'logout' && request.method === 'POST') {
       const valid = await validateDsh(request, { requireCsrf: true })
       const origin = requestOrigin(request, { requireHeader: true })
@@ -591,7 +650,7 @@ export function createBrowserAuthentication({
     return false
   }
 
-  return Object.freeze({ status, validateDsh, validateManagement, authorizeManagement, enterManagement, handle })
+  return Object.freeze({ status, validateDsh, validateManagement, authorizeManagement, authorizePlugin, enterManagement, handle })
 }
 
 export function rejectDshAuthentication(request, response, safeReturnPath) {

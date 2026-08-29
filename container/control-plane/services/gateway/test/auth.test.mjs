@@ -91,6 +91,9 @@ test('DSH and Management sessions authorize only their own route surfaces', asyn
   const browserAuthentication = {
     ...initialized,
     validateDsh: async request => ({ authenticated: request.headers.cookie === 'dsh=yes' }),
+    authorizePlugin: async request => request.headers.cookie === 'dsh=yes'
+      ? { authorized: true, capability: { token: 'plugin-capability' } }
+      : { authorized: false },
     validateManagement: async request => ({ authenticated: request.headers.cookie === 'management=yes' }),
     enterManagement: async (_request, response) => { response.writeHead(303, { location: '/_dsh_platform/auth/management' }); response.end() },
   }
@@ -103,7 +106,7 @@ test('DSH and Management sessions authorize only their own route surfaces', asyn
     assert.equal((await request(port, { headers: { host: '127.0.0.1', cookie: 'dsh=yes' } })).body, 'dsh')
     assert.equal((await request(port, {
       path: '/_dsh_platform/plugin-api/v1/status', headers: { host: '127.0.0.1', cookie: 'dsh=yes' },
-    })).status, 200)
+    })).body, 'management:/_dsh_platform/api/v1/status')
     assert.equal((await request(port, {
       path: '/_dsh_platform/api/v1/status', headers: { host: '127.0.0.1', cookie: 'dsh=yes' },
     })).status, 401)

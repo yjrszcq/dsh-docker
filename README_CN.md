@@ -177,13 +177,13 @@ Container Environment 包含以下 DSH-Docker 集成：
 
 | 插件 | 用途 |
 | --- | --- |
-| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志、系统插件和系统技能管理；该集成由平台托管 |
+| `@dsh-docker/platform-management` | 在 DSH 设置中增加“平台管理”，用于更新、运行维护、日志、系统资源和当前浏览器会话退出；该集成由平台托管 |
 | `@dsh-docker/settings-navigation` | 让桌面端设置目录独立滚动，并在窄屏提供目录与详情分级导航 |
 | `@dsh-docker/settings-document-editor` | 将只能在桌面打开配置文件的操作替换为可选的浏览器 `settings.yaml` 编辑器 |
 
 除“平台管理”本身外，已安装的系统插件可在 DSH 的“平台管理”中启用或禁用；“平台管理”不能修改自身。独立的“DSH 管理中心”可以安装、卸载、启用或禁用 Environment 随附的系统插件，并能在“平台管理”缺失时将其恢复。变更会标记为待重启，并在重新启动 DSH 后生效。安装只使用经过验证的本地 Environment 资产，不会从 GitHub 或 npm 下载。第三方用户插件与系统插件分开管理，不会被视为系统插件。
 
-“平台管理”和“设置文档编辑器”通过已认证的 DSH Session 使用 DSH 侧受限平台接口，不要求用户另行取得 Management Session。
+“平台管理”和“设置文档编辑器”通过已认证的 DSH Session 使用 DSH 侧受限平台接口，不要求用户另行取得 Management Session。“平台管理”可以撤销当前浏览器的 DSH Session 及其关联的 Management Session，但用户名、密码和完整认证设置仍只能在独立管理中心或 Root CLI 中修改。
 
 ## 用户插件
 

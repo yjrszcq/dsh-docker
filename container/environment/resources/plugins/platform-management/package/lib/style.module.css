@@ -239,6 +239,25 @@
   background: var(--dsw-alias-bg-module-platform);
 }
 
+.commandHint {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.commandHint code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .error {
   border-left-color: var(--dsw-alias-state-error-primary);
   color: var(--dsw-alias-state-error-primary);
@@ -359,6 +378,14 @@ a.secondaryButton { text-decoration: none; }
 }
 .dangerButton:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); }
 .dangerFilledButton { background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-foreground); }
+
+.authenticationButton {
+  flex: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  white-space: nowrap;
+}
+
+.dangerButton.authenticationButton { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
 
 .smallButton {
   height: 28px;

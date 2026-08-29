@@ -26,7 +26,7 @@ export class CapabilityStore {
   }
 
   issue(session, account, { audience, method, target }) {
-    if (!['management', 'maintenance'].includes(audience)) throw new TypeError('capability audience is invalid')
+    if (!['management', 'maintenance', 'plugin'].includes(audience)) throw new TypeError('capability audience is invalid')
     if (!/^(?:GET|HEAD|POST|PUT|DELETE)$/.test(method ?? '')) throw new TypeError('capability method is invalid')
     this.prune()
     const value = token(this.random)

@@ -257,6 +257,32 @@ export class AccessService {
     return { authenticated: false }
   }
 
+  async logoutDshBrowser(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    if (!['management', 'all'].includes(value.scope)) {
+      throw new AccessError('SESSION_ACTION_INVALID', 'session action is invalid')
+    }
+    const session = this.sessions.validate(value.dshToken, 'dsh', current.account, {
+      origin: value.dshOrigin,
+      touch: false,
+    })
+    if (session === undefined) throw new AccessError('SESSION_INVALID', 'DSH session is invalid', 401)
+    let managementRevoked = this.sessions.revokeManagementFromDsh(session.sessionId)
+    if (typeof value.managementToken === 'string' && this.sessions.revoke(value.managementToken)) {
+      managementRevoked += 1
+    }
+    const dshRevoked = value.scope === 'all' && this.sessions.revoke(value.dshToken)
+    await this.report('access.browser-sessions.logged-out', {
+      scope: value.scope,
+      dshRevoked,
+      managementRevoked,
+    })
+    return { authenticated: value.scope !== 'all', dshRevoked, managementRevoked }
+  }
+
   async managementResult(account, { origin, sourceDshOrigin = null, sourceDshSessionId = null }) {
     if (account.managementAdditionalCredential.enabled) {
       return { pending: this.exchanges.createPending(account, { targetOrigin: origin, sourceDshOrigin, sourceDshSessionId }) }
@@ -332,6 +358,25 @@ export class AccessService {
     })
     if (session === undefined) throw new AccessError('SESSION_INVALID', 'Management session is invalid', 401)
     return { capability: this.capabilities.issue(session, current.account, value) }
+  }
+
+  async issuePluginCapability(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const session = this.sessions.validate(value.dshToken, 'dsh', current.account, {
+      origin: value.origin,
+      csrfToken: value.csrfToken,
+      requireCsrf: value.requireCsrf === true,
+      touch: false,
+    })
+    if (session === undefined) throw new AccessError('SESSION_INVALID', 'DSH session is invalid', 401)
+    return {
+      capability: this.capabilities.issue(session, current.account, {
+        audience: 'plugin', method: value.method, target: value.target,
+      }),
+    }
   }
 
   async consumeCapability(value) {
@@ -703,11 +748,13 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/browser-logout') return send(response, 200, await service.logoutDshBrowser(value))
       if (request.method === 'POST' && pathname === '/v1/management/login') return send(response, 200, await service.loginManagement(value))
       if (request.method === 'POST' && pathname === '/v1/management/handoffs') return send(response, 201, await service.createManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/handoffs/consume') return send(response, 200, await service.consumeManagementHandoff(value))
       if (request.method === 'POST' && pathname === '/v1/management/pending/complete') return send(response, 200, await service.completeManagementLogin(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities') return send(response, 201, await service.issueCapability(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/capabilities') return send(response, 201, await service.issuePluginCapability(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
       if (request.method === 'POST' && pathname === '/v1/management/settings') return send(response, 200, await service.authenticationSettings(value))
       if (request.method === 'POST' && pathname === '/v1/management/sessions/revoke') return send(response, 200, await service.revokeBrowserSessions(value))

@@ -87,6 +87,47 @@ test('privileged capabilities are single-use and bound to execution details', ()
   }), undefined)
 })
 
+test('DSH sessions issue only single-use Plugin API capabilities', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const issued = await service.issuePluginCapability({
+    dshToken: initialized.session.token,
+    origin: 'https://dsh.example',
+    csrfToken: initialized.session.csrfToken,
+    requireCsrf: true,
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  })
+  assert.equal((await service.consumeCapability({
+    token: issued.capability.token,
+    audience: 'plugin',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  })).authorized, true)
+  await assert.rejects(service.consumeCapability({
+    token: issued.capability.token,
+    audience: 'plugin',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  }), error => error.code === 'CAPABILITY_INVALID')
+  await assert.rejects(service.issuePluginCapability({
+    dshToken: initialized.session.token,
+    origin: 'https://dsh.example',
+    csrfToken: initialized.session.csrfToken,
+    requireCsrf: true,
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  }).then(async value => service.consumeCapability({
+    token: value.capability.token,
+    audience: 'management',
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  })), error => error.code === 'CAPABILITY_INVALID')
+})
+
 test('final execution capability checks distinguish denial from Access Manager failure', async () => {
   const calls = []
   const access = {
@@ -796,6 +837,51 @@ test('exchanges one DSH session for one origin-bound Management session', async 
     current.service.consumeManagementHandoff({ token: created.handoff.token, origin: 'https://dsh.example' }),
     error => error.code === 'HANDOFF_INVALID',
   )
+})
+
+test('revokes Management sessions linked to the current DSH browser without widening access', async () => {
+  const current = await fixture()
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const firstDsh = await current.service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const secondDsh = await current.service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://other.example',
+  })
+  const exchange = async (dsh, dshOrigin, targetOrigin) => {
+    const created = await current.service.createManagementHandoff({
+      dshToken: dsh.session.token, dshOrigin, targetOrigin,
+    })
+    return current.service.consumeManagementHandoff({ token: created.handoff.token, origin: targetOrigin })
+  }
+  const firstManagement = await exchange(firstDsh, 'https://dsh.example', 'https://manage.example')
+  const otherManagement = await exchange(secondDsh, 'https://other.example', 'https://other-manage.example')
+
+  const managementOnly = await current.service.logoutDshBrowser({
+    scope: 'management', dshToken: firstDsh.session.token, dshOrigin: 'https://dsh.example',
+  })
+  assert.deepEqual(managementOnly, { authenticated: true, dshRevoked: false, managementRevoked: 1 })
+  assert.equal((await current.service.validateSession({
+    kind: 'dsh', token: firstDsh.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  assert.equal((await current.service.validateSession({
+    kind: 'management', token: firstManagement.session.token, origin: 'https://manage.example',
+  })).authenticated, false)
+  assert.equal((await current.service.validateSession({
+    kind: 'management', token: otherManagement.session.token, origin: 'https://other-manage.example',
+  })).authenticated, true)
+
+  const replacement = await exchange(firstDsh, 'https://dsh.example', 'https://manage.example')
+  const all = await current.service.logoutDshBrowser({
+    scope: 'all', dshToken: firstDsh.session.token, dshOrigin: 'https://dsh.example',
+  })
+  assert.deepEqual(all, { authenticated: false, dshRevoked: true, managementRevoked: 1 })
+  assert.equal((await current.service.validateSession({
+    kind: 'dsh', token: firstDsh.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+  assert.equal((await current.service.validateSession({
+    kind: 'management', token: replacement.session.token, origin: 'https://manage.example',
+  })).authenticated, false)
 })
 
 test('moves initialized installations with missing or damaged accounts to recovery-required', async () => {

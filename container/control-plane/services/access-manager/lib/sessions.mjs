@@ -144,6 +144,16 @@ export class BrowserSessionStore {
     return revoked
   }
 
+  revokeManagementFromDsh(sessionId) {
+    let revoked = 0
+    for (const [key, session] of this.sessions) {
+      if (session.kind !== 'management' || session.sourceDshSessionId !== sessionId) continue
+      this.sessions.delete(key)
+      revoked += 1
+    }
+    return revoked
+  }
+
   sourceDshSessionId(sessionId) {
     for (const session of this.sessions.values()) {
       if (session.kind === 'management' && session.sessionId === sessionId) return session.sourceDshSessionId

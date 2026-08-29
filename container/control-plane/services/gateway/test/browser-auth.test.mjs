@@ -47,6 +47,7 @@ function fixture(initialState = 'never-initialized') {
   let state = initialState
   const sessions = new Map()
   const managementSessions = new Map()
+  const managementSources = new Map()
   const handoffs = new Map()
   const transitionNonces = new Map([['transition-valid', 'nonce-valid']])
   const continuations = new Map([['continuation-valid', null]])
@@ -54,7 +55,12 @@ function fixture(initialState = 'never-initialized') {
   const access = {
     request: async (method, path, body) => {
       calls.push({ method, path, body })
-      if (path === '/v1/status') return { state }
+      if (path === '/v1/status') return {
+        state,
+        account: state === 'initialized'
+          ? { managementAdditionalCredential: { enabled: true } }
+          : null,
+      }
       if (path === '/v1/dsh/initialize') {
         state = 'initialized'
         sessions.set('dshs_created', body.origin)
@@ -85,6 +91,27 @@ function fixture(initialState = 'never-initialized') {
         managementSessions.delete(body.token)
         return { authenticated: false }
       }
+      if (path === '/v1/dsh/browser-logout') {
+        let managementRevoked = 0
+        for (const [token, source] of managementSources) {
+          if (source !== body.dshToken) continue
+          managementSources.delete(token)
+          managementSessions.delete(token)
+          managementRevoked += 1
+        }
+        if (typeof body.managementToken === 'string' && managementSessions.delete(body.managementToken)) {
+          managementSources.delete(body.managementToken)
+          managementRevoked += 1
+        }
+        const dshRevoked = body.scope === 'all' && sessions.delete(body.dshToken)
+        return { authenticated: body.scope !== 'all', dshRevoked, managementRevoked }
+      }
+      if (path === '/v1/dsh/capabilities') {
+        if (sessions.get(body.dshToken) !== body.origin) {
+          throw Object.assign(new Error('session invalid'), { statusCode: 401 })
+        }
+        return { capability: { token: 'dshcap_plugin', expiresAt: new Date(Date.now() + 5_000).toISOString() } }
+      }
       if (path === '/v1/management/login') {
         if (body.password !== 'correct password') throw Object.assign(new Error('username or password is incorrect'), {
           code: 'AUTHENTICATION_FAILED', statusCode: 401,
@@ -94,13 +121,15 @@ function fixture(initialState = 'never-initialized') {
       }
       if (path === '/v1/management/handoffs') {
         if (sessions.get(body.dshToken) !== body.dshOrigin) throw Object.assign(new Error('session invalid'), { statusCode: 401 })
-        handoffs.set('dshh_created', body.targetOrigin)
+        handoffs.set('dshh_created', { targetOrigin: body.targetOrigin, dshToken: body.dshToken })
         return { handoff: { token: 'dshh_created' } }
       }
       if (path === '/v1/management/handoffs/consume') {
-        if (handoffs.get(body.token) !== body.origin) throw Object.assign(new Error('handoff invalid'), { statusCode: 401 })
+        const handoff = handoffs.get(body.token)
+        if (handoff?.targetOrigin !== body.origin) throw Object.assign(new Error('handoff invalid'), { statusCode: 401 })
         handoffs.delete(body.token)
         managementSessions.set('dshms_exchanged', body.origin)
+        managementSources.set('dshms_exchanged', handoff.dshToken)
         return { session: { token: 'dshms_exchanged', csrfToken: 'dshc_management' } }
       }
       if (path === '/v1/management/transitions/probe') {
@@ -132,7 +161,7 @@ function fixture(initialState = 'never-initialized') {
       if (!handled) { response.writeHead(404); response.end() }
     })
   })
-  return { access, authentication, calls, server, sessions, state: () => state }
+  return { access, authentication, calls, server, sessions, managementSessions, state: () => state }
 }
 
 test('Management transition probe exposes a proof only to its exact source Origin and consumes the nonce', async () => {
@@ -480,6 +509,92 @@ test('direct Management login creates and explicitly revokes only a Management s
       host: `127.0.0.1:${port}`, cookie: managementCookie,
     } })).authenticated, false)
   } finally { await close(current.server) }
+})
+
+test('DSH browser logout exposes only additional-password state and revokes the requested sessions', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    current.sessions.set('dshs_existing', origin)
+    current.managementSessions.set('dshms_existing', origin)
+    const dshCookies = `${DSH_SESSION_COOKIE}=dshs_existing; dsh_gateway_csrf=dshc_existing`
+    const managementCookie = `${MANAGEMENT_SESSION_COOKIE}=dshms_existing`
+
+    const context = await request(port, {
+      path: '/_dsh_platform/auth/session-context', headers: { host, cookie: dshCookies },
+    })
+    assert.equal(context.status, 200)
+    assert.deepEqual(JSON.parse(context.body), { managementAdditionalPasswordEnabled: true })
+    assert.doesNotMatch(context.body, /account|username|verifier|password.*version/i)
+
+    const managementOnly = await request(port, {
+      path: '/_dsh_platform/auth/browser-logout', method: 'POST',
+      headers: {
+        host, origin, cookie: `${dshCookies}; ${managementCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': 'dshc_existing',
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ scope: 'management' }),
+    })
+    assert.equal(managementOnly.status, 200)
+    assert.equal(current.sessions.has('dshs_existing'), true)
+    assert.equal(current.managementSessions.has('dshms_existing'), false)
+    assert.equal(managementOnly.headers['set-cookie'].some(value => value.startsWith(`${DSH_SESSION_COOKIE}=`)), false)
+    assert.equal(managementOnly.headers['set-cookie'].some(value => value.startsWith(`${MANAGEMENT_SESSION_COOKIE}=`)), true)
+
+    const all = await request(port, {
+      path: '/_dsh_platform/auth/browser-logout', method: 'POST',
+      headers: {
+        host, origin, cookie: dshCookies,
+        'content-type': 'application/json', 'x-dsh-csrf': 'dshc_existing',
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ scope: 'all' }),
+    })
+    assert.equal(all.status, 200)
+    assert.equal(current.sessions.has('dshs_existing'), false)
+    assert.equal(all.headers['set-cookie'].some(value => value.startsWith(`${DSH_SESSION_COOKIE}=`)), true)
+    assert.equal(all.headers['set-cookie'].some(value => value.startsWith(`${MANAGEMENT_SESSION_COOKIE}=`)), true)
+    const logoutCall = current.calls.find(value => value.path === '/v1/dsh/browser-logout' && value.body.scope === 'all')
+    assert.equal(logoutCall.body.dshOrigin, origin)
+    assert.equal(logoutCall.body.dshToken, 'dshs_existing')
+  } finally { await close(current.server) }
+})
+
+test('DSH browser sessions authorize only path-bound Plugin API capabilities', async () => {
+  const current = fixture('initialized')
+  current.sessions.set('dshs_existing', 'http://dsh.example')
+  const authorization = await current.authentication.authorizePlugin({
+    headers: {
+      host: 'dsh.example',
+      origin: 'http://dsh.example',
+      cookie: `${DSH_SESSION_COOKIE}=dshs_existing; dsh_gateway_csrf=dshc_existing`,
+      'x-dsh-csrf': 'dshc_existing',
+      'sec-fetch-site': 'same-origin',
+      'sec-fetch-mode': 'cors',
+    },
+  }, {
+    method: 'POST', target: '/_dsh_platform/api/v1/restart-dsh', requireCsrf: true,
+  })
+  assert.equal(authorization.authorized, true)
+  assert.equal(authorization.capability.token, 'dshcap_plugin')
+  const call = current.calls.find(value => value.path === '/v1/dsh/capabilities')
+  assert.deepEqual(call.body, {
+    dshToken: 'dshs_existing',
+    origin: 'http://dsh.example',
+    csrfToken: 'dshc_existing',
+    requireCsrf: true,
+    method: 'POST',
+    target: '/_dsh_platform/api/v1/restart-dsh',
+  })
+  assert.equal((await current.authentication.authorizePlugin({
+    headers: {
+      host: 'dsh.example', origin: 'http://dsh.example',
+      cookie: `${DSH_SESSION_COOKIE}=missing`, 'sec-fetch-site': 'same-origin',
+    },
+  }, { method: 'GET', target: '/_dsh_platform/api/v1/status' })).authorized, false)
 })
 
 test('Management login page routes a pending additional-password result to its challenge', () => {

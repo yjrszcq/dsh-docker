@@ -394,7 +394,7 @@ Proxy credentials are write-only. They are stored under `/data/platform/state/pr
 
 `/data` is the container data namespace. Platform state lives in `/data/platform`; DSH settings, sessions, credentials, and third-party plugins live in `/data/dsh`. Keep the two independently mounted volumes.
 
-Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening either Management frontend performs one read-only check in the background, while a manual check refreshes the saved result without notifying. Both frontends open on **Maintenance**: the standalone console then orders Files, Container terminal, System Plugins, System Skills, User Plugins, User Skills, and Updates; Platform Management inside DSH orders System Plugins, System Skills, and Updates. The Management component serves the standalone console at `/_dsh_platform/console/` and follows the saved DSH locale when available.
+Automatic checks default to every six hours with jitter and can be disabled or rescheduled from either Management frontend. Checks never download or activate an update. Optional notifications appear only on DSH pages and only after an automatic check; the standalone console never shows an update popup. Opening either Management frontend performs one read-only check in the background, while a manual check refreshes the saved result without notifying. Both frontends open on **Maintenance**: the standalone console then orders Files, Container terminal, System Plugins, System Skills, User Plugins, User Skills, and Updates; Platform Management inside DSH orders System Plugins, System Skills, Authentication, Proxy, and Updates. Its Authentication tab can revoke the current browser's DSH Session and linked Management Sessions, but cannot edit credentials or obtain complete Management authority. The Management component serves the standalone console at `/_dsh_platform/console/` and follows the saved DSH locale when available.
 
 ### DSH Lifecycle and Runtime Maintenance
 
@@ -422,7 +422,7 @@ The Container Environment currently includes:
 
 | Plugin | Purpose |
 | --- | --- |
-| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugin, and System Skill controls |
+| `@dsh-docker/platform-management` | Adds **Platform Management** to DSH settings for updates, maintenance, logs, System Plugin, System Skill, and current-browser session controls |
 | `@dsh-docker/settings-navigation` | Keeps the desktop Settings directory independently scrollable and provides directory/detail navigation on narrow screens |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 

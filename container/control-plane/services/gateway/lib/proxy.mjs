@@ -86,6 +86,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
 ])
 const INTERNAL_CAPABILITY_HEADER = 'x-dsh-internal-capability'
+const INTERNAL_CAPABILITY_AUDIENCE_HEADER = 'x-dsh-internal-capability-audience'
 
 function excludedHeaderNames(headers) {
   const excluded = new Set(HOP_BY_HOP_HEADERS)
@@ -155,6 +156,7 @@ export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
   }
   delete rewritten.authorization
   delete rewritten[INTERNAL_CAPABILITY_HEADER]
+  delete rewritten[INTERNAL_CAPABILITY_AUDIENCE_HEADER]
   const cookies = stripReservedCookies(rewritten.cookie)
   if (cookies === undefined) delete rewritten.cookie
   else rewritten.cookie = cookies
@@ -613,6 +615,9 @@ function proxyHttp(request, response, options) {
     headers.authorization = request.headers.authorization
   }
   if (typeof options.internalCapability === 'string') headers[INTERNAL_CAPABILITY_HEADER] = options.internalCapability
+  if (typeof options.internalCapabilityAudience === 'string') {
+    headers[INTERNAL_CAPABILITY_AUDIENCE_HEADER] = options.internalCapabilityAudience
+  }
   const upstream = httpRequest({
     ...(options.socketPath === undefined
       ? { hostname: options.upstreamHost, port: options.upstreamPort }
@@ -793,6 +798,7 @@ export function createGatewayServer({
     validateDsh: async () => ({ authenticated: false }),
     validateManagement: async () => ({ authenticated: false }),
     authorizeManagement: async () => ({ authorized: false }),
+    authorizePlugin: async () => ({ authorized: false }),
     enterManagement: async (request, response) => rejectDshAuthentication(request, response, safeReturnPath),
     handle: async () => false,
   }),
@@ -981,18 +987,22 @@ export function createGatewayServer({
       }
       if (pathname.startsWith(MANAGEMENT_PLUGIN_PREFIX)) {
         const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET')
-        const session = await options.browserAuthentication.validateDsh(request, { requireCsrf: mutation })
-        if (!session.authenticated) {
-          rejectDshAuthentication(request, response, safeReturnPath)
-          return
-        }
         const upstreamPath = pluginManagementUpstreamPath(request.method, url)
         if (upstreamPath === null) {
           rejectHttp(response, 404, 'not found')
           return
         }
+        const authorization = await options.browserAuthentication.authorizePlugin(request, {
+          method: request.method ?? 'GET', target: upstreamPath, requireCsrf: mutation,
+        })
+        if (!authorization.authorized) {
+          rejectDshAuthentication(request, response, safeReturnPath)
+          return
+        }
         proxyHttp(request, response, {
           ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
+          internalCapability: authorization.capability.token,
+          internalCapabilityAudience: 'plugin',
         })
         return
       }
