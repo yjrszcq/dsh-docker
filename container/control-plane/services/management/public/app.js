@@ -4099,10 +4099,16 @@ function renderAuthenticationFormatError(id) {
 }
 
 function validatePasswordConfirmation(passwordId, confirmationId) {
+  const { submitted = false } = arguments[2] ?? {}
   const password = elements[passwordId]
   const confirmation = elements[confirmationId]
   const error = elements[`${confirmationId}-error`]
-  if (password.value === '' && confirmation.value === '') {
+  if (confirmation.value === '') {
+    if (submitted && password.value !== '') {
+      error.textContent = t('authPasswordMismatch')
+      error.hidden = false
+      return false
+    }
     error.hidden = true
     return true
   }
@@ -4172,7 +4178,7 @@ function validateCurrentPassword(draft, { incorrect = false } = {}) {
 
 function renderPasswordConfirmation(passwordId, confirmationId, { submitted = false } = {}) {
   // Always recompute the state so clearing both fields removes a stale error.
-  return validatePasswordConfirmation(passwordId, confirmationId)
+  return validatePasswordConfirmation(passwordId, confirmationId, { submitted })
 }
 
 function validateAuthenticationSettingsFormat() {
