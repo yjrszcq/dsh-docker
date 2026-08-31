@@ -4171,8 +4171,7 @@ function validateCurrentPassword(draft, { incorrect = false } = {}) {
 }
 
 function renderPasswordConfirmation(passwordId, confirmationId, { submitted = false } = {}) {
-  const confirmation = elements[confirmationId]
-  if (!submitted && confirmation.value === '') return true
+  // Always recompute the state so clearing both fields removes a stale error.
   return validatePasswordConfirmation(passwordId, confirmationId)
 }
 
