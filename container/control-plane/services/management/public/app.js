@@ -4172,14 +4172,19 @@ function validateCurrentPassword(draft, { incorrect = false } = {}) {
 
 function renderPasswordConfirmation(passwordId, confirmationId, { submitted = false } = {}) {
   const confirmation = elements[confirmationId]
-  if (!renderAuthenticationFormatError(confirmationId)) return false
   if (!submitted && confirmation.value === '') return true
   return validatePasswordConfirmation(passwordId, confirmationId)
 }
 
 function validateAuthenticationSettingsFormat() {
   const usernameValid = renderAuthenticationFormatError('auth-username')
-  const passwordsValid = AUTHENTICATION_PASSWORD_FIELDS
+  // Confirmation fields have their own mismatch validator; showing the
+  // generic password-format hint under them obscures the actual problem.
+  const passwordsValid = [
+    'auth-current-password',
+    'auth-password',
+    'auth-additional-password',
+  ]
     .map(renderAuthenticationFormatError)
     .every(Boolean)
   return usernameValid && passwordsValid
@@ -4674,7 +4679,6 @@ for (const id of ['auth-password', 'auth-additional-password']) {
   elements[id].addEventListener('input', () => {
     renderAuthenticationFormatError(id)
     renderPasswordConfirmation(id, `${id}-confirm`)
-    validateCurrentPassword(authenticationAccountDraft())
     renderAuthenticationAccountSaveState()
   })
 }
@@ -4684,18 +4688,17 @@ for (const [passwordId, confirmationId] of [
 ]) {
   elements[confirmationId].addEventListener('input', () => {
     renderPasswordConfirmation(passwordId, confirmationId)
-    validateCurrentPassword(authenticationAccountDraft())
     renderAuthenticationAccountSaveState()
   })
 }
-elements['auth-current-password'].addEventListener('input', () => validateCurrentPassword(authenticationAccountDraft()))
+elements['auth-current-password'].addEventListener('input', () => {
+  if (elements['auth-current-password'].value !== '') elements['auth-current-password-error'].hidden = true
+})
 elements['auth-username'].addEventListener('input', () => {
   renderAuthenticationAccountSaveState()
 })
-elements['auth-username'].addEventListener('change', () => validateCurrentPassword(authenticationAccountDraft()))
 elements['auth-additional-enabled'].addEventListener('change', () => {
   renderAdditionalPasswordFields()
-  validateCurrentPassword(authenticationAccountDraft())
   renderAuthenticationAccountSaveState()
 })
 elements['auth-settings-form'].addEventListener('submit', event => { event.preventDefault() })
