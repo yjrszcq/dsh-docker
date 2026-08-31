@@ -563,16 +563,10 @@ export class AccessService {
       throw new AccessError('ACCESS_MODE_LOCKED', 'Management access mode cannot change while DSH Root capability is enabled', 409)
     }
     const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
-    const candidateOrigin = value.mode === 'isolated'
-      ? (() => {
-          if (isolatedEntry.kind === 'public') return isolatedEntry.managementPublicOrigin
-          try {
-            const parsed = new URL(value.candidateOrigin)
-            if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== value.candidateOrigin
-              || !isLoopbackHostname(parsed.hostname)) throw new Error('not loopback')
-            return parsed.origin
-          } catch { throw new AccessError('ACCESS_ENTRY_INVALID', 'local Management probe origin is invalid') }
-        })()
+    // Local-only entry is intentionally independent of host port mappings;
+    // only a public entry needs a browser-reachable origin probe.
+    const candidateOrigin = value.mode === 'isolated' && isolatedEntry.kind === 'public'
+      ? isolatedEntry.managementPublicOrigin
       : null
     const transition = this.transitions.create({
       account: current.account,

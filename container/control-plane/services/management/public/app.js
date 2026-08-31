@@ -4204,12 +4204,11 @@ function managementLoginPath() {
 function selectedManagementAccess() {
   const selected = elements['auth-mode'].value
   if (selected === 'compat') return { mode: 'compat', isolatedEntry: null, candidateOrigin: null }
+  if (selected === 'isolated-local') return { mode: 'isolated', isolatedEntry: { kind: 'local-only' }, candidateOrigin: null }
   const candidateOrigin = elements['auth-origin'].value.trim()
   return {
     mode: 'isolated',
-    isolatedEntry: selected === 'isolated-local'
-      ? { kind: 'local-only' }
-      : { kind: 'public', managementPublicOrigin: candidateOrigin },
+    isolatedEntry: { kind: 'public', managementPublicOrigin: candidateOrigin },
     candidateOrigin,
   }
 }
@@ -4353,6 +4352,15 @@ function renderAuthenticationOrigin() {
       : 'authRootLocked')
   }
   elements['auth-agent-warning'].hidden = authenticationSettings?.agentIsolationEffective === true
+  renderManagementOriginSaveState()
+}
+
+function renderManagementOriginSaveState() {
+  const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
+  const nextAccess = selectedManagementAccess()
+  const changed = nextAccess.mode !== previousAccess.mode
+    || (nextAccess.mode === 'isolated' && nextAccess.candidateOrigin !== previousAccess.origin)
+  elements['auth-origin-save'].disabled = !changed
 }
 
 function confirmIsolationEnable() {
@@ -4416,7 +4424,9 @@ async function changeManagementOrigin(access, currentPassword) {
       currentPassword,
     },
   })
+  authenticationSettings.account = result.account
   continueManagementTransition(result)
+  return result
 }
 
 async function saveAccountSettings() {
@@ -4672,6 +4682,7 @@ elements['auth-mode'].addEventListener('change', () => {
   }
   renderAuthenticationOrigin()
 })
+elements['auth-origin'].addEventListener('input', renderManagementOriginSaveState)
 elements['auth-origin-detect'].addEventListener('click', () => {
   elements['auth-origin'].value = detectedManagementOrigin()
   elements['auth-origin'].focus()
