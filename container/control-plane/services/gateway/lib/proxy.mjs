@@ -202,6 +202,13 @@ function sendAvailabilityPage(request, response, state, options = {}) {
   response.end(body)
 }
 
+function managementAvailabilityHref(access) {
+  const entry = access?.account?.managementAccess?.isolatedEntry
+  if (access?.account?.managementAccess?.mode !== 'isolated') return '/_dsh_platform/console/'
+  const origin = entry?.kind === 'public' ? entry.managementPublicOrigin : entry?.managementLocalOrigin
+  return typeof origin === 'string' ? `${origin}/` : '/_dsh_platform/console/'
+}
+
 export function safeReturnPath(value) {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4_096
     || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')
@@ -926,6 +933,7 @@ export function createGatewayServer({
             sendAvailabilityPage(request, response, result.state, {
               lifecycle: result.platform.dshLifecycle,
               returnPath: safeReturnPath(url.searchParams.get('return')),
+              managementHref: managementAvailabilityHref(currentAccess),
             })
           } else rejectHttp(response, 503, stateMessage(result.state, request.headers, result.platform.dshLifecycle))
           return false
