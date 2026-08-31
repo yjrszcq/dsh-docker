@@ -412,10 +412,19 @@ export function createBrowserAuthentication({
     }
     const entry = current.account?.managementAccess?.isolatedEntry
     if (current.account?.managementAccess?.mode === 'isolated' && entry?.kind === 'local-only') {
-      const zh = language(request) === 'zh'
-      const body = Buffer.from(`<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DSH Management</title><body><main><h1>${zh ? '管理中心仅允许本机访问' : 'Management is local-only'}</h1><p>${zh ? '请在容器宿主机映射 3081 端口，并通过实际 loopback 地址登录。' : 'Map container port 3081 on the host and sign in through the actual loopback address.'}</p></main></body></html>`)
-      response.writeHead(200, { 'cache-control': 'no-store', 'content-length': String(body.byteLength), 'content-type': 'text/html; charset=utf-8' })
-      response.end(body)
+      const targetOrigin = entry.managementLocalOrigin
+      if (typeof targetOrigin !== 'string') { sendJson(response, 409, { error: 'local Management entry is unavailable' }); return }
+      const created = await accessRequest('POST', '/v1/management/handoffs', {
+        dshToken: cookieValue(request.headers.cookie, DSH_SESSION_COOKIE),
+        dshOrigin: origin,
+        targetOrigin,
+      })
+      response.writeHead(303, {
+        'cache-control': 'no-store',
+        location: `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}`,
+        'referrer-policy': 'no-referrer',
+      })
+      response.end()
       return
     }
     const targetOrigin = current.account?.managementAccess?.mode === 'isolated'
@@ -582,9 +591,15 @@ export function createBrowserAuthentication({
         return true
       }
       const current = await status()
+      const access = current.account?.managementAccess
+      const entry = access?.isolatedEntry
+      const managementOrigin = access?.mode === 'isolated'
+        ? (entry?.kind === 'public' ? entry.managementPublicOrigin : entry?.managementLocalOrigin ?? null)
+        : null
       sendJson(response, 200, {
         managementAdditionalPasswordEnabled:
           current.account?.managementAdditionalCredential?.enabled === true,
+        managementOrigin,
       })
       return true
     }

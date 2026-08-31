@@ -1992,6 +1992,10 @@ function AuthenticationSettings({ active, t }) {
     }
   }
 
+  const managementHref = typeof context?.managementOrigin === 'string'
+    ? `${context.managementOrigin}/`
+    : '/_dsh_platform/console'
+
   return h(React.Fragment, null,
     h('section', { className: css.section, 'aria-labelledby': 'platform-account-access-title' },
       h('div', { className: css.sectionHeading },
@@ -2000,7 +2004,7 @@ function AuthenticationSettings({ active, t }) {
           h('p', null, t('accountAccessDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.authenticationButton}`,
-          href: '/_dsh_platform/console',
+          href: managementHref,
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement'))),
@@ -2477,7 +2481,7 @@ function PlatformManagement({ t }) {
           h('p', null, t('standaloneManagementDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.maintenanceButton}`,
-          href: '/_dsh_platform/console',
+          href: managementHref,
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement')))),

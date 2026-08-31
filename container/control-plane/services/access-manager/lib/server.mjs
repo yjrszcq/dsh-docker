@@ -27,7 +27,15 @@ function normalizeManagementAccess(mode, entry) {
     || !['local-only', 'public'].includes(entry.kind)) {
     throw new AccessError('ACCESS_ENTRY_INVALID', 'isolated Management entry is invalid')
   }
-  if (entry.kind === 'local-only') return { kind: 'local-only' }
+  if (entry.kind === 'local-only') {
+    try {
+      const origin = entry.managementLocalOrigin
+      const parsed = new URL(origin)
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin
+        || !isLoopbackHostname(parsed.hostname)) throw new Error('not loopback')
+      return { kind: 'local-only', managementLocalOrigin: parsed.origin }
+    } catch { throw new AccessError('ACCESS_ENTRY_INVALID', 'local Management origin is invalid') }
+  }
   try {
     const parsed = new URL(entry.managementPublicOrigin)
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin === 'null'
@@ -562,11 +570,20 @@ export class AccessService {
       && value.mode !== current.account.managementAccess.mode) {
       throw new AccessError('ACCESS_MODE_LOCKED', 'Management access mode cannot change while DSH Root capability is enabled', 409)
     }
-    const isolatedEntry = normalizeManagementAccess(value.mode, value.isolatedEntry)
-    // Local-only entry is intentionally independent of host port mappings;
-    // only a public entry needs a browser-reachable origin probe.
-    const candidateOrigin = value.mode === 'isolated' && isolatedEntry.kind === 'public'
-      ? isolatedEntry.managementPublicOrigin
+    const isolatedEntry = normalizeManagementAccess(value.mode, value.mode === 'isolated'
+      && value.isolatedEntry?.kind === 'local-only'
+      ? { ...value.isolatedEntry, managementLocalOrigin: value.isolatedEntry.managementLocalOrigin ?? value.candidateOrigin }
+      : value.isolatedEntry)
+    const candidateOrigin = value.mode === 'isolated'
+      ? (() => {
+          if (isolatedEntry.kind === 'public') return isolatedEntry.managementPublicOrigin
+          try {
+            const parsed = new URL(value.candidateOrigin)
+            if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== value.candidateOrigin
+              || !isLoopbackHostname(parsed.hostname)) throw new Error('not loopback')
+            return parsed.origin
+          } catch { throw new AccessError('ACCESS_ENTRY_INVALID', 'local Management origin is invalid') }
+        })()
       : null
     const transition = this.transitions.create({
       account: current.account,

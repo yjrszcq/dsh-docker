@@ -70,7 +70,7 @@ export function validAccount(value) {
     ? access.isolatedEntry === null && access.dshPublicOrigin === null
     : access?.mode === 'isolated' && access.isolatedEntry !== null && typeof access.isolatedEntry === 'object'
       && validOrigin(access.dshPublicOrigin)
-      && (access.isolatedEntry.kind === 'local-only'
+      && (access.isolatedEntry.kind === 'local-only' && validOrigin(access.isolatedEntry.managementLocalOrigin)
         || (access.isolatedEntry.kind === 'public' && (() => {
           try {
             const parsed = new URL(access.isolatedEntry.managementPublicOrigin)

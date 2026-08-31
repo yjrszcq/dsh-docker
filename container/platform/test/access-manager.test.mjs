@@ -627,7 +627,7 @@ test('probes the current instance before atomically changing Management origin',
   assert.equal(relocated.targetOrigin, 'https://manage-two.example')
 })
 
-test('does not require a host candidate for local-only Management', async () => {
+test('verifies a loopback candidate without persisting it for local-only Management', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
@@ -640,18 +640,24 @@ test('does not require a host candidate for local-only Management', async () => 
   const created = await service.createManagementTransition({
     internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions'),
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
-    mode: 'isolated', isolatedEntry: { kind: 'local-only' }, candidateOrigin: null,
+    mode: 'isolated', isolatedEntry: { kind: 'local-only' }, candidateOrigin: 'http://127.20.30.40:45678',
+  })
+  const proof = await service.probeManagementTransition({
+    transitionId: created.transition.transitionId, nonce: created.transition.nonce,
+    sourceOrigin: 'http://dsh.example:3080', candidateOrigin: 'http://127.20.30.40:45678',
   })
   const changed = await service.commitManagementTransition({
     internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
-    transitionId: created.transition.transitionId, proof: null,
+    transitionId: created.transition.transitionId, proof: proof.proof,
     currentPassword: 'correct horse battery staple',
   })
-  assert.deepEqual(changed.account.managementAccess.isolatedEntry, { kind: 'local-only' })
+  assert.deepEqual(changed.account.managementAccess.isolatedEntry, {
+    kind: 'local-only', managementLocalOrigin: 'http://127.20.30.40:45678',
+  })
   assert.equal(changed.targetOrigin, null)
   assert.equal(changed.continuation, null)
-  assert.equal(changed.loginOrigin, null)
+  assert.equal(changed.loginOrigin, 'http://127.20.30.40:45678')
 })
 
 test('consumes a Management transition when fresh authentication fails', async () => {

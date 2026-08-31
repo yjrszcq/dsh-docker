@@ -642,7 +642,7 @@ test('DSH browser logout exposes only additional-password state and revokes the 
       path: '/_dsh_platform/auth/session-context', headers: { host, cookie: dshCookies },
     })
     assert.equal(context.status, 200)
-    assert.deepEqual(JSON.parse(context.body), { managementAdditionalPasswordEnabled: true })
+    assert.deepEqual(JSON.parse(context.body), { managementAdditionalPasswordEnabled: true, managementOrigin: null })
     assert.doesNotMatch(context.body, /account|username|verifier|password.*version/i)
 
     const managementOnly = await request(port, {
