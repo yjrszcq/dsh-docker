@@ -694,6 +694,15 @@ export class AccessService {
     if (value.mode !== undefined || value.isolatedEntry !== undefined) {
       throw new AccessError('TRANSITION_REQUIRED', 'Management access changes require a verified transition', 409)
     }
+    if (!usernameChanged && !mainPasswordChanged && !additionalChanged) {
+      return {
+        account: publicAccount(current.account),
+        changed: false,
+        currentManagementSessionRevoked: false,
+        managementSessionsRevoked: 0,
+        allSessionsRevoked: false,
+      }
+    }
     if (usernameChanged || mainPasswordChanged || additionalChanged) {
       await this.verifyFreshAuthentication(current.account, value.currentPassword)
     }
@@ -741,6 +750,7 @@ export class AccessService {
     await this.report('access.authentication.settings.changed', { usernameChanged })
     return {
       account: publicAccount(next),
+      changed: true,
       currentManagementSessionRevoked: mainPasswordChanged || additionalChanged,
       managementSessionsRevoked: mainPasswordChanged || additionalChanged ? revokedSessionCount : 0,
       allSessionsRevoked: mainPasswordChanged,

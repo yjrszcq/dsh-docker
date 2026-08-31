@@ -728,6 +728,15 @@ test('requires fresh authentication and applies credential-specific session revo
     audience: 'management', method: 'PUT', target,
   })).capability.token
 
+  const unchangedRevision = (await service.status()).account.revision
+  const unchanged = await service.updateAuthenticationSettings({
+    internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'admin',
+  })
+  assert.equal(unchanged.changed, false)
+  assert.equal(unchanged.account.revision, unchangedRevision)
+  assert.equal(unchanged.currentManagementSessionRevoked, false)
+
   await assert.rejects(service.updateAuthenticationSettings({
     internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
     method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'operator',
@@ -752,6 +761,7 @@ test('requires fresh authentication and applies credential-specific session revo
     password: 'a different secure password', currentPassword: 'correct horse battery staple',
   })
   assert.equal(changed.currentManagementSessionRevoked, true)
+  assert.equal(changed.changed, true)
   assert.equal(changed.allSessionsRevoked, true)
   assert.equal(changed.managementSessionsRevoked, 2)
   assert.equal((await service.validateSession({
