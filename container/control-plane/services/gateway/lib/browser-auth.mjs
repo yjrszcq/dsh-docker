@@ -224,7 +224,9 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     const reset = state === 'migration-required' || state === 'recovery-required'
     const validateCredentials = initialize || reset
     const submit = initialize ? copy.register : reset ? copy.recoveryAction : copy.login
-    const submitPath = reset ? `${AUTH_PREFIX}reset` : `${AUTH_PREFIX}session`
+    const submitPath = reset
+      ? `${AUTH_PREFIX}reset`
+      : `${AUTH_PREFIX}session?return=${encodeURIComponent(returnPath)}`
     const registrationErrors = {
       ALREADY_INITIALIZED: copy.concurrent,
       USERNAME_INVALID: copy.invalidUsername,
@@ -248,7 +250,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
       : ''
     const validationGate = validateCredentials
       ? `const validUsername=validateField('username'),validPassword=validateField('password');if(!validUsername||!validPassword)return;` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(returnPath)});return}const payload=await response.json().catch(()=>({}));error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')})});const payload=await response.json().catch(()=>({}));if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -446,6 +448,21 @@ export function createBrowserAuthentication({
     response.end()
   }
 
+  async function managementHandoffLocation(current, { dshToken, dshOrigin }) {
+    const entry = current.account?.managementAccess?.isolatedEntry
+    const isolated = current.account?.managementAccess?.mode === 'isolated'
+    const targetOrigin = isolated
+      ? entry?.kind === 'local-only' ? entry.managementLocalOrigin : entry?.managementPublicOrigin
+      : dshOrigin
+    if (typeof targetOrigin !== 'string') throw Object.assign(new Error('Management entry is unavailable'), {
+      code: 'MANAGEMENT_ENTRY_UNAVAILABLE', statusCode: 409,
+    })
+    const created = await accessRequest('POST', '/v1/management/handoffs', { dshToken, dshOrigin, targetOrigin })
+    return isolated
+      ? `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}`
+      : `${authPrefix}management/handoff?token=${encodeURIComponent(created.handoff.token)}`
+  }
+
   async function handle(request, response, pathname, searchParams) {
     if (pathname === transitionPrefix + 'probe' && request.method === 'GET') {
       const sourceOrigin = canonicalOrigin(request.headers.origin)
@@ -550,8 +567,12 @@ export function createBrowserAuthentication({
       }
       try {
         const result = await accessRequest('POST', route, { ...value, origin, client: loginClient(request) })
+        const returnPath = safeReturnPath(searchParams.get('return'))
+        const next = current.state === 'initialized' && returnPath === `${authPrefix}management/start`
+          ? await managementHandoffLocation(current, { dshToken: result.session.token, dshOrigin: origin })
+          : returnPath
         await report(current.state === 'never-initialized' ? 'gateway.access.initialized' : 'gateway.access.logged-in')
-        sendJson(response, current.state === 'never-initialized' ? 201 : 200, { authenticated: true }, {
+        sendJson(response, current.state === 'never-initialized' ? 201 : 200, { authenticated: true, next }, {
           'set-cookie': sessionCookies(result.session, origin),
         })
       } catch (error) {

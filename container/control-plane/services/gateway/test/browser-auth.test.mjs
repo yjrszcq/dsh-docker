@@ -59,7 +59,7 @@ function fixture(initialState = 'never-initialized', options = {}) {
         state,
         account: state === 'initialized'
           ? {
-              managementAdditionalCredential: { enabled: true },
+              managementAdditionalCredential: { enabled: options.managementAdditionalEnabled ?? true },
               managementAccess: options.managementAccess
                 ?? { mode: 'compat', isolatedEntry: null, dshPublicOrigin: null },
             }
@@ -277,7 +277,7 @@ test('renders state-driven initialization and recovery pages without exposing ac
         assert.doesNotMatch(response.body, /<form/)
       } else if (state !== 'recovery-required') {
         assertInlineScriptsCompile(response.body)
-        assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session|reset)" novalidate>/)
+        assert.match(response.body, /<form method="post" action="\/_dsh_platform\/auth\/(?:session(?:\?return=[^"]+)?|reset)" novalidate>/)
         assert.doesNotMatch(response.body, /elements\.username\.addEventListener\('input'/)
         if (state === 'never-initialized' || state === 'migration-required') {
           assert.match(response.body, /class="field-error" data-field-error="username"[^>]*hidden/)
@@ -555,7 +555,7 @@ test('login sessions are origin-bound and safe return paths remain local', async
 })
 
 test('direct Management access requires a DSH login before exchanging a Management session', async () => {
-  const current = fixture('initialized')
+  const current = fixture('initialized', { managementAdditionalEnabled: false })
   const port = await listen(current.server)
   try {
     const origin = `http://127.0.0.1:${port}`
@@ -580,7 +580,7 @@ test('direct Management access requires a DSH login before exchanging a Manageme
     const loginCsrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const loginCsrf = loginCsrfCookie.split('=')[1]
     const dshLogin = await request(port, {
-      path: '/_dsh_platform/auth/session', method: 'POST',
+      path: '/_dsh_platform/auth/session?return=%2F_dsh_platform%2Fauth%2Fmanagement%2Fstart', method: 'POST',
       headers: {
         host: `127.0.0.1:${port}`, origin, cookie: loginCsrfCookie,
         'content-type': 'application/json', 'x-dsh-csrf': loginCsrf,
@@ -589,13 +589,17 @@ test('direct Management access requires a DSH login before exchanging a Manageme
       body: JSON.stringify({ username: 'admin', password: 'correct password' }),
     })
     assert.equal(dshLogin.status, 200)
+    const loginResult = JSON.parse(dshLogin.body)
+    assert.equal(loginResult.authenticated, true)
+    assert.match(loginResult.next, /^\/_dsh_platform\/auth\/management\/handoff\?token=dshh_created$/)
     const dshCookie = dshLogin.headers['set-cookie'][0].split(';')[0]
-    const start = await request(port, {
-      path: '/_dsh_platform/auth/management/start',
+    const exchanged = await request(port, {
+      path: loginResult.next,
       headers: { host: `127.0.0.1:${port}`, cookie: dshCookie },
     })
-    assert.equal(start.status, 303)
-    assert.match(start.headers.location, /management\/handoff\?token=dshh_created$/)
+    assert.equal(exchanged.status, 303)
+    assert.equal(exchanged.headers.location, '/_dsh_platform/console/')
+    assert.match(exchanged.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_exchanged`))
     assert.equal(current.calls.some(call => call.path === '/v1/management/login'), false)
     assert.equal((await request(port, {
       path: '/_dsh_platform/auth/management/session', method: 'POST',
