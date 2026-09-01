@@ -626,9 +626,6 @@ export class AccessService {
       }
       const transition = this.transitions.consume(transitionValue)
       if (transition === undefined) throw new AccessError('TRANSITION_INVALID', 'Management origin transition is invalid or expired', 409)
-      if (transition.mode !== current.account.managementAccess.mode) {
-        await this.verifyFreshAuthentication(current.account, value.currentPassword)
-      }
       const sourceDshSession = this.sessions.details(transition.sourceDshSessionId)
       if (sourceDshSession?.kind !== 'dsh' || sourceDshSession.origin !== transition.sourceDshOrigin) {
         throw new AccessError('SESSION_INVALID', 'source DSH session is invalid', 401)

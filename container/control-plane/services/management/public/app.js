@@ -4429,7 +4429,7 @@ function continueManagementTransition(result) {
   elements['auth-settings-status'].hidden = false
 }
 
-async function changeManagementOrigin(access, currentPassword) {
+async function changeManagementOrigin(access) {
   const created = await api('management-origin/transitions', {
     method: 'POST',
     body: access,
@@ -4440,7 +4440,6 @@ async function changeManagementOrigin(access, currentPassword) {
     body: {
       transitionId: created.transition.transitionId,
       proof,
-      currentPassword,
     },
   })
   authenticationSettings.account = result.account
@@ -4494,6 +4493,8 @@ async function saveAccountSettings() {
 
 async function saveManagementOrigin() {
   const button = elements['auth-origin-save']
+  const currentMode = authenticationSettings?.account?.managementAccess?.mode ?? 'compat'
+  const modeChanged = accessMode(elements['auth-mode'].value) !== currentMode
   const accessInput = elements['auth-mode'].value === 'isolated-local'
     ? elements['auth-local-port']
     : elements['auth-origin']
@@ -4509,9 +4510,8 @@ async function saveManagementOrigin() {
       elements['auth-settings-status'].hidden = false
       return
     }
-    const isolationModeChanged = nextAccess.mode !== authenticationSettings?.account?.managementAccess?.mode
-    if (isolationModeChanged && nextAccess.mode === 'isolated' && !await confirmIsolationEnable()) return
-    await changeManagementOrigin(nextAccess, elements['auth-current-password'].value)
+    if (modeChanged && nextAccess.mode === 'isolated' && !await confirmIsolationEnable()) return
+    await changeManagementOrigin(nextAccess)
   } catch (error) {
     showError(error)
   } finally {

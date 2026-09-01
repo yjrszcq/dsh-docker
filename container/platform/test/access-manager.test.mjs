@@ -579,7 +579,6 @@ test('probes the current instance before atomically changing Management origin',
     internalCapability: commitCapability.capability.token,
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
     transitionId: created.transition.transitionId, proof: proof.proof,
-    currentPassword: 'correct horse battery staple',
   })
   assert.equal(changed.account.managementAccess.mode, 'isolated')
   assert.equal(changed.account.managementAccess.version, 2)
@@ -650,7 +649,6 @@ test('verifies a loopback candidate without persisting it for local-only Managem
     internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
     transitionId: created.transition.transitionId, proof: proof.proof,
-    currentPassword: 'correct horse battery staple',
   })
   assert.deepEqual(changed.account.managementAccess.isolatedEntry, {
     kind: 'local-only', managementLocalOrigin: 'http://127.20.30.40:45678',
@@ -660,7 +658,7 @@ test('verifies a loopback candidate without persisting it for local-only Managem
   assert.equal(changed.loginOrigin, 'http://127.20.30.40:45678')
 })
 
-test('consumes a Management transition when fresh authentication fails', async () => {
+test('commits a Management transition without fresh authentication and rejects replay', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
@@ -679,14 +677,24 @@ test('consumes a Management transition when fresh authentication fails', async (
     transitionId: created.transition.transitionId, nonce: created.transition.nonce,
     sourceOrigin: 'http://dsh.example:3080', candidateOrigin: 'https://manage.example',
   })
-  const attempt = async currentPassword => service.commitManagementTransition({
-    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
+  const firstCapability = await capability('/_dsh_platform/api/v1/management-origin/transitions/commit')
+  const attempt = internalCapability => service.commitManagementTransition({
+    internalCapability,
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
-    transitionId: created.transition.transitionId, proof: proof.proof, currentPassword,
+    transitionId: created.transition.transitionId, proof: proof.proof,
   })
-  await assert.rejects(attempt('wrong password'), error => error.code === 'FRESH_AUTH_FAILED')
-  await assert.rejects(attempt('correct horse battery staple'), error => error.code === 'TRANSITION_INVALID')
-  assert.equal((await service.status()).account.managementAccess.mode, 'compat')
+  const changed = await attempt(firstCapability)
+  assert.equal(changed.account.managementAccess.mode, 'isolated')
+  const continued = await service.consumeManagementContinuation({
+    token: changed.continuation.token, origin: 'https://manage.example',
+  })
+  const replayCapability = (await service.issueCapability({
+    managementToken: continued.session.token, origin: 'https://manage.example',
+    csrfToken: continued.session.csrfToken, requireCsrf: true,
+    audience: 'management', method: 'POST',
+    target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+  })).capability.token
+  await assert.rejects(attempt(replayCapability), error => error.code === 'TRANSITION_INVALID')
 })
 
 test('requires Management origin changes to use the verified transition protocol', async () => {
