@@ -331,6 +331,28 @@ test('a DSH session exchanges once for a separate Management session', async () 
   } finally { await close(current.server) }
 })
 
+test('a Management handoff preserves the fixed Authentication settings destination', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    current.sessions.set('dshs_existing', origin)
+    const response = { writeHead(status, headers) { this.status = status; this.headers = headers }, end() {} }
+    await current.authentication.enterManagement({
+      headers: { host: `127.0.0.1:${port}`, cookie: `${DSH_SESSION_COOKIE}=dshs_existing` },
+    }, response, new URLSearchParams('tab=auth-settings'))
+    assert.equal(response.status, 303)
+    assert.match(response.headers.location, /management\/handoff\?token=dshh_created&tab=auth-settings$/)
+
+    const exchanged = await request(port, {
+      path: response.headers.location,
+      headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
+    })
+    assert.equal(exchanged.status, 200)
+    assert.match(exchanged.body, /location\.replace\("\/_dsh_platform\/console\/#auth-settings"\)/)
+  } finally { await close(current.server) }
+})
+
 test('initialization requires same-origin JSON and a matching login CSRF token', async () => {
   const current = fixture()
   const port = await listen(current.server)

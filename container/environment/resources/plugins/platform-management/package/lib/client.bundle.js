@@ -2000,7 +2000,7 @@ function AuthenticationSettings({ active, t }) {
           h('p', null, t('accountAccessDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.authenticationButton}`,
-          href: '/_dsh_platform/auth/management/start',
+          href: '/_dsh_platform/auth/management/start?tab=auth-settings',
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement'))),

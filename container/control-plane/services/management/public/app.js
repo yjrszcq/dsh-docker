@@ -5034,7 +5034,7 @@ window.addEventListener('beforeunload', () => {
 })
 applyTheme(themePreference)
 applyTranslations()
-void selectTab('maintenance')
+void selectTab(window.location.hash === '#auth-settings' ? 'auth-settings' : 'maintenance')
 renderLogs()
 connectEvents()
 void (async () => {

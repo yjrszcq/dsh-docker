@@ -1418,6 +1418,7 @@ test('Platform Management script references only DOM IDs declared by its documen
   assert.equal(references.length > 0, true)
   for (const id of references) assert.equal(ids.has(id), true, `Console element ${id} is not declared`)
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/)
+  assert.match(script, /selectTab\(window\.location\.hash === '#auth-settings' \? 'auth-settings' : 'maintenance'\)/)
 })
 
 test('standalone file task queue stays below file actions and scrolls within a fixed height', async () => {
@@ -1804,7 +1805,8 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(pluginSource, /if \(statusLoad\.current !== undefined\) return statusLoad\.current/)
   assert.match(pluginSource, /while \(loadedRevision !== statusLoadRevision\.current\)/)
   assert.match(pluginSource, /const API = '\/_dsh_platform\/plugin-api\/v1'/)
-  assert.equal(pluginSource.match(/href: '\/_dsh_platform\/auth\/management\/start'/g)?.length, 2)
+  assert.equal(pluginSource.match(/href: '\/_dsh_platform\/auth\/management\/start'/g)?.length, 1)
+  assert.equal(pluginSource.match(/href: '\/_dsh_platform\/auth\/management\/start\?tab=auth-settings'/g)?.length, 1)
   assert.doesNotMatch(pluginSource, /platformAuthRequired|platformSignIn|authRequired/)
   assert.match(script, /pluginChangesPending: '有待应用的修改'/)
   assert.match(html, /id="update-progress" class="update-progress"/)

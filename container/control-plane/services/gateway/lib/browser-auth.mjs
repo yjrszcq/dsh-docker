@@ -292,7 +292,19 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
   return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${htmlEscape(copy.brand)}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}.brand{text-align:center;margin:0 0 24px;font-size:18px;letter-spacing:.12em}h1{margin:0 0 8px;font-size:20px}p{margin:0;color:#aaaab0}.detail{margin-bottom:20px}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button,.button{display:block;width:100%;padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;text-align:center;text-decoration:none;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button,.button{background:#202124;color:#fff}}</style></head><body><main class="card"><div class="brand">${htmlEscape(copy.brand)}</div>${content}</main></body></html>`
 }
 
-function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consolePath = '/_dsh_platform/console/' } = {}) {
+function managementTabSuffix(searchParams) {
+  return searchParams?.get('tab') === 'auth-settings' ? '?tab=auth-settings' : ''
+}
+
+function managementConsoleDestination(searchParams, consolePath) {
+  return searchParams?.get('tab') === 'auth-settings' ? `${consolePath}#auth-settings` : consolePath
+}
+
+function managementLoginPage(request, csrf, {
+  authPrefix = AUTH_PREFIX,
+  consolePath = '/_dsh_platform/console/',
+  searchParams = new URLSearchParams(),
+} = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
     title: 'DSH 管理中心', detail: '请输入管理中心密码。',
@@ -305,8 +317,9 @@ function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consoleP
     retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
     rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
   }
-  const submitPath = `${authPrefix}management/pending`
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error'),retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(consolePath)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):${JSON.stringify(copy.failed)};error.hidden=false;form.elements.password.select()})</script></body></html>`
+  const submitPath = `${authPrefix}management/pending${managementTabSuffix(searchParams)}`
+  const destination = managementConsoleDestination(searchParams, consolePath)
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error'),retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(destination)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):${JSON.stringify(copy.failed)};error.hidden=false;form.elements.password.select()})</script></body></html>`
 }
 
 export function createBrowserAuthentication({
@@ -429,9 +442,9 @@ export function createBrowserAuthentication({
     }
   }
 
-  function sendManagementLogin(request, response, origin) {
+  function sendManagementLogin(request, response, origin, searchParams) {
     const csrf = token('dshma')
-    const bytes = Buffer.from(managementLoginPage(request, csrf, { authPrefix, consolePath }))
+    const bytes = Buffer.from(managementLoginPage(request, csrf, { authPrefix, consolePath, searchParams }))
     response.writeHead(200, {
       'cache-control': 'no-store',
       'content-length': String(bytes.byteLength),
@@ -445,7 +458,7 @@ export function createBrowserAuthentication({
     response.end(bytes)
   }
 
-  async function enterManagement(request, response) {
+  async function enterManagement(request, response, searchParams) {
     const origin = requestOrigin(request)
     if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return }
     const current = await status()
@@ -460,7 +473,7 @@ export function createBrowserAuthentication({
       }
       response.writeHead(303, {
         'cache-control': 'no-store',
-        location: `${dshOrigin}${AUTH_PREFIX}?return=${encodeURIComponent(`${AUTH_PREFIX}management/start`)}`,
+        location: `${dshOrigin}${AUTH_PREFIX}?return=${encodeURIComponent(`${AUTH_PREFIX}management/start${managementTabSuffix(searchParams)}`)}`,
         'referrer-policy': 'no-referrer',
       })
       response.end()
@@ -477,7 +490,7 @@ export function createBrowserAuthentication({
       })
       response.writeHead(303, {
         'cache-control': 'no-store',
-        location: `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}`,
+        location: `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}${managementTabSuffix(searchParams).replace('?', '&')}`,
         'referrer-policy': 'no-referrer',
       })
       response.end()
@@ -495,8 +508,8 @@ export function createBrowserAuthentication({
     response.writeHead(303, {
       'cache-control': 'no-store',
       location: current.account?.managementAccess?.mode === 'isolated'
-        ? `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}`
-        : `${AUTH_PREFIX}management/handoff?token=${encodeURIComponent(created.handoff.token)}`,
+        ? `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}${managementTabSuffix(searchParams).replace('?', '&')}`
+        : `${AUTH_PREFIX}management/handoff?token=${encodeURIComponent(created.handoff.token)}${managementTabSuffix(searchParams).replace('?', '&')}`,
       'referrer-policy': 'no-referrer',
     })
     response.end()
@@ -722,11 +735,11 @@ export function createBrowserAuthentication({
       return true
     }
     if (pathname === authPrefix + 'management' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
-      await enterManagement(request, response)
+      await enterManagement(request, response, searchParams)
       return true
     }
     if (pathname === authPrefix + 'management/start' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
-      await enterManagement(request, response)
+      await enterManagement(request, response, searchParams)
       return true
     }
     if (pathname === authPrefix + 'management/handoff' && request.method === 'GET') {
@@ -742,9 +755,9 @@ export function createBrowserAuthentication({
           token: searchParams.get('token'), origin,
         })
         if (result.pending !== undefined) {
-          sendSameOriginNavigation(response, `${authPrefix}management/pending`, pendingCookie(result.pending, origin, authPrefix))
+          sendSameOriginNavigation(response, `${authPrefix}management/pending${managementTabSuffix(searchParams)}`, pendingCookie(result.pending, origin, authPrefix))
         } else {
-          sendSameOriginNavigation(response, consolePath, managementCookies(result.session, origin, managementCookiePath))
+          sendSameOriginNavigation(response, managementConsoleDestination(searchParams, consolePath), managementCookies(result.session, origin, managementCookiePath))
         }
       } catch (error) {
         sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'HANDOFF_INVALID') })
@@ -754,9 +767,9 @@ export function createBrowserAuthentication({
     if (pathname === authPrefix + 'management/pending' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
       const origin = requestOrigin(request)
       if (origin === undefined || cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE) === undefined) {
-        response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management` })
+        response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}management${managementTabSuffix(searchParams)}` })
         response.end()
-      } else sendManagementLogin(request, response, origin)
+      } else sendManagementLogin(request, response, origin, searchParams)
       return true
     }
     if (pathname === authPrefix + 'management/pending' && request.method === 'POST') {
