@@ -1620,7 +1620,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(html, /id="auth-isolation-confirm-dialog"[\s\S]*data-i18n="authIsolationConfirm"/)
   assert.match(script, /function detectedManagementOrigin\(\)[\s\S]*value\.port = '3081'/)
   assert.match(script, /option\.disabled = rootEnabled && accessMode\(option\.value\) !== currentMode/)
-  assert.match(html, /data-i18n="authComparisonAgent"/)
+  assert.doesNotMatch(html, /authComparisonAgent|Agent process isolation|Agent 进程隔离/)
   assert.match(script, /modeChanged && nextAccess\.mode === 'isolated' && !await confirmIsolationEnable\(\)/)
   assert.match(script, /function clearProxySecrets\(\)[\s\S]*elements\['proxy-password'\]\.value = ''/)
   assert.doesNotMatch(script, /function sharedDshProxyEnabled\(\)/)
