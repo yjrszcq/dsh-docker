@@ -324,6 +324,8 @@ Access Manager 在 `/data/platform/state/access` 中持有一个持久化本地�
 
 登录 DSH 会创建 HttpOnly、SameSite 的 DSH Session，但不授权完整 Management API。打开管理中心会消费一次性交接，并创建同时绑定其 Origin 和来源 DSH Session 的独立 Management Session。无论兼容模式还是强隔离 Origin，直接访问管理中心都必须先回到经过验证的 DSH Origin 完成主密码登录；已启用的管理中心密码只构成第二层验证，不能替代主登录。浏览器表单只负责传输输入值，认证和凭据判断全部由 Access Manager 完成。认证设置修改用户名不需要当前密码；修改主密码或管理中心密码需要当前主密码，不要求再次输入旧管理中心密码；重设或关闭管理中心密码会注销现有 Management Session。DSH 注销、会话过期或凭据失效会传递使关联 Management Session 失效。“认证设置”按来源 DSH 浏览器登录聚合会话，并显示浏览器、Gateway 对端 IP、登录时间和最后活动时间；注销一台设备会原子撤销它的 DSH Session 及所有关联 Management Session。修改凭据会通过 credential version 使旧会话失效。
 
+Access Manager 按浏览器来源统计密码失败。第 5 次连续失败后开始等待 30 秒，之后每次真正执行且失败的验证都会使等待时间翻倍，上限 15 分钟。每个来源还有固定滚动窗口：每小时 12 次、每 24 小时 24 次失败；整个 DSH 实例跨所有来源使用更宽的防洪泛限制：每分钟 20 次、每小时 60 次、每 24 小时 120 次失败。成功验证会清除当前来源的连续失败和来源滚动记录，不清除实例总量记录。Gateway 只展示后端错误和向上取整的剩余秒数，不决定是否允许提交。Access Manager 重启会清空这些内存计数。
+
 DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览器导航会在认证前收到 Gateway 的通用等待或恢复页。页面不泄露 Runtime 错误细节，并提供管理中心恢复入口；非页面、API 和 WebSocket 请求继续返回对应的服务不可用响应，不会收到 HTML。DSH 恢复 Ready 后，普通页面访问仍须持有有效的 DSH Session。
 
 默认兼容模式在 `3080` 的 `/_dsh_platform/console/` 提供管理中心。可选强隔离模式从单独发布的 `3081` Origin 根路径提供管理中心，且该入口不提供 DSH upstream。平台会先校验候选 Origin 和当前实例，再切换并注销旧 Management Session。仓库 Compose 默认不发布 `3081`，需要由运维人员显式映射或反向代理。当 DSH 可以取得容器 Root 时，界面会如实说明进程级隔离无效并锁定模式切换；Origin 分离仍能阻止同源 DSH 客户端插件取得 Management Session。
@@ -340,9 +342,13 @@ docker exec -it --user root deepseek-harness dsh-platform access reset-password
 docker exec -it --user root deepseek-harness dsh-platform access reset-management-password
 docker exec -it --user root deepseek-harness dsh-platform access disable-management-password
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
 ```
 
 推荐使用组合恢复命令 `access reset`。它会分别询问是否修改用户名和主密码；当前已启用管理中心密码时，还会用编号菜单选择保留、关闭或重设管理中心密码。所有选定输入完成前不会保存，途中取消或 TTY 断开不会留下只改了一半的账户状态。所有是/否恢复提示只接受 `y` 或 `n`，方括号标识默认项。原有细分交互命令继续用于单项凭据恢复。成功完成账户恢复后，现有 DSH 与 Management 浏览器会话都会失效。
+
+`access clear-retry` 会询问 `Clear all administrator login retry limits? y/[n]:`。确认后清除所有浏览器来源的指数等待、来源滚动窗口和实例总量失败窗口。添加 `--global-only` 时改为询问 `Clear instance-wide administrator login rate limits? y/[n]:`，并且只清除实例总量窗口，浏览器等待和来源窗口保持有效。两种形式都不修改凭据或浏览器会话。
 
 空平台卷始终进入普通首次注册，不需要密钥；仅配置遗留密码环境变量不能把空卷误判为旧部署。已有持久化数据但没有新版账户的部署进入 `migration-required`，已初始化账户缺失或损坏时进入 `recovery-required`。两种状态都在 Root TTY 中执行 `dsh-platform access generate-key`，生成十分钟有效且单次使用的认证重置密钥，再通过浏览器创建替代账户；新 key 会立即使旧 key 失效。旧环境密码只能作为已有持久化部署的附加迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 

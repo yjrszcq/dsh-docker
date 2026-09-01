@@ -148,15 +148,21 @@ docker run -d \
 
 独立页面在 DSH 无法启动时仍可使用，提供 DSH 生命周期与恢复、实时日志、内置系统插件和系统技能管理、用户插件和用户技能恢复、Root 文件管理及容器终端。
 
-认证在浏览器中初始化。登录 DSH 只创建 DSH Session；打开管理中心时会从这个有效会话通过一次性交接创建独立的 Management Session。直接访问管理中心也必须先完成 DSH 主密码登录；配置管理中心密码后，再进行第二层验证。DSH 注销或会话过期会同时使其关联的 Management Session 失效。DSH 发生已分类故障时，顶层页面导航会先显示不泄露故障细节的恢复页，使未登录用户仍能找到独立管理中心入口；API 和 WebSocket 继续关闭访问。“认证设置”按登录设备列出浏览器、对端 IP 和活动时间；注销一台设备会同时撤销它的 DSH Session 与关联 Management Session。管理中心也可切换到通过 `3081` 发布的独立 Origin。
+认证表单只负责传输输入，所有凭据判断由 Access Manager 完成。登录 DSH 只创建 DSH Session；打开管理中心时会从这个有效会话通过一次性交接创建独立的 Management Session。直接访问管理中心也必须先完成 DSH 主密码登录；配置管理中心密码后，再进行第二层验证。DSH 注销或会话过期会同时使其关联的 Management Session 失效。DSH 发生已分类故障时，顶层页面导航会先显示不泄露故障细节的恢复页，使未登录用户仍能找到独立管理中心入口；API 和 WebSocket 继续关闭访问。“认证设置”按登录设备列出浏览器、对端 IP 和活动时间；注销一台设备会同时撤销它的 DSH Session 与关联 Management Session。管理中心也可切换到通过 `3081` 发布的独立 Origin。
+
+同一浏览器连续 5 次输入错误密码后，从等待 30 秒开始，后续失败会使等待时间翻倍，最高 15 分钟。每个浏览器来源还限制为每小时 12 次、每 24 小时 24 次失败；整个 DSH 实例跨所有来源使用更宽的防洪泛限制：每分钟 20 次、每小时 60 次、每 24 小时 120 次失败。浏览器只展示 Access Manager 的判定和剩余时间；密码验证成功会清除当前浏览器的连续失败和来源滚动窗口，不清除实例总量记录。
 
 遗失凭据时只能从交互式 Root 控制台恢复。密码输入会关闭回显，且不接受命令参数或管道输入：
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
 ```
+
+`access clear-retry` 使用 `y/[n]` 确认，会清除全部浏览器的重试等待、来源滚动窗口和实例总量失败窗口。添加 `--global-only` 时只清除实例总量窗口，保留每个浏览器的重试等待与来源滚动限制。两种形式都不修改凭据或会话。
 
 全新空卷直接显示普通管理员注册页，不需要密钥。只有旧部署迁移或认证状态损坏时，才使用 `access generate-key` 生成十分钟有效、单次使用的认证重置密钥；恢复页可据此重新创建管理员账户。
 

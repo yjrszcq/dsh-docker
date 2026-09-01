@@ -28,14 +28,18 @@ Access Manager owns the single local administrator account. A fresh installation
 
 Browser authentication forms only transport values; the Access Manager performs authentication and credential decisions. Authentication Settings changes the username without a current password, while main-password and Management-console-password changes require the current main password. Resetting or disabling the Management console password does not require the old Management console password and revokes existing Management Sessions.
 
+After five consecutive failures from one browser source, Access Manager imposes a 30-second retry wait and doubles later waits up to 15 minutes. Each source has fixed limits of 12 failures per hour and 24 per 24 hours; the whole instance has wider flood limits of 20 per minute, 60 per hour, and 120 per 24 hours. Treat `AUTHENTICATION_RETRY_REQUIRED` and `AUTHENTICATION_RATE_LIMITED` as backend decisions; do not retry around them or implement credential admission in the browser.
+
 Lost credentials can only be recovered by Root from an interactive container TTY:
 
 ```sh
 docker exec -it --user root <container> dsh-platform access status
 docker exec -it --user root <container> dsh-platform access reset
+docker exec -it --user root <container> dsh-platform access clear-retry
+docker exec -it --user root <container> dsh-platform access clear-retry --global-only
 ```
 
-The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the Management console password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. Fresh empty volumes register without a key. Persisted pre-account deployments and damaged authentication state use `access generate-key`, which issues a single-use authentication reset key valid for ten minutes from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
+The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the Management console password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. `access clear-retry` uses the same Root/TTY and `y/[n]` boundary; it clears every browser-source wait, every source rolling window, and the instance-wide failure windows without changing credentials or sessions. Add `--global-only` to clear only the instance-wide windows while leaving browser waits and source windows active. Fresh empty volumes register without a key. Persisted pre-account deployments and damaged authentication state use `access generate-key`, which issues a single-use authentication reset key valid for ten minutes from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
 
 Do not read configured passwords from environment files, `/proc`, process listings, or service memory. Ask the user to authenticate through the normal browser flow.
 

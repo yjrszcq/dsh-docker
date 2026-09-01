@@ -150,13 +150,19 @@ The standalone page remains available when DSH is down. It provides DSH lifecycl
 
 Authentication forms are transport-only: the Gateway accepts the request and the Access Manager performs all authentication and credential decisions. A DSH login creates only a DSH Session; opening the Management Console exchanges that active session once for a separate Management Session. Direct Management access always completes the main DSH login first and then, when configured, asks for the Management console password. Logging out of DSH, or expiry of its session, also invalidates every linked Management Session. During a classified DSH outage, top-level browser navigation shows a generic recovery page before login so the standalone Management entry remains discoverable; API and WebSocket requests still fail closed. Authentication Settings lists signed-in devices with their browser, peer IP, and activity time; signing out one device revokes its DSH Session and linked Management Session together. Management can also move to a separately published origin on port `3081`.
 
+Five consecutive password failures from the same browser start a 30-second retry wait; later failures double that wait up to 15 minutes. Each browser source is also limited to 12 failures per hour and 24 per 24 hours. Across all sources, the whole DSH instance has a wider flood limit of 20 failures per minute, 60 per hour, and 120 per 24 hours. The browser only displays the Access Manager decision and remaining time. A successful password check clears that browser's consecutive and rolling-source failures, but not the instance-wide history.
+
 Lost credentials are recovered only from an interactive Root console. Passwords are read with input echo disabled and are never accepted as command arguments or piped input:
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
 ```
+
+`access clear-retry` asks for `y/[n]` confirmation and clears all browser retry waits, browser rolling windows, and instance-wide failed-attempt windows. Add `--global-only` to clear only the instance-wide windows while preserving every browser's retry wait and rolling limits. Neither form changes credentials or sessions.
 
 A fresh empty volume opens the normal administrator registration page and needs no key. Only legacy migration or damaged authentication state uses `access generate-key` to issue a single-use authentication reset key valid for ten minutes; the recovery page can then recreate the administrator account.
 
