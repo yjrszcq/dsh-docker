@@ -1980,7 +1980,7 @@ function AuthenticationSettings({ active, t }) {
     try {
       await authenticationRequest('browser-logout', { method: 'POST', body: { scope } })
       if (scope === 'all') {
-        window.location.replace('/_dsh_platform/auth/')
+        window.location.replace(`/_dsh_platform/auth/?fresh=${Date.now()}`)
         return
       }
       setMessage(t('managementLogoutComplete'))

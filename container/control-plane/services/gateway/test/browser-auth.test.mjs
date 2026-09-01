@@ -3,6 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import test from 'node:test'
 import {
   createBrowserAuthentication,
+  AUTH_CSRF_COOKIE,
   DSH_SESSION_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
 } from '../lib/browser-auth.mjs'
@@ -677,6 +678,7 @@ test('DSH browser logout exposes only additional-password state and revokes the 
     assert.equal(current.sessions.has('dshs_existing'), false)
     assert.equal(all.headers['set-cookie'].some(value => value.startsWith(`${DSH_SESSION_COOKIE}=`)), true)
     assert.equal(all.headers['set-cookie'].some(value => value.startsWith(`${MANAGEMENT_SESSION_COOKIE}=`)), true)
+    assert.equal(all.headers['set-cookie'].some(value => value.startsWith(`${AUTH_CSRF_COOKIE}=`)), true)
     const logoutCall = current.calls.find(value => value.path === '/v1/dsh/browser-logout' && value.body.scope === 'all')
     assert.equal(logoutCall.body.dshOrigin, origin)
     assert.equal(logoutCall.body.dshToken, 'dshs_existing')
