@@ -185,7 +185,7 @@ docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
     "id":"platform-management",
     "artifactId":"system-plugin-platform-management",
     "sha256":.plugins[0].sha256,
-    "description":{"zh":"管理 DSH Docker 更新、运行维护、系统插件与系统技能。","en":"Manage DSH Docker updates, runtime maintenance, System Plugins, and System Skills."},
+    "description":{"zh":"管理 DSH Docker 更新、运行维护、系统资源与登录会话。","en":"Manage DSH Docker updates, runtime maintenance, system resources, and login sessions."},
     "installed":true,
     "enabled":true,
     "activeInstalled":true,
