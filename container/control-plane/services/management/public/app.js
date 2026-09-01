@@ -4460,12 +4460,13 @@ async function saveAccountSettings() {
   if (!accountDraftChanged(draft)) return
   const formatValid = validateAuthenticationSettingsFormat()
   const additionalPasswordValid = validateAdditionalPassword(draft)
-  const currentPasswordValid = validateCurrentPassword(draft)
+  // Do not authenticate or reject credentials in the browser. The Access
+  // Manager validates the current password and returns the authoritative code.
   const confirmationsValid = [
     renderPasswordConfirmation('auth-password', 'auth-password-confirm', { submitted: true }),
     renderPasswordConfirmation('auth-additional-password', 'auth-additional-password-confirm', { submitted: true }),
   ].every(Boolean)
-  if (!currentPasswordValid || !formatValid || !additionalPasswordValid || !confirmationsValid) return
+  if (!formatValid || !additionalPasswordValid || !confirmationsValid) return
   const button = elements['auth-account-save']
   button.disabled = true
   try {
