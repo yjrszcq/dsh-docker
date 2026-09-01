@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 temp/
+itemp/
 node_modules/
 
 /data/
