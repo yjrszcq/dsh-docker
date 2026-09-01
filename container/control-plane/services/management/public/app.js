@@ -13,6 +13,7 @@ const COPY = Object.freeze({
   zh: Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
+    authPublicOrigin: '候选管理中心地址', authPublicOriginPlaceholder: 'https://management.example.com', authPublicOriginDetail: '切换前会验证该地址确实连接到当前平台实例。', authLocalPort: '宿主机端口', authLocalPortPlaceholder: '例如：3001', authLocalPortDetail: '填写映射到管理中心入口的宿主机端口。',
     authUsernameFormat: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。', authPasswordFormat: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。', authCurrentPasswordRequired: '请输入当前主密码。', authCurrentPasswordIncorrect: '当前主密码不正确。', authManagementPasswordRequired: '请输入新的管理中心密码。', authLocalPortFormat: '请输入 1 至 65535 的宿主机端口。',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', authSettingsTab: '认证设置', authSettingsTitle: '认证设置', authSettingsDetail: '管理本地管理员账户、管理中心密码、浏览器会话和管理中心访问方式。', authUsername: '用户名', authMainPasswordTitle: '管理员账户', authCurrentPassword: '当前主密码', authCurrentPasswordPlaceholder: '请输入当前主密码', authNewPassword: '新密码', authConfirmPassword: '确认密码', authPasswordPlaceholder: '留空表示保持不变', authAdditionalTitle: '管理中心密码', authAdditionalEnabled: '启用管理中心密码', authAdditionalPassword: '新密码', authConfirmAdditionalPassword: '确认密码', authOriginTitle: '管理中心入口', authMode: '访问模式', authModeCompat: '兼容模式', authModeIsolated: '公开独立入口', authModeLocal: '本机独立入口', authModeCompatShort: '兼容模式', authModeIsolatedShort: '独立入口', authOrigin: '候选管理中心地址', authOriginDetail: '切换前会确认候选地址确实连接到当前平台实例，并注销现有管理中心会话。', authAutoDetect: '使用检测地址', authIsolationCompare: '查看模式安全性对比', authRootLocked: '已启用 DSH Root 权限，访问模式不可切换。', authIsolationRetainedRoot: '浏览器 Origin 隔离仍保留，但容器内部安全保证已失效。', authAgentIsolationDegraded: '当前容器进程模型无法建立 Agent 进程隔离，界面不会宣称该边界有效。', authComparisonTitle: '管理中心隔离能力对比', authComparisonDetail: '两种模式都要求认证和最终执行点授权；独立入口还会把完整管理会话与 DSH 前端插件隔离。', authComparisonSessions: 'DSH 与管理中心使用独立会话', authComparisonPlugins: '防止同源 DSH 前端插件借用管理会话', authComparisonCapabilities: '最终执行点 capability 鉴权', authComparisonRoot: 'DSH 获得容器 Root 后仍受保护', authComparisonYes: '是', authComparisonNo: '否', authIsolationConfirmTitle: '启用管理中心强隔离模式', authIsolationConfirmDetail: '请先映射容器端口 3081，或将独立地址转发到该端口。平台会在改变当前模式前验证候选入口。', authIsolationConfirm: '我已完成配置，继续', understood: '知道了', authSessionsTitle: '浏览器会话', authSessionSummary: '共 {count} 个登录设备。注销会同时撤销该设备的 DSH 与管理中心会话。', authSessionUnknownDevice: '未知浏览器', authSessionCurrent: '当前设备', authSessionManagement: '管理中心已登录', authSessionIp: 'IP：{value}', authSessionLoginAt: '登录：{value}', authSessionLastSeen: '最后活动：{value}', authSessionRevoke: '注销会话', authSessionsRevoked: '会话已注销。', authSessionExpired: '浏览器会话已失效。', authPasswordMismatch: '两次输入的新密码不一致。', authTransitionFailed: '无法验证并切换管理中心入口。', authTransitionCompatLogin: '兼容模式已启用。请返回你的 DSH 地址打开管理中心。', authTransitionLocalLogin: '本机独立入口已启用。请通过容器宿主机映射的 loopback 地址登录管理中心。', authSaveApply: '保存并应用', authSaved: '认证设置已保存。', authSavedAllSessionsRevoked: '主密码已更新，所有登录会话均已注销。正在跳转到登录页面。', authSavedManagementSessionsRevoked: '管理中心密码设置已更新，所有管理中心会话均已注销。正在跳转到登录页面。', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
@@ -110,6 +111,7 @@ const COPY = Object.freeze({
   en: Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
+    authPublicOrigin: 'Candidate Management origin', authPublicOriginPlaceholder: 'https://management.example.com', authPublicOriginDetail: 'The platform verifies that this origin reaches the current instance before switching.', authLocalPort: 'Host port', authLocalPortPlaceholder: 'For example: 3001', authLocalPortDetail: 'Enter the host port mapped to the Management entry.',
     authUsernameFormat: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.', authPasswordFormat: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.', authCurrentPasswordRequired: 'Enter the current main password.', authCurrentPasswordIncorrect: 'The current main password is incorrect.', authManagementPasswordRequired: 'Enter a new Management console password.', authLocalPortFormat: 'Enter a host port from 1 to 65535.',
     managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', authSettingsTab: 'Authentication', authSettingsTitle: 'Authentication settings', authSettingsDetail: 'Manage the local administrator account, Management console password, browser sessions, and Management access mode.', authUsername: 'Username', authMainPasswordTitle: 'Administrator account', authCurrentPassword: 'Current main password', authCurrentPasswordPlaceholder: 'Enter the current main password', authNewPassword: 'New password', authConfirmPassword: 'Confirm password', authPasswordPlaceholder: 'Leave blank to keep the current value', authAdditionalTitle: 'Management console password', authAdditionalEnabled: 'Enable the Management console password', authAdditionalPassword: 'New password', authConfirmAdditionalPassword: 'Confirm password', authOriginTitle: 'Management origin', authMode: 'Access mode', authModeCompat: 'Compatibility mode', authModeIsolated: 'Public separate origin', authModeLocal: 'Local separate origin', authModeCompatShort: 'Compatibility', authModeIsolatedShort: 'Separate origin', authOrigin: 'Candidate Management origin', authOriginDetail: 'The candidate origin is verified against this platform instance before changing modes and signing out existing Management sessions.', authAutoDetect: 'Use detected address', authIsolationCompare: 'Compare security', authRootLocked: 'DSH Root capability is enabled. The access mode cannot be changed.', authIsolationRetainedRoot: 'Browser Origin isolation remains active, but the container-internal security guarantee is unavailable.', authAgentIsolationDegraded: 'The current container process model cannot establish Agent process isolation; this interface does not claim that boundary effective.', authComparisonTitle: 'Management isolation comparison', authComparisonDetail: 'Both modes require authentication and final-execution authorization. A separate origin additionally isolates the full Management session from DSH client plugins.', authComparisonSessions: 'Separate DSH and Management sessions', authComparisonPlugins: 'Protect from same-origin DSH client plugins', authComparisonCapabilities: 'Final-execution capability authorization', authComparisonRoot: 'Protected after DSH obtains container Root', authComparisonYes: 'Yes', authComparisonNo: 'No', authIsolationConfirmTitle: 'Enable separate Management origin?', authIsolationConfirmDetail: 'First publish container port 3081 or route a separate address to it. The platform verifies the candidate before changing the current mode.', authIsolationConfirm: 'I have configured the entry', understood: 'Understood', authSessionsTitle: 'Browser sessions', authSessionSummary: '{count} signed-in device(s). Signing one out revokes its DSH and linked Management session together.', authSessionUnknownDevice: 'Unknown browser', authSessionCurrent: 'Current device', authSessionManagement: 'Management signed in', authSessionIp: 'IP: {value}', authSessionLoginAt: 'Signed in: {value}', authSessionLastSeen: 'Last active: {value}', authSessionRevoke: 'Sign out session', authSessionsRevoked: 'Session signed out.', authSessionExpired: 'The browser session has expired.', authPasswordMismatch: 'The new password confirmation does not match.', authTransitionFailed: 'The Management origin could not be verified and switched.', authTransitionCompatLogin: 'Compatibility mode is enabled. Return to your DSH address to open Management.', authTransitionLocalLogin: 'Local separate origin is enabled. Sign in through the loopback address mapped on the container host.', authSaveApply: 'Save and apply', authSaved: 'Authentication settings saved.', authSavedAllSessionsRevoked: 'The main password was updated and all sessions were signed out. Redirecting to sign in.', authSavedManagementSessionsRevoked: 'The Management console password settings were updated and all Management sessions were signed out. Redirecting to sign in.', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
@@ -4345,13 +4347,30 @@ async function loadAuthenticationSettings() {
 
 function renderAuthenticationOrigin() {
   const selected = elements['auth-mode'].value
+  const local = selected === 'isolated-local'
+  const originInput = elements['auth-origin']
   const currentMode = authenticationSettings?.account?.managementAccess?.mode ?? 'compat'
   const rootEnabled = authenticationSettings?.dshRootCapabilityEffective === true
   for (const option of elements['auth-mode'].options) {
     option.disabled = rootEnabled && accessMode(option.value) !== currentMode
   }
   elements['auth-origin-settings'].hidden = selected === 'compat'
-  elements['auth-origin-detect'].hidden = selected === 'isolated-local'
+  elements['auth-origin-detect'].hidden = local
+  elements['auth-origin-label'].textContent = t(local ? 'authLocalPort' : 'authPublicOrigin')
+  elements['auth-origin-detail'].textContent = t(local ? 'authLocalPortDetail' : 'authPublicOriginDetail')
+  originInput.type = local ? 'number' : 'url'
+  originInput.required = selected !== 'compat'
+  originInput.placeholder = t(local ? 'authLocalPortPlaceholder' : 'authPublicOriginPlaceholder')
+  originInput.inputMode = local ? 'numeric' : 'url'
+  if (local) {
+    originInput.min = '1'
+    originInput.max = '65535'
+    originInput.step = '1'
+  } else {
+    originInput.removeAttribute('min')
+    originInput.removeAttribute('max')
+    originInput.removeAttribute('step')
+  }
   elements['auth-root-warning'].hidden = !rootEnabled
   if (rootEnabled) {
     elements['auth-root-warning'].textContent = t(currentMode === 'isolated'
@@ -4482,6 +4501,7 @@ async function saveAccountSettings() {
 
 async function saveManagementOrigin() {
   const button = elements['auth-origin-save']
+  if (elements['auth-mode'].value !== 'compat' && !elements['auth-origin'].reportValidity()) return
   button.disabled = true
   try {
     const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
@@ -4684,6 +4704,11 @@ elements['theme-switch'].addEventListener('click', () => {
   renderThemeControl()
 })
 elements['auth-mode'].addEventListener('change', () => {
+  const selected = elements['auth-mode'].value
+  const current = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
+  elements['auth-origin'].value = selected === current.mode
+    ? (selected === 'isolated-local' ? current.origin.match(/:(\d+)$/u)?.[1] ?? '' : current.origin)
+    : ''
   renderAuthenticationOrigin()
 })
 elements['auth-origin'].addEventListener('input', renderManagementOriginSaveState)
