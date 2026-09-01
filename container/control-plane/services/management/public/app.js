@@ -4206,7 +4206,9 @@ function managementLoginPath() {
 function selectedManagementAccess() {
   const selected = elements['auth-mode'].value
   if (selected === 'compat') return { mode: 'compat', isolatedEntry: null, candidateOrigin: null }
-  const input = elements['auth-origin'].value.trim()
+  const input = (selected === 'isolated-local'
+    ? elements['auth-local-port']
+    : elements['auth-origin']).value.trim()
   const candidateOrigin = selected === 'isolated-local'
     ? (/^\d{1,5}$/u.test(input) && Number(input) >= 1 && Number(input) <= 65535 ? `http://127.0.0.1:${input}` : input)
     : input
@@ -4328,9 +4330,10 @@ async function loadAuthenticationSettings() {
     renderAdditionalPasswordFields()
     const selectedAccess = currentManagementAccessSelection(account.managementAccess)
     elements['auth-mode'].value = selectedAccess.mode
-    elements['auth-origin'].value = selectedAccess.mode === 'isolated-local'
-      ? (selectedAccess.origin.match(/:(\d+)$/u)?.[1] ?? '')
-      : selectedAccess.origin
+    elements['auth-origin'].value = selectedAccess.mode === 'isolated-public' ? selectedAccess.origin : ''
+    elements['auth-local-port'].value = selectedAccess.mode === 'isolated-local'
+      ? (selectedAccess.origin.match(/:(\d+)$/u)?.[1] ?? '3081')
+      : '3081'
     renderAuthenticationOrigin()
     const sessions = authenticationSettings.sessions ?? []
     elements['auth-session-summary'].textContent = t('authSessionSummary', { count: sessions.length })
@@ -4348,29 +4351,19 @@ async function loadAuthenticationSettings() {
 function renderAuthenticationOrigin() {
   const selected = elements['auth-mode'].value
   const local = selected === 'isolated-local'
-  const originInput = elements['auth-origin']
+  const isolated = selected !== 'compat'
   const currentMode = authenticationSettings?.account?.managementAccess?.mode ?? 'compat'
   const rootEnabled = authenticationSettings?.dshRootCapabilityEffective === true
   for (const option of elements['auth-mode'].options) {
     option.disabled = rootEnabled && accessMode(option.value) !== currentMode
   }
-  elements['auth-origin-settings'].hidden = selected === 'compat'
-  elements['auth-origin-detect'].hidden = local
-  elements['auth-origin-label'].textContent = t(local ? 'authLocalPort' : 'authPublicOrigin')
+  elements['auth-origin-settings'].hidden = !isolated
+  elements['auth-public-origin-field'].hidden = selected !== 'isolated-public'
+  elements['auth-local-port-field'].hidden = !local
+  elements['auth-origin-detect'].hidden = selected !== 'isolated-public'
   elements['auth-origin-detail'].textContent = t(local ? 'authLocalPortDetail' : 'authPublicOriginDetail')
-  originInput.type = local ? 'number' : 'url'
-  originInput.required = selected !== 'compat'
-  originInput.placeholder = t(local ? 'authLocalPortPlaceholder' : 'authPublicOriginPlaceholder')
-  originInput.inputMode = local ? 'numeric' : 'url'
-  if (local) {
-    originInput.min = '1'
-    originInput.max = '65535'
-    originInput.step = '1'
-  } else {
-    originInput.removeAttribute('min')
-    originInput.removeAttribute('max')
-    originInput.removeAttribute('step')
-  }
+  elements['auth-origin'].required = selected === 'isolated-public'
+  elements['auth-local-port'].required = local
   elements['auth-root-warning'].hidden = !rootEnabled
   if (rootEnabled) {
     elements['auth-root-warning'].textContent = t(currentMode === 'isolated'
@@ -4501,7 +4494,10 @@ async function saveAccountSettings() {
 
 async function saveManagementOrigin() {
   const button = elements['auth-origin-save']
-  if (elements['auth-mode'].value !== 'compat' && !elements['auth-origin'].reportValidity()) return
+  const accessInput = elements['auth-mode'].value === 'isolated-local'
+    ? elements['auth-local-port']
+    : elements['auth-origin']
+  if (elements['auth-mode'].value !== 'compat' && !accessInput.reportValidity()) return
   button.disabled = true
   try {
     const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
@@ -4706,12 +4702,17 @@ elements['theme-switch'].addEventListener('click', () => {
 elements['auth-mode'].addEventListener('change', () => {
   const selected = elements['auth-mode'].value
   const current = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
-  elements['auth-origin'].value = selected === current.mode
-    ? (selected === 'isolated-local' ? current.origin.match(/:(\d+)$/u)?.[1] ?? '' : current.origin)
-    : ''
+  if (selected === 'isolated-local') {
+    elements['auth-local-port'].value = current.mode === selected
+      ? (current.origin.match(/:(\d+)$/u)?.[1] ?? '3081')
+      : '3081'
+  } else if (selected === 'isolated-public') {
+    elements['auth-origin'].value = current.mode === selected ? current.origin : ''
+  }
   renderAuthenticationOrigin()
 })
 elements['auth-origin'].addEventListener('input', renderManagementOriginSaveState)
+elements['auth-local-port'].addEventListener('input', renderManagementOriginSaveState)
 elements['auth-origin-detect'].addEventListener('click', () => {
   elements['auth-origin'].value = detectedManagementOrigin()
   elements['auth-origin'].focus()
