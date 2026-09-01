@@ -38,6 +38,8 @@ const MANAGEMENT_LINK = Object.freeze({
   zh: '打开 DSH 管理中心进行检查和恢复',
 })
 
+const REFRESH_LINK = Object.freeze({ en: 'Reload page', zh: '刷新页面' })
+
 export class DshAvailability {
   constructor({ now = () => Date.now(), failures = 3, failureWindowMs = 1_500 } = {}) {
     this.now = now
@@ -125,6 +127,7 @@ export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPa
   const locale = language(headers)
   const message = stateMessage(state, headers, lifecycle)
   const managementLink = MANAGEMENT_LINK[locale]
+  const refreshLink = REFRESH_LINK[locale]
   const target = JSON.stringify(returnPath).replaceAll('<', '\\u003c')
   return `<!doctype html>
 <html lang="${locale === 'zh' ? 'zh-CN' : 'en'}">
@@ -133,11 +136,11 @@ export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPa
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DeepSeek Harness</title>
 <style>
-html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#151517;color:#f3f3f4;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.boot{display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px;text-align:center}.wordmark{font-size:16px;line-height:24px;font-weight:600;letter-spacing:0}.status{max-width:520px;font-size:13px;line-height:20px;color:#a7a7ad}.management{padding:7px 12px;border:1px solid #46464b;border-radius:6px;color:#d7d7db;font-size:13px;line-height:20px;text-decoration:none}.management:hover{background:#232326}.management:focus-visible{outline:2px solid #8ca8ff;outline-offset:2px}@media(prefers-color-scheme:light){body{background:#f9fafb;color:#0f1115}.status{color:#6d7178}.management{border-color:#d6d8dc;color:#34373d}.management:hover{background:#f0f1f3}}
+html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#151517;color:#f3f3f4;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.boot{display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px;text-align:center}.wordmark{font-size:16px;line-height:24px;font-weight:600;letter-spacing:0}.status{max-width:520px;font-size:13px;line-height:20px;color:#a7a7ad}.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}.management{padding:7px 12px;border:1px solid #46464b;border-radius:6px;color:#d7d7db;font-size:13px;line-height:20px;text-decoration:none}.management:hover{background:#232326}.management:focus-visible{outline:2px solid #8ca8ff;outline-offset:2px}@media(prefers-color-scheme:light){body{background:#f9fafb;color:#0f1115}.status{color:#6d7178}.management{border-color:#d6d8dc;color:#34373d}.management:hover{background:#f0f1f3}}
 </style>
 </head>
 <body>
-<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><a class="management" href="${String(managementHref).replaceAll('"', '&quot;')}">${managementLink}</a></main>
+<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><div class="actions"><a class="management" href="${String(managementHref).replaceAll('"', '&quot;')}">${managementLink}</a>${poll ? '' : `<a class="management refresh" href="">${refreshLink}</a>`}</div></main>
 ${poll ? `<script>
 const returnPath=${target};const status=document.querySelector('.status');
 async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}

@@ -140,6 +140,7 @@ test('persistent plugin failure page is terminal, localized, and links to Manage
   const page = availabilityPage('plugin-failed', { 'accept-language': 'zh-CN' }, { poll: false })
   assert.match(page, /DeepSeek Harness 插件持续加载失败/)
   assert.match(page, /打开 DSH 管理中心进行检查和恢复/)
+  assert.match(page, /刷新页面/)
   assert.doesNotMatch(page, /setTimeout\(check/)
 
   const context = await unavailableGateway()
