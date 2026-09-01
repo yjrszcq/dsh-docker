@@ -1794,7 +1794,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(pluginSource, /if \(statusLoad\.current !== undefined\) return statusLoad\.current/)
   assert.match(pluginSource, /while \(loadedRevision !== statusLoadRevision\.current\)/)
   assert.match(pluginSource, /const API = '\/_dsh_platform\/plugin-api\/v1'/)
-  assert.match(pluginSource, /managementHref = typeof context\?\.managementOrigin === 'string'/)
+  assert.equal(pluginSource.match(/href: '\/_dsh_platform\/auth\/management\/start'/g)?.length, 2)
   assert.doesNotMatch(pluginSource, /platformAuthRequired|platformSignIn|authRequired/)
   assert.match(script, /pluginChangesPending: '有待应用的修改'/)
   assert.match(html, /id="update-progress" class="update-progress"/)

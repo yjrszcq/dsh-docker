@@ -591,15 +591,9 @@ export function createBrowserAuthentication({
         return true
       }
       const current = await status()
-      const access = current.account?.managementAccess
-      const entry = access?.isolatedEntry
-      const managementOrigin = access?.mode === 'isolated'
-        ? (entry?.kind === 'public' ? entry.managementPublicOrigin : entry?.managementLocalOrigin ?? null)
-        : null
       sendJson(response, 200, {
         managementAdditionalPasswordEnabled:
           current.account?.managementAdditionalCredential?.enabled === true,
-        managementOrigin,
       })
       return true
     }
