@@ -720,8 +720,6 @@ function isCompatibilityManagementPath(pathname) {
   return pathname === MANAGEMENT_UI_PREFIX.slice(0, -1)
     || pathname.startsWith(MANAGEMENT_UI_PREFIX)
     || pathname.startsWith(MANAGEMENT_PREFIX)
-    || pathname === '/_dsh_platform/auth/management'
-    || pathname.startsWith('/_dsh_platform/auth/management/')
 }
 
 function serializeUpgradeRequest(request, headers, target = request.url ?? '/') {
@@ -879,12 +877,21 @@ export function createGatewayServer({
       const pathname = url.pathname
       const transitionProbe = surface === 'management'
         && request.method === 'GET' && pathname === '/transition/probe'
+      const topLevelNavigation = request.method === 'GET'
+        && (request.headers['sec-fetch-mode'] === undefined
+          || (request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document'))
+      const transitionContinuation = topLevelNavigation
+        && pathname === (surface === 'management' ? '/transition/continue' : '/_dsh_platform/transition/continue')
+      const isolatedAuthenticationEntry = surface === 'management' && topLevelNavigation
+        && ['/auth/management', '/auth/management/handoff'].includes(pathname)
+      const dshAuthenticationEntry = surface === 'compat' && topLevelNavigation
+        && ['/_dsh_platform/auth', '/_dsh_platform/auth/'].includes(pathname)
       const access = surface === 'management'
         ? await options.browserAuthentication.status()
         : null
       const trust = inspectExternalRequest(request.headers,
         surface === 'management' ? managementTrustedHosts(access) : options.trustedHosts, {
-        allowCrossOrigin: transitionProbe,
+        allowCrossOrigin: transitionProbe || transitionContinuation || isolatedAuthenticationEntry || dshAuthenticationEntry,
         allowUntrustedAuthority: transitionProbe,
       })
       if (!trust.accepted) {

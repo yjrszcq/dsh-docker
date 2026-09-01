@@ -1380,6 +1380,7 @@ test('management serves only the fixed persistent Platform Management assets', a
     assert.match(page.headers['content-type'], /^text\/html/)
     assert.match(page.body.toString('utf8'), /<link rel="icon" href="data:image\/svg\+xml,/)
     assert.match(page.headers['content-security-policy'], /script-src 'self'/)
+    assert.match(page.headers['content-security-policy'], /connect-src 'self' http: https:/)
     assert.match(page.body, /DSH Management Console/)
     const script = await rawRequest(socketPath, '/_dsh_platform/console/app.js')
     assert.equal(script.status, 200)

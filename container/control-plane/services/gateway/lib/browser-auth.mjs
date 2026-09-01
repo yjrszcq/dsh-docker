@@ -145,6 +145,23 @@ function sendJson(response, status, value, headers = {}) {
   response.end(bytes)
 }
 
+function sendSameOriginNavigation(response, target, cookies) {
+  const scriptTarget = JSON.stringify(target)
+    .replaceAll('<', '\\u003c')
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029')
+  const body = Buffer.from(`<!doctype html><meta charset="utf-8"><script>location.replace(${scriptTarget})</script>`)
+  response.writeHead(200, {
+    'cache-control': 'no-store',
+    'content-length': String(body.byteLength),
+    'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    'content-type': 'text/html; charset=utf-8',
+    'referrer-policy': 'no-referrer',
+    ...(cookies === undefined ? {} : { 'set-cookie': cookies }),
+  })
+  response.end(body)
+}
+
 async function jsonBody(request) {
   const chunks = []
   let size = 0
@@ -503,11 +520,7 @@ export function createBrowserAuthentication({
         const result = await accessRequest('POST', '/v1/management/continuations/consume', {
           token: searchParams.get('token'), origin,
         })
-        response.writeHead(303, {
-          'cache-control': 'no-store', location: consolePath,
-          'referrer-policy': 'no-referrer', 'set-cookie': managementCookies(result.session, origin, managementCookiePath),
-        })
-        response.end()
+        sendSameOriginNavigation(response, consolePath, managementCookies(result.session, origin, managementCookiePath))
       } catch (error) {
         sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'CONTINUATION_INVALID') })
       }
@@ -526,8 +539,7 @@ export function createBrowserAuthentication({
       const valid = await validateDsh(request)
       const returnPath = safeReturnPath(searchParams.get('return'))
       if (current.state === 'initialized' && valid.authenticated) {
-        response.writeHead(303, { 'cache-control': 'no-store', location: returnPath })
-        response.end()
+        sendSameOriginNavigation(response, returnPath)
         return true
       }
       const csrf = token('dsha')
@@ -680,17 +692,10 @@ export function createBrowserAuthentication({
           token: searchParams.get('token'), origin,
         })
         if (result.pending !== undefined) {
-          response.writeHead(303, {
-            'cache-control': 'no-store', location: `${authPrefix}management/pending`,
-            'referrer-policy': 'no-referrer', 'set-cookie': pendingCookie(result.pending, origin, authPrefix),
-          })
+          sendSameOriginNavigation(response, `${authPrefix}management/pending`, pendingCookie(result.pending, origin, authPrefix))
         } else {
-          response.writeHead(303, {
-            'cache-control': 'no-store', location: consolePath,
-            'referrer-policy': 'no-referrer', 'set-cookie': managementCookies(result.session, origin, managementCookiePath),
-          })
+          sendSameOriginNavigation(response, consolePath, managementCookies(result.session, origin, managementCookiePath))
         }
-        response.end()
       } catch (error) {
         sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'HANDOFF_INVALID') })
       }

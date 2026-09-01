@@ -926,9 +926,18 @@ test('management surface refuses DSH routes while retaining its console surface'
 test('compatibility and isolated Management surfaces are mutually exclusive', async () => {
   const upstream = createServer((_request, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
+  const isolatedBrowser = {
+    ...browserForMode('isolated'),
+    handle: async (_request, response, pathname) => {
+      if (pathname !== '/_dsh_platform/auth/management/start') return false
+      response.writeHead(204)
+      response.end()
+      return true
+    },
+  }
   const compat = createGatewayServer({
     trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'compat',
-    browserAuthentication: browserForMode('isolated'),
+    browserAuthentication: isolatedBrowser,
   })
   const management = createGatewayServer({
     trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'management',
@@ -939,6 +948,7 @@ test('compatibility and isolated Management surfaces are mutually exclusive', as
   try {
     assert.equal((await request(compatPort, '/_dsh_platform/console/', { host: '127.0.0.1' })).status, 404)
     assert.equal((await request(compatPort, '/_dsh_platform/api/v1/status', { host: '127.0.0.1' })).status, 404)
+    assert.notEqual((await request(compatPort, '/_dsh_platform/auth/management/start', { host: '127.0.0.1' })).status, 404)
     assert.notEqual((await request(compatPort, '/_dsh_platform/plugin-api/v1/status', { host: '127.0.0.1' })).status, 404)
     assert.equal((await request(managementPort, '/', { host: '127.0.0.1' })).status, 404)
     assert.equal((await request(managementPort, '/api/v1/status', { host: '127.0.0.1' })).status, 404)
@@ -976,6 +986,104 @@ test('isolated listener exposes only the instance-bound transition probe before 
     assert.equal((await request(port, '/api/v1/status', { host: '127.0.0.1' })).status, 404)
   } finally {
     await Promise.all([closeGatewayServer(management), close(upstream)])
+  }
+})
+
+test('isolated listener admits only the dedicated cross-site continuation navigation', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const handled = []
+  const browserAuthentication = {
+    ...browserForMode('isolated'),
+    handle: async (_request, response, pathname) => {
+      handled.push(pathname)
+      if (pathname !== '/transition/continue') return false
+      response.writeHead(204)
+      response.end()
+      return true
+    },
+  }
+  const management = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'management', browserAuthentication,
+  })
+  const port = await listen(management)
+  try {
+    const navigationHeaders = {
+      host: '127.0.0.1',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'document',
+    }
+    assert.equal((await request(port, '/transition/continue?token=one', navigationHeaders)).status, 204)
+    assert.deepEqual(handled, ['/transition/continue'])
+    assert.equal((await request(port, '/', navigationHeaders)).status, 403)
+  } finally {
+    await Promise.all([closeGatewayServer(management), close(upstream)])
+  }
+})
+
+test('isolated listener admits cross-site top-level authentication entry routes only', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const handled = []
+  const browserAuthentication = {
+    ...browserForMode('isolated'),
+    handle: async (_request, response, pathname) => {
+      handled.push(pathname)
+      response.writeHead(204)
+      response.end()
+      return true
+    },
+  }
+  const management = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'management', browserAuthentication,
+  })
+  const port = await listen(management)
+  const headers = {
+    host: '127.0.0.1',
+    'sec-fetch-site': 'cross-site',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-dest': 'document',
+  }
+  try {
+    assert.equal((await request(port, '/auth/management', headers)).status, 204)
+    assert.equal((await request(port, '/auth/management/handoff?token=one', headers)).status, 204)
+    assert.equal((await request(port, '/auth/management/pending', headers)).status, 403)
+    assert.deepEqual(handled, ['/auth/management', '/auth/management/handoff'])
+  } finally {
+    await Promise.all([closeGatewayServer(management), close(upstream)])
+  }
+})
+
+test('compatibility listener admits only the exact cross-site DSH authentication page', async () => {
+  const upstream = createServer((_request, response) => response.end('dsh'))
+  const upstreamPort = await listen(upstream)
+  const handled = []
+  const browserAuthentication = {
+    ...browserForMode('isolated'),
+    handle: async (_request, response, pathname) => {
+      handled.push(pathname)
+      response.writeHead(204)
+      response.end()
+      return true
+    },
+  }
+  const compat = createGatewayServer({
+    trustedHosts: parseTrustedHosts({}), upstreamPort, surface: 'compat', browserAuthentication,
+  })
+  const port = await listen(compat)
+  const headers = {
+    host: '127.0.0.1',
+    'sec-fetch-site': 'cross-site',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-dest': 'document',
+  }
+  try {
+    assert.equal((await request(port, '/_dsh_platform/auth/', headers)).status, 204)
+    assert.equal((await request(port, '/_dsh_platform/auth/reset', headers)).status, 403)
+    assert.deepEqual(handled, ['/_dsh_platform/auth/'])
+  } finally {
+    await Promise.all([closeGatewayServer(compat), close(upstream)])
   }
 })
 

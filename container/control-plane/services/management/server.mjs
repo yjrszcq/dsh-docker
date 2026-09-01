@@ -24,7 +24,7 @@ const CONSOLE_ASSETS = new Map([
 ])
 const CONSOLE_HEADERS = Object.freeze({
   'cache-control': 'no-store',
-  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'self'; form-action 'none'",
+  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:; img-src 'self' data:; base-uri 'none'; frame-ancestors 'self'; form-action 'none'",
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
 })

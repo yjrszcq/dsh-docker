@@ -212,8 +212,8 @@ test('Management continuation requires a top-level navigation and creates one se
       path,
       headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
     })
-    assert.equal(consumed.status, 303)
-    assert.equal(consumed.headers.location, '/_dsh_platform/console/')
+    assert.equal(consumed.status, 200)
+    assert.match(consumed.body, /location\.replace\("\/_dsh_platform\/console\/"\)/)
     assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
     assert.match(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
 
@@ -225,7 +225,7 @@ test('Management continuation requires a top-level navigation and creates one se
   } finally { await close(current.server) }
 })
 
-test('isolated Management continuation creates root-path cookies and redirects to root', async () => {
+test('isolated Management continuation creates root-path cookies and enters from its own Origin', async () => {
   const current = fixture('initialized')
   const isolated = createBrowserAuthentication({
     access: current.access,
@@ -244,8 +244,8 @@ test('isolated Management continuation creates root-path cookies and redirects t
       path: '/transition/continue?token=continuation-valid',
       headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
     })
-    assert.equal(consumed.status, 303)
-    assert.equal(consumed.headers.location, '/')
+    assert.equal(consumed.status, 200)
+    assert.match(consumed.body, /location\.replace\("\/"\)/)
     assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
     assert.match(consumed.headers['set-cookie'][0], /Path=\//)
     assert.doesNotMatch(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
@@ -316,8 +316,8 @@ test('a DSH session exchanges once for a separate Management session', async () 
       path: response.headers.location,
       headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
     })
-    assert.equal(exchanged.status, 303)
-    assert.equal(exchanged.headers.location, '/_dsh_platform/console/')
+    assert.equal(exchanged.status, 200)
+    assert.match(exchanged.body, /location\.replace\("\/_dsh_platform\/console\/"\)/)
     assert.match(exchanged.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_exchanged`))
     const replay = await request(port, {
       path: response.headers.location,
@@ -597,8 +597,8 @@ test('direct Management access requires a DSH login before exchanging a Manageme
       path: loginResult.next,
       headers: { host: `127.0.0.1:${port}`, cookie: dshCookie },
     })
-    assert.equal(exchanged.status, 303)
-    assert.equal(exchanged.headers.location, '/_dsh_platform/console/')
+    assert.equal(exchanged.status, 200)
+    assert.match(exchanged.body, /location\.replace\("\/_dsh_platform\/console\/"\)/)
     assert.match(exchanged.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_exchanged`))
     assert.equal(current.calls.some(call => call.path === '/v1/management/login'), false)
     assert.equal((await request(port, {
