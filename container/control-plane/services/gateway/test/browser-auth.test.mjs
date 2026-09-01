@@ -271,6 +271,7 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.equal(response.status, 200)
       assert.match(response.body, expected)
       assert.match(response.headers['cache-control'], /no-store/)
+      assert.match(response.headers['x-dsh-csrf'], /^dsha_/)
       assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
       if (state === 'classification-pending') {
@@ -285,8 +286,9 @@ test('renders state-driven initialization and recovery pages without exposing ac
           assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
         } else {
-          assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
-          assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
+        assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
+        assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
+        assert.match(response.body, /ACCESS_UNAVAILABLE[\s\S]*ACCESS_MANAGER_UNAVAILABLE/)
         }
         if (state === 'never-initialized') {
           assert.doesNotMatch(response.body, /name="setupKey"/)
