@@ -29,6 +29,16 @@ function createGatewayServer(options) {
   })
 }
 
+const ISOLATED_UNAUTHENTICATED_BROWSER = Object.freeze({
+  ...UNAUTHENTICATED_BROWSER,
+  status: async () => ({ state: 'initialized', account: {
+    managementAccess: {
+      mode: 'isolated',
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://management.example' },
+    },
+  } }),
+})
+
 async function listen(server) {
   await new Promise((resolve, reject) => {
     server.once('error', reject)
@@ -56,7 +66,7 @@ function request(port, path = '/', { method = 'GET', accept = 'text/html', heade
   })
 }
 
-async function unavailableGateway({ platform = {}, availability = new DshAvailability(), probe = async () => false, report } = {}) {
+async function unavailableGateway({ platform = {}, availability = new DshAvailability(), probe = async () => false, report, browserAuthentication } = {}) {
   const placeholder = createServer()
   const unavailablePort = await listen(placeholder)
   await new Promise(resolve => placeholder.close(resolve))
@@ -66,6 +76,7 @@ async function unavailableGateway({ platform = {}, availability = new DshAvailab
     platformStatus: async () => platform,
     availability,
     probe,
+    browserAuthentication,
     report,
     probeIntervalMs: 60_000,
   })
@@ -139,6 +150,18 @@ test('persistent plugin failure page is terminal, localized, and links to Manage
     assert.equal(response.status, 200)
     assert.match(response.body, /DeepSeek Harness 插件持续加载失败/)
     assert.equal((await request(context.port, PLUGIN_FAILURE_PATH, { method: 'POST' })).status, 405)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})
+
+test('Gateway temporary DSH pages link to the configured isolated Management entry', async () => {
+  const context = await unavailableGateway({ browserAuthentication: ISOLATED_UNAUTHENTICATED_BROWSER })
+  try {
+    const response = await request(context.port, PLUGIN_FAILURE_PATH)
+    assert.equal(response.status, 200)
+    assert.match(response.body, /href="https:\/\/management\.example\/"/)
+    assert.doesNotMatch(response.body, /href="\/_dsh_platform\/console\/"/)
   } finally {
     await closeGatewayServer(context.gateway)
   }

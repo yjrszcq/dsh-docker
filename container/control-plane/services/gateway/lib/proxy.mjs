@@ -209,6 +209,14 @@ function managementAvailabilityHref(access) {
   return typeof origin === 'string' ? `${origin}/` : '/_dsh_platform/console/'
 }
 
+async function currentManagementAvailabilityHref(options) {
+  try {
+    return managementAvailabilityHref(await options.browserAuthentication.status())
+  } catch {
+    return '/_dsh_platform/console/'
+  }
+}
+
 export function safeReturnPath(value) {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4_096
     || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')
@@ -606,7 +614,10 @@ async function rejectDshFailure(request, response, options) {
   if (state === 'unknown') {
     rejectHttp(response, 502, 'bad gateway')
   } else if (isPageNavigation(request)) {
-    sendAvailabilityPage(request, response, state, { lifecycle: platform.dshLifecycle })
+    sendAvailabilityPage(request, response, state, {
+      lifecycle: platform.dshLifecycle,
+      managementHref: await currentManagementAvailabilityHref(options),
+    })
   } else {
     rejectHttp(response, 503, stateMessage(state, request.headers))
   }
@@ -1051,7 +1062,10 @@ export function createGatewayServer({
           rejectHttp(response, 405, 'method not allowed')
           return
         }
-        sendAvailabilityPage(request, response, 'plugin-failed', { poll: false })
+        sendAvailabilityPage(request, response, 'plugin-failed', {
+          poll: false,
+          managementHref: managementAvailabilityHref(currentAccess),
+        })
         return
       }
       if (pathname === READINESS_PATH) {
@@ -1110,6 +1124,7 @@ export function createGatewayServer({
         sendAvailabilityPage(request, response, result.state === 'unknown' ? 'unavailable' : result.state, {
           lifecycle: result.platform.dshLifecycle,
           returnPath,
+          managementHref: managementAvailabilityHref(currentAccess),
         })
         return
       }
