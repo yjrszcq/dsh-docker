@@ -697,6 +697,52 @@ test('commits a Management transition without fresh authentication and rejects r
   await assert.rejects(attempt(replayCapability), error => error.code === 'TRANSITION_INVALID')
 })
 
+test('switches an isolated Management entry back to compatibility without a password', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initialize({ username: 'admin', password: 'correct horse battery staple' })
+  const dsh = await service.loginDsh({ username: 'admin', password: 'correct horse battery staple', origin: 'http://dsh.example:3080' })
+  const handoff = await service.createManagementHandoff({ dshToken: dsh.session.token, dshOrigin: 'http://dsh.example:3080', targetOrigin: 'http://dsh.example:3080' })
+  const management = await service.consumeManagementHandoff({ token: handoff.handoff.token, origin: 'http://dsh.example:3080' })
+  const capability = (target) => service.issueCapability({
+    managementToken: management.session.token, origin: 'http://dsh.example:3080',
+    csrfToken: management.session.csrfToken, requireCsrf: true, audience: 'management',
+    method: 'POST', target,
+  }).then(result => result.capability.token)
+  const created = await service.createManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+  })
+  const proof = await service.probeManagementTransition({
+    transitionId: created.transition.transitionId, nonce: created.transition.nonce,
+    sourceOrigin: 'http://dsh.example:3080', candidateOrigin: 'https://manage.example',
+  })
+  const isolated = await service.commitManagementTransition({
+    internalCapability: await capability('/_dsh_platform/api/v1/management-origin/transitions/commit'),
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: created.transition.transitionId, proof: proof.proof,
+  })
+  const source = await service.consumeManagementContinuation({ token: isolated.continuation.token, origin: 'https://manage.example' })
+  const backCapability = (await service.issueCapability({
+    managementToken: source.session.token, origin: 'https://manage.example', csrfToken: source.session.csrfToken,
+    requireCsrf: true, audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+  })).capability.token
+  const back = await service.createManagementTransition({
+    internalCapability: backCapability, method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
+    mode: 'compat', isolatedEntry: null, candidateOrigin: null,
+  })
+  const backCommit = await service.commitManagementTransition({
+    internalCapability: (await service.issueCapability({
+      managementToken: source.session.token, origin: 'https://manage.example', csrfToken: source.session.csrfToken,
+      requireCsrf: true, audience: 'management', method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    })).capability.token,
+    method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions/commit',
+    transitionId: back.transition.transitionId, proof: null,
+  })
+  assert.equal(backCommit.account.managementAccess.mode, 'compat')
+})
+
 test('requires Management origin changes to use the verified transition protocol', async () => {
   const { service } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
