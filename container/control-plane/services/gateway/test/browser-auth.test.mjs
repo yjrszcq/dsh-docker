@@ -393,6 +393,61 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
   } finally { await close(current.server) }
 })
 
+test('parallel login pages share a stable context and stale submissions never become credential failures', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    const first = await request(port, { path: '/_dsh_platform/auth/', headers: { host } })
+    const firstCsrfCookie = first.headers['set-cookie'][0].split(';')[0]
+    const firstRetryCookie = first.headers['set-cookie'][1].split(';')[0]
+    const firstCsrf = firstCsrfCookie.split('=')[1]
+    const second = await request(port, {
+      path: '/_dsh_platform/auth/',
+      headers: { host, cookie: `${firstCsrfCookie}; ${firstRetryCookie}` },
+    })
+    const secondCsrfCookie = second.headers['set-cookie'][0].split(';')[0]
+    assert.equal(secondCsrfCookie, firstCsrfCookie)
+
+    const stale = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host, origin, cookie: `${AUTH_CSRF_COOKIE}=dsha_newer; ${firstRetryCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': firstCsrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(stale.status, 409)
+    assert.equal(JSON.parse(stale.body).code, 'AUTHENTICATION_CONTEXT_STALE')
+    assert.equal(current.calls.some(call => call.path === '/v1/dsh/login'), false)
+    assert.match(first.body, /AUTHENTICATION_CONTEXT_STALE/)
+    assert.match(first.body, /auth\/context/)
+
+    const refreshed = await request(port, {
+      path: '/_dsh_platform/auth/context',
+      headers: {
+        host, cookie: `${AUTH_CSRF_COOKIE}=dsha_newer; ${firstRetryCookie}`,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+    })
+    assert.equal(refreshed.status, 200)
+    assert.equal(JSON.parse(refreshed.body).csrfToken, 'dsha_newer')
+    const recovered = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host, origin, cookie: `${AUTH_CSRF_COOKIE}=dsha_newer; ${firstRetryCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': 'dsha_newer',
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(recovered.status, 200)
+    assert.equal(current.calls.filter(call => call.path === '/v1/dsh/login').length, 1)
+  } finally { await close(current.server) }
+})
+
 test('login reports an unavailable Access Manager instead of a credential failure', async () => {
   const access = {
     request: async (_method, path) => {
@@ -424,6 +479,56 @@ test('login reports an unavailable Access Manager instead of a credential failur
     })
     assert.equal(response.status, 503)
     assert.equal(JSON.parse(response.body).code, 'ACCESS_MANAGER_UNAVAILABLE')
+    assert.match(page.body, /authentication service is temporarily unavailable/i)
+  } finally { await close(server) }
+})
+
+test('login waits for a restarting Access Manager before submitting credentials once', async () => {
+  let restarting = false
+  let statusAttempts = 0
+  let loginAttempts = 0
+  const access = {
+    request: async (_method, path) => {
+      if (path === '/v1/status') {
+        statusAttempts += 1
+        if (restarting && statusAttempts < 4) throw new Error('access socket unavailable')
+        return { state: 'initialized', account: { managementAccess: { mode: 'compat' } } }
+      }
+      if (path === '/v1/dsh/login') {
+        loginAttempts += 1
+        return { session: { token: 'dshs_restarted', csrfToken: 'dshc_restarted' } }
+      }
+      if (path === '/v1/sessions/validate') return { authenticated: false }
+      throw new Error(`unexpected Access request: ${path}`)
+    },
+  }
+  const authentication = createBrowserAuthentication({ access, safeReturnPath, wait: async () => {} })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void authentication.handle(incoming, response, url.pathname, url.searchParams)
+  })
+  const port = await listen(server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    const page = await request(port, { path: '/_dsh_platform/auth/', headers: { host } })
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const retryCookie = page.headers['set-cookie'][1].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    statusAttempts = 0
+    restarting = true
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host, origin, cookie: `${csrfCookie}; ${retryCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(response.status, 200)
+    assert.equal(statusAttempts, 4)
+    assert.equal(loginAttempts, 1)
   } finally { await close(server) }
 })
 
@@ -769,6 +874,8 @@ test('Management pending page asks only for the additional password', () => {
       assert.match(page.body, /Management console password/)
       assert.match(page.body, /AUTHENTICATION_RETRY_REQUIRED/)
       assert.match(page.body, /AUTHENTICATION_RATE_LIMITED/)
+      assert.match(page.body, /AUTHENTICATION_CONTEXT_STALE/)
+      assert.match(page.body, /auth\/context/)
       assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/pending" novalidate>/)
       assert.doesNotMatch(page.body, /minlength="8"|pattern="|field-error|Use 8 to 1024 characters/)
       assert.doesNotMatch(page.body, /name="username"|management\/session/)

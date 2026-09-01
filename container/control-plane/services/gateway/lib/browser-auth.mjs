@@ -124,6 +124,14 @@ function clearSessionCookies(origin) {
   ]
 }
 
+function clearInvalidBrowserSessionCookies(origin, managementPath = '/_dsh_platform/') {
+  return [
+    `${DSH_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookie(origin)}`,
+    `${DSH_CSRF_COOKIE}=; SameSite=Strict; Path=/; Max-Age=0${secureCookie(origin)}`,
+    ...clearManagementCookies(origin, managementPath),
+  ]
+}
+
 function managementCookies(session, origin, path = '/_dsh_platform/') {
   return [
     `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
@@ -143,6 +151,18 @@ function clearManagementCookies(origin, path = '/_dsh_platform/') {
 
 function pendingCookie(pending, origin, authPrefix = AUTH_PREFIX) {
   return `${MANAGEMENT_PENDING_COOKIE}=${pending.token}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`
+}
+
+function authenticationContext(request, origin, authPrefix = AUTH_PREFIX) {
+  const csrfToken = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE) ?? token('dsha')
+  const retrySource = cookieValue(request.headers.cookie, AUTH_RETRY_COOKIE) ?? token('dshr')
+  return {
+    csrfToken,
+    cookies: [
+      `${AUTH_CSRF_COOKIE}=${csrfToken}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+      `${AUTH_RETRY_COOKIE}=${retrySource}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+    ],
+  }
 }
 
 function sendJson(response, status, value, headers = {}) {
@@ -185,7 +205,7 @@ async function jsonBody(request) {
   catch { throw Object.assign(new Error('authentication request is invalid'), { statusCode: 400 }) }
 }
 
-function validBrowserMutation(request, csrf, cookieName = AUTH_CSRF_COOKIE) {
+function validBrowserMutationShape(request) {
   const origin = requestOrigin(request, { requireHeader: true })
   const site = request.headers['sec-fetch-site']
   const mode = request.headers['sec-fetch-mode']
@@ -194,8 +214,18 @@ function validBrowserMutation(request, csrf, cookieName = AUTH_CSRF_COOKIE) {
     && (mode === undefined || mode === 'cors' || mode === 'same-origin')
     && typeof request.headers['content-type'] === 'string'
     && request.headers['content-type'].toLowerCase().startsWith('application/json')
-    && sameSecret(cookieValue(request.headers.cookie, cookieName), csrf)
-    && sameSecret(request.headers['x-dsh-csrf'], csrf)
+}
+
+function validBrowserMutation(request, csrf) {
+  return validBrowserMutationShape(request) && sameSecret(request.headers['x-dsh-csrf'], csrf)
+}
+
+function validAuthenticationContextRequest(request) {
+  const site = request.headers['sec-fetch-site']
+  const mode = request.headers['sec-fetch-mode']
+  return requestOrigin(request) !== undefined
+    && (site === undefined || site === 'same-origin')
+    && (mode === undefined || mode === 'cors' || mode === 'same-origin')
 }
 
 function validSessionMutation(request, cookieName) {
@@ -229,6 +259,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
     retryRequired: '当前浏览器已连续多次输入错误，请在 {seconds} 秒后重试。',
     rateLimited: '管理员登录尝试过多，请在 {seconds} 秒后重试。',
+    serviceUnavailable: '认证服务暂不可用，请稍后重试。',
     invalidResetKey: '认证重置密钥无效、已过期或已使用，请重新生成。',
     migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access generate-key，然后使用一次性密钥创建新账户。',
     resetTitle: '重置管理员认证', resetDetail: '请先在容器 Root 终端运行 dsh-platform access generate-key。重置会替换损坏或缺失的管理员账户。', setupKey: '认证重置密钥',
@@ -243,6 +274,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
     retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
     rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
+    serviceUnavailable: 'The authentication service is temporarily unavailable. Try again shortly.',
     invalidResetKey: 'The authentication reset key is invalid, expired, or already used. Generate a new key.',
     migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access generate-key from a root container terminal, then create a new account with the one-time key.',
     resetTitle: 'Reset administrator authentication', resetDetail: 'First run dsh-platform access generate-key from a root container terminal. Resetting replaces the missing or damaged administrator account.', setupKey: 'Authentication reset key',
@@ -264,6 +296,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
       USERNAME_INVALID: copy.invalidUsername,
       PASSWORD_POLICY_VIOLATION: copy.invalidPassword,
       AUTHENTICATION_RESET_KEY_INVALID: copy.invalidResetKey,
+      ACCESS_MANAGER_UNAVAILABLE: copy.serviceUnavailable,
     }
     const fallbackError = initialize || reset ? copy.registrationFailed : copy.failed
     const context = reset
@@ -284,7 +317,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     // authority for registration, recovery, and credential validation.
     const validationGate = validateCredentials
       ? `validateField('username');validateField('password');` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)},csrfToken=${JSON.stringify(csrf)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body});const payload=await response.json().catch(()=>({}));if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};let csrfToken=${JSON.stringify(csrf)};${validationScript}async function submitAuthentication(body,retry=true){const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry){const refreshed=await fetch(${JSON.stringify(`${AUTH_PREFIX}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'){csrfToken=next.csrfToken;return submitAuthentication(body,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const{response,payload}=await submitAuthentication(body);if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -311,21 +344,24 @@ function managementLoginPage(request, csrf, {
     password: '管理中心密码', submit: '登录', failed: '验证失败，请重试。',
     retryRequired: '当前浏览器已连续多次输入错误，请在 {seconds} 秒后重试。',
     rateLimited: '管理员登录尝试过多，请在 {seconds} 秒后重试。',
+    serviceUnavailable: '认证服务暂不可用，请稍后重试。',
   } : {
     title: 'DSH Management Console', detail: 'Enter the Management console password.',
     password: 'Management console password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
     retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
     rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
+    serviceUnavailable: 'The authentication service is temporarily unavailable. Try again shortly.',
   }
   const submitPath = `${authPrefix}management/pending${managementTabSuffix(searchParams)}`
   const destination = managementConsoleDestination(searchParams, consolePath)
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error'),retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(destination)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):${JSON.stringify(copy.failed)};error.hidden=false;form.elements.password.select()})</script></body></html>`
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error'),retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};let csrfToken=${JSON.stringify(csrf)};async function submitAuthentication(body,retry=true){const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry){const refreshed=await fetch(${JSON.stringify(`${authPrefix}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'){csrfToken=next.csrfToken;return submitAuthentication(body,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);try{const{response,payload}=await submitAuthentication(JSON.stringify({password:values.get('password')}));if(response.ok){location.replace(${JSON.stringify(destination)});return}error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='ACCESS_MANAGER_UNAVAILABLE'?${JSON.stringify(copy.serviceUnavailable)}:${JSON.stringify(copy.failed)}}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)}}error.hidden=false;form.elements.password.select()})</script></body></html>`
 }
 
 export function createBrowserAuthentication({
   access,
   safeReturnPath,
   report = async () => {},
+  wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   paths: {
     authPrefix = AUTH_PREFIX,
     accessPrefix = ACCESS_PREFIX,
@@ -363,9 +399,15 @@ export function createBrowserAuthentication({
 
   async function authenticationStatus() {
     for (let attempt = 0; ; attempt++) {
-      const current = await status()
+      let current
+      try { current = await status() }
+      catch (error) {
+        if (error?.browserAuthenticationBackend !== true || attempt >= 20) throw error
+        await wait(250)
+        continue
+      }
       if (current.state !== 'classification-pending' || attempt >= 20) return current
-      await new Promise(resolve => setTimeout(resolve, 250))
+      await wait(250)
     }
   }
 
@@ -443,8 +485,8 @@ export function createBrowserAuthentication({
   }
 
   function sendManagementLogin(request, response, origin, searchParams) {
-    const csrf = token('dshma')
-    const bytes = Buffer.from(managementLoginPage(request, csrf, { authPrefix, consolePath, searchParams }))
+    const authContext = authenticationContext(request, origin, authPrefix)
+    const bytes = Buffer.from(managementLoginPage(request, authContext.csrfToken, { authPrefix, consolePath, searchParams }))
     response.writeHead(200, {
       'cache-control': 'no-store',
       'content-length': String(bytes.byteLength),
@@ -452,7 +494,7 @@ export function createBrowserAuthentication({
       'content-type': 'text/html; charset=utf-8',
       'cross-origin-opener-policy': 'same-origin',
       'referrer-policy': 'no-referrer',
-      'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+      'set-cookie': authContext.cookies,
       'x-content-type-options': 'nosniff',
     })
     response.end(bytes)
@@ -581,6 +623,16 @@ export function createBrowserAuthentication({
       sendJson(response, 200, { state: current.state })
       return true
     }
+    if (pathname === authPrefix + 'context' && request.method === 'GET') {
+      if (!validAuthenticationContextRequest(request)) {
+        sendJson(response, 403, { error: 'authentication context request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      const origin = requestOrigin(request)
+      const authContext = authenticationContext(request, origin, authPrefix)
+      sendJson(response, 200, { csrfToken: authContext.csrfToken }, { 'set-cookie': authContext.cookies })
+      return true
+    }
     const authenticationEntry = pathname === authPrefix.slice(0, -1) || pathname === authPrefix
     const authenticationReset = pathname === authPrefix + 'reset'
     if (authenticationEntry || (authenticationReset && ['GET', 'HEAD'].includes(request.method ?? 'GET'))) {
@@ -592,16 +644,15 @@ export function createBrowserAuthentication({
         sendSameOriginNavigation(response, returnPath)
         return true
       }
-      const csrf = token('dsha')
-      const retrySource = cookieValue(request.headers.cookie, AUTH_RETRY_COOKIE) ?? token('dshr')
       const origin = requestOrigin(request) ?? 'http://invalid.local'
+      const authContext = authenticationContext(request, origin, authPrefix)
       const resetForm = authenticationReset && current.state === 'recovery-required'
       if (authenticationReset && !resetForm) {
         response.writeHead(303, { 'cache-control': 'no-store', location: `${authPrefix}?return=${encodeURIComponent(returnPath)}` })
         response.end()
         return true
       }
-      const bytes = Buffer.from(authenticationPage(request, current.state, csrf, returnPath, { resetForm }))
+      const bytes = Buffer.from(authenticationPage(request, current.state, authContext.csrfToken, returnPath, { resetForm }))
       response.writeHead(200, {
         'cache-control': 'no-store',
         'content-length': String(bytes.byteLength),
@@ -609,10 +660,10 @@ export function createBrowserAuthentication({
         'content-type': 'text/html; charset=utf-8',
         'referrer-policy': 'no-referrer',
         'set-cookie': [
-          `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
-          `${AUTH_RETRY_COOKIE}=${retrySource}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+          ...authContext.cookies,
+          ...clearInvalidBrowserSessionCookies(origin, managementCookiePath),
         ],
-        'x-dsh-csrf': csrf,
+        'x-dsh-csrf': authContext.csrfToken,
         'x-content-type-options': 'nosniff',
       })
       response.end(request.method === 'HEAD' ? undefined : bytes)
@@ -620,8 +671,12 @@ export function createBrowserAuthentication({
     }
     if (pathname === authPrefix + 'session' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
-      if (!validBrowserMutation(request, csrf)) {
+      if (!validBrowserMutationShape(request)) {
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      if (!validBrowserMutation(request, csrf)) {
+        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
         return true
       }
       const origin = requestOrigin(request, { requireHeader: true })
@@ -655,8 +710,12 @@ export function createBrowserAuthentication({
     }
     if (pathname === authPrefix + 'reset' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
-      if (!validBrowserMutation(request, csrf)) {
+      if (!validBrowserMutationShape(request)) {
         sendJson(response, 403, { error: 'authentication reset request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      if (!validBrowserMutation(request, csrf)) {
+        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
         return true
       }
       const origin = requestOrigin(request, { requireHeader: true })
@@ -774,8 +833,12 @@ export function createBrowserAuthentication({
     }
     if (pathname === authPrefix + 'management/pending' && request.method === 'POST') {
       const csrf = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE)
-      if (!validBrowserMutation(request, csrf)) {
+      if (!validBrowserMutationShape(request)) {
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
+        return true
+      }
+      if (!validBrowserMutation(request, csrf)) {
+        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
         return true
       }
       const origin = requestOrigin(request, { requireHeader: true })
