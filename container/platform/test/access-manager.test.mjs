@@ -208,7 +208,7 @@ async function fixture(options = {}) {
   const service = new AccessService({
     store,
     classificationToken: 'classification-token',
-    limiter: new AuthenticationLimiter({ globalLimit: 10, accountLimit: 3, maxConcurrent: 2 }),
+    limiter: new AuthenticationLimiter({ globalLimit: 10, maxConcurrent: 2 }),
     sessions: new BrowserSessionStore({ now: () => now.getTime() }),
     now: () => now.getTime(),
     ...options,
@@ -384,7 +384,11 @@ test('recreates a damaged administrator account with a root-issued authenticatio
 })
 
 test('normal and recovery sockets expose distinct bounded protocols without verifier material', async () => {
-  const { root, service } = await fixture()
+  const { root, service } = await fixture({
+    limiter: new AuthenticationLimiter({
+      globalLimit: 100, backoffThreshold: 1, initialBackoffMs: 1_000,
+    }),
+  })
   const accessPath = join(root, 'access.sock')
   const recoveryPath = join(root, 'recovery.sock')
   const accessServer = createAccessHttpServer({ service })
@@ -412,7 +416,42 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     })
     assert.equal(authenticated.authenticated, true)
     assert.doesNotMatch(JSON.stringify(authenticated), /salt|hash|password|verifier/i)
+    await assert.rejects(access.request('POST', '/v1/authenticate', {
+      username: 'admin', password: 'incorrect password', authenticationSource: 'browser:test',
+    }), error => error.statusCode === 401 && error.code === 'AUTHENTICATION_FAILED')
+    await assert.rejects(access.request('POST', '/v1/authenticate', {
+      username: 'admin', password: 'correct horse battery staple', authenticationSource: 'browser:test',
+    }), error => error.statusCode === 429
+      && error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.retryAfterSeconds === 1)
     const recoveryStatus = await recovery.request('GET', '/v1/recovery/status')
+    assert.deepEqual(recoveryStatus.authenticationRetry, {
+      activeSources: 1, consecutiveFailures: 1, retryAfterSeconds: 1,
+      sourceRetryAfterSeconds: 0, globalFailures: 1, globalRetryAfterSeconds: 0,
+    })
+    const cleared = await recovery.request('POST', '/v1/recovery/clear-retry')
+    assert.deepEqual(cleared, {
+      status: 'cleared', scope: 'all', cleared: true, activeSources: 1,
+      consecutiveFailures: 1, retryAfterSeconds: 1,
+      sourceRetryAfterSeconds: 0, globalFailures: 1, globalRetryAfterSeconds: 0,
+    })
+    assert.equal((await access.request('POST', '/v1/authenticate', {
+      username: 'admin', password: 'correct horse battery staple', authenticationSource: 'browser:test',
+    })).authenticated, true)
+    await assert.rejects(access.request('POST', '/v1/authenticate', {
+      username: 'admin', password: 'incorrect password', authenticationSource: 'browser:global-only',
+    }), error => error.code === 'AUTHENTICATION_FAILED')
+    const globalCleared = await recovery.request('POST', '/v1/recovery/clear-retry', { scope: 'global' })
+    assert.deepEqual(globalCleared, {
+      status: 'cleared', scope: 'global', cleared: true,
+      globalFailures: 1, globalRetryAfterSeconds: 0,
+    })
+    assert.equal((await recovery.request('GET', '/v1/recovery/status'))
+      .authenticationRetry.consecutiveFailures, 1)
+    await assert.rejects(
+      recovery.request('POST', '/v1/recovery/clear-retry', { scope: 'browser' }),
+      error => error.statusCode === 400 && error.code === 'REQUEST_INVALID',
+    )
     const reset = await recovery.request('POST', '/v1/recovery/reset-access', {
       revision: recoveryStatus.account.revision,
       password: 'replacement administrator password',
@@ -422,6 +461,10 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     assert.doesNotMatch(JSON.stringify(reset), /salt|hash|password|verifier/i)
     await assert.rejects(
       recovery.request('POST', '/v1/initialize', { username: 'other', password: 'another password' }),
+      error => error.statusCode === 404,
+    )
+    await assert.rejects(
+      access.request('POST', '/v1/recovery/clear-retry'),
       error => error.statusCode === 404,
     )
   } finally {
@@ -511,16 +554,277 @@ test('authenticates normalized usernames without exposing which credential faile
 
 test('limits failed authentication before admitting more KDF work', () => {
   let now = 1_000
-  const limiter = new AuthenticationLimiter({ globalLimit: 2, accountLimit: 2, maxConcurrent: 1, clock: () => now })
+  const limiter = new AuthenticationLimiter({ globalLimit: 2, maxConcurrent: 1, clock: () => now })
   const first = limiter.enter('account')
-  assert.throws(() => limiter.enter('account'), error => error.code === 'AUTHENTICATION_RATE_LIMITED')
+  assert.throws(
+    () => limiter.enter('account'),
+    error => error.code === 'AUTHENTICATION_RATE_LIMITED'
+      && error.details.retryAfterSeconds === 1,
+  )
   first.release(false)
   const second = limiter.enter('account')
-  assert.equal(second.delayMs > 0, true)
   second.release(false)
   assert.throws(() => limiter.enter('account'), error => error.code === 'AUTHENTICATION_RATE_LIMITED')
   now += 60_001
   limiter.enter('account').release(true)
+})
+
+test('applies fixed tiered instance windows without global exponential growth', () => {
+  const defaults = new AuthenticationLimiter()
+  assert.equal(defaults.initialBackoffMs, 30_000)
+  assert.equal(defaults.maxBackoffMs, 15 * 60_000)
+  assert.equal(defaults.consecutiveResetMs, 24 * 60 * 60_000)
+  assert.deepEqual(defaults.globalWindows, [
+    { limit: 20, windowMs: 60_000 },
+    { limit: 60, windowMs: 60 * 60_000 },
+    { limit: 120, windowMs: 24 * 60 * 60_000 },
+  ])
+  assert.deepEqual(defaults.sourceWindows, [
+    { limit: 12, windowMs: 60 * 60_000 },
+    { limit: 24, windowMs: 24 * 60 * 60_000 },
+  ])
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    defaults.enter('account', 'default-browser').release(false)
+  }
+  assert.deepEqual(defaults.sourceStatus('account', 'default-browser'), {
+    consecutiveFailures: 5, retryAfterSeconds: 30,
+  })
+  assert.doesNotThrow(() => defaults.enter('account', 'other-browser').release(true))
+
+  let now = 0
+  const limiter = new AuthenticationLimiter({
+    globalLimit: 100,
+    globalWindows: [
+      { limit: 2, windowMs: 1_000 },
+      { limit: 3, windowMs: 10_000 },
+    ],
+    clock: () => now,
+  })
+  limiter.enter('account', 'browser-a').release(false)
+  limiter.enter('account', 'browser-b').release(false)
+  assert.throws(
+    () => limiter.enter('account', 'browser-c'),
+    error => error.code === 'AUTHENTICATION_RATE_LIMITED'
+      && error.details.retryAfterSeconds === 1,
+  )
+  now += 1_001
+  limiter.enter('account', 'browser-c').release(false)
+  assert.throws(
+    () => limiter.enter('account', 'browser-d'),
+    error => error.code === 'AUTHENTICATION_RATE_LIMITED'
+      && error.details.retryAfterSeconds === 9,
+  )
+})
+
+test('applies tiered source windows and clears only that source after success', () => {
+  let now = 0
+  const limiter = new AuthenticationLimiter({
+    backoffThreshold: 100,
+    sourceWindows: [
+      { limit: 2, windowMs: 1_000 },
+      { limit: 3, windowMs: 10_000 },
+    ],
+    globalWindows: [{ limit: 100, windowMs: 10_000 }],
+    clock: () => now,
+  })
+  limiter.enter('account', 'browser-a').release(false)
+  limiter.enter('account', 'browser-a').release(false)
+  assert.throws(
+    () => limiter.enter('account', 'browser-a'),
+    error => error.code === 'AUTHENTICATION_RATE_LIMITED'
+      && error.details.retryAfterSeconds === 1,
+  )
+  assert.doesNotThrow(() => limiter.enter('account', 'browser-b').release(true))
+  now += 1_001
+  limiter.enter('account', 'browser-a').release(false)
+  assert.throws(
+    () => limiter.enter('account', 'browser-a'),
+    error => error.code === 'AUTHENTICATION_RATE_LIMITED'
+      && error.details.retryAfterSeconds === 9,
+  )
+  now += 9_000
+  limiter.enter('account', 'browser-a').release(true)
+  assert.equal(limiter.status('account').globalFailures, 1)
+  assert.equal(limiter.status('account').sourceRetryAfterSeconds, 0)
+})
+
+test('backs off exponentially after five consecutive failures and can clear one account', () => {
+  let now = 1_000
+  const limiter = new AuthenticationLimiter({
+    globalLimit: 100,
+    backoffThreshold: 5,
+    initialBackoffMs: 1_000,
+    maxBackoffMs: 4_000,
+    sourceWindows: [{ limit: 100, windowMs: 60_000 }],
+    clock: () => now,
+  })
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    limiter.enter('account').release(false)
+    assert.deepEqual(limiter.sourceStatus('account'), { consecutiveFailures: attempt, retryAfterSeconds: 0 })
+  }
+  limiter.enter('account').release(false)
+  assert.deepEqual(limiter.sourceStatus('account'), { consecutiveFailures: 5, retryAfterSeconds: 1 })
+  assert.throws(
+    () => limiter.enter('account'),
+    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.statusCode === 429
+      && error.details.retryAfterSeconds === 1,
+  )
+  assert.doesNotThrow(() => limiter.enter('account', 'other-browser').release(true))
+  assert.equal(limiter.sourceStatus('account').retryAfterSeconds, 1)
+  assert.doesNotThrow(() => limiter.enter('other').release(true))
+
+  now += 1_000
+  limiter.enter('account').release(false)
+  assert.equal(limiter.sourceStatus('account').retryAfterSeconds, 2)
+  now += 2_000
+  limiter.enter('account').release(false)
+  assert.equal(limiter.sourceStatus('account').retryAfterSeconds, 4)
+  now += 4_000
+  limiter.enter('account').release(false)
+  assert.equal(limiter.sourceStatus('account').retryAfterSeconds, 4)
+
+  assert.deepEqual(limiter.clear('account'), {
+    cleared: true, activeSources: 1, consecutiveFailures: 8, retryAfterSeconds: 4,
+    sourceRetryAfterSeconds: 0, globalFailures: 8, globalRetryAfterSeconds: 0,
+  })
+  assert.deepEqual(limiter.status('account'), {
+    activeSources: 0, consecutiveFailures: 0, retryAfterSeconds: 0,
+    sourceRetryAfterSeconds: 0, globalFailures: 0, globalRetryAfterSeconds: 0,
+  })
+  assert.doesNotThrow(() => limiter.enter('account').release(true))
+})
+
+test('can clear instance flood windows without clearing browser retry state', () => {
+  const limiter = new AuthenticationLimiter({ globalLimit: 100 })
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    limiter.enter('account', 'browser').release(false)
+  }
+  assert.deepEqual(limiter.clearGlobal(), {
+    cleared: true,
+    globalFailures: 5,
+    globalRetryAfterSeconds: 0,
+  })
+  assert.throws(
+    () => limiter.enter('account', 'browser'),
+    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.details.retryAfterSeconds === 30,
+  )
+  assert.equal(limiter.status('account').globalFailures, 0)
+})
+
+test('successful authentication clears consecutive failures', () => {
+  const limiter = new AuthenticationLimiter({ globalLimit: 100 })
+  for (let attempt = 0; attempt < 4; attempt += 1) limiter.enter('account').release(false)
+  limiter.enter('account').release(true)
+  assert.deepEqual(limiter.status('account'), {
+    activeSources: 0, consecutiveFailures: 0, retryAfterSeconds: 0,
+    sourceRetryAfterSeconds: 0, globalFailures: 4, globalRetryAfterSeconds: 0,
+  })
+})
+
+test('consecutive source failures expire after one quiet day', () => {
+  let now = 0
+  const limiter = new AuthenticationLimiter({
+    globalWindows: [{ limit: 100, windowMs: 48 * 60 * 60_000 }],
+    sourceWindows: [{ limit: 100, windowMs: 48 * 60 * 60_000 }],
+    clock: () => now,
+  })
+  for (let attempt = 0; attempt < 4; attempt += 1) limiter.enter('account', 'browser').release(false)
+  now += 24 * 60 * 60_000 + 1
+  limiter.enter('account', 'browser').release(false)
+  assert.deepEqual(limiter.sourceStatus('account', 'browser'), {
+    consecutiveFailures: 1, retryAfterSeconds: 0,
+  })
+})
+
+test('prunes expired browser source histories during later authentication', () => {
+  let now = 0
+  const limiter = new AuthenticationLimiter({ clock: () => now })
+  limiter.enter('account', 'expired-browser').release(false)
+  assert.equal(limiter.sources.size, 1)
+  assert.equal(limiter.consecutiveFailures.size, 1)
+
+  now += 24 * 60 * 60_000 + 1
+  limiter.enter('account', 'current-browser').release(true)
+  assert.equal(limiter.sources.has(limiter.retryKey('account', 'expired-browser')), false)
+  assert.equal(limiter.consecutiveFailures.has(limiter.retryKey('account', 'expired-browser')), false)
+})
+
+test('main login and fresh authentication share backend retry state', async () => {
+  let now = 1_000
+  const limiter = new AuthenticationLimiter({
+    globalLimit: 100, initialBackoffMs: 1_000, clock: () => now,
+  })
+  const { service } = await fixture({ limiter })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initialize({
+    username: 'admin', password: 'correct horse battery staple',
+  })
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await assert.rejects(
+      service.authenticate({ username: 'admin', password: 'incorrect password' }),
+      error => error.code === 'AUTHENTICATION_FAILED',
+    )
+  }
+  const account = (await service.store.state()).account
+  await assert.rejects(
+    service.verifyFreshAuthentication(account, 'incorrect password'),
+    error => error.code === 'FRESH_AUTH_FAILED',
+  )
+  await assert.rejects(
+    service.authenticate({ username: 'admin', password: 'correct horse battery staple' }),
+    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.details.retryAfterSeconds === 1,
+  )
+  assert.equal((await service.recoveryStatus()).authenticationRetry.consecutiveFailures, 5)
+  assert.equal((await service.clearAuthenticationRetry()).cleared, true)
+  assert.equal((await service.authenticate({
+    username: initialized.account.username,
+    password: 'correct horse battery staple',
+  })).authenticated, true)
+  now += 1_000
+})
+
+test('management password failures use the shared backend retry state', async () => {
+  const limiter = new AuthenticationLimiter({
+    globalLimit: 100, initialBackoffMs: 1_000,
+  })
+  const { service } = await fixture({ limiter })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple',
+    origin: 'https://dsh.example',
+  })
+  await service.resetRecoveryManagementPassword({
+    revision: initialized.account.revision,
+    password: 'separate management password',
+  })
+  const account = (await service.store.state()).account
+  const pending = (await service.managementResult(account, {
+    origin: 'https://manage.example',
+    sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: initialized.session.sessionId,
+  })).pending
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await assert.rejects(service.completeManagementLogin({
+      pendingToken: pending.token,
+      origin: 'https://manage.example',
+      password: 'incorrect management password',
+    }), error => error.code === 'AUTHENTICATION_FAILED')
+  }
+  await assert.rejects(service.completeManagementLogin({
+    pendingToken: pending.token,
+    origin: 'https://manage.example',
+    password: 'separate management password',
+  }), error => error.code === 'AUTHENTICATION_RETRY_REQUIRED')
+  await service.clearAuthenticationRetry()
+  assert.match((await service.completeManagementLogin({
+    pendingToken: pending.token,
+    origin: 'https://manage.example',
+    password: 'separate management password',
+  })).session.token, /^dshms_/)
 })
 
 test('stores only digests for origin-bound DSH sessions with absolute and idle expiry', async () => {

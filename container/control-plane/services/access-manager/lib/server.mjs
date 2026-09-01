@@ -20,6 +20,14 @@ function isLoopbackHostname(hostname) {
 }
 function digest(value) { return createHash('sha256').update(value).digest('base64url') }
 
+function authenticationSource(value) {
+  if (typeof value?.authenticationSource === 'string'
+    && /^[A-Za-z0-9:_-]{1,128}$/.test(value.authenticationSource)) return value.authenticationSource
+  const ip = value?.client?.ip
+  return typeof ip === 'string' && ip.length > 0 && ip.length <= 128
+    ? `ip:${digest(ip)}` : 'unknown'
+}
+
 function normalizeManagementAccess(mode, entry) {
   if (!['compat', 'isolated'].includes(mode)) throw new AccessError('ACCESS_MODE_INVALID', 'management access mode is invalid')
   if (mode === 'compat') return null
@@ -53,10 +61,11 @@ function sameToken(left, right) {
   return a.byteLength === b.byteLength && a.byteLength > 0 && timingSafeEqual(a, b)
 }
 
-function send(response, status, value) {
+function send(response, status, value, headers = {}) {
   response.writeHead(status, {
     'cache-control': 'no-store',
     'content-type': 'application/json; charset=utf-8',
+    ...headers,
   })
   response.end(`${JSON.stringify(value)}\n`)
 }
@@ -99,7 +108,6 @@ export class AccessService {
     capabilities = new CapabilityStore(),
     transitions,
     verify = verifyCredential,
-    sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     report = async () => {},
     now = () => Date.now(),
     runtimeCapabilities = detectRuntimeCapabilities,
@@ -112,7 +120,6 @@ export class AccessService {
     this.capabilities = capabilities
     this.transitions = transitions ?? new ManagementTransitionStore({ now })
     this.verify = verify
-    this.sleep = sleep
     this.report = report
     this.now = now
     this.runtimeCapabilities = runtimeCapabilities
@@ -194,7 +201,11 @@ export class AccessService {
   initializeDsh(value) {
     return this.serialized(async () => {
       const account = await this.store.initialize(value)
-      const session = this.sessions.issue('dsh', account, { origin: value.origin, client: value.client })
+      const session = this.sessions.issue('dsh', account, {
+        origin: value.origin,
+        client: value.client,
+        authenticationSource: authenticationSource(value),
+      })
       await this.report('access.initialization.completed', { accountId: account.accountId })
       await this.report('access.session.created', { accountId: account.accountId, kind: 'dsh' })
       return { state: 'initialized', account: publicAccount(account), session }
@@ -228,7 +239,11 @@ export class AccessService {
       else if (current.state === 'recovery-required') account = await this.store.recover(value)
       else throw new AccessError('AUTHENTICATION_RESET_UNAVAILABLE', 'administrator authentication reset is unavailable', 409)
       this.authenticationReset = null
-      const session = this.sessions.issue('dsh', account, { origin: value.origin, client: value.client })
+      const session = this.sessions.issue('dsh', account, {
+        origin: value.origin,
+        client: value.client,
+        authenticationSource: authenticationSource(value),
+      })
       await this.report('access.authentication-reset.completed', { accountId: account.accountId, previousState: current.state })
       return { state: 'initialized', account: publicAccount(account), session }
     })
@@ -239,10 +254,9 @@ export class AccessService {
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    const admission = this.limiter.enter(current.account.accountId)
+    const admission = this.limiter.enter(current.account.accountId, authenticationSource(value))
     let authenticated = false
     try {
-      if (admission.delayMs > 0) await this.sleep(admission.delayMs)
       let usernameMatches = false
       try { usernameMatches = normalizeUsername(value.username) === current.account.username } catch {}
       const passwordMatches = await this.verify(value.password, current.account.mainCredential)
@@ -262,11 +276,10 @@ export class AccessService {
     } finally { admission.release(authenticated) }
   }
 
-  async verifyFreshAuthentication(account, mainPassword) {
-    const admission = this.limiter.enter(account.accountId)
+  async verifyFreshAuthentication(account, mainPassword, sourceId = 'unknown') {
+    const admission = this.limiter.enter(account.accountId, sourceId)
     let authenticated = false
     try {
-      if (admission.delayMs > 0) await this.sleep(admission.delayMs)
       const mainMatches = typeof mainPassword === 'string'
         && await this.verify(mainPassword, account.mainCredential)
       authenticated = mainMatches
@@ -282,7 +295,11 @@ export class AccessService {
   async loginDsh(value) {
     const authenticated = await this.authenticate(value)
     const current = await this.store.state()
-    const session = this.sessions.issue('dsh', current.account, { origin: value.origin, client: value.client })
+    const session = this.sessions.issue('dsh', current.account, {
+      origin: value.origin,
+      client: value.client,
+      authenticationSource: authenticationSource(value),
+    })
     await this.report('access.session.created', { accountId: authenticated.accountId, kind: 'dsh' })
     return { ...authenticated, session }
   }
@@ -376,15 +393,32 @@ export class AccessService {
       || !current.account.managementAdditionalCredential.enabled) {
       throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
     }
+    const source = this.sessions.details(
+      this.exchanges.peekPendingSource(value.pendingToken, current.account, value.origin) ?? '',
+    )
+    const sourceId = source?.authenticationSource ?? 'unknown'
+    this.limiter.checkRetry(current.account.accountId, sourceId)
     const pending = this.exchanges.inspectPending(value.pendingToken, current.account, value.origin)
     if (pending === undefined) throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
-    const source = this.sessions.details(pending.value.sourceDshSessionId)
-    if (source?.kind !== 'dsh' || source.origin !== pending.value.sourceDshOrigin) {
+    const validatedSource = this.sessions.details(pending.value.sourceDshSessionId)
+    if (validatedSource?.kind !== 'dsh' || validatedSource.origin !== pending.value.sourceDshOrigin) {
       this.exchanges.consumePending(pending.key)
       throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
     }
-    const valid = await this.verify(value.password, current.account.managementAdditionalCredential.verifier)
-    if (!valid) throw new AccessError('AUTHENTICATION_FAILED', 'username or password is incorrect', 401)
+    const admission = this.limiter.enter(current.account.accountId, sourceId)
+    let valid = false
+    try {
+      valid = await this.verify(value.password, current.account.managementAdditionalCredential.verifier)
+      if (!valid) {
+        await this.report('access.authentication.failed', {
+          accountId: current.account.accountId, kind: 'management', level: 'warning',
+        })
+        throw new AccessError('AUTHENTICATION_FAILED', 'username or password is incorrect', 401)
+      }
+      await this.report('access.authentication.succeeded', {
+        accountId: current.account.accountId, kind: 'management',
+      })
+    } finally { admission.release(valid) }
     this.exchanges.consumePending(pending.key)
     const session = this.sessions.issue('management', current.account, {
       origin: value.origin,
@@ -482,6 +516,8 @@ export class AccessService {
     const current = await this.store.state()
     return {
       state: current.state,
+      authenticationRetry: current.account === undefined
+        ? null : this.limiter.status(current.account.accountId),
       account: current.account === undefined ? null : {
         accountId: current.account.accountId,
         username: current.account.username,
@@ -494,6 +530,26 @@ export class AccessService {
         managementAccess: { ...current.account.managementAccess },
       },
     }
+  }
+
+  async clearAuthenticationRetry(value = {}) {
+    const current = await this.store.state()
+    if (current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
+    }
+    const scope = value.scope ?? 'all'
+    if (!['all', 'global'].includes(scope)) {
+      throw new AccessError('REQUEST_INVALID', 'authentication retry clear scope is invalid')
+    }
+    const result = scope === 'global'
+      ? this.limiter.clearGlobal()
+      : this.limiter.clear(current.account.accountId)
+    await this.report('access.authentication-retry.cleared', {
+      accountId: current.account.accountId,
+      scope,
+      cleared: result.cleared,
+    })
+    return { status: 'cleared', scope, ...result }
   }
 
   async replaceRecoveryAccount(value, operation, { revoke = 'none' } = {}) {
@@ -726,7 +782,7 @@ export class AccessService {
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
-    this.consumeInternalCapability(value, current.account)
+    const authorization = this.consumeInternalCapability(value, current.account)
     const account = { ...current.account, revision: identifier(), updatedAt: new Date().toISOString() }
     const usernameChanged = value.username !== undefined && normalizeUsername(value.username) !== current.account.username
     const mainPasswordChanged = value.password !== undefined
@@ -746,7 +802,13 @@ export class AccessService {
       }
     }
     if (mainPasswordChanged || additionalChanged) {
-      await this.verifyFreshAuthentication(current.account, value.currentPassword)
+      const managementSession = this.sessions.details(authorization.sessionId)
+      const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+      await this.verifyFreshAuthentication(
+        current.account,
+        value.currentPassword,
+        sourceSession?.authenticationSource ?? 'unknown',
+      )
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
     if (value.password !== undefined) {
@@ -814,6 +876,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
         if (request.method === 'POST' && pathname === '/v1/recovery/reset-management-password') return send(response, 200, await service.resetRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/generate-key') return send(response, 201, await service.generateAuthenticationResetKey())
+        if (request.method === 'POST' && pathname === '/v1/recovery/clear-retry') return send(response, 200, await service.clearAuthenticationRetry(value))
         return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
       }
       const value = await body(request)
@@ -845,7 +908,8 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (!(error instanceof AccessError)) await service.report('access.request.failed', {
         error, method: request.method ?? null, pathname: request.url ?? null,
       })
-      send(response, status, accessErrorBody(error))
+      send(response, status, accessErrorBody(error), Number.isInteger(error?.details?.retryAfterSeconds)
+        ? { 'retry-after': String(error.details.retryAfterSeconds) } : {})
     })
   })
 }

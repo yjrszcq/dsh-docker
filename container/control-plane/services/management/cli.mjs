@@ -7,7 +7,7 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|reset|set-username|reset-password|reset-management-password|disable-management-password|generate-key|trust status|reset'
+  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|reset|set-username|reset-password|reset-management-password|disable-management-password|generate-key|clear-retry [--global-only]|trust status|reset'
 }
 
 export function parseCli(argv) {
@@ -42,8 +42,11 @@ export function parseCli(argv) {
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'generate-key'].includes(rest[0])) {
+  if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'generate-key', 'clear-retry'].includes(rest[0])) {
     return { command, operation: rest[0] }
+  }
+  if (command === 'access' && rest.length === 2 && rest[0] === 'clear-retry' && rest[1] === '--global-only') {
+    return { command, operation: 'clear-retry', globalOnly: true }
   }
   throw new Error(usage())
 }
@@ -206,6 +209,18 @@ export async function runCli({
     if (parsed.operation === 'generate-key') {
       if (!await confirm('Generate an administrator authentication reset key? y/[n]: ')) return cancel()
       write(json(await access.request('POST', '/v1/recovery/generate-key')))
+      return 0
+    }
+    if (parsed.operation === 'clear-retry') {
+      const question = parsed.globalOnly
+        ? 'Clear instance-wide administrator login rate limits? y/[n]: '
+        : 'Clear all administrator login retry limits? y/[n]: '
+      if (!await confirm(question)) return cancel()
+      write(json(await access.request(
+        'POST',
+        '/v1/recovery/clear-retry',
+        parsed.globalOnly ? { scope: 'global' } : { scope: 'all' },
+      )))
       return 0
     }
     if (current.account === null) throw new Error('administrator account is unavailable')

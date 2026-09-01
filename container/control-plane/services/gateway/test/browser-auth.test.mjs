@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createBrowserAuthentication,
   AUTH_CSRF_COOKIE,
+  AUTH_RETRY_COOKIE,
   DSH_SESSION_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
 } from '../lib/browser-auth.mjs'
@@ -272,6 +273,7 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.match(response.body, expected)
       assert.match(response.headers['cache-control'], /no-store/)
       assert.match(response.headers['x-dsh-csrf'], /^dsha_/)
+      assert.match(response.headers['set-cookie'][1], new RegExp(`^${AUTH_RETRY_COOKIE}=dshr_`))
       assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/)
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
       if (state === 'classification-pending') {
@@ -337,12 +339,14 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
       path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}` },
     })
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const retryCookie = page.headers['set-cookie'][1].split(';')[0]
+    const browserCookies = `${csrfCookie}; ${retryCookie}`
     const csrf = csrfCookie.split('=')[1]
     const rejected = await request(port, {
       path: '/_dsh_platform/auth/session', method: 'POST',
       headers: {
         host: `127.0.0.1:${port}`, origin: 'https://evil.example',
-        cookie: csrfCookie, 'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        cookie: browserCookies, 'content-type': 'application/json', 'x-dsh-csrf': csrf,
       },
       body: JSON.stringify({ username: 'admin', password: 'correct password' }),
     })
@@ -352,7 +356,7 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
       path: '/_dsh_platform/auth/session', method: 'POST',
       headers: {
         host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`,
-        cookie: csrfCookie, 'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        cookie: browserCookies, 'content-type': 'application/json', 'x-dsh-csrf': csrf,
         'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'user-agent': 'Session Test Browser',
       },
       body: JSON.stringify({ username: 'admin', password: 'correct password' }),
@@ -363,6 +367,7 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
     const initialization = current.calls.find(call => call.path === '/v1/dsh/initialize')
     assert.equal(initialization.body.client.userAgent, 'Session Test Browser')
     assert.equal(initialization.body.client.ip, '127.0.0.1')
+    assert.match(initialization.body.authenticationSource, /^browser:[A-Za-z0-9_-]+$/)
   } finally { await close(current.server) }
 })
 
@@ -406,7 +411,8 @@ test('login preserves explicit Access Manager rate limits', async () => {
       if (path === '/v1/status') return { state: 'initialized' }
       throw Object.assign(new Error('authentication is temporarily unavailable'), {
         statusCode: 429,
-        code: 'AUTHENTICATION_RATE_LIMITED',
+        code: 'AUTHENTICATION_RETRY_REQUIRED',
+        retryAfterSeconds: 7,
       })
     },
   }
@@ -433,7 +439,12 @@ test('login preserves explicit Access Manager rate limits', async () => {
       body: JSON.stringify({ username: 'admin', password: 'wrong password' }),
     })
     assert.equal(response.status, 429)
-    assert.equal(JSON.parse(response.body).code, 'AUTHENTICATION_RATE_LIMITED')
+    assert.equal(response.headers['retry-after'], '7')
+    assert.deepEqual(JSON.parse(response.body), {
+      error: 'authentication is temporarily unavailable',
+      code: 'AUTHENTICATION_RETRY_REQUIRED',
+      retryAfterSeconds: 7,
+    })
   } finally { await close(server) }
 })
 
@@ -734,6 +745,8 @@ test('Management pending page asks only for the additional password', () => {
       assert.equal(page.status, 200)
       assertInlineScriptsCompile(page.body)
       assert.match(page.body, /Management console password/)
+      assert.match(page.body, /AUTHENTICATION_RETRY_REQUIRED/)
+      assert.match(page.body, /AUTHENTICATION_RATE_LIMITED/)
       assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/pending" novalidate>/)
       assert.doesNotMatch(page.body, /minlength="8"|pattern="|field-error|Use 8 to 1024 characters/)
       assert.doesNotMatch(page.body, /name="username"|management\/session/)

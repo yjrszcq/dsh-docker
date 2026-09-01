@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const AUTH_PREFIX = '/_dsh_platform/auth/'
 export const ACCESS_PREFIX = '/_dsh_platform/access/'
@@ -6,6 +6,7 @@ export const TRANSITION_PREFIX = '/_dsh_platform/transition/'
 export const DSH_SESSION_COOKIE = 'dsh_gateway_session'
 export const DSH_CSRF_COOKIE = 'dsh_gateway_csrf'
 export const AUTH_CSRF_COOKIE = 'dsh_auth_csrf'
+export const AUTH_RETRY_COOKIE = 'dsh_auth_retry_source'
 export const MANAGEMENT_SESSION_COOKIE = 'dsh_management_compat_session'
 export const MANAGEMENT_CSRF_COOKIE = 'dsh_management_csrf'
 export const MANAGEMENT_PENDING_COOKIE = 'dsh_management_pending'
@@ -14,6 +15,7 @@ const RESERVED_COOKIES = new Set([
   DSH_SESSION_COOKIE,
   DSH_CSRF_COOKIE,
   AUTH_CSRF_COOKIE,
+  AUTH_RETRY_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
   MANAGEMENT_CSRF_COOKIE,
   MANAGEMENT_PENDING_COOKIE,
@@ -23,6 +25,7 @@ const RESERVED_COOKIES = new Set([
 export function isReservedCookieName(name) { return RESERVED_COOKIES.has(name) }
 
 function token(prefix) { return `${prefix}_${randomBytes(32).toString('base64url')}` }
+function digest(value) { return createHash('sha256').update(value).digest('base64url') }
 
 export function cookieValue(header, name) {
   if (typeof header !== 'string') return undefined
@@ -87,6 +90,13 @@ function loginClient(request) {
   const userAgent = typeof header === 'string' && header.length > 0
     ? header.slice(0, 512) : null
   return { ip, userAgent }
+}
+
+function authenticationSource(request) {
+  const browser = cookieValue(request.headers.cookie, AUTH_RETRY_COOKIE)
+  if (browser !== undefined) return `browser:${digest(browser)}`
+  const ip = loginClient(request).ip
+  return ip === null ? 'unknown' : `ip:${digest(ip)}`
 }
 
 function canonicalOrigin(value) {
@@ -217,6 +227,8 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     concurrent: '管理员账户已创建，请使用现有账户登录。',
     invalidUsername: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。',
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
+    retryRequired: '当前浏览器已连续多次输入错误，请在 {seconds} 秒后重试。',
+    rateLimited: '管理员登录尝试过多，请在 {seconds} 秒后重试。',
     invalidResetKey: '认证重置密钥无效、已过期或已使用，请重新生成。',
     migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access generate-key，然后使用一次性密钥创建新账户。',
     resetTitle: '重置管理员认证', resetDetail: '请先在容器 Root 终端运行 dsh-platform access generate-key。重置会替换损坏或缺失的管理员账户。', setupKey: '认证重置密钥',
@@ -229,6 +241,8 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     concurrent: 'The administrator account already exists. Sign in with it.',
     invalidUsername: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.',
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
+    retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
+    rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
     invalidResetKey: 'The authentication reset key is invalid, expired, or already used. Generate a new key.',
     migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access generate-key from a root container terminal, then create a new account with the one-time key.',
     resetTitle: 'Reset administrator authentication', resetDetail: 'First run dsh-platform access generate-key from a root container terminal. Resetting replaces the missing or damaged administrator account.', setupKey: 'Authentication reset key',
@@ -270,7 +284,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     // authority for registration, recovery, and credential validation.
     const validationGate = validateCredentials
       ? `validateField('username');validateField('password');` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},csrfToken=${JSON.stringify(csrf)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body});const payload=await response.json().catch(()=>({}));if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)},csrfToken=${JSON.stringify(csrf)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body});const payload=await response.json().catch(()=>({}));if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -283,12 +297,16 @@ function managementLoginPage(request, csrf, { authPrefix = AUTH_PREFIX, consoleP
   const copy = zh ? {
     title: 'DSH 管理中心', detail: '请输入管理中心密码。',
     password: '管理中心密码', submit: '登录', failed: '验证失败，请重试。',
+    retryRequired: '当前浏览器已连续多次输入错误，请在 {seconds} 秒后重试。',
+    rateLimited: '管理员登录尝试过多，请在 {seconds} 秒后重试。',
   } : {
     title: 'DSH Management Console', detail: 'Enter the Management console password.',
     password: 'Management console password', submit: 'Sign in', failed: 'Authentication failed. Try again.',
+    retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
+    rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
   }
   const submitPath = `${authPrefix}management/pending`
-  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error');form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(consolePath)})}else{error.hidden=false;form.elements.password.select()}})</script></body></html>`
+  return `<!doctype html><html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>html{color-scheme:light dark}*{box-sizing:border-box}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#151517;color:#f3f3f4;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(400px,calc(100% - 32px));padding:28px;border:1px solid #3e3e42;border-radius:12px;background:#242426}h1{margin:0 0 6px;font-size:20px}p{margin:0 0 22px;color:#aaaab0}form{display:grid;gap:16px}label{display:grid;gap:7px;font-weight:600}input{width:100%;padding:10px 12px;border:1px solid #55555b;border-radius:7px;background:#19191b;color:inherit;font:inherit}button{padding:10px 14px;border:0;border-radius:7px;background:#f2f2f3;color:#202124;font:600 14px/1.4 inherit;cursor:pointer}.error{color:#ff7777}[hidden]{display:none}@media(prefers-color-scheme:light){body{background:#f7f7f8;color:#202124}.card{background:#fff;border-color:#d7d7da}p{color:#6d6f76}input{background:#fff;border-color:#c7c8cc}button{background:#202124;color:#fff}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.detail}</p><form method="post" action="${htmlEscape(submitPath)}" novalidate><label>${copy.password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" autofocus></label><button type="submit">${copy.submit}</button><p class="error" role="alert" hidden>${copy.failed}</p></form></main><script>const form=document.querySelector('form'),error=document.querySelector('.error'),retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;const values=new FormData(form);const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body:JSON.stringify({password:values.get('password')})});if(response.ok){location.replace(${JSON.stringify(consolePath)});return}const payload=await response.json().catch(()=>({}));error.textContent=payload.code==='AUTHENTICATION_RETRY_REQUIRED'&&Number.isInteger(payload.retryAfterSeconds)?retryMessage.replace('{seconds}',String(payload.retryAfterSeconds)):payload.code==='AUTHENTICATION_RATE_LIMITED'&&Number.isInteger(payload.retryAfterSeconds)?rateLimitMessage.replace('{seconds}',String(payload.retryAfterSeconds)):${JSON.stringify(copy.failed)};error.hidden=false;form.elements.password.select()})</script></body></html>`
 }
 
 export function createBrowserAuthentication({
@@ -318,6 +336,14 @@ export function createBrowserAuthentication({
   const accessFailureCode = (error, fallback) => Number.isInteger(error?.statusCode)
     ? error.code ?? fallback
     : 'ACCESS_MANAGER_UNAVAILABLE'
+  const accessFailureBody = (error, fallback) => ({
+    error: error.message,
+    code: accessFailureCode(error, fallback),
+    ...(Number.isInteger(error?.retryAfterSeconds)
+      ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
+  })
+  const accessFailureHeaders = error => Number.isInteger(error?.retryAfterSeconds)
+    ? { 'retry-after': String(error.retryAfterSeconds) } : {}
   const isAuthenticationDenial = error => [401, 403].includes(error?.statusCode)
 
   async function status() { return accessRequest('GET', '/v1/status') }
@@ -554,6 +580,7 @@ export function createBrowserAuthentication({
         return true
       }
       const csrf = token('dsha')
+      const retrySource = cookieValue(request.headers.cookie, AUTH_RETRY_COOKIE) ?? token('dshr')
       const origin = requestOrigin(request) ?? 'http://invalid.local'
       const resetForm = authenticationReset && current.state === 'recovery-required'
       if (authenticationReset && !resetForm) {
@@ -568,7 +595,10 @@ export function createBrowserAuthentication({
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         'content-type': 'text/html; charset=utf-8',
         'referrer-policy': 'no-referrer',
-        'set-cookie': `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+        'set-cookie': [
+          `${AUTH_CSRF_COOKIE}=${csrf}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+          `${AUTH_RETRY_COOKIE}=${retrySource}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`,
+        ],
         'x-dsh-csrf': csrf,
         'x-content-type-options': 'nosniff',
       })
@@ -590,7 +620,12 @@ export function createBrowserAuthentication({
         return true
       }
       try {
-        const result = await accessRequest('POST', route, { ...value, origin, client: loginClient(request) })
+        const result = await accessRequest('POST', route, {
+          ...value,
+          origin,
+          client: loginClient(request),
+          authenticationSource: authenticationSource(request),
+        })
         const returnPath = safeReturnPath(searchParams.get('return'))
         const next = current.state === 'initialized' && returnPath === `${authPrefix}management/start`
           ? await managementHandoffLocation(current, { dshToken: result.session.token, dshOrigin: origin })
@@ -601,7 +636,7 @@ export function createBrowserAuthentication({
         })
       } catch (error) {
         await report('gateway.access.login-failed', { code: error.code ?? null, level: 'warning' })
-        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
+        sendJson(response, accessFailureStatus(error), accessFailureBody(error, 'AUTHENTICATION_FAILED'), accessFailureHeaders(error))
       }
       return true
     }
@@ -619,7 +654,10 @@ export function createBrowserAuthentication({
       }
       try {
         const result = await accessRequest('POST', '/v1/dsh/reset-authentication', {
-          ...await jsonBody(request), origin, client: loginClient(request),
+          ...await jsonBody(request),
+          origin,
+          client: loginClient(request),
+          authenticationSource: authenticationSource(request),
         })
         await report('gateway.access.authentication-reset', { previousState: current.state })
         sendJson(response, 201, { authenticated: true }, { 'set-cookie': sessionCookies(result.session, origin) })
@@ -735,7 +773,7 @@ export function createBrowserAuthentication({
         })
         sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
-        sendJson(response, accessFailureStatus(error), { error: error.message, code: accessFailureCode(error, 'AUTHENTICATION_FAILED') })
+        sendJson(response, accessFailureStatus(error), accessFailureBody(error, 'AUTHENTICATION_FAILED'), accessFailureHeaders(error))
       }
       return true
     }

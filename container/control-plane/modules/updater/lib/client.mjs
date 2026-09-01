@@ -29,6 +29,7 @@ export class LocalApiClient {
             const error = new Error(value.error ?? `local API returned ${String(response.statusCode)}`)
             error.statusCode = response.statusCode
             if (typeof value.code === 'string') error.code = value.code
+            if (Number.isInteger(value.retryAfterSeconds)) error.retryAfterSeconds = value.retryAfterSeconds
             error.localApiPath = path
             reject(error)
           } else resolve(value)

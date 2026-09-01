@@ -2158,6 +2158,84 @@ test('management CLI creates a root-only one-time authentication reset key', asy
   }), /requires root/)
 })
 
+test('management CLI clears login retry wait only after Root TTY confirmation', async () => {
+  assert.deepEqual(parseCli(['access', 'clear-retry']), { command: 'access', operation: 'clear-retry' })
+  assert.deepEqual(parseCli(['access', 'clear-retry', '--global-only']), {
+    command: 'access', operation: 'clear-retry', globalOnly: true,
+  })
+  assert.throws(() => parseCli(['access', 'clear-retry', 'now']))
+  const tty = { isTTY: true }
+  const calls = []
+  const output = []
+  assert.equal(await runCli({
+    argv: ['access', 'clear-retry'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push([method, path, body])
+        if (method === 'GET') return {
+          state: 'initialized',
+          authenticationRetry: { consecutiveFailures: 5, retryAfterSeconds: 1 },
+          account: { revision: 'revision-a' },
+        }
+        return {
+          status: 'cleared', scope: 'all', cleared: true, activeSources: 1,
+          consecutiveFailures: 5, retryAfterSeconds: 1,
+          sourceRetryAfterSeconds: 0, globalFailures: 5, globalRetryAfterSeconds: 0,
+        }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async prompt => {
+      assert.equal(prompt, 'Clear all administrator login retry limits? y/[n]: ')
+      return 'y'
+    },
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(calls, [
+    ['GET', '/v1/recovery/status', undefined],
+    ['POST', '/v1/recovery/clear-retry', { scope: 'all' }],
+  ])
+  assert.deepEqual(JSON.parse(output[0]), {
+    status: 'cleared', scope: 'all', cleared: true, activeSources: 1,
+    consecutiveFailures: 5, retryAfterSeconds: 1,
+    sourceRetryAfterSeconds: 0, globalFailures: 5, globalRetryAfterSeconds: 0,
+  })
+  await assert.rejects(runCli({
+    argv: ['access', 'clear-retry'], access: { request: async () => ({}) },
+    getuid: () => 1000, input: tty, output: tty,
+  }), /requires root/)
+  await assert.rejects(runCli({
+    argv: ['access', 'clear-retry'], access: { request: async () => ({}) },
+    getuid: () => 0, input: { isTTY: false }, output: tty,
+  }), /interactive container console/)
+
+  const globalCalls = []
+  assert.equal(await runCli({
+    argv: ['access', 'clear-retry', '--global-only'],
+    access: {
+      request: async (method, path, body) => {
+        globalCalls.push([method, path, body])
+        if (method === 'GET') return { state: 'initialized', account: { revision: 'revision-a' } }
+        return { status: 'cleared', scope: 'global', cleared: true, globalFailures: 20 }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async prompt => {
+      assert.equal(prompt, 'Clear instance-wide administrator login rate limits? y/[n]: ')
+      return 'y'
+    },
+    write: () => {},
+  }), 0)
+  assert.deepEqual(globalCalls, [
+    ['GET', '/v1/recovery/status', undefined],
+    ['POST', '/v1/recovery/clear-retry', { scope: 'global' }],
+  ])
+})
+
 test('hidden access input preserves the TTY stream for subsequent prompts', async () => {
   const input = new PassThrough()
   input.isTTY = true
@@ -2184,6 +2262,7 @@ test('management CLI defaults every direct access mutation to no', async () => {
     'reset-management-password',
     'disable-management-password',
     'generate-key',
+    'clear-retry',
   ]) {
     const calls = []
     const prompts = []

@@ -61,7 +61,9 @@ export class BrowserSessionStore {
     return undefined
   }
 
-  issue(kind, account, { origin, sourceDshOrigin = null, sourceDshSessionId = null, client = null } = {}) {
+  issue(kind, account, {
+    origin, sourceDshOrigin = null, sourceDshSessionId = null, client = null, authenticationSource = 'unknown',
+  } = {}) {
     const policy = this.policy[kind]
     if (policy === undefined) throw new TypeError('browser session kind is invalid')
     if (typeof origin !== 'string' || origin.length === 0 || origin.length > 2_048) {
@@ -90,6 +92,7 @@ export class BrowserSessionStore {
       origin,
       sourceDshOrigin,
       sourceDshSessionId,
+      authenticationSource: sourceDshSession?.authenticationSource ?? authenticationSource,
       client: sourceClient,
       csrfDigest: digest(csrfToken),
       createdAt,
@@ -244,6 +247,7 @@ export class BrowserSessionStore {
         origin: session.origin,
         sourceDshOrigin: session.sourceDshOrigin,
         sourceDshSessionId: session.sourceDshSessionId,
+        authenticationSource: session.authenticationSource,
       })
     }
     return undefined

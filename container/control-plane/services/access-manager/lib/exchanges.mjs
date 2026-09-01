@@ -4,7 +4,7 @@ function digest(value) { return createHash('sha256').update(value).digest('hex')
 function token(prefix, random) { return `${prefix}_${random(32).toString('base64url')}` }
 
 export class ManagementExchangeStore {
-  constructor({ now = Date.now, random = randomBytes, handoffTtlMs = 30_000, pendingTtlMs = 5 * 60_000, pendingAttempts = 5 } = {}) {
+  constructor({ now = Date.now, random = randomBytes, handoffTtlMs = 30_000, pendingTtlMs = 5 * 60_000, pendingAttempts = 16 } = {}) {
     this.now = now
     this.random = random
     this.handoffTtlMs = handoffTtlMs
@@ -63,6 +63,18 @@ export class ManagementExchangeStore {
       expiresAt: this.now() + this.pendingTtlMs,
     })
     return Object.freeze({ token: value, expiresAt: new Date(this.now() + this.pendingTtlMs).toISOString() })
+  }
+
+  peekPendingSource(value, account, targetOrigin) {
+    this.prune()
+    if (typeof value !== 'string' || value.length > 512) return undefined
+    const pending = this.pending.get(digest(value))
+    if (pending === undefined || pending.accountId !== account.accountId
+      || pending.mainCredentialVersion !== account.mainCredential.version
+      || pending.managementAdditionalCredentialVersion !== account.managementAdditionalCredential.version
+      || pending.managementAccessVersion !== account.managementAccess.version
+      || pending.targetOrigin !== targetOrigin) return undefined
+    return pending.sourceDshSessionId
   }
 
   inspectPending(value, account, targetOrigin) {
