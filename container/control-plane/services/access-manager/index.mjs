@@ -35,6 +35,7 @@ const service = new AccessService({
     process.send?.({ type: 'diagnostic', message, fields })
   },
 })
+await service.reconcileRuntimePolicy()
 const access = createAccessHttpServer({ service })
 const recovery = createAccessHttpServer({ service, surface: 'recovery' })
 await listen(access, paths.accessSocket)

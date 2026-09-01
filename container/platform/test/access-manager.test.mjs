@@ -216,6 +216,23 @@ async function fixture(options = {}) {
   return { root, store, service, setNow: value => { now = new Date(value) } }
 }
 
+async function persistIsolatedManagementAccess(store) {
+  const current = await store.state()
+  assert.equal(current.state, 'initialized')
+  const account = {
+    ...current.account,
+    managementAccess: {
+      mode: 'isolated',
+      version: current.account.managementAccess.version + 1,
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+      dshPublicOrigin: 'https://dsh.example',
+      changedAt: '2026-08-28T00:00:00.000Z',
+    },
+  }
+  await store.replaceAccount(account, current.account.revision)
+  return account
+}
+
 async function loginManagement(service, {
   dshOrigin = 'http://dsh.example:3080',
   targetOrigin = dshOrigin,
@@ -1033,6 +1050,66 @@ test('locks Management mode changes at the final execution point when DSH can be
     method: 'POST', target: '/_dsh_platform/api/v1/management-origin/transitions',
     mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
   }), error => error.code === 'ACCESS_MODE_LOCKED')
+})
+
+test('reconciles a persisted isolated Management entry when DSH Root capability becomes effective', async () => {
+  const reports = []
+  const { service, store } = await fixture({
+    runtimeCapabilities: async () => ({
+      dshRootCapabilityEffective: true,
+      agentIsolationEffective: false,
+      details: { sudoSelection: 'enabled', agentIsolationReason: 'shared-node-process-identity' },
+    }),
+    report: async (message, fields) => reports.push({ message, fields }),
+  })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const isolated = await persistIsolatedManagementAccess(store)
+  const session = await service.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+
+  const result = await service.reconcileRuntimePolicy()
+  const current = await store.state()
+  assert.equal(result.changed, true)
+  assert.notEqual(current.account.revision, isolated.revision)
+  assert.deepEqual(current.account.managementAccess, {
+    mode: 'compat',
+    version: isolated.managementAccess.version + 1,
+    isolatedEntry: null,
+    dshPublicOrigin: null,
+    changedAt: '2026-08-28T00:00:00.000Z',
+  })
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: session.session.token, origin: 'https://dsh.example',
+  })).authenticated, false)
+  assert.deepEqual(reports.at(-1), {
+    message: 'access.management-origin.reconciled',
+    fields: { mode: 'compat', reason: 'dsh-root-capability', revokedSessions: 2 },
+  })
+})
+
+test('preserves a persisted isolated Management entry without DSH Root capability', async () => {
+  const { service, store } = await fixture({
+    runtimeCapabilities: async () => ({
+      dshRootCapabilityEffective: false,
+      agentIsolationEffective: false,
+      details: { sudoSelection: 'disabled', agentIsolationReason: 'shared-node-process-identity' },
+    }),
+  })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const isolated = await persistIsolatedManagementAccess(store)
+
+  const result = await service.reconcileRuntimePolicy()
+  const current = await store.state()
+  assert.equal(result.changed, false)
+  assert.equal(current.account.revision, isolated.revision)
+  assert.deepEqual(current.account.managementAccess, isolated.managementAccess)
 })
 
 test('initializes and logs into DSH with separately revocable browser sessions', async () => {

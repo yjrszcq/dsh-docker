@@ -126,6 +126,40 @@ export class AccessService {
     return pending
   }
 
+  reconcileRuntimePolicy() {
+    return this.serialized(async () => {
+      const [current, runtimeCapabilities] = await Promise.all([
+        this.store.state(),
+        this.runtimeCapabilities(),
+      ])
+      if (current.state !== 'initialized' || current.account === undefined
+        || runtimeCapabilities.dshRootCapabilityEffective !== true
+        || current.account.managementAccess.mode === 'compat') {
+        return { changed: false, account: publicAccount(current.account), ...runtimeCapabilities }
+      }
+      const changedAt = new Date(this.now()).toISOString()
+      const account = {
+        ...current.account,
+        revision: identifier(),
+        updatedAt: changedAt,
+        managementAccess: {
+          mode: 'compat',
+          version: current.account.managementAccess.version + 1,
+          isolatedEntry: null,
+          dshPublicOrigin: null,
+          changedAt,
+        },
+      }
+      const next = await this.store.replaceAccount(account, current.account.revision)
+      const revokedSessions = this.sessions.revokeAll()
+      this.exchanges.clear?.()
+      await this.report('access.management-origin.reconciled', {
+        mode: 'compat', reason: 'dsh-root-capability', revokedSessions,
+      })
+      return { changed: true, account: publicAccount(next), ...runtimeCapabilities }
+    })
+  }
+
   async status() {
     const current = await this.store.state()
     const capabilities = await this.runtimeCapabilities()
