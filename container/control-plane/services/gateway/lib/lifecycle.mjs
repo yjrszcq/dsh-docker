@@ -43,9 +43,22 @@ export async function runGateway(config, {
   const record = (message, fields = {}) => Promise.resolve().then(() => report(message, fields)).catch(() => {})
   const management = managementClient ?? new LocalApiClient(managementCliSocketPath)
   const access = accessClient ?? new LocalApiClient(accessSocketPath)
-  const browserAuthentication = createBrowserAuthentication({ access, safeReturnPath, report: record })
+  const accessRequest = access.request.bind(access)
+  const resilientAccess = accessClient === undefined
+    ? { request: async (method, path, body, headers) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await accessRequest(method, path, body, headers)
+        } catch (error) {
+          const retryable = ['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE'].includes(error?.code)
+          if (!retryable || attempt >= 20) throw error
+          await new Promise(resolve => setTimeout(resolve, Math.min(250, 25 * (attempt + 1))))
+        }
+      }
+    } } : access
+  const browserAuthentication = createBrowserAuthentication({ access: resilientAccess, safeReturnPath, report: record })
   const isolatedBrowserAuthentication = createBrowserAuthentication({
-    access,
+    access: resilientAccess,
     safeReturnPath,
     report: record,
     paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },

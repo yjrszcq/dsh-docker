@@ -286,9 +286,8 @@ test('renders state-driven initialization and recovery pages without exposing ac
           assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
         } else {
-        assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
-        assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
-        assert.match(response.body, /ACCESS_UNAVAILABLE[\s\S]*ACCESS_MANAGER_UNAVAILABLE/)
+          assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
+          assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
         }
         if (state === 'never-initialized') {
           assert.doesNotMatch(response.body, /name="setupKey"/)

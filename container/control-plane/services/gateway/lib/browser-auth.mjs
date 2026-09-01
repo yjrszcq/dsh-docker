@@ -268,7 +268,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
       : ''
     const validationGate = validateCredentials
       ? `const validUsername=validateField('username'),validPassword=validateField('password');if(!validUsername||!validPassword)return;` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=Object.assign(${JSON.stringify(registrationErrors)},{ACCESS_UNAVAILABLE:${JSON.stringify(copy.waitingDetail)},ACCESS_MANAGER_UNAVAILABLE:${JSON.stringify(copy.waitingDetail)}});let csrfToken=${JSON.stringify(csrf)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});const send=()=>fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});try{let response=await send();let payload=await response.json().catch(()=>({}));let retry=0;while(!response.ok&&['REQUEST_FORBIDDEN','ACCESS_UNAVAILABLE','ACCESS_MANAGER_UNAVAILABLE'].includes(payload.code)&&retry<10){retry++;if(retry>1)await new Promise(resolve=>setTimeout(resolve,500));const refreshed=await fetch(location.href,{cache:'no-store'});const nextCsrf=refreshed.headers.get('x-dsh-csrf');if(!nextCsrf)break;csrfToken=nextCsrf;response=await send();payload=await response.json().catch(()=>({}))}if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},csrfToken=${JSON.stringify(csrf)};${validationScript}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':${JSON.stringify(csrf)}},body});const payload=await response.json().catch(()=>({}));if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}catch{error.textContent=${JSON.stringify(fallbackError)};error.hidden=false}finally{button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -319,6 +319,14 @@ export function createBrowserAuthentication({
   const isAuthenticationDenial = error => [401, 403].includes(error?.statusCode)
 
   async function status() { return accessRequest('GET', '/v1/status') }
+
+  async function authenticationStatus() {
+    for (let attempt = 0; ; attempt++) {
+      const current = await status()
+      if (current.state !== 'classification-pending' || attempt >= 20) return current
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  }
 
   async function validateDsh(request, { requireCsrf = false } = {}) {
     const origin = requestOrigin(request)
@@ -573,7 +581,7 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request, { requireHeader: true })
       const value = await jsonBody(request)
-      const current = await status()
+      const current = await authenticationStatus()
       const route = current.state === 'never-initialized' ? '/v1/dsh/initialize' : '/v1/dsh/login'
       if (!['never-initialized', 'initialized'].includes(current.state)) {
         sendJson(response, 409, { error: 'administrator access is unavailable', code: 'ACCESS_UNAVAILABLE' })
@@ -602,7 +610,7 @@ export function createBrowserAuthentication({
         return true
       }
       const origin = requestOrigin(request, { requireHeader: true })
-      const current = await status()
+      const current = await authenticationStatus()
       if (!['migration-required', 'recovery-required'].includes(current.state)) {
         sendJson(response, 409, { error: 'administrator authentication reset is unavailable', code: 'AUTHENTICATION_RESET_UNAVAILABLE' })
         return true
