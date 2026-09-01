@@ -123,7 +123,7 @@ export function stateMessage(state, headers = {}, lifecycle = {}) {
     : `${message} (attempt ${String(lifecycle.attempt)} of ${String(lifecycle.maxAttempts)})`
 }
 
-export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPath = null, poll = true, managementHref = '/_dsh_platform/console/' } = {}) {
+export function availabilityPage(state, headers = {}, { lifecycle = {}, returnPath = null, poll = true, allowRefresh = false, managementHref = '/_dsh_platform/console/' } = {}) {
   const locale = language(headers)
   const message = stateMessage(state, headers, lifecycle)
   const managementLink = MANAGEMENT_LINK[locale]
@@ -140,7 +140,7 @@ html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#
 </style>
 </head>
 <body>
-<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><div class="actions"><a class="management" href="${String(managementHref).replaceAll('"', '&quot;')}">${managementLink}</a>${poll ? '' : `<a class="management refresh" href="">${refreshLink}</a>`}</div></main>
+<main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><div class="actions"><a class="management" href="${String(managementHref).replaceAll('"', '&quot;')}">${managementLink}</a>${allowRefresh ? `<a class="management refresh" href="">${refreshLink}</a>` : ''}</div></main>
 ${poll ? `<script>
 const returnPath=${target};const status=document.querySelector('.status');
 async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}

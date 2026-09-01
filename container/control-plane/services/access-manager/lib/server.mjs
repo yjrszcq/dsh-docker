@@ -711,7 +711,7 @@ export class AccessService {
         allSessionsRevoked: false,
       }
     }
-    if (usernameChanged || mainPasswordChanged || additionalChanged) {
+    if (mainPasswordChanged || additionalChanged) {
       await this.verifyFreshAuthentication(current.account, value.currentPassword)
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)

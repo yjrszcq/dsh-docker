@@ -1064,6 +1064,7 @@ export function createGatewayServer({
         }
         sendAvailabilityPage(request, response, 'plugin-failed', {
           poll: false,
+          allowRefresh: true,
           managementHref: managementAvailabilityHref(currentAccess),
         })
         return

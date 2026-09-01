@@ -137,11 +137,12 @@ test('official-style holding page is self-contained and replaces the spinner wit
 })
 
 test('persistent plugin failure page is terminal, localized, and links to Management', async () => {
-  const page = availabilityPage('plugin-failed', { 'accept-language': 'zh-CN' }, { poll: false })
+  const page = availabilityPage('plugin-failed', { 'accept-language': 'zh-CN' }, { poll: false, allowRefresh: true })
   assert.match(page, /DeepSeek Harness 插件持续加载失败/)
   assert.match(page, /打开 DSH 管理中心进行检查和恢复/)
   assert.match(page, /刷新页面/)
   assert.doesNotMatch(page, /setTimeout\(check/)
+  assert.doesNotMatch(availabilityPage('failed', {}, { poll: false }), /Reload page/)
 
   const context = await unavailableGateway()
   try {

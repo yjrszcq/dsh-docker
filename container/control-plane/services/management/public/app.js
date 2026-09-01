@@ -341,6 +341,7 @@ let fileEditorOriginal = ''
 let fileEditorDirty = false
 let fileEditorSaving = false
 let fileOperationTimer
+let authStatusTimer
 let fileAttributesEntry = null
 let fileConflictResolve = null
 let textInputResolve
@@ -1047,6 +1048,16 @@ function setConnection(state) {
 function showError(error) {
   elements.error.textContent = localizedError(error)
   elements.error.hidden = false
+}
+
+function showAuthenticationStatus(message) {
+  window.clearTimeout(authStatusTimer)
+  elements['auth-settings-status'].textContent = message
+  elements['auth-settings-status'].hidden = false
+  authStatusTimer = window.setTimeout(() => {
+    elements['auth-settings-status'].hidden = true
+    elements['auth-settings-status'].textContent = ''
+  }, 3_000)
 }
 
 function clearError() {
@@ -4161,7 +4172,7 @@ function renderAuthenticationAccountSaveState() {
 function validateCurrentPassword(draft, { incorrect = false } = {}) {
   const input = elements['auth-current-password']
   const error = elements['auth-current-password-error']
-  if (!accountDraftChanged(draft)) {
+  if (!draft.mainPasswordChanged && !draft.additionalChanged) {
     error.hidden = true
     return true
   }
@@ -4426,8 +4437,7 @@ function continueManagementTransition(result) {
     window.location.assign(new URL('/auth/management', result.loginOrigin))
     return
   }
-  elements['auth-settings-status'].textContent = t('authTransitionCompatLogin')
-  elements['auth-settings-status'].hidden = false
+      showAuthenticationStatus(t('authTransitionCompatLogin'))
 }
 
 async function changeManagementOrigin(access) {
@@ -4468,10 +4478,9 @@ async function saveAccountSettings() {
     if (draft.additionalEnabled && draft.additionalPassword !== '') body.additionalPassword = draft.additionalPassword
     const result = await api('auth-settings', { method: 'PUT', body })
     if (result.currentManagementSessionRevoked === true) {
-      elements['auth-settings-status'].textContent = t(result.allSessionsRevoked === true
+      showAuthenticationStatus(t(result.allSessionsRevoked === true
         ? 'authSavedAllSessionsRevoked'
-        : 'authSavedManagementSessionsRevoked')
-      elements['auth-settings-status'].hidden = false
+        : 'authSavedManagementSessionsRevoked'))
       window.setTimeout(() => {
         const returnPath = `${window.location.pathname}${window.location.search}`
         window.location.replace(`${managementLoginPath()}/start?return=${encodeURIComponent(returnPath)}`)
@@ -4480,8 +4489,7 @@ async function saveAccountSettings() {
       authenticationSettings.account = result.account
       button.disabled = false
       await loadAuthenticationSettings()
-      elements['auth-settings-status'].textContent = t('authSaved')
-      elements['auth-settings-status'].hidden = false
+      showAuthenticationStatus(t('authSaved'))
     }
   } catch (error) {
     if (error.code === 'FRESH_AUTH_FAILED') {
@@ -4507,16 +4515,14 @@ async function saveManagementOrigin() {
     const accessChanged = elements['auth-mode'].value !== previousAccess.mode
       || (nextAccess.mode === 'isolated' && nextAccess.candidateOrigin !== previousAccess.origin)
     if (!accessChanged) {
-      elements['auth-settings-status'].textContent = t('authSaved')
-      elements['auth-settings-status'].hidden = false
+      showAuthenticationStatus(t('authSaved'))
       return
     }
     if (modeChanged && nextAccess.mode === 'isolated' && !await confirmIsolationEnable()) return
     await changeManagementOrigin(nextAccess)
   } catch (error) {
     if (error.userFacing === true) {
-      elements['auth-settings-status'].textContent = error.message
-      elements['auth-settings-status'].hidden = false
+      showAuthenticationStatus(error.message)
     } else showError(error)
   } finally {
     button.disabled = false
@@ -4536,8 +4542,7 @@ async function revokeAuthenticationSession(button) {
       return
     }
     await loadAuthenticationSettings()
-    elements['auth-settings-status'].textContent = t('authSessionsRevoked')
-    elements['auth-settings-status'].hidden = false
+    showAuthenticationStatus(t('authSessionsRevoked'))
   } catch (error) {
     showError(error)
   } finally {

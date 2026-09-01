@@ -820,15 +820,9 @@ test('requires fresh authentication and applies credential-specific session revo
   assert.equal(unchanged.account.revision, unchangedRevision)
   assert.equal(unchanged.currentManagementSessionRevoked, false)
 
-  await assert.rejects(service.updateAuthenticationSettings({
-    internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
-    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'operator',
-  }), error => error.code === 'FRESH_AUTH_FAILED')
-
   const renamed = await service.updateAuthenticationSettings({
     internalCapability: await capability('/_dsh_platform/api/v1/auth-settings'),
-    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings',
-    username: 'operator', currentPassword: 'correct horse battery staple',
+    method: 'PUT', target: '/_dsh_platform/api/v1/auth-settings', username: 'operator',
   })
   assert.equal(renamed.currentManagementSessionRevoked, false)
   assert.equal((await service.validateSession({
