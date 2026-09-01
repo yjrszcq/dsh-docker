@@ -1591,6 +1591,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /authSavedManagementSessionsRevoked/)
   assert.match(script, /window\.location\.replace\(`\$\{managementLoginPath\(\)\}\/start\?return=/)
   assert.match(script, /function renderAdditionalPasswordFields\(\)[\s\S]*auth-additional-fields'/)
+  assert.match(script, /authenticationSettings\?\.account\?\.managementAdditionalCredential\?\.enabled === true[\s\S]*session\.managementActive === true/)
   assert.match(script, /auth-additional-enabled'\]\.addEventListener\('change'[\s\S]*renderAdditionalPasswordFields/)
   assert.match(script, /authMainPasswordTitle: '管理员账户'/)
   assert.match(script, /authMainPasswordTitle: 'Administrator account'/)

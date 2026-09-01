@@ -4293,7 +4293,8 @@ function renderAuthenticationSessions(sessions) {
       current.textContent = t('authSessionCurrent')
       heading.append(current)
     }
-    if (session.managementActive === true) {
+    if (authenticationSettings?.account?.managementAdditionalCredential?.enabled === true
+      && session.managementActive === true) {
       const management = document.createElement('span')
       management.className = 'auth-session-management'
       management.textContent = t('authSessionManagement')
