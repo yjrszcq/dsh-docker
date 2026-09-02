@@ -40,20 +40,29 @@ export class AuthenticationLimiter {
   }
 
   prune(values, now, windowMs = this.windowMs) {
-    while (values.length > 0 && values[0] <= now - windowMs) values.shift()
+    while (values.length > 0 && this.timestamp(values[0]) <= now - windowMs) values.shift()
   }
+
+  timestamp(value) { return typeof value === 'number' ? value : value.at }
 
   retryAfterSeconds(values, windows, now) {
     let retryAfterMs = 0
     for (const { limit, windowMs } of windows) {
-      const withinWindow = values.filter(value => value > now - windowMs)
+      const withinWindow = values.filter(value => this.timestamp(value) > now - windowMs)
       if (withinWindow.length < limit) continue
-      retryAfterMs = Math.max(retryAfterMs, withinWindow[withinWindow.length - limit] + windowMs - now)
+      retryAfterMs = Math.max(
+        retryAfterMs,
+        this.timestamp(withinWindow[withinWindow.length - limit]) + windowMs - now,
+      )
     }
     return Math.max(0, Math.ceil(retryAfterMs / 1_000))
   }
 
-  retryKey(accountId, sourceId) { return `${accountId}\u0000${sourceId}` }
+  retryKey(accountId, sourceId, credential = 'main') { return `${accountId}\u0000${credential}\u0000${sourceId}` }
+
+  retryPrefix(accountId, credential = 'all') {
+    return credential === 'all' ? `${accountId}\u0000` : `${accountId}\u0000${credential}\u0000`
+  }
 
   pruneExpiredSources(now) {
     if (now - this.lastPruneAt < this.windowMs) return
@@ -69,8 +78,8 @@ export class AuthenticationLimiter {
     }
   }
 
-  currentRetry(accountId = 'unknown', sourceId = 'unknown', now = this.clock()) {
-    const retryKey = this.retryKey(accountId, sourceId)
+  currentRetry(accountId = 'unknown', sourceId = 'unknown', now = this.clock(), credential = 'main') {
+    const retryKey = this.retryKey(accountId, sourceId, credential)
     const retry = this.consecutiveFailures.get(retryKey)
     if (retry !== undefined && retry.lastFailureAt <= now - this.consecutiveResetMs) {
       this.consecutiveFailures.delete(retryKey)
@@ -79,9 +88,9 @@ export class AuthenticationLimiter {
     return retry
   }
 
-  checkRetry(accountId = 'unknown', sourceId = 'unknown') {
+  checkRetry(accountId = 'unknown', sourceId = 'unknown', credential = 'main') {
     const now = this.clock()
-    const retry = this.currentRetry(accountId, sourceId, now)
+    const retry = this.currentRetry(accountId, sourceId, now, credential)
     if (retry !== undefined && retry.blockedUntil > now) {
       const retryAfterSeconds = Math.max(1, Math.ceil((retry.blockedUntil - now) / 1_000))
       throw new AccessError(
@@ -93,11 +102,11 @@ export class AuthenticationLimiter {
     }
   }
 
-  enter(accountId = 'unknown', sourceId = 'unknown') {
-    this.checkRetry(accountId, sourceId)
+  enter(accountId = 'unknown', sourceId = 'unknown', credential = 'main') {
+    this.checkRetry(accountId, sourceId, credential)
     const now = this.clock()
     this.pruneExpiredSources(now)
-    const retryKey = this.retryKey(accountId, sourceId)
+    const retryKey = this.retryKey(accountId, sourceId, credential)
     const source = this.sources.get(retryKey) ?? []
     this.prune(source, now, this.maxSourceWindowMs)
     this.sources.set(retryKey, source)
@@ -131,12 +140,12 @@ export class AuthenticationLimiter {
     this.active += 1
     let released = false
     const release = success => {
-      if (released) return this.sourceStatus(accountId, sourceId)
+      if (released) return this.sourceStatus(accountId, sourceId, credential)
       released = true
       this.active -= 1
       if (success !== true) {
         const failedAt = this.clock()
-        this.global.push(failedAt)
+        this.global.push({ at: failedAt, credential })
         source.push(failedAt)
         const previous = this.consecutiveFailures.get(retryKey)
         const failures = (previous !== undefined
@@ -151,16 +160,16 @@ export class AuthenticationLimiter {
           lastFailureAt: failedAt,
         })
       } else {
-        this.consecutiveFailures.delete(this.retryKey(accountId, sourceId))
-        this.sources.delete(this.retryKey(accountId, sourceId))
+        this.consecutiveFailures.delete(this.retryKey(accountId, sourceId, credential))
+        this.sources.delete(this.retryKey(accountId, sourceId, credential))
       }
-      return this.sourceStatus(accountId, sourceId)
+      return this.sourceStatus(accountId, sourceId, credential)
     }
     return { release }
   }
 
-  sourceStatus(accountId = 'unknown', sourceId = 'unknown') {
-    const retry = this.currentRetry(accountId, sourceId)
+  sourceStatus(accountId = 'unknown', sourceId = 'unknown', credential = 'main') {
+    const retry = this.currentRetry(accountId, sourceId, this.clock(), credential)
     if (retry === undefined) return { consecutiveFailures: 0, retryAfterSeconds: 0 }
     return {
       consecutiveFailures: retry.failures,
@@ -168,11 +177,11 @@ export class AuthenticationLimiter {
     }
   }
 
-  status(accountId = 'unknown') {
+  status(accountId = 'unknown', credential = 'all') {
     const now = this.clock()
     this.pruneExpiredSources(now)
     this.prune(this.global, now, this.maxGlobalWindowMs)
-    const prefix = `${accountId}\u0000`
+    const prefix = this.retryPrefix(accountId, credential)
     for (const [key, retry] of this.consecutiveFailures) {
       if (key.startsWith(prefix) && retry.lastFailureAt <= now - this.consecutiveResetMs) {
         this.consecutiveFailures.delete(key)
@@ -184,39 +193,45 @@ export class AuthenticationLimiter {
         consecutiveFailures: retry.failures,
         retryAfterSeconds: Math.max(0, Math.ceil((retry.blockedUntil - this.clock()) / 1_000)),
       }))
-    const sourcePrefix = `${accountId}\u0000`
+    const sourcePrefix = prefix
     const sourceRetryAfterSeconds = Math.max(0, ...[...this.sources.entries()]
       .filter(([key]) => key.startsWith(sourcePrefix))
       .map(([, values]) => this.retryAfterSeconds(values, this.sourceWindows, now)))
+    const global = credential === 'all'
+      ? this.global : this.global.filter(value => value.credential === credential)
     return {
       activeSources: states.length,
       consecutiveFailures: Math.max(0, ...states.map(value => value.consecutiveFailures)),
       retryAfterSeconds: Math.max(0, ...states.map(value => value.retryAfterSeconds)),
       sourceRetryAfterSeconds,
-      globalFailures: this.global.length,
-      globalRetryAfterSeconds: this.retryAfterSeconds(this.global, this.globalWindows, now),
+      globalFailures: global.length,
+      globalRetryAfterSeconds: this.retryAfterSeconds(global, this.globalWindows, now),
     }
   }
 
-  clear(accountId = 'unknown') {
-    const previous = this.status(accountId)
-    const prefix = `${accountId}\u0000`
+  clear(accountId = 'unknown', credential = 'all') {
+    const previous = this.status(accountId, credential)
+    const prefix = this.retryPrefix(accountId, credential)
     for (const key of this.consecutiveFailures.keys()) {
       if (key.startsWith(prefix)) this.consecutiveFailures.delete(key)
     }
     for (const key of this.sources.keys()) {
       if (key.startsWith(prefix)) this.sources.delete(key)
     }
-    this.global.length = 0
+    this.global = credential === 'all'
+      ? [] : this.global.filter(value => value.credential !== credential)
     return { cleared: previous.activeSources > 0 || previous.globalFailures > 0, ...previous }
   }
 
-  clearGlobal() {
+  clearGlobal(credential = 'all') {
     const now = this.clock()
     this.prune(this.global, now, this.maxGlobalWindowMs)
-    const globalFailures = this.global.length
-    const globalRetryAfterSeconds = this.retryAfterSeconds(this.global, this.globalWindows, now)
-    this.global.length = 0
+    const matching = credential === 'all'
+      ? this.global : this.global.filter(value => value.credential === credential)
+    const globalFailures = matching.length
+    const globalRetryAfterSeconds = this.retryAfterSeconds(matching, this.globalWindows, now)
+    this.global = credential === 'all'
+      ? [] : this.global.filter(value => value.credential !== credential)
     return {
       cleared: globalFailures > 0,
       globalFailures,

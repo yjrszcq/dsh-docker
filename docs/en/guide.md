@@ -344,11 +344,16 @@ docker exec -it --user root deepseek-harness dsh-platform access disable-managem
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
+docker exec -it --user root deepseek-harness dsh-platform recover
+docker exec -it --user root deepseek-harness dsh-platform recover --main-password
+docker exec -it --user root deepseek-harness dsh-platform recover --management-password
 ```
 
 `access reset` is the recommended combined recovery command. It independently asks whether to change the username and main password. When a Management console password is enabled, the same atomic operation presents a numbered choice to preserve it, disable it, or replace it. Nothing is saved until every selected prompt is complete, so cancelling or losing the TTY halfway through does not partially update the account. All yes/no recovery prompts accept only `y` or `n` and show their default in brackets. The narrower interactive commands remain available for single-credential recovery. A completed account recovery invalidates existing DSH and Management browser sessions.
 
 `access clear-retry` asks `Clear all administrator login retry limits? y/[n]:`. Confirming clears every browser-source exponential wait, all browser rolling windows, and all instance-wide failed-attempt windows. With `--global-only`, the CLI instead asks `Clear instance-wide administrator login rate limits? y/[n]:` and clears only the instance-wide windows; browser waits and source windows remain active. Neither form changes credentials or browser sessions.
+
+`recover` is also restricted to a Root TTY. With no password selector it clears all main-password and Management-console-password login backoff; `--main-password` or `--management-password` clears only the selected credential. Either selector can be combined with `--image-baseline`. Instance-wide windows still count failures from both credential types, while selective clearing removes only records contributed by the selected credential.
 
 An empty platform volume always enters normal first-use registration and needs no key; legacy password environment variables alone cannot classify an empty volume as an old deployment. Persisted pre-account deployments enter `migration-required`, while a missing or damaged initialized account enters `recovery-required`. For either state, run `dsh-platform access generate-key` from a Root TTY to issue a single-use authentication reset key valid for ten minutes, then create the replacement account in the browser. A new key immediately invalidates the previous key. Legacy environment passwords are only supplemental evidence for a persisted deployment: their values are stripped before Bootstrap and DSH start and are never retained as a hidden login bypass.
 

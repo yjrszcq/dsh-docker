@@ -2238,6 +2238,61 @@ test('management CLI clears login retry wait only after Root TTY confirmation', 
   ])
 })
 
+test('recover combines selective retry clearing with optional image baseline recovery', async () => {
+  assert.deepEqual(parseCli(['recover']), {
+    command: 'recover', imageBaseline: false, credential: 'all',
+  })
+  assert.deepEqual(parseCli(['recover', '--main-password']), {
+    command: 'recover', imageBaseline: false, credential: 'main',
+  })
+  assert.deepEqual(parseCli(['recover', '--management-password', '--image-baseline']), {
+    command: 'recover', imageBaseline: true, credential: 'management',
+  })
+  assert.throws(
+    () => parseCli(['recover', '--main-password', '--management-password']),
+    error => error.message.includes('\ncommands:\n')
+      && error.message.includes('recover [--image-baseline] [--main-password|--management-password]'),
+  )
+  let recoverError
+  let commandError
+  try { parseCli(['recover', '--bad-option']) } catch (error) { recoverError = error }
+  try { parseCli(['unknown-command']) } catch (error) { commandError = error }
+  assert.equal(recoverError.message, commandError.message)
+  assert.match(recoverError.message, /^usage: dsh-platform <command> \[options\]\ncommands:\n/)
+  assert.doesNotMatch(recoverError.message, /requires --image-baseline/)
+  const tty = { isTTY: true }
+  const calls = []
+  const output = []
+  assert.equal(await runCli({
+    argv: ['recover', '--management-password', '--image-baseline'],
+    access: { request: async (method, path, body) => {
+      calls.push(['access', method, path, body])
+      return { status: 'cleared', scope: 'all', credential: 'management', cleared: true }
+    } },
+    recovery: {},
+    recover: async () => {
+      calls.push(['image-baseline'])
+      return { status: 'recovered', slots: { current: 'image' } }
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async prompt => {
+      assert.equal(prompt, 'Clear Management console password login retry limits? y/[n]: ')
+      return 'y'
+    },
+    write: line => output.push(line),
+  }), 0)
+  assert.deepEqual(calls, [
+    ['image-baseline'],
+    ['access', 'POST', '/v1/recovery/clear-retry', { scope: 'all', credential: 'management' }],
+  ])
+  assert.deepEqual(JSON.parse(output[0]), {
+    status: 'recovered', slots: { current: 'image' },
+    authenticationRetry: { status: 'cleared', scope: 'all', credential: 'management', cleared: true },
+  })
+})
+
 test('hidden access input preserves the TTY stream for subsequent prompts', async () => {
   const input = new PassThrough()
   input.isTTY = true
@@ -2669,11 +2724,9 @@ test('trust reset refuses non-root and non-interactive callers before mutation',
 })
 
 test('image baseline recovery is root/TTY-only and requires the complete image identity', async () => {
-  assert.deepEqual(parseCli(['recover', '--image-baseline']), { command: 'recover', imageBaseline: true })
-  assert.throws(
-    () => parseCli(['recover']),
-    /dsh-platform recover requires --image-baseline\nusage: dsh-platform recover --image-baseline/,
-  )
+  assert.deepEqual(parseCli(['recover', '--image-baseline']), {
+    command: 'recover', imageBaseline: true, credential: 'all',
+  })
   const calls = []
   const recovery = {
     request: async (method, path, body) => {

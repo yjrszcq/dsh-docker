@@ -238,6 +238,11 @@ async function loginDsh(service, value) {
   return service.loginDsh({ ...value, authenticationContext })
 }
 
+async function completeManagementLogin(service, value) {
+  const { authenticationContext } = await service.status()
+  return service.completeManagementLogin({ ...value, authenticationContext })
+}
+
 async function loginManagement(service, {
   dshOrigin = 'http://dsh.example:3080',
   targetOrigin = dshOrigin,
@@ -253,7 +258,7 @@ async function loginManagement(service, {
     token: handoff.handoff.token, origin: targetOrigin,
   })
   if (management.pending !== undefined && managementPassword !== undefined) {
-    management = await service.completeManagementLogin({
+    management = await completeManagementLogin(service, {
       pendingToken: management.pending.token,
       origin: targetOrigin,
       password: managementPassword,
@@ -438,7 +443,7 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     })
     const cleared = await recovery.request('POST', '/v1/recovery/clear-retry')
     assert.deepEqual(cleared, {
-      status: 'cleared', scope: 'all', cleared: true, activeSources: 1,
+      status: 'cleared', scope: 'all', credential: 'all', cleared: true, activeSources: 1,
       consecutiveFailures: 1, retryAfterSeconds: 1,
       sourceRetryAfterSeconds: 0, globalFailures: 1, globalRetryAfterSeconds: 0,
     })
@@ -452,7 +457,7 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
       && error.retryAfterSeconds === 1)
     const globalCleared = await recovery.request('POST', '/v1/recovery/clear-retry', { scope: 'global' })
     assert.deepEqual(globalCleared, {
-      status: 'cleared', scope: 'global', cleared: true,
+      status: 'cleared', scope: 'global', credential: 'all', cleared: true,
       globalFailures: 1, globalRetryAfterSeconds: 0,
     })
     assert.equal((await recovery.request('GET', '/v1/recovery/status'))
@@ -847,25 +852,34 @@ test('management password failures use the shared backend retry state', async ()
     sourceDshSessionId: initialized.session.sessionId,
   })).pending
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    await assert.rejects(service.completeManagementLogin({
+    await assert.rejects(completeManagementLogin(service, {
       pendingToken: pending.token,
       origin: 'https://manage.example',
       password: 'incorrect management password',
     }), error => error.code === 'AUTHENTICATION_FAILED')
   }
-  await assert.rejects(service.completeManagementLogin({
+  await assert.rejects(completeManagementLogin(service, {
     pendingToken: pending.token,
     origin: 'https://manage.example',
     password: 'incorrect management password',
   }), error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
     && error.details.retryAfterSeconds === 1)
-  await assert.rejects(service.completeManagementLogin({
+  await assert.rejects(completeManagementLogin(service, {
     pendingToken: pending.token,
     origin: 'https://manage.example',
     password: 'separate management password',
   }), error => error.code === 'AUTHENTICATION_RETRY_REQUIRED')
-  await service.clearAuthenticationRetry()
-  assert.match((await service.completeManagementLogin({
+  assert.equal((await service.authenticate({
+    username: 'admin', password: 'correct horse battery staple', authenticationSource: 'unknown',
+  })).authenticated, true)
+  assert.equal((await service.clearAuthenticationRetry({ credential: 'main' })).cleared, false)
+  await assert.rejects(completeManagementLogin(service, {
+    pendingToken: pending.token,
+    origin: 'https://manage.example',
+    password: 'separate management password',
+  }), error => error.code === 'AUTHENTICATION_RETRY_REQUIRED')
+  assert.equal((await service.clearAuthenticationRetry({ credential: 'management' })).cleared, true)
+  assert.match((await completeManagementLogin(service, {
     pendingToken: pending.token,
     origin: 'https://manage.example',
     password: 'separate management password',
@@ -1269,6 +1283,15 @@ test('Root recovery password changes revoke the matching browser sessions', asyn
     password: 'original management password',
   })
   const loggedIn = await loginManagement(service, { managementPassword: 'original management password' })
+  const handoff = await service.createManagementHandoff({
+    dshToken: loggedIn.dsh.session.token,
+    dshOrigin: 'http://dsh.example:3080',
+    targetOrigin: 'http://dsh.example:3080',
+  })
+  const pending = await service.consumeManagementHandoff({
+    token: handoff.handoff.token, origin: 'http://dsh.example:3080',
+  })
+  const staleContext = (await service.status()).authenticationContext
   const changed = await service.resetRecoveryManagementPassword({
     revision: enabled.account.revision,
     password: 'replacement management password',
@@ -1281,6 +1304,17 @@ test('Root recovery password changes revoke the matching browser sessions', asyn
   assert.equal((await service.validateSession({
     kind: 'dsh', token: loggedIn.dsh.session.token, origin: 'http://dsh.example:3080',
   })).authenticated, true)
+  await assert.rejects(service.completeManagementLogin({
+    pendingToken: pending.pending.token,
+    origin: 'http://dsh.example:3080',
+    password: 'replacement management password',
+    authenticationContext: staleContext,
+  }), error => error.code === 'AUTHENTICATION_CONTEXT_STALE')
+  assert.match((await completeManagementLogin(service, {
+    pendingToken: pending.pending.token,
+    origin: 'http://dsh.example:3080',
+    password: 'replacement management password',
+  })).session.token, /^dshms_/)
 })
 
 test('lists login devices and revokes each DSH session with its linked Management session', async () => {
@@ -1536,7 +1570,7 @@ test('rejects an additional Management password after its source DSH session end
   })
   assert.match(pending.pending.token, /^dshmp_/)
   await current.service.logout({ kind: 'dsh', token: dsh.session.token })
-  await assert.rejects(current.service.completeManagementLogin({
+  await assert.rejects(completeManagementLogin(current.service, {
     pendingToken: pending.pending.token,
     origin: 'https://manage.example',
     password: 'separate management password',

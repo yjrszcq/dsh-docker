@@ -419,15 +419,18 @@ export class AccessService {
 
   async completeManagementLogin(value) {
     const current = await this.store.state()
-    if (current.state !== 'initialized' || current.account === undefined
-      || !current.account.managementAdditionalCredential.enabled) {
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
+    }
+    this.requireAuthenticationContext(value, current)
+    if (!current.account.managementAdditionalCredential.enabled) {
       throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
     }
     const source = this.sessions.details(
       this.exchanges.peekPendingSource(value.pendingToken, current.account, value.origin) ?? '',
     )
     const sourceId = source?.authenticationSource ?? 'unknown'
-    this.limiter.checkRetry(current.account.accountId, sourceId)
+    this.limiter.checkRetry(current.account.accountId, sourceId, 'management')
     const pending = this.exchanges.inspectPending(value.pendingToken, current.account, value.origin)
     if (pending === undefined) throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
     const validatedSource = this.sessions.details(pending.value.sourceDshSessionId)
@@ -435,7 +438,7 @@ export class AccessService {
       this.exchanges.consumePending(pending.key)
       throw new AccessError('PENDING_LOGIN_INVALID', 'management login is invalid or expired', 401)
     }
-    const admission = this.limiter.enter(current.account.accountId, sourceId)
+    const admission = this.limiter.enter(current.account.accountId, sourceId, 'management')
     let valid = false
     try {
       valid = await this.verify(value.password, current.account.managementAdditionalCredential.verifier)
@@ -568,18 +571,23 @@ export class AccessService {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
     }
     const scope = value.scope ?? 'all'
+    const credential = value.credential ?? 'all'
     if (!['all', 'global'].includes(scope)) {
       throw new AccessError('REQUEST_INVALID', 'authentication retry clear scope is invalid')
     }
+    if (!['all', 'main', 'management'].includes(credential)) {
+      throw new AccessError('REQUEST_INVALID', 'authentication retry credential is invalid')
+    }
     const result = scope === 'global'
-      ? this.limiter.clearGlobal()
-      : this.limiter.clear(current.account.accountId)
+      ? this.limiter.clearGlobal(credential)
+      : this.limiter.clear(current.account.accountId, credential)
     await this.report('access.authentication-retry.cleared', {
       accountId: current.account.accountId,
       scope,
+      credential,
       cleared: result.cleared,
     })
-    return { status: 'cleared', scope, ...result }
+    return { status: 'cleared', scope, credential, ...result }
   }
 
   async replaceRecoveryAccount(value, operation, { revoke = 'none' } = {}) {
@@ -595,7 +603,7 @@ export class AccessService {
       ? this.sessions.revokeKind('management')
       : allSessionsRevoked ? managementSessionsBefore : 0
     if (allSessionsRevoked) this.sessions.revokeAll()
-    this.exchanges.clear?.()
+    if (allSessionsRevoked) this.exchanges.clear?.()
     return {
       account: publicAccount(next),
       currentManagementSessionRevoked: managementSessionsRevoked > 0,

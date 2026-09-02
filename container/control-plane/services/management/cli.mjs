@@ -7,11 +7,20 @@ import { PlatformPaths } from '../../../platform/lib/paths.mjs'
 const API_PREFIX = '/_dsh_platform/api/v1'
 
 function usage() {
-  return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|reset|set-username|reset-password|reset-management-password|disable-management-password|generate-key|clear-retry [--global-only]|trust status|reset'
-}
-
-function recoverUsage() {
-  return 'dsh-platform recover requires --image-baseline\nusage: dsh-platform recover --image-baseline'
+  return `usage: dsh-platform <command> [options]
+commands:
+  status
+  check
+  update [--wait]
+  start|stop|restart [--wait]
+  channel [stable|experimental]
+  retry|rollback|return-stable
+  recover [--image-baseline] [--main-password|--management-password]
+  logs [--source NAME] [--since ISO] [--limit N]
+  access status|reset|set-username|reset-password
+  access reset-management-password|disable-management-password|generate-key
+  access clear-retry [--global-only]
+  trust status|reset`
 }
 
 export function parseCli(argv) {
@@ -23,10 +32,17 @@ export function parseCli(argv) {
   if (command === 'channel' && (rest.length === 0 || (rest.length === 1 && ['stable', 'experimental'].includes(rest[0])))) {
     return { command, channel: rest[0] }
   }
-  if (command === 'recover' && rest.length === 1 && rest[0] === '--image-baseline') {
-    return { command, imageBaseline: true }
+  if (command === 'recover') {
+    if (new Set(rest).size !== rest.length
+      || rest.some(value => !['--image-baseline', '--main-password', '--management-password'].includes(value))
+      || (rest.includes('--main-password') && rest.includes('--management-password'))) throw new Error(usage())
+    return {
+      command,
+      imageBaseline: rest.includes('--image-baseline'),
+      credential: rest.includes('--main-password')
+        ? 'main' : rest.includes('--management-password') ? 'management' : 'all',
+    }
   }
-  if (command === 'recover') throw new Error(recoverUsage())
   if (['update', 'start', 'stop', 'restart'].includes(command)) {
     if (rest.some(value => value !== '--wait') || rest.filter(value => value === '--wait').length > 1) throw new Error(usage())
     return { command, wait: rest.includes('--wait') }
@@ -283,8 +299,21 @@ export async function runCli({
     return 0
   }
   if (parsed.command === 'recover') {
-    const value = await recover({ recovery, input, output })
-    write(json(value))
+    if (getuid() !== 0) throw new Error('recovery requires root')
+    if (!input.isTTY || !output.isTTY) throw new Error('recovery requires an interactive container console')
+    const label = parsed.credential === 'main'
+      ? 'main password' : parsed.credential === 'management' ? 'Management console password' : 'all administrator passwords'
+    if (!affirmative(await ask(`Clear ${label} login retry limits? y/[n]: `), 'confirmation')) {
+      write(json({ status: 'cancelled' }))
+      return 0
+    }
+    const imageBaseline = parsed.imageBaseline
+      ? await recover({ recovery, input, output }) : undefined
+    const authenticationRetry = await access.request('POST', '/v1/recovery/clear-retry', {
+      scope: 'all', credential: parsed.credential,
+    })
+    write(json(imageBaseline === undefined
+      ? authenticationRetry : { ...imageBaseline, authenticationRetry }))
     return 0
   }
   if (parsed.command === 'trust') {

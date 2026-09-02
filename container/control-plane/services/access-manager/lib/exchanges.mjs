@@ -71,7 +71,6 @@ export class ManagementExchangeStore {
     const pending = this.pending.get(digest(value))
     if (pending === undefined || pending.accountId !== account.accountId
       || pending.mainCredentialVersion !== account.mainCredential.version
-      || pending.managementAdditionalCredentialVersion !== account.managementAdditionalCredential.version
       || pending.managementAccessVersion !== account.managementAccess.version
       || pending.targetOrigin !== targetOrigin) return undefined
     return pending.sourceDshSessionId
@@ -84,7 +83,6 @@ export class ManagementExchangeStore {
     const pending = this.pending.get(key)
     if (pending === undefined || pending.accountId !== account.accountId
       || pending.mainCredentialVersion !== account.mainCredential.version
-      || pending.managementAdditionalCredentialVersion !== account.managementAdditionalCredential.version
       || pending.managementAccessVersion !== account.managementAccess.version
       || pending.targetOrigin !== targetOrigin) return undefined
     pending.attempts += 1
