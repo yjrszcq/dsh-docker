@@ -47,28 +47,33 @@ const READINESS_RETRY_MS = 500
 let platformStateEventSource
 const platformStateEventSubscribers = new Set()
 
+function openPlatformStateEvents() {
+  if (platformStateEventSource !== undefined || platformStateEventSubscribers.size === 0) return
+  const stream = new EventSource(`${API}/events`)
+  platformStateEventSource = stream
+  stream.addEventListener('state', event => {
+    for (const current of platformStateEventSubscribers) current.state?.(event)
+  })
+  stream.onopen = event => {
+    for (const current of platformStateEventSubscribers) current.open?.(event)
+  }
+  stream.onerror = event => {
+    for (const current of platformStateEventSubscribers) current.error?.(event)
+  }
+}
+
+function closePlatformStateEvents() {
+  platformStateEventSource?.close()
+  platformStateEventSource = undefined
+}
+
 function subscribePlatformStateEvents({ state, open, error }) {
   const subscriber = { state, open, error }
   platformStateEventSubscribers.add(subscriber)
-  if (platformStateEventSource === undefined) {
-    const stream = new EventSource(`${API}/events`)
-    platformStateEventSource = stream
-    stream.addEventListener('state', event => {
-      for (const current of platformStateEventSubscribers) current.state?.(event)
-    })
-    stream.onopen = event => {
-      for (const current of platformStateEventSubscribers) current.open?.(event)
-    }
-    stream.onerror = event => {
-      for (const current of platformStateEventSubscribers) current.error?.(event)
-    }
-  }
+  openPlatformStateEvents()
   return () => {
     platformStateEventSubscribers.delete(subscriber)
-    if (platformStateEventSubscribers.size === 0) {
-      platformStateEventSource?.close()
-      platformStateEventSource = undefined
-    }
+    if (platformStateEventSubscribers.size === 0) closePlatformStateEvents()
   }
 }
 
@@ -1945,6 +1950,12 @@ function AuthenticationSettings({ active, managementConsoleHref, t }) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    if (!message) return undefined
+    const timer = window.setTimeout(() => setMessage(''), 3_000)
+    return () => window.clearTimeout(timer)
+  }, [message])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -1966,6 +1977,8 @@ function AuthenticationSettings({ active, managementConsoleHref, t }) {
     setWorking(scope)
     setMessage('')
     setError('')
+    const suspendedStateEvents = scope === 'all'
+    if (suspendedStateEvents) closePlatformStateEvents()
     try {
       await authenticationRequest('browser-logout', { method: 'POST', body: { scope } })
       if (scope === 'all') {
@@ -1975,6 +1988,7 @@ function AuthenticationSettings({ active, managementConsoleHref, t }) {
       setMessage(t('managementLogoutComplete'))
       await load()
     } catch (nextError) {
+      if (suspendedStateEvents) openPlatformStateEvents()
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
       setWorking(null)
