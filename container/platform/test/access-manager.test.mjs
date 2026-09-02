@@ -791,7 +791,7 @@ test('prunes expired browser source histories during later authentication', () =
   assert.equal(limiter.consecutiveFailures.has(limiter.retryKey('account', 'expired-browser')), false)
 })
 
-test('main login and fresh authentication share backend retry state', async () => {
+test('fresh authentication does not consume the login retry budget', async () => {
   let now = 1_000
   const limiter = new AuthenticationLimiter({
     globalLimit: 100, clock: () => now,
@@ -810,20 +810,15 @@ test('main login and fresh authentication share backend retry state', async () =
   const account = (await service.store.state()).account
   await assert.rejects(
     service.verifyFreshAuthentication(account, 'incorrect password'),
-    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
-      && error.details.retryAfterSeconds === 30,
+    error => error.code === 'FRESH_AUTH_FAILED',
   )
-  await assert.rejects(
-    service.authenticate({ username: 'admin', password: 'correct horse battery staple' }),
-    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
-      && error.details.retryAfterSeconds === 30,
-  )
-  assert.equal((await service.recoveryStatus()).authenticationRetry.consecutiveFailures, 5)
-  now += 30_000
+  assert.equal((await service.authenticate({
+    username: 'admin', password: 'correct horse battery staple',
+  })).authenticated, true)
+  assert.equal((await service.recoveryStatus()).authenticationRetry.consecutiveFailures, 0)
   await assert.rejects(
     service.authenticate({ username: 'admin', password: 'incorrect password' }),
-    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
-      && error.details.retryAfterSeconds === 60,
+    error => error.code === 'AUTHENTICATION_FAILED',
   )
   assert.equal((await service.clearAuthenticationRetry()).cleared, true)
   assert.equal((await service.authenticate({

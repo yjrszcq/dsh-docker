@@ -4641,19 +4641,12 @@ async function changeTotpEnabled() {
     return
   }
   const draft = authenticationAccountDraft()
-  if (!renderAuthenticationFormatError('auth-username') || !validateCurrentPassword(draft)) {
-    input.checked = false
-    renderAuthenticationAccountSaveState()
-    if (elements['auth-current-password'].value === '') elements['auth-current-password'].focus()
-    return
-  }
   input.disabled = true
   renderAuthenticationAccountSaveState()
   try {
     const enrollment = await api('auth-totp/enrollments', {
       method: 'POST',
       body: {
-        currentPassword: elements['auth-current-password'].value,
         username: draft.username,
       },
     })
@@ -4661,10 +4654,7 @@ async function changeTotpEnabled() {
   } catch (error) {
     input.checked = false
     renderAuthenticationAccountSaveState()
-    if (error.code === 'FRESH_AUTH_FAILED') {
-      validateCurrentPassword(draft, { incorrect: true })
-      elements['auth-current-password'].focus()
-    } else showError(error)
+    showError(error)
   } finally {
     input.disabled = false
   }

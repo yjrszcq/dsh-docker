@@ -6,6 +6,7 @@ import {
   AUTH_CSRF_COOKIE,
   AUTH_RETRY_COOKIE,
   DSH_SESSION_COOKIE,
+  MANAGEMENT_CSRF_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
   TOTP_LOGIN_COOKIE,
 } from '../lib/browser-auth.mjs'
@@ -1007,6 +1008,8 @@ test('Management pending page asks only for the additional password', () => {
         },
       })
       assert.equal(page.status, 200)
+      assert.equal(page.headers['set-cookie'].some(value => value.startsWith(`${MANAGEMENT_CSRF_COOKIE}=`)), true)
+      assert.equal(page.headers['set-cookie'].some(value => value.startsWith(`${AUTH_CSRF_COOKIE}=`)), false)
       assertInlineScriptsCompile(page.body)
       assert.match(page.body, /Management console password/)
       assert.match(page.body, /AUTHENTICATION_RETRY_REQUIRED/)

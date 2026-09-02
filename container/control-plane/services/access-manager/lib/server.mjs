@@ -321,18 +321,13 @@ export class AccessService {
   }
 
   async verifyFreshAuthentication(account, mainPassword, sourceId = 'unknown') {
-    const admission = this.limiter.enter(account.accountId, sourceId)
-    let authenticated = false
-    try {
-      const mainMatches = typeof mainPassword === 'string'
-        && await this.verify(mainPassword, account.mainCredential)
-      authenticated = mainMatches
-      if (!authenticated) {
-        await this.report('access.fresh-authentication.failed', { accountId: account.accountId, level: 'warning' })
-        throw new AccessError('FRESH_AUTH_FAILED', 'current administrator credentials are incorrect', 401)
-      }
-      await this.report('access.fresh-authentication.succeeded', { accountId: account.accountId })
-    } finally { releaseAuthentication(admission, authenticated) }
+    const mainMatches = typeof mainPassword === 'string'
+      && await this.verify(mainPassword, account.mainCredential)
+    if (!mainMatches) {
+      await this.report('access.fresh-authentication.failed', { accountId: account.accountId, level: 'warning' })
+      throw new AccessError('FRESH_AUTH_FAILED', 'current administrator credentials are incorrect', 401)
+    }
+    await this.report('access.fresh-authentication.succeeded', { accountId: account.accountId })
   }
 
 
@@ -618,13 +613,6 @@ export class AccessService {
     if (accountTotp(current.account).enabled) {
       throw new AccessError('TOTP_ALREADY_ENABLED', 'two-factor authentication is already enabled', 409)
     }
-    const managementSession = this.sessions.details(authorization.sessionId)
-    const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
-    await this.verifyFreshAuthentication(
-      current.account,
-      value.currentPassword,
-      sourceSession?.authenticationSource ?? 'unknown',
-    )
     const username = value.username === undefined ? current.account.username : normalizeUsername(value.username)
     const enrollment = this.totpFlows.createEnrollment(current.account, authorization.sessionId)
     await this.report('access.totp.enrollment.created', { accountId: current.account.accountId })
