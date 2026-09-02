@@ -3,7 +3,6 @@
 .checkpoint-karpathy
 .env
 temp
-itemp
 data
 **/node_modules
 container/**/test
