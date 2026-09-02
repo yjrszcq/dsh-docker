@@ -80,12 +80,15 @@ establish_sessions() {
     http://127.0.0.1:3080/_dsh_platform/auth/ >/dev/null
   auth_csrf="$(docker exec "$container" awk '$6 == "dsh_auth_csrf" { print $7 }' "$session_cookie")"
   [ -n "$auth_csrf" ]
+  authentication_context="$(docker exec "$container" sed -n 's/.*authenticationContextId=\("[^"]*"\).*/\1/p' "$auth_page" | sed 's/^"//; s/"$//')"
+  [ -n "$authentication_context" ]
+  authentication_body="$(jq -nc --arg username smoke-admin --arg password smoke-password --arg authenticationContext "$authentication_context" '{username:$username,password:$password,authenticationContext:$authenticationContext}')"
   auth_response=/tmp/dsh-smoke-auth-response.json
   status="$(docker exec "$container" curl --silent --output "$auth_response" --write-out '%{http_code}' \
     --cookie "$session_cookie" --cookie-jar "$session_cookie" \
     --header 'Host: smoke.example' --header 'Origin: http://smoke.example' \
     --header 'Content-Type: application/json' --header "X-DSH-CSRF: $auth_csrf" \
-    --data '{"username":"smoke-admin","password":"smoke-password"}' \
+    --data "$authentication_body" \
     http://127.0.0.1:3080/_dsh_platform/auth/session)"
   if [ "$status" != "$expected" ]; then
     docker exec "$container" cat "$auth_response" >&2 || true
