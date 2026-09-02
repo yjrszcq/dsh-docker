@@ -272,7 +272,7 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
   const copy = zh ? {
     brand: 'HARNESS', username: '用户名', password: '密码', totp: '动态验证码', register: '注册', login: '登录',
     initializing: '正在创建管理员账户…', signingIn: '正在登录…', resetting: '正在重置管理员认证…',
-    failed: '用户名或密码不正确，请重试。', registrationFailed: '无法创建管理员账户，请检查填写内容后重试。',
+    failed: '用户名或密码错误', registrationFailed: '无法创建管理员账户，请检查填写内容后重试。',
     concurrent: '管理员账户已创建，请使用现有账户登录。',
     invalidUsername: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。',
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
@@ -291,7 +291,7 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
   } : {
     brand: 'HARNESS', username: 'Username', password: 'Password', totp: 'Authentication code', register: 'Register', login: 'Sign in',
     initializing: 'Creating the administrator account…', signingIn: 'Signing in…', resetting: 'Resetting administrator authentication…',
-    failed: 'The username or password is incorrect. Try again.', registrationFailed: 'The administrator account could not be created. Check the entered values and try again.',
+    failed: 'The username or password is incorrect.', registrationFailed: 'The administrator account could not be created. Check the entered values and try again.',
     concurrent: 'The administrator account already exists. Sign in with it.',
     invalidUsername: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.',
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
