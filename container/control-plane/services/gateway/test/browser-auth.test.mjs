@@ -53,6 +53,7 @@ function fixture(initialState = 'never-initialized', options = {}) {
   const managementSessions = new Map()
   const managementSources = new Map()
   const handoffs = new Map()
+  const pending = new Map()
   const transitionNonces = new Map([['transition-valid', 'nonce-valid']])
   const continuations = new Map([['continuation-valid', null]])
   const calls = []
@@ -152,9 +153,31 @@ function fixture(initialState = 'never-initialized', options = {}) {
         const handoff = handoffs.get(body.token)
         if (handoff?.targetOrigin !== body.origin) throw Object.assign(new Error('handoff invalid'), { statusCode: 401 })
         handoffs.delete(body.token)
+        if (options.managementPending === true) {
+          pending.set('dshmp_exchanged', handoff.dshToken)
+          return { pending: { token: 'dshmp_exchanged' } }
+        }
         managementSessions.set('dshms_exchanged', body.origin)
         managementSources.set('dshms_exchanged', handoff.dshToken)
         return { session: { token: 'dshms_exchanged', csrfToken: 'dshc_management' } }
+      }
+      if (path === '/v1/management/pending/complete') {
+        if (body.authenticationContext !== 'dsh-authentication-context') {
+          throw Object.assign(new Error('authentication context is stale'), {
+            code: 'AUTHENTICATION_CONTEXT_STALE', statusCode: 409,
+          })
+        }
+        const source = pending.get(body.pendingToken)
+        if (source === undefined) throw Object.assign(new Error('management login is invalid or expired'), {
+          code: 'PENDING_LOGIN_INVALID', statusCode: 401,
+        })
+        if (body.password !== 'correct management password') throw Object.assign(new Error('username or password is incorrect'), {
+          code: 'AUTHENTICATION_FAILED', statusCode: 401,
+        })
+        pending.delete(body.pendingToken)
+        managementSessions.set('dshms_completed', body.origin)
+        managementSources.set('dshms_completed', source)
+        return { session: { token: 'dshms_completed', csrfToken: 'dshc_management_completed' } }
       }
       if (path === '/v1/management/transitions/probe') {
         if (transitionNonces.get(body.transitionId) !== body.nonce) {
@@ -1055,4 +1078,87 @@ test('Management pending page asks only for the additional password', () => {
       assert.doesNotMatch(page.body, /name="username"|management\/session/)
     } finally { await close(current.server) }
   })
+})
+
+test('a stale Management pending submission is renewed and completed without asking again', async () => {
+  for (const staleCsrf of [false, true]) {
+    const current = fixture('initialized', { managementPending: true })
+    const port = await listen(current.server)
+    try {
+      const host = `127.0.0.1:${port}`
+      const origin = `http://${host}`
+      current.sessions.set('dshs_existing', origin)
+      const page = await request(port, {
+        path: '/_dsh_platform/auth/management/pending',
+        headers: {
+          host,
+          cookie: `${DSH_SESSION_COOKIE}=dshs_existing; dsh_management_pending=dshmp_stale`,
+        },
+      })
+      const csrfCookie = page.headers['set-cookie'].find(value => value.startsWith(`${MANAGEMENT_CSRF_COOKIE}=`))
+      const csrf = csrfCookie.split(';')[0].split('=')[1]
+      const response = await request(port, {
+        path: '/_dsh_platform/auth/management/pending', method: 'POST',
+        headers: {
+          host, origin,
+          cookie: `${DSH_SESSION_COOKIE}=dshs_existing; dsh_management_pending=dshmp_stale; ${MANAGEMENT_CSRF_COOKIE}=${csrf}`,
+          'content-type': 'application/json',
+          'x-dsh-csrf': staleCsrf ? 'dshm_stale' : csrf,
+          'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+        },
+        body: JSON.stringify({
+          password: 'correct management password',
+          authenticationContext: staleCsrf ? 'dsh-authentication-context' : 'stale-context',
+        }),
+      })
+      assert.equal(response.status, 200)
+      assert.equal(JSON.parse(response.body).authenticated, true)
+      assert.equal(response.headers['set-cookie'].some(value => value.startsWith(`${MANAGEMENT_SESSION_COOKIE}=dshms_completed`)), true)
+      assert.equal(current.calls.filter(call => call.path === '/v1/management/handoffs').length, 1)
+      assert.equal(current.calls.filter(call => call.path === '/v1/management/handoffs/consume').length, 1)
+      assert.equal(current.calls.filter(call => call.path === '/v1/management/pending/complete').length, staleCsrf ? 1 : 2)
+    } finally { await close(current.server) }
+  }
+})
+
+test('an incorrect Management password is rejected once without renewing its pending login', async () => {
+  const current = fixture('initialized', { managementPending: true })
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    current.sessions.set('dshs_existing', origin)
+    const handoff = await current.access.request('POST', '/v1/management/handoffs', {
+      dshToken: 'dshs_existing', dshOrigin: origin, targetOrigin: origin,
+    })
+    const exchanged = await current.access.request('POST', '/v1/management/handoffs/consume', {
+      token: handoff.handoff.token, origin,
+    })
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/management/pending',
+      headers: {
+        host,
+        cookie: `${DSH_SESSION_COOKIE}=dshs_existing; dsh_management_pending=${exchanged.pending.token}`,
+      },
+    })
+    const csrfCookie = page.headers['set-cookie'].find(value => value.startsWith(`${MANAGEMENT_CSRF_COOKIE}=`))
+    const csrf = csrfCookie.split(';')[0].split('=')[1]
+    const callsBefore = current.calls.length
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/management/pending', method: 'POST',
+      headers: {
+        host, origin,
+        cookie: `${DSH_SESSION_COOKIE}=dshs_existing; dsh_management_pending=${exchanged.pending.token}; ${MANAGEMENT_CSRF_COOKIE}=${csrf}`,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({
+        password: 'wrong management password',
+        authenticationContext: 'dsh-authentication-context',
+      }),
+    })
+    assert.equal(response.status, 401)
+    assert.equal(JSON.parse(response.body).code, 'AUTHENTICATION_FAILED')
+    assert.deepEqual(current.calls.slice(callsBefore).map(call => call.path), ['/v1/management/pending/complete'])
+  } finally { await close(current.server) }
 })

@@ -616,6 +616,42 @@ export function createBrowserAuthentication({
       : `${authPrefix}management/handoff?token=${encodeURIComponent(created.handoff.token)}`
   }
 
+  async function renewManagementLogin(request, origin, value) {
+    const current = await status()
+    const dshToken = cookieValue(request.headers.cookie, DSH_SESSION_COOKIE)
+    const dshOrigin = current.account?.managementAccess?.mode === 'isolated'
+      ? current.account.managementAccess.dshPublicOrigin
+      : origin
+    if (dshToken === undefined || typeof dshOrigin !== 'string') {
+      throw Object.assign(new Error('authentication context is stale'), {
+        code: 'AUTHENTICATION_CONTEXT_STALE', statusCode: 409,
+      })
+    }
+    try {
+      const created = await accessRequest('POST', '/v1/management/handoffs', {
+        dshToken, dshOrigin, targetOrigin: origin,
+      })
+      const exchanged = await accessRequest('POST', '/v1/management/handoffs/consume', {
+        token: created.handoff.token, origin,
+      })
+      if (exchanged.session !== undefined) return exchanged
+      if (exchanged.pending?.token === undefined) throw new Error('renewed Management login is invalid')
+      return await accessRequest('POST', '/v1/management/pending/complete', {
+        ...value,
+        authenticationContext: (await authenticationStatus()).authenticationContext,
+        origin,
+        pendingToken: exchanged.pending.token,
+      })
+    } catch (error) {
+      if (['SESSION_INVALID', 'HANDOFF_INVALID', 'PENDING_LOGIN_INVALID'].includes(error?.code)) {
+        throw Object.assign(new Error('authentication context is stale'), {
+          code: 'AUTHENTICATION_CONTEXT_STALE', statusCode: 409,
+        })
+      }
+      throw error
+    }
+  }
+
   async function handle(request, response, pathname, searchParams) {
     if (pathname === transitionPrefix + 'probe' && request.method === 'GET') {
       // Same-origin GET fetches may omit Origin. The target authority is a
@@ -915,16 +951,21 @@ export function createBrowserAuthentication({
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
         return true
       }
-      if (!validBrowserMutation(request, csrf)) {
-        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
-        return true
-      }
       const origin = requestOrigin(request, { requireHeader: true })
       try {
-        const result = await accessRequest('POST', '/v1/management/pending/complete', {
-          ...await jsonBody(request), origin,
-          pendingToken: cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE),
-        })
+        const value = await jsonBody(request)
+        let result
+        if (validBrowserMutation(request, csrf)) {
+          try {
+            result = await accessRequest('POST', '/v1/management/pending/complete', {
+              ...value, origin,
+              pendingToken: cookieValue(request.headers.cookie, MANAGEMENT_PENDING_COOKIE),
+            })
+          } catch (error) {
+            if (!['AUTHENTICATION_CONTEXT_STALE', 'PENDING_LOGIN_INVALID'].includes(error?.code)) throw error
+          }
+        }
+        result ??= await renewManagementLogin(request, origin, value)
         sendJson(response, 200, { authenticated: true }, { 'set-cookie': managementCookies(result.session, origin, managementCookiePath) })
       } catch (error) {
         sendJson(response, accessFailureStatus(error), accessFailureBody(error, 'AUTHENTICATION_FAILED'), accessFailureHeaders(error))
