@@ -128,6 +128,9 @@ export function createManagementServer({
   beginTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
   confirmTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
   cancelTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
+  beginTotpDisableConfirmation = async () => { throw new Error('Two-factor disable confirmation is not configured') },
+  confirmTotpDisable = async () => { throw new Error('Two-factor disable confirmation is not configured') },
+  cancelTotpDisableConfirmation = async () => { throw new Error('Two-factor disable confirmation is not configured') },
   revokeAuthenticationSessions = async () => { throw new Error('Authentication session management is not configured') },
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
@@ -786,6 +789,12 @@ export function createManagementServer({
         send(response, 200, await confirmTotpEnrollment(await jsonBody(request), request))
       } else if (request.method === 'POST' && route === 'auth-totp/enrollments/cancel') {
         send(response, 200, await cancelTotpEnrollment(await jsonBody(request), request))
+      } else if (request.method === 'POST' && route === 'auth-totp/disable-confirmations') {
+        send(response, 201, await beginTotpDisableConfirmation(await jsonBody(request), request))
+      } else if (request.method === 'POST' && route === 'auth-totp/disable-confirmations/confirm') {
+        send(response, 200, await confirmTotpDisable(await jsonBody(request), request))
+      } else if (request.method === 'POST' && route === 'auth-totp/disable-confirmations/cancel') {
+        send(response, 200, await cancelTotpDisableConfirmation(await jsonBody(request), request))
       } else if (request.method === 'POST' && route === 'auth-sessions/revoke') {
         const body = await jsonBody(request)
         const value = await revokeAuthenticationSessions(body, request)

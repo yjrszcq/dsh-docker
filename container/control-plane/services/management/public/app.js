@@ -14,7 +14,7 @@ const COPY = Object.freeze({
     title: 'DSH 管理中心', consoleLabel: '独立管理控制台', intro: 'DSH Docker 运行、更新与恢复',
     switchLanguage: '语言', themeSystem: '跟随系统', themeLight: '亮色', themeDark: '暗色', themeButtonLabel: '当前为{current}，点击切换为{next}',
     authPublicOrigin: '候选管理中心地址', authPublicOriginPlaceholder: 'https://management.example.com', authPublicOriginDetail: '切换前会验证该地址确实连接到当前平台实例。', authLocalPort: '宿主机端口', authLocalPortPlaceholder: '例如：3001', authLocalPortDetail: '填写映射到管理中心入口的宿主机端口。',
-    authUsernameFormat: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。', authPasswordFormat: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。', authCurrentPasswordRequired: '请输入当前主密码。', authCurrentPasswordIncorrect: '当前主密码不正确。', authManagementPasswordRequired: '请输入新的管理中心密码。', authLocalPortFormat: '请输入 1 至 65535 的宿主机端口。', authTotpTitle: '两步验证（2FA）', authTotpEnabled: '启用两步验证', authTotpPending: '未验证', authTotpSetupTitle: '设置两步验证', authTotpSetupDetail: '使用身份验证器扫描二维码，再输入当前动态验证码。', authTotpQrAlt: '两步验证二维码', authTotpShowSecret: '显示 2FA 密钥', authTotpHideSecret: '隐藏 2FA 密钥', authTotpCode: '动态验证码', authTotpConfirm: '确认动态码', authTotpCodeInvalid: '动态验证码不正确，请重试。', authTotpCodeRequired: '请输入 6 位动态验证码。', authTotpRetryRequired: '动态验证码连续多次错误，请在 {seconds} 秒后重试。', authTotpRateLimited: '动态验证码尝试次数过多，请在 {seconds} 秒后重试。', authTotpEnrollmentExpired: '二维码已失效，请关闭后重新启用。', authTotpConfirmedDraft: '动态验证码已验证，请保存并应用。',
+    authUsernameFormat: '用户名支持 1 至 64 个字符，可使用中文、字母、数字、空格和常用符号；不能包含控制字符或双向控制字符。', authPasswordFormat: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。', authCurrentPasswordRequired: '请输入当前主密码。', authCurrentPasswordIncorrect: '当前主密码不正确。', authManagementPasswordRequired: '请输入新的管理中心密码。', authLocalPortFormat: '请输入 1 至 65535 的宿主机端口。', authTotpTitle: '两步验证（2FA）', authTotpEnabled: '启用两步验证', authTotpPending: '未验证', authTotpSetupTitle: '设置两步验证', authTotpSetupDetail: '使用身份验证器扫描二维码，再输入当前动态验证码。', authTotpDisableTitle: '关闭两步验证', authTotpDisableDetail: '输入当前动态验证码以确认关闭。', authTotpQrAlt: '两步验证二维码', authTotpShowSecret: '显示 2FA 密钥', authTotpHideSecret: '隐藏 2FA 密钥', authTotpCode: '动态验证码', authTotpConfirm: '确认动态码', authTotpCodeInvalid: '动态验证码不正确，请重试。', authTotpCodeRequired: '请输入 6 位动态验证码。', authTotpRetryRequired: '动态验证码连续多次错误，请在 {seconds} 秒后重试。', authTotpRateLimited: '动态验证码尝试次数过多，请在 {seconds} 秒后重试。', authTotpEnrollmentExpired: '二维码已失效，请关闭后重新启用。', authTotpDisableExpired: '关闭确认已失效，请关闭后重试。', authTotpConfirmedDraft: '动态验证码已验证，请保存并应用。',
     managementSections: 'DSH 管理中心功能', updatesTab: '更新管理', proxyTab: '代理设置', authSettingsTab: '认证设置', authSettingsTitle: '认证设置', authSettingsDetail: '管理本地管理员账户、管理中心密码、浏览器会话和管理中心访问方式。', authUsername: '用户名', authMainPasswordTitle: '管理员账户', authCurrentPassword: '当前主密码', authCurrentPasswordPlaceholder: '请输入当前主密码', authNewPassword: '新密码', authConfirmPassword: '确认密码', authPasswordPlaceholder: '留空表示保持不变', authAdditionalTitle: '管理中心密码', authAdditionalEnabled: '启用管理中心密码', authAdditionalPassword: '新密码', authConfirmAdditionalPassword: '确认密码', authOriginTitle: '管理中心入口', authMode: '访问模式', authModeCompat: '兼容模式', authModeIsolated: '公开独立入口', authModeLocal: '本机独立入口', authModeCompatShort: '兼容模式', authModeIsolatedShort: '独立入口', authOrigin: '候选管理中心地址', authOriginDetail: '切换前会确认候选地址确实连接到当前平台实例，并注销现有管理中心会话。', authAutoDetect: '使用检测地址', authIsolationCompare: '查看模式安全性对比', authRootLocked: '已启用 DSH Root 权限，访问模式已锁定为兼容模式，无法切换。', authComparisonTitle: '管理中心隔离能力对比', authComparisonDetail: '两种模式都要求认证和最终执行点授权；独立入口还会把完整管理会话与 DSH 前端插件隔离。', authComparisonSessions: 'DSH 与管理中心使用独立会话', authComparisonPlugins: '防止同源 DSH 前端插件借用管理会话', authComparisonCapabilities: '最终执行点 capability 鉴权', authComparisonRoot: 'DSH 获得容器 Root 后仍受保护', authComparisonYes: '是', authComparisonNo: '否', authIsolationConfirmTitle: '启用管理中心强隔离模式', authIsolationConfirmDetail: '请先映射容器端口 3081，或将独立地址转发到该端口。平台会在改变当前模式前验证候选入口。', authIsolationConfirm: '我已完成配置，继续', understood: '知道了', authSessionsTitle: '浏览器会话', authSessionSummary: '共 {count} 个登录设备。注销会同时撤销该设备的 DSH 与管理中心会话。', authSessionUnknownDevice: '未知浏览器', authSessionCurrent: '当前设备', authSessionManagement: '管理中心已登录', authSessionIp: 'IP：{value}', authSessionLoginAt: '登录：{value}', authSessionLastSeen: '最后活动：{value}', authSessionRevoke: '注销会话', authSessionsRevoked: '会话已注销。', authSessionExpired: '浏览器会话已失效。', authPasswordMismatch: '两次输入的新密码不一致。', authTransitionFailed: '候选管理中心地址无法通过此浏览器验证。请检查地址、端口映射和 HTTPS 配置。', authTransitionCompatLogin: '兼容模式已启用。请返回你的 DSH 地址打开管理中心。', authTransitionLocalLogin: '本机独立入口已启用。请通过容器宿主机映射的 loopback 地址登录管理中心。', authSaveApply: '保存并应用', authSaved: '认证设置已保存。', authSavedAllSessionsRevoked: '主密码或两步验证已更新，所有登录会话均已注销。正在跳转到登录页面。', authSavedManagementSessionsRevoked: '管理中心密码设置已更新，所有管理中心会话均已注销。正在跳转到登录页面。', maintenanceTab: '运行维护', pluginsTab: '系统插件', skillsTab: '系统技能', userSkillsTab: '用户技能', userPluginsTab: '用户插件', terminalTab: '容器终端', filesTab: '文件管理',
     proxyMaster: '使用代理', proxyMasterDetail: '关闭时，所有受管流量范围均直连。',
     proxyTitle: '代理设置', proxyDetail: '为选定的出站流量使用已有的 HTTP 或 SOCKS5 代理。', proxyAdvanced: '高级', proxyUnsaved: '未保存', proxySavedShort: '已保存', proxyProtocol: '协议', proxyHost: '主机', proxyPort: '端口', proxyUsername: '用户名', proxyPassword: '密码', proxyPasswordPlaceholder: '留空表示保留已有密码', proxyRemoteDns: '通过 SOCKS5 解析目标 DNS', proxyRemoteDnsDetail: '避免在容器内解析目标域名。', proxyClearPassword: '清除密码', proxyTransportWarning: '当前页面未使用 HTTPS，代理凭据仅受现有网络边界保护。', proxyComponentUnavailable: '出站代理组件暂不可用', proxyComponentIssueLabel: '查看出站代理组件异常', proxyComponentIssueTitle: '出站代理组件不可用', proxyComponentIssueDetail: 'DSH Docker 的出站代理组件当前不可用。当前配置仅供查看，保存、连接测试和受管代理流量将在组件恢复后可用。这不代表已配置的外部代理是否可连接。',
@@ -112,7 +112,7 @@ const COPY = Object.freeze({
     title: 'DSH Management Console', consoleLabel: 'Standalone console', intro: 'DSH Docker runtime, updates, and recovery',
     switchLanguage: 'Language', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark', themeButtonLabel: '{current}; switch to {next}',
     authPublicOrigin: 'Candidate Management origin', authPublicOriginPlaceholder: 'https://management.example.com', authPublicOriginDetail: 'The platform verifies that this origin reaches the current instance before switching.', authLocalPort: 'Host port', authLocalPortPlaceholder: 'For example: 3001', authLocalPortDetail: 'Enter the host port mapped to the Management entry.',
-    authUsernameFormat: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.', authPasswordFormat: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.', authCurrentPasswordRequired: 'Enter the current main password.', authCurrentPasswordIncorrect: 'The current main password is incorrect.', authManagementPasswordRequired: 'Enter a new Management console password.', authLocalPortFormat: 'Enter a host port from 1 to 65535.', authTotpTitle: 'Two-factor authentication (2FA)', authTotpEnabled: 'Enable two-factor authentication', authTotpPending: 'Unverified', authTotpSetupTitle: 'Set up two-factor authentication', authTotpSetupDetail: 'Scan the QR code with an authenticator app, then enter its current code.', authTotpQrAlt: 'Two-factor authentication QR code', authTotpShowSecret: 'Show 2FA secret', authTotpHideSecret: 'Hide 2FA secret', authTotpCode: 'Authentication code', authTotpConfirm: 'Confirm code', authTotpCodeInvalid: 'The authentication code is incorrect. Try again.', authTotpCodeRequired: 'Enter the 6-digit authentication code.', authTotpRetryRequired: 'Too many incorrect codes. Try again in {seconds} seconds.', authTotpRateLimited: 'Too many authentication-code attempts. Try again in {seconds} seconds.', authTotpEnrollmentExpired: 'This QR code has expired. Close this dialog and enable 2FA again.', authTotpConfirmedDraft: 'Authentication code verified. Save and apply to enable 2FA.',
+    authUsernameFormat: 'Use 1 to 64 characters. Unicode letters, numbers, spaces, and common symbols are supported; control and bidirectional-control characters are not.', authPasswordFormat: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.', authCurrentPasswordRequired: 'Enter the current main password.', authCurrentPasswordIncorrect: 'The current main password is incorrect.', authManagementPasswordRequired: 'Enter a new Management console password.', authLocalPortFormat: 'Enter a host port from 1 to 65535.', authTotpTitle: 'Two-factor authentication (2FA)', authTotpEnabled: 'Enable two-factor authentication', authTotpPending: 'Unverified', authTotpSetupTitle: 'Set up two-factor authentication', authTotpSetupDetail: 'Scan the QR code with an authenticator app, then enter its current code.', authTotpDisableTitle: 'Disable two-factor authentication', authTotpDisableDetail: 'Enter the current authentication code to confirm.', authTotpQrAlt: 'Two-factor authentication QR code', authTotpShowSecret: 'Show 2FA secret', authTotpHideSecret: 'Hide 2FA secret', authTotpCode: 'Authentication code', authTotpConfirm: 'Confirm code', authTotpCodeInvalid: 'The authentication code is incorrect. Try again.', authTotpCodeRequired: 'Enter the 6-digit authentication code.', authTotpRetryRequired: 'Too many incorrect codes. Try again in {seconds} seconds.', authTotpRateLimited: 'Too many authentication-code attempts. Try again in {seconds} seconds.', authTotpEnrollmentExpired: 'This QR code has expired. Close this dialog and enable 2FA again.', authTotpDisableExpired: 'The disable confirmation has expired. Close this dialog and try again.', authTotpConfirmedDraft: 'Authentication code verified. Save and apply the change.',
     managementSections: 'Platform management sections', updatesTab: 'Updates', proxyTab: 'Proxy', authSettingsTab: 'Authentication', authSettingsTitle: 'Authentication settings', authSettingsDetail: 'Manage the local administrator account, Management console password, browser sessions, and Management access mode.', authUsername: 'Username', authMainPasswordTitle: 'Administrator account', authCurrentPassword: 'Current main password', authCurrentPasswordPlaceholder: 'Enter the current main password', authNewPassword: 'New password', authConfirmPassword: 'Confirm password', authPasswordPlaceholder: 'Leave blank to keep the current value', authAdditionalTitle: 'Management console password', authAdditionalEnabled: 'Enable the Management console password', authAdditionalPassword: 'New password', authConfirmAdditionalPassword: 'Confirm password', authOriginTitle: 'Management origin', authMode: 'Access mode', authModeCompat: 'Compatibility mode', authModeIsolated: 'Public separate origin', authModeLocal: 'Local separate origin', authModeCompatShort: 'Compatibility', authModeIsolatedShort: 'Separate origin', authOrigin: 'Candidate Management origin', authOriginDetail: 'The candidate origin is verified against this platform instance before changing modes and signing out existing Management sessions.', authAutoDetect: 'Use detected address', authIsolationCompare: 'Compare security', authRootLocked: 'DSH Root capability is enabled. Access mode is locked to compatibility mode and cannot be changed.', authComparisonTitle: 'Management isolation comparison', authComparisonDetail: 'Both modes require authentication and final-execution authorization. A separate origin additionally isolates the full Management session from DSH client plugins.', authComparisonSessions: 'Separate DSH and Management sessions', authComparisonPlugins: 'Protect from same-origin DSH client plugins', authComparisonCapabilities: 'Final-execution capability authorization', authComparisonRoot: 'Protected after DSH obtains container Root', authComparisonYes: 'Yes', authComparisonNo: 'No', authIsolationConfirmTitle: 'Enable separate Management origin?', authIsolationConfirmDetail: 'First publish container port 3081 or route a separate address to it. The platform verifies the candidate before changing the current mode.', authIsolationConfirm: 'I have configured the entry', understood: 'Understood', authSessionsTitle: 'Browser sessions', authSessionSummary: '{count} signed-in device(s). Signing one out revokes its DSH and linked Management session together.', authSessionUnknownDevice: 'Unknown browser', authSessionCurrent: 'Current device', authSessionManagement: 'Management signed in', authSessionIp: 'IP: {value}', authSessionLoginAt: 'Signed in: {value}', authSessionLastSeen: 'Last active: {value}', authSessionRevoke: 'Sign out session', authSessionsRevoked: 'Session signed out.', authSessionExpired: 'The browser session has expired.', authPasswordMismatch: 'The new password confirmation does not match.', authTransitionFailed: 'The candidate Management address could not be verified by this browser. Check the address, port mapping, and HTTPS configuration.', authTransitionCompatLogin: 'Compatibility mode is enabled. Return to your DSH address to open Management.', authTransitionLocalLogin: 'Local separate origin is enabled. Sign in through the loopback address mapped on the container host.', authSaveApply: 'Save and apply', authSaved: 'Authentication settings saved.', authSavedAllSessionsRevoked: 'The main password or two-factor authentication was updated and all sessions were signed out. Redirecting to sign in.', authSavedManagementSessionsRevoked: 'The Management console password settings were updated and all Management sessions were signed out. Redirecting to sign in.', maintenanceTab: 'Maintenance', pluginsTab: 'System plugins', skillsTab: 'System skills', userSkillsTab: 'User skills', userPluginsTab: 'User plugins', terminalTab: 'Container terminal', filesTab: 'Files',
     proxyMaster: 'Use proxy', proxyMasterDetail: 'When off, all managed traffic scopes connect directly.',
     proxyTitle: 'Proxy settings', proxyDetail: 'Use an existing HTTP or SOCKS5 proxy for selected outbound traffic.', proxyAdvanced: 'Advanced', proxyUnsaved: 'Unsaved', proxySavedShort: 'Saved', proxyProtocol: 'Protocol', proxyHost: 'Host', proxyPort: 'Port', proxyUsername: 'Username', proxyPassword: 'Password', proxyPasswordPlaceholder: 'Leave blank to keep the saved password', proxyRemoteDns: 'Resolve target DNS through SOCKS5', proxyRemoteDnsDetail: 'Avoids resolving target names inside the container.', proxyClearPassword: 'Clear password', proxyTransportWarning: 'This page is not using HTTPS. Proxy credentials are protected only by the current network boundary.', proxyComponentUnavailable: 'Outbound Proxy is unavailable', proxyComponentIssueLabel: 'View outbound proxy component error', proxyComponentIssueTitle: 'Outbound proxy component unavailable', proxyComponentIssueDetail: 'The DSH Docker outbound proxy component is unavailable. The current configuration is read-only until the component recovers; saving, connection tests, and managed proxy traffic are unavailable. This does not indicate whether the configured external proxy is reachable.',
@@ -1086,7 +1086,7 @@ async function api(path, { method = 'GET', body } = {}) {
   })
   const value = await response.json()
   const errorCode = value?.error?.code ?? value?.code
-  if (response.status === 401 && !['FRESH_AUTH_FAILED', 'TOTP_INVALID', 'TOTP_ENROLLMENT_INVALID'].includes(errorCode)) {
+  if (response.status === 401 && !['FRESH_AUTH_FAILED', 'TOTP_INVALID', 'TOTP_ENROLLMENT_INVALID', 'TOTP_DISABLE_CONFIRMATION_INVALID'].includes(errorCode)) {
     window.location.reload()
     throw new Error(t('authSessionExpired'))
   }
@@ -4097,7 +4097,7 @@ async function refreshLogs() {
 }
 
 let authenticationSettings
-let pendingTotpEnrollment
+let pendingTotpChange
 let totpConfirming = false
 let totpRetryTimer
 const AUTHENTICATION_PASSWORD_FIELDS = Object.freeze([
@@ -4176,9 +4176,7 @@ function accountDraftChanged(draft = authenticationAccountDraft()) {
 }
 
 function renderAuthenticationAccountSaveState() {
-  const totpUnverified = elements['auth-totp-enabled'].checked
-    && authenticationSettings?.account?.totp?.enabled !== true
-    && pendingTotpEnrollment?.confirmed !== true
+  const totpUnverified = pendingTotpChange !== undefined && pendingTotpChange.confirmed !== true
   elements['auth-totp-pending'].hidden = !totpUnverified
   elements['auth-totp-pending'].parentElement.dataset.state = totpUnverified ? 'unverified' : 'ready'
   elements['auth-account-save'].disabled = totpUnverified || !accountDraftChanged()
@@ -4201,7 +4199,8 @@ function validateCurrentPassword(draft, { incorrect = false } = {}) {
     error.hidden = false
     return false
   }
-  return renderAuthenticationFormatError('auth-current-password')
+  error.hidden = true
+  return true
 }
 
 function renderPasswordConfirmation(passwordId, confirmationId, { submitted = false } = {}) {
@@ -4214,7 +4213,6 @@ function validateAuthenticationSettingsFormat() {
   // Confirmation fields have their own mismatch validator; showing the
   // generic password-format hint under them obscures the actual problem.
   const passwordsValid = [
-    'auth-current-password',
     'auth-password',
     'auth-additional-password',
   ]
@@ -4351,6 +4349,7 @@ function renderAuthenticationSessions(sessions) {
 async function loadAuthenticationSettings() {
   try {
     authenticationSettings = await api('auth-settings')
+    pendingTotpChange = undefined
     const account = authenticationSettings.account ?? {}
     elements['auth-username'].value = account.username ?? ''
     elements['auth-totp-enabled'].checked = account.totp?.enabled === true
@@ -4491,11 +4490,15 @@ async function saveAccountSettings() {
     if (draft.mainPasswordChanged) body.password = draft.password
     if (draft.additionalChanged) body.additionalEnabled = draft.additionalEnabled
     if (draft.additionalEnabled && draft.additionalPassword !== '') body.additionalPassword = draft.additionalPassword
-    if (draft.totpChanged && !draft.totpEnabled) body.totpEnabled = false
+    if (draft.totpChanged && !draft.totpEnabled) {
+      if (pendingTotpChange?.kind !== 'disable' || pendingTotpChange.confirmed !== true) return
+      body.totpEnabled = false
+      body.totpDisableConfirmationToken = pendingTotpChange.confirmation.confirmationToken
+    }
     if (draft.totpChanged && draft.totpEnabled) {
-      if (pendingTotpEnrollment?.confirmed !== true) return
+      if (pendingTotpChange?.kind !== 'enable' || pendingTotpChange.confirmed !== true) return
       body.totpEnabled = true
-      body.totpEnrollmentToken = pendingTotpEnrollment.enrollment.enrollmentToken
+      body.totpEnrollmentToken = pendingTotpChange.enrollment.enrollmentToken
     }
     const result = await api('auth-settings', { method: 'PUT', body })
     finishAccountSettings(result)
@@ -4503,8 +4506,8 @@ async function saveAccountSettings() {
     if (error.code === 'FRESH_AUTH_FAILED') {
       validateCurrentPassword(draft, { incorrect: true })
       elements['auth-current-password'].focus()
-    } else if (['TOTP_ENROLLMENT_INVALID', 'TOTP_ENROLLMENT_UNCONFIRMED'].includes(error.code)) {
-      pendingTotpEnrollment = undefined
+    } else if (['TOTP_ENROLLMENT_INVALID', 'TOTP_ENROLLMENT_UNCONFIRMED', 'TOTP_DISABLE_CONFIRMATION_INVALID', 'TOTP_DISABLE_CONFIRMATION_UNCONFIRMED'].includes(error.code)) {
+      pendingTotpChange = undefined
       elements['auth-totp-enabled'].checked = authenticationSettings?.account?.totp?.enabled === true
       renderAuthenticationAccountSaveState()
       showError(new Error(t('authTotpEnrollmentExpired')))
@@ -4541,11 +4544,15 @@ function resetTotpDialog() {
   elements['auth-totp-code'].disabled = false
   elements['auth-totp-error'].hidden = true
   elements['auth-totp-confirm'].disabled = false
+  elements['auth-totp-dialog-title'].textContent = t('authTotpSetupTitle')
+  elements['auth-totp-dialog-detail'].textContent = t('authTotpSetupDetail')
+  elements['auth-totp-qr'].hidden = false
+  elements['auth-totp-secret-toggle'].hidden = false
 }
 
 function openTotpEnrollment(enrollment) {
   resetTotpDialog()
-  pendingTotpEnrollment = { enrollment, confirmed: false }
+  pendingTotpChange = { kind: 'enable', enrollment, confirmed: false }
   elements['auth-totp-qr'].src = enrollment.qrCode
   elements['auth-totp-secret'].textContent = enrollment.secret
   renderAuthenticationAccountSaveState()
@@ -4553,16 +4560,31 @@ function openTotpEnrollment(enrollment) {
   elements['auth-totp-code'].focus()
 }
 
-async function cancelTotpEnrollment({ resetToggle = true } = {}) {
+function openTotpDisableConfirmation(confirmation) {
+  resetTotpDialog()
+  pendingTotpChange = { kind: 'disable', confirmation, confirmed: false }
+  elements['auth-totp-dialog-title'].textContent = t('authTotpDisableTitle')
+  elements['auth-totp-dialog-detail'].textContent = t('authTotpDisableDetail')
+  elements['auth-totp-qr'].hidden = true
+  elements['auth-totp-secret-toggle'].hidden = true
+  renderAuthenticationAccountSaveState()
+  elements['auth-totp-dialog'].showModal()
+  elements['auth-totp-code'].focus()
+}
+
+async function cancelTotpChange({ resetToggle = true } = {}) {
   if (totpConfirming) return false
-  const pending = pendingTotpEnrollment
+  const pending = pendingTotpChange
   clearTimeout(totpRetryTimer)
   elements['auth-totp-close'].disabled = true
   try {
     if (pending !== undefined) {
-      await api('auth-totp/enrollments/cancel', {
+      const disabling = pending.kind === 'disable'
+      await api(disabling ? 'auth-totp/disable-confirmations/cancel' : 'auth-totp/enrollments/cancel', {
         method: 'POST',
-        body: { enrollmentToken: pending.enrollment.enrollmentToken },
+        body: disabling
+          ? { confirmationToken: pending.confirmation.confirmationToken }
+          : { enrollmentToken: pending.enrollment.enrollmentToken },
       })
     }
   } catch (error) {
@@ -4571,7 +4593,7 @@ async function cancelTotpEnrollment({ resetToggle = true } = {}) {
     elements['auth-totp-close'].disabled = false
     return false
   }
-  pendingTotpEnrollment = undefined
+  pendingTotpChange = undefined
   if (resetToggle) {
     elements['auth-totp-enabled'].checked = authenticationSettings?.account?.totp?.enabled === true
   }
@@ -4586,13 +4608,35 @@ async function cancelTotpEnrollment({ resetToggle = true } = {}) {
 async function changeTotpEnabled() {
   const input = elements['auth-totp-enabled']
   const priorEnabled = authenticationSettings?.account?.totp?.enabled === true
+  if (priorEnabled) {
+    if (input.checked) {
+      if (pendingTotpChange?.kind === 'disable') void cancelTotpChange({ resetToggle: false })
+      renderAuthenticationAccountSaveState()
+      return
+    }
+    input.checked = true
+    input.disabled = true
+    pendingTotpChange = { kind: 'disable', confirmed: false }
+    renderAuthenticationAccountSaveState()
+    try {
+      const confirmation = await api('auth-totp/disable-confirmations', { method: 'POST', body: {} })
+      openTotpDisableConfirmation(confirmation)
+    } catch (error) {
+      pendingTotpChange = undefined
+      renderAuthenticationAccountSaveState()
+      showError(error)
+    } finally {
+      input.disabled = false
+    }
+    return
+  }
   if (!input.checked) {
-    if (pendingTotpEnrollment !== undefined
-      && !await cancelTotpEnrollment({ resetToggle: false })) input.checked = true
+    if (pendingTotpChange !== undefined
+      && !await cancelTotpChange({ resetToggle: false })) input.checked = true
     renderAuthenticationAccountSaveState()
     return
   }
-  if (priorEnabled || pendingTotpEnrollment?.confirmed === true) {
+  if (pendingTotpChange?.confirmed === true) {
     renderAuthenticationAccountSaveState()
     return
   }
@@ -4651,7 +4695,7 @@ function showTotpRetryCountdown(error) {
 }
 
 async function confirmTotpEnrollment() {
-  const pending = pendingTotpEnrollment
+  const pending = pendingTotpChange
   if (pending === undefined) return
   const code = elements['auth-totp-code'].value.trim()
   if (!/^\d{6}$/u.test(code)) {
@@ -4663,14 +4707,15 @@ async function confirmTotpEnrollment() {
   elements['auth-totp-close'].disabled = true
   totpConfirming = true
   try {
-    await api('auth-totp/enrollments/confirm', {
+    const disabling = pending.kind === 'disable'
+    await api(disabling ? 'auth-totp/disable-confirmations/confirm' : 'auth-totp/enrollments/confirm', {
       method: 'POST',
-      body: {
-        enrollmentToken: pending.enrollment.enrollmentToken,
-        totpCode: code,
-      },
+      body: disabling
+        ? { confirmationToken: pending.confirmation.confirmationToken, totpCode: code }
+        : { enrollmentToken: pending.enrollment.enrollmentToken, totpCode: code },
     })
     pending.confirmed = true
+    if (disabling) elements['auth-totp-enabled'].checked = false
     resetTotpDialog()
     elements['auth-totp-dialog'].close()
     renderAuthenticationAccountSaveState()
@@ -4683,8 +4728,10 @@ async function confirmTotpEnrollment() {
       elements['auth-totp-confirm'].disabled = false
     } else if (['TOTP_RETRY_REQUIRED', 'TOTP_RATE_LIMITED'].includes(error.code)) {
       showTotpRetryCountdown(error)
-    } else if (error.code === 'TOTP_ENROLLMENT_INVALID') {
-      elements['auth-totp-error'].textContent = t('authTotpEnrollmentExpired')
+    } else if (['TOTP_ENROLLMENT_INVALID', 'TOTP_DISABLE_CONFIRMATION_INVALID'].includes(error.code)) {
+      elements['auth-totp-error'].textContent = t(error.code === 'TOTP_ENROLLMENT_INVALID'
+        ? 'authTotpEnrollmentExpired'
+        : 'authTotpDisableExpired')
       elements['auth-totp-error'].hidden = false
     } else {
       elements['auth-totp-confirm'].disabled = false
@@ -4959,10 +5006,10 @@ elements['auth-totp-secret-toggle'].addEventListener('click', () => {
   elements['auth-totp-secret-row'].hidden = expanded
   elements['auth-totp-secret-toggle'].textContent = t(expanded ? 'authTotpShowSecret' : 'authTotpHideSecret')
 })
-elements['auth-totp-close'].addEventListener('click', () => { void cancelTotpEnrollment() })
+elements['auth-totp-close'].addEventListener('click', () => { void cancelTotpChange() })
 elements['auth-totp-dialog'].addEventListener('cancel', event => {
   event.preventDefault()
-  void cancelTotpEnrollment()
+  void cancelTotpChange()
 })
 elements['auth-totp-form'].addEventListener('submit', event => {
   event.preventDefault()

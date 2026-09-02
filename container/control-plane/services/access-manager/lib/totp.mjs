@@ -87,12 +87,14 @@ export class TotpFlowStore {
     this.enrollmentTtlMs = enrollmentTtlMs
     this.loginTtlMs = loginTtlMs
     this.enrollments = new Map()
+    this.disableConfirmations = new Map()
     this.logins = new Map()
   }
 
   prune() {
     const current = this.now()
     for (const [key, value] of this.enrollments) if (value.expiresAt <= current) this.enrollments.delete(key)
+    for (const [key, value] of this.disableConfirmations) if (value.expiresAt <= current) this.disableConfirmations.delete(key)
     for (const [key, value] of this.logins) if (value.expiresAt <= current) this.logins.delete(key)
   }
 
@@ -139,6 +141,47 @@ export class TotpFlowStore {
 
   consumeEnrollment(key) { return this.enrollments.delete(key) }
 
+  createDisableConfirmation(account, sessionId) {
+    this.prune()
+    for (const [key, value] of this.disableConfirmations) {
+      if (value.accountId === account.accountId && value.sessionId === sessionId) this.disableConfirmations.delete(key)
+    }
+    const value = token('dshtd', this.random)
+    const expiresAt = this.now() + this.enrollmentTtlMs
+    this.disableConfirmations.set(digest(value), {
+      accountId: account.accountId,
+      accountRevision: account.revision,
+      sessionId,
+      confirmed: false,
+      expiresAt,
+    })
+    return Object.freeze({ token: value, expiresAt: new Date(expiresAt).toISOString() })
+  }
+
+  disableConfirmation(value, account, sessionId) {
+    this.prune()
+    if (typeof value !== 'string' || value.length > 512) return undefined
+    const key = digest(value)
+    const confirmation = this.disableConfirmations.get(key)
+    if (confirmation === undefined || confirmation.accountId !== account.accountId
+      || confirmation.accountRevision !== account.revision || confirmation.sessionId !== sessionId) return undefined
+    return { key, value: confirmation }
+  }
+
+  cancelDisableConfirmation(value, account, sessionId) {
+    const confirmation = this.disableConfirmation(value, account, sessionId)
+    return confirmation === undefined ? false : this.disableConfirmations.delete(confirmation.key)
+  }
+
+  confirmDisable(key) {
+    const confirmation = this.disableConfirmations.get(key)
+    if (confirmation === undefined) return false
+    confirmation.confirmed = true
+    return true
+  }
+
+  consumeDisableConfirmation(key) { return this.disableConfirmations.delete(key) }
+
   createLogin(account, details) {
     this.prune()
     const value = token('dshtl', this.random)
@@ -166,6 +209,7 @@ export class TotpFlowStore {
 
   clear() {
     this.enrollments.clear()
+    this.disableConfirmations.clear()
     this.logins.clear()
   }
 }

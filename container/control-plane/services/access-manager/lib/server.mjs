@@ -672,6 +672,63 @@ export class AccessService {
     return { confirmed: true, expiresAt: new Date(enrollment.value.expiresAt).toISOString() }
   }
 
+  async beginTotpDisableConfirmation(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    if (!accountTotp(current.account).enabled) {
+      throw new AccessError('TOTP_NOT_ENABLED', 'two-factor authentication is not enabled', 409)
+    }
+    const confirmation = this.totpFlows.createDisableConfirmation(current.account, authorization.sessionId)
+    await this.report('access.totp.disable-confirmation.created', { accountId: current.account.accountId })
+    return { confirmationToken: confirmation.token, expiresAt: confirmation.expiresAt }
+  }
+
+  async cancelTotpDisableConfirmation(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    const canceled = this.totpFlows.cancelDisableConfirmation(
+      value.confirmationToken,
+      current.account,
+      authorization.sessionId,
+    )
+    if (canceled) await this.report('access.totp.disable-confirmation.canceled', { accountId: current.account.accountId })
+    return { canceled }
+  }
+
+  async confirmTotpDisable(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    const confirmation = this.totpFlows.disableConfirmation(
+      value.confirmationToken,
+      current.account,
+      authorization.sessionId,
+    )
+    if (confirmation === undefined) {
+      throw new AccessError('TOTP_DISABLE_CONFIRMATION_INVALID', 'two-factor disable confirmation is invalid or expired', 401)
+    }
+    const managementSession = this.sessions.details(authorization.sessionId)
+    const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+    await this.verifyTotpAuthentication(
+      current.account,
+      value.totpCode,
+      sourceSession?.authenticationSource ?? 'unknown',
+    )
+    if (!this.totpFlows.confirmDisable(confirmation.key)) {
+      throw new AccessError('TOTP_DISABLE_CONFIRMATION_INVALID', 'two-factor disable confirmation is invalid or expired', 401)
+    }
+    await this.report('access.totp.disable-confirmation.confirmed', { accountId: current.account.accountId })
+    return { confirmed: true, expiresAt: new Date(confirmation.value.expiresAt).toISOString() }
+  }
+
   async revokeBrowserSessions(value) {
     const current = await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
@@ -1011,6 +1068,7 @@ export class AccessService {
       )
     }
     let enrollment
+    let disableConfirmation
     if (totpChanged && value.totpEnabled === true) {
       enrollment = this.totpFlows.enrollment(value.totpEnrollmentToken, current.account, authorization.sessionId)
       if (enrollment === undefined) {
@@ -1018,6 +1076,18 @@ export class AccessService {
       }
       if (enrollment.value.confirmed !== true) {
         throw new AccessError('TOTP_ENROLLMENT_UNCONFIRMED', 'two-factor authentication enrollment is not confirmed', 409)
+      }
+    } else if (totpChanged) {
+      disableConfirmation = this.totpFlows.disableConfirmation(
+        value.totpDisableConfirmationToken,
+        current.account,
+        authorization.sessionId,
+      )
+      if (disableConfirmation === undefined) {
+        throw new AccessError('TOTP_DISABLE_CONFIRMATION_INVALID', 'two-factor disable confirmation is invalid or expired', 401)
+      }
+      if (disableConfirmation.value.confirmed !== true) {
+        throw new AccessError('TOTP_DISABLE_CONFIRMATION_UNCONFIRMED', 'two-factor disable confirmation is not confirmed', 409)
       }
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
@@ -1064,6 +1134,7 @@ export class AccessService {
     }
     const next = await this.store.replaceAccount(account, current.account.revision)
     if (enrollment !== undefined) this.totpFlows.consumeEnrollment(enrollment.key)
+    if (disableConfirmation !== undefined) this.totpFlows.consumeDisableConfirmation(disableConfirmation.key)
     const allSessionsRevoked = mainPasswordChanged
     const revokedSessionCount = allSessionsRevoked
       ? this.sessions.revokeAll()
@@ -1119,6 +1190,9 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments') return send(response, 201, await service.beginTotpEnrollment(value))
       if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments/confirm') return send(response, 200, await service.confirmTotpEnrollment(value))
       if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments/cancel') return send(response, 200, await service.cancelTotpEnrollment(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/disable-confirmations') return send(response, 201, await service.beginTotpDisableConfirmation(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/disable-confirmations/confirm') return send(response, 200, await service.confirmTotpDisable(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/disable-confirmations/cancel') return send(response, 200, await service.cancelTotpDisableConfirmation(value))
       if (request.method === 'POST' && pathname === '/v1/management/sessions/revoke') return send(response, 200, await service.revokeBrowserSessions(value))
       if (request.method === 'POST' && pathname === '/v1/management/transitions') return send(response, 201, await service.createManagementTransition(value))
       if (request.method === 'POST' && pathname === '/v1/management/transitions/probe') return send(response, 200, await service.probeManagementTransition(value))

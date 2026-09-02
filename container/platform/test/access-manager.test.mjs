@@ -1344,6 +1344,40 @@ test('enables account TOTP through one-time enrollment and completes the same lo
   })
   assert.equal(loggedIn.authenticated, true)
   assert.match(loggedIn.session.token, /^dshs_/)
+
+  const disableTarget = '/_dsh_platform/api/v1/auth-totp/disable-confirmations'
+  const disableConfirmTarget = `${disableTarget}/confirm`
+  const disabling = await service.beginTotpDisableConfirmation({
+    internalCapability: await capability('POST', disableTarget),
+    method: 'POST', target: disableTarget,
+  })
+  assert.match(disabling.confirmationToken, /^dshtd_/)
+  await assert.rejects(service.updateAuthenticationSettings({
+    internalCapability: await capability('PUT', settingsTarget),
+    method: 'PUT', target: settingsTarget,
+    currentPassword: 'correct horse battery staple',
+    totpEnabled: false,
+    totpDisableConfirmationToken: disabling.confirmationToken,
+  }), error => error.code === 'TOTP_DISABLE_CONFIRMATION_UNCONFIRMED')
+  await service.confirmTotpDisable({
+    internalCapability: await capability('POST', disableConfirmTarget),
+    method: 'POST', target: disableConfirmTarget,
+    confirmationToken: disabling.confirmationToken,
+    totpCode: '123456',
+  })
+  assert.equal((await store.state()).account.totp.enabled, true)
+  const disabled = await service.updateAuthenticationSettings({
+    internalCapability: await capability('PUT', settingsTarget),
+    method: 'PUT', target: settingsTarget,
+    currentPassword: 'correct horse battery staple',
+    totpEnabled: false,
+    totpDisableConfirmationToken: disabling.confirmationToken,
+  })
+  assert.equal(disabled.account.totp.enabled, false)
+  assert.equal(disabled.currentManagementSessionRevoked, false)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
 })
 
 test('changes the Management console password using only the current main password', async () => {

@@ -216,7 +216,7 @@ server = createManagementServer({
     if (restrictedToken === restrictedCliToken
       && restrictedCliRoute(request.method ?? 'GET', request.url ?? '/')) return true
     if (typeof token !== 'string') return false
-    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/auth-totp/enrollments', '/_dsh_platform/api/v1/auth-totp/enrollments/confirm', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
+    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/auth-totp/enrollments', '/_dsh_platform/api/v1/auth-totp/enrollments/confirm', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', '/_dsh_platform/api/v1/auth-totp/disable-confirmations', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/confirm', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/cancel', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     return consumeInternalCapability(access, {
       token, audience, method: request.method ?? 'GET', target: request.url ?? '/',
     })
@@ -272,6 +272,30 @@ server = createManagementServer({
   },
   cancelTotpEnrollment: async (value, request) => {
     return access.request('POST', '/v1/management/totp/enrollments/cancel', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  beginTotpDisableConfirmation: async (value, request) => {
+    return access.request('POST', '/v1/management/totp/disable-confirmations', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  confirmTotpDisable: async (value, request) => {
+    return access.request('POST', '/v1/management/totp/disable-confirmations/confirm', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  cancelTotpDisableConfirmation: async (value, request) => {
+    return access.request('POST', '/v1/management/totp/disable-confirmations/cancel', {
       ...value,
       internalCapability: request.headers['x-dsh-internal-capability'],
       method: request.method,

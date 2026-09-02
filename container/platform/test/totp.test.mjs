@@ -44,6 +44,17 @@ test('binds one-time TOTP enrollment and login challenges to account state and s
   assert.equal(flows.confirmEnrollment(boundEnrollment.key), false)
   assert.equal(flows.enrollment(enrollment.token, account, 'management-a'), undefined)
 
+  const disabling = flows.createDisableConfirmation(account, 'management-a')
+  assert.match(disabling.token, /^dshtd_/)
+  const boundDisable = flows.disableConfirmation(disabling.token, account, 'management-a')
+  assert.equal(boundDisable?.value.confirmed, false)
+  assert.equal(flows.confirmDisable(boundDisable.key), true)
+  assert.equal(flows.disableConfirmation(disabling.token, account, 'management-a')?.value.confirmed, true)
+  assert.equal(flows.disableConfirmation(disabling.token, account, 'management-b'), undefined)
+  assert.equal(flows.disableConfirmation(disabling.token, { ...account, revision: 'revision-b' }, 'management-a'), undefined)
+  assert.equal(flows.cancelDisableConfirmation(disabling.token, account, 'management-a'), true)
+  assert.equal(flows.disableConfirmation(disabling.token, account, 'management-a'), undefined)
+
   const login = flows.createLogin(account, { origin: 'https://dsh.example', authenticationSource: 'browser:a' })
   assert.equal(flows.login(login.token, account)?.value.origin, 'https://dsh.example')
   now += 101

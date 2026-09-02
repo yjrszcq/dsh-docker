@@ -145,6 +145,18 @@ test('management socket exposes status, check, update, logs, and local rollback'
       totpEnrollments.push({ action: 'cancel', value })
       return { canceled: true }
     },
+    beginTotpDisableConfirmation: async value => {
+      totpEnrollments.push({ action: 'disable-begin', value })
+      return { confirmationToken: 'dshtd_test' }
+    },
+    confirmTotpDisable: async value => {
+      totpEnrollments.push({ action: 'disable-confirm', value })
+      return { confirmed: true }
+    },
+    cancelTotpDisableConfirmation: async value => {
+      totpEnrollments.push({ action: 'disable-cancel', value })
+      return { canceled: true }
+    },
     revokeAuthenticationSessions: async value => ({ revoked: value.scope === 'all' ? 2 : 1 }),
     createManagementOriginTransition: async value => {
       originTransitions.push({ stage: 'create', value })
@@ -185,10 +197,20 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', {
       enrollmentToken: 'dshte_test',
     })).canceled, true)
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/disable-confirmations')).confirmationToken, 'dshtd_test')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/confirm', {
+      confirmationToken: 'dshtd_test', totpCode: '123456',
+    })).confirmed, true)
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/cancel', {
+      confirmationToken: 'dshtd_test',
+    })).canceled, true)
     assert.deepEqual(totpEnrollments, [
       { action: 'begin', value: { currentPassword: 'correct password' } },
       { action: 'confirm', value: { enrollmentToken: 'dshte_test', totpCode: '123456' } },
       { action: 'cancel', value: { enrollmentToken: 'dshte_test' } },
+      { action: 'disable-begin', value: {} },
+      { action: 'disable-confirm', value: { confirmationToken: 'dshtd_test', totpCode: '123456' } },
+      { action: 'disable-cancel', value: { confirmationToken: 'dshtd_test' } },
     ])
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-sessions/revoke', {
       sessionId: 'session-two',
@@ -1602,7 +1624,9 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /body: \{ sessionId: button\.dataset\.sessionId \}/)
   assert.match(html, /id="auth-username"[^>]+pattern="\[\^\\p\{Cc\}/)
   assert.match(html, /id="auth-username-error"[^>]+data-i18n="authUsernameFormat"[^>]+hidden/)
-  for (const id of ['auth-current-password', 'auth-password', 'auth-password-confirm', 'auth-additional-password', 'auth-additional-password-confirm']) {
+  assert.match(html, /id="auth-current-password"[^>]+maxlength="1024"/)
+  assert.doesNotMatch(html, /id="auth-current-password"[^>]+minlength=/)
+  for (const id of ['auth-password', 'auth-password-confirm', 'auth-additional-password', 'auth-additional-password-confirm']) {
     assert.match(html, new RegExp(`id="${id}"[^>]+minlength="8"[^>]+pattern="\\[\\^\\\\p\\{Cc\\}`))
     assert.match(html, new RegExp(`id="${id}-error"[^>]+data-i18n="authPasswordFormat"[^>]+hidden`))
   }
@@ -1612,10 +1636,12 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function validateCurrentPassword\(draft/)
   assert.match(script, /function renderAuthenticationAccountSaveState\(\)/)
   assert.match(script, /await api\('auth-totp\/enrollments'/)
-  assert.match(script, /await api\('auth-totp\/enrollments\/confirm'/)
-  assert.match(script, /await api\('auth-totp\/enrollments\/cancel'/)
+  assert.match(script, /disabling \? 'auth-totp\/disable-confirmations\/confirm' : 'auth-totp\/enrollments\/confirm'/)
+  assert.match(script, /disabling \? 'auth-totp\/disable-confirmations\/cancel' : 'auth-totp\/enrollments\/cancel'/)
+  assert.match(script, /await api\(disabling \? 'auth-totp\/disable-confirmations\/confirm'/)
   assert.match(script, /function showTotpRetryCountdown\(error\)/)
-  assert.match(script, /body\.totpEnabled = true[\s\S]*body\.totpEnrollmentToken = pendingTotpEnrollment\.enrollment\.enrollmentToken/)
+  assert.match(script, /body\.totpEnabled = false[\s\S]*body\.totpDisableConfirmationToken = pendingTotpChange\.confirmation\.confirmationToken/)
+  assert.match(script, /body\.totpEnabled = true[\s\S]*body\.totpEnrollmentToken = pendingTotpChange\.enrollment\.enrollmentToken/)
   assert.match(script, /pending\.confirmed = true[\s\S]*showAuthenticationStatus\(t\('authTotpConfirmedDraft'\)\)/)
   assert.match(script, /elements\['auth-totp-enabled'\]\.addEventListener\('change',[\s\S]*changeTotpEnabled/)
   assert.match(script, /auth-account-save'\]\.disabled = totpUnverified \|\| !accountDraftChanged\(\)/)
@@ -1626,7 +1652,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /authManagementPasswordRequired: '请输入新的管理中心密码。'/)
   assert.match(script, /renderPasswordConfirmation\('auth-password', 'auth-password-confirm'/)
   assert.match(script, /renderPasswordConfirmation\('auth-additional-password', 'auth-additional-password-confirm'/)
-  assert.match(script, /!\['FRESH_AUTH_FAILED', 'TOTP_INVALID', 'TOTP_ENROLLMENT_INVALID'\]\.includes\(errorCode\)/)
+  assert.match(script, /'TOTP_DISABLE_CONFIRMATION_INVALID'/)
   assert.match(script, /error\.code === 'FRESH_AUTH_FAILED'/)
   assert.match(script, /authSavedAllSessionsRevoked/)
   assert.match(script, /authSavedManagementSessionsRevoked/)
