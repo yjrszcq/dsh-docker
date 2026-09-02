@@ -355,7 +355,7 @@ docker exec -it --user root deepseek-harness dsh-platform recover --two-factor
 
 `access clear-retry` 会询问 `Clear all administrator login retry limits? y/[n]:`。确认后清除所有浏览器来源的指数等待、来源滚动窗口和实例总量失败窗口。添加 `--global-only` 时改为询问 `Clear instance-wide administrator login rate limits? y/[n]:`，并且只清除实例总量窗口，浏览器等待和来源窗口保持有效。两种形式都不修改凭据或浏览器会话。
 
-`recover` 同样只允许从 Root TTY 执行；不带选择参数时解除主密码和管理中心密码的全部登录退避，`--main-password` 或 `--management-password` 可只解除对应凭据的退避，`--two-factor` 只清理 2FA 每日限额，不解除固定 10 秒动态码退避。三种选择均可与 `--image-baseline` 组合；实例总量窗口仍由两类密码登录失败共同计数，定向解除只移除对应类别产生的记录。
+`recover` 同样只允许从 Root TTY 执行；不带选择参数时解除主密码和管理中心密码的全部登录退避，`--main-password` 或 `--management-password` 可只解除对应凭据的退避，`--two-factor` 只清理 2FA 每日限额，不解除固定 10 秒动态码退避。三种选择均可与 `--image-baseline` 组合；实例总量窗口仍由两类密码登录失败共同计数，定向解除只移除对应类别产生的记录。已打开的 2FA 登录页会刷新当前浏览器来源的等待状态；每日限额被清理后，页面会自动改为剩余的固定等待并在结束时恢复提交，无需刷新或重新输入主密码。
 
 空平台卷始终进入普通首次注册，不需要密钥；仅配置遗留密码环境变量不能把空卷误判为旧部署。已有持久化数据但没有新版账户的部署进入 `migration-required`，已初始化账户缺失或损坏时进入 `recovery-required`。两种状态都在 Root TTY 中执行 `dsh-platform access generate-key`，生成十分钟有效且单次使用的认证重置密钥，再通过浏览器创建替代账户；新 key 会立即使旧 key 失效。旧环境密码只能作为已有持久化部署的附加迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 

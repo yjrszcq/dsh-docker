@@ -1415,6 +1415,12 @@ test('enables account TOTP through one-time enrollment and completes the same lo
     authenticationContext: (await service.status()).authenticationContext,
   }), error => error.code === 'TOTP_RETRY_REQUIRED' && error.details.retryAfterSeconds === 10)
   assert.equal((await service.clearAuthenticationRetry({ credential: 'totp' })).credential, 'totp')
+  assert.deepEqual(await service.authenticationRetryStatus({
+    credential: 'totp', source: 'browser:a',
+  }), { kind: 'retry', retryAfterSeconds: 10 })
+  await assert.rejects(service.authenticationRetryStatus({
+    credential: 'totp', source: '',
+  }), error => error.code === 'REQUEST_INVALID')
   await assert.rejects(service.completeDshTotp({
     challengeToken: pending.challenge.token,
     code: '123456',

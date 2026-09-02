@@ -791,6 +791,18 @@ export class AccessService {
     return { status: 'cleared', scope, credential, ...result }
   }
 
+  async authenticationRetryStatus(value = {}) {
+    const current = await this.store.state()
+    if (current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
+    }
+    if (value.credential !== 'totp' || typeof value.source !== 'string'
+      || value.source.length === 0 || value.source.length > 128) {
+      throw new AccessError('REQUEST_INVALID', 'authentication retry status request is invalid')
+    }
+    return this.totpLimiter.retry(current.account.accountId, value.source)
+  }
+
   async replaceRecoveryAccount(value, operation, { revoke = 'none' } = {}) {
     const current = await this.store.state()
     if (current.account === undefined) throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
@@ -1165,6 +1177,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/dsh/reset-authentication') return send(response, 201, await service.resetDshAuthentication(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/totp/complete') return send(response, 200, await service.completeDshTotp(value))
+      if (request.method === 'POST' && pathname === '/v1/authentication-retry/status') return send(response, 200, await service.authenticationRetryStatus(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/browser-logout') return send(response, 200, await service.logoutDshBrowser(value))

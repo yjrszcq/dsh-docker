@@ -72,6 +72,9 @@ function fixture(initialState = 'never-initialized', options = {}) {
             }
           : null,
       }
+      if (path === '/v1/authentication-retry/status') {
+        return options.totpRetry ?? { kind: null, retryAfterSeconds: 0 }
+      }
       if (path === '/v1/dsh/initialize') {
         state = 'initialized'
         sessions.set('dshs_created', body.origin)
@@ -506,6 +509,30 @@ test('parallel login pages share a stable context and stale submissions never be
     })
     assert.equal(recovered.status, 200)
     assert.equal(current.calls.filter(call => call.path === '/v1/dsh/login').length, 1)
+  } finally { await close(current.server) }
+})
+
+test('TOTP retry countdown refreshes the current browser source from Access Manager', async () => {
+  const current = fixture('initialized', {
+    totpEnabled: true,
+    totpRetry: { kind: 'retry', retryAfterSeconds: 6 },
+  })
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const page = await request(port, { path: '/_dsh_platform/auth/', headers: { host } })
+    const cookies = page.headers['set-cookie'].map(value => value.split(';')[0]).join('; ')
+    assert.match(page.body, /refreshTotpRetry/)
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/context',
+      headers: { host, cookie: cookies, 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' },
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(JSON.parse(response.body).totpRetry, { kind: 'retry', retryAfterSeconds: 6 })
+    const statusCall = current.calls.find(call => call.path === '/v1/authentication-retry/status')
+    assert.equal(statusCall.method, 'POST')
+    assert.equal(statusCall.body.credential, 'totp')
+    assert.match(statusCall.body.source, /^browser:[A-Za-z0-9_-]+$/)
   } finally { await close(current.server) }
 })
 
