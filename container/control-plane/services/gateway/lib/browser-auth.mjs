@@ -112,7 +112,6 @@ function sessionCookies(session, origin) {
   return [
     `${DSH_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Lax; Path=/${secureCookie(origin)}`,
     `${DSH_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=/${secureCookie(origin)}`,
-    `${AUTH_CSRF_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 
@@ -137,7 +136,6 @@ function managementCookies(session, origin, path = '/_dsh_platform/') {
     `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
     `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
-    `${AUTH_CSRF_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 

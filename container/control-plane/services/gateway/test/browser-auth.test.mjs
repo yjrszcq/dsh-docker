@@ -448,6 +448,57 @@ test('parallel login pages share a stable context and stale submissions never be
   } finally { await close(current.server) }
 })
 
+test('successful DSH and Management logins preserve parallel login-page context', async () => {
+  const current = fixture('initialized', { managementAdditionalEnabled: false })
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    const page = await request(port, { path: '/_dsh_platform/auth/', headers: { host } })
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const retryCookie = page.headers['set-cookie'][1].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const login = (path = '/_dsh_platform/auth/session') => request(port, {
+      path, method: 'POST',
+      headers: {
+        host, origin, cookie: `${csrfCookie}; ${retryCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+
+    const first = await login()
+    assert.equal(first.status, 200)
+    assert.equal(first.headers['set-cookie'].some(cookie => cookie.startsWith(`${AUTH_CSRF_COOKIE}=;`)), false)
+    const second = await login('/_dsh_platform/auth/session?return=%2F_dsh_platform%2Fauth%2Fmanagement%2Fstart')
+    assert.equal(second.status, 200)
+
+    const dshCookie = second.headers['set-cookie'][0].split(';')[0]
+    const next = JSON.parse(second.body).next
+    const handoff = await request(port, {
+      path: next,
+      headers: { host, cookie: `${dshCookie}; ${csrfCookie}; ${retryCookie}` },
+    })
+    assert.equal(handoff.status, 200)
+    assert.equal(handoff.headers['set-cookie'].some(cookie => cookie.startsWith(`${AUTH_CSRF_COOKIE}=;`)), false)
+    const afterManagement = await login()
+    assert.equal(afterManagement.status, 200)
+    const incorrect = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host, origin, cookie: `${csrfCookie}; ${retryCookie}`,
+        'content-type': 'application/json', 'x-dsh-csrf': csrf,
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ username: 'admin', password: 'wrong password' }),
+    })
+    assert.equal(incorrect.status, 401)
+    assert.equal(JSON.parse(incorrect.body).code, 'AUTHENTICATION_FAILED')
+    assert.equal(current.calls.filter(call => call.path === '/v1/dsh/login').length, 4)
+  } finally { await close(current.server) }
+})
+
 test('login reports an unavailable Access Manager instead of a credential failure', async () => {
   const access = {
     request: async (_method, path) => {
