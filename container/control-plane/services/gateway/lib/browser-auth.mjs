@@ -618,8 +618,12 @@ export function createBrowserAuthentication({
 
   async function handle(request, response, pathname, searchParams) {
     if (pathname === transitionPrefix + 'probe' && request.method === 'GET') {
-      const sourceOrigin = canonicalOrigin(request.headers.origin)
+      // Same-origin GET fetches may omit Origin. The target authority is a
+      // valid source only for that same-origin case; cross-origin probes still
+      // require the browser-supplied Origin header.
       const candidateOrigin = requestTargetOrigin(request)
+      const requestOrigin = canonicalOrigin(request.headers.origin)
+      const sourceOrigin = requestOrigin ?? candidateOrigin
       if (sourceOrigin === undefined || candidateOrigin === undefined) {
         sendJson(response, 400, { error: 'transition probe origin is invalid', code: 'TRANSITION_PROBE_INVALID' })
         return true

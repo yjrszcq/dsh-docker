@@ -216,6 +216,22 @@ test('Management transition probe exposes a proof only to its exact source Origi
   } finally { await close(current.server) }
 })
 
+test('same-origin Management transition probes use the request origin when browsers omit Origin on GET', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const response = await request(port, {
+      path: '/_dsh_platform/transition/probe?transitionId=transition-valid&nonce=nonce-valid',
+      headers: { host: `127.0.0.1:${port}`, accept: 'application/json' },
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(JSON.parse(response.body), { proof: 'proof-valid' })
+    const call = current.calls.find(value => value.path === '/v1/management/transitions/probe')
+    assert.equal(call.body.sourceOrigin, `http://127.0.0.1:${port}`)
+    assert.equal(call.body.candidateOrigin, `http://127.0.0.1:${port}`)
+  } finally { await close(current.server) }
+})
+
 test('Management continuation requires a top-level navigation and creates one session once', async () => {
   const current = fixture('initialized')
   const port = await listen(current.server)
