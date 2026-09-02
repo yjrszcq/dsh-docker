@@ -166,6 +166,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
       originTransitions.push({ stage: 'commit', value })
       return { account: { managementAccess: { mode: 'isolated' } } }
     },
+    reportManagementOriginTransitionFailure: async value => {
+      originTransitions.push({ stage: 'failure', value })
+      return { reported: true }
+    },
   })
   const socketPath = join(root, 'run', 'management.sock')
   await listenManagement(server, socketPath)
@@ -221,7 +225,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/management-origin/transitions/commit', {
       transitionId: 'transition-one', proof: 'proof-one',
     })).account.managementAccess.mode, 'isolated')
-    assert.deepEqual(originTransitions.map(value => value.stage), ['create', 'commit'])
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/management-origin/transitions/failure', {
+      stage: 'browser-probe', mode: 'isolated',
+    })).reported, true)
+    assert.deepEqual(originTransitions.map(value => value.stage), ['create', 'commit', 'failure'])
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/holds/retry', { id: 'hold-a' })).retried, 'hold-a')
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/rollback-plan')).plan.planId, 'plan-a')
     coordinator.running = false
@@ -1672,6 +1679,9 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /authConfirmAdditionalPassword: '确认密码'/)
   assert.match(script, /async function saveAccountSettings\(\)[\s\S]*auth-account-save'[\s\S]*api\('auth-settings'/)
   assert.match(script, /async function saveManagementOrigin\(\)[\s\S]*auth-origin-save'[\s\S]*changeManagementOrigin/)
+  assert.match(script, /management-origin\/transitions\/failure/)
+  assert.match(script, /stage: 'browser-probe'/)
+  assert.match(script, /mode: access\.mode/)
   assert.match(script, /auth-origin-settings'\]\.hidden = !isolated/)
   assert.match(script, /auth-public-origin-field'\]\.hidden = selected !== 'isolated-public'/)
   assert.match(script, /auth-local-port-field'\]\.hidden = !local/)

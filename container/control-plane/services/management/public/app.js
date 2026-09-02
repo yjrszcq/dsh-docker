@@ -4481,7 +4481,15 @@ async function changeManagementOrigin(access) {
     method: 'POST',
     body: access,
   })
-  const proof = await probeManagementOrigin(created)
+  let proof
+  try {
+    proof = await probeManagementOrigin(created)
+  } catch (error) {
+    await api('management-origin/transitions/failure', {
+      method: 'POST', body: { stage: 'browser-probe', mode: access.mode },
+    }).catch(() => {})
+    throw error
+  }
   const result = await api('management-origin/transitions/commit', {
     method: 'POST',
     body: {

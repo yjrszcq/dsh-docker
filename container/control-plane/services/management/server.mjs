@@ -123,6 +123,7 @@ export function createManagementServer({
   updateAutomaticCheck = async () => { throw new Error('automatic checks are not configured') },
   createManagementOriginTransition = async () => { throw new Error('Management origin transition is not configured') },
   commitManagementOriginTransition = async () => { throw new Error('Management origin transition is not configured') },
+  reportManagementOriginTransitionFailure = async () => { throw new Error('Management origin transition reporting is not configured') },
   getAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
   updateAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
   beginTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
@@ -812,6 +813,8 @@ export function createManagementServer({
         const value = await commitManagementOriginTransition(await jsonBody(request), request)
         await audit('access.management-origin.changed', { mode: value.account?.managementAccess?.mode ?? null })
         send(response, 200, value)
+      } else if (request.method === 'POST' && route === 'management-origin/transitions/failure') {
+        send(response, 200, await reportManagementOriginTransitionFailure(await jsonBody(request)))
       } else if (request.method === 'POST' && route === 'holds/retry') {
         const body = await jsonBody(request)
         const result = await coordinator.retryHold(body.id)

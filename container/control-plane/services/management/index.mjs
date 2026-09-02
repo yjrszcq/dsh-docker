@@ -216,7 +216,7 @@ server = createManagementServer({
     if (restrictedToken === restrictedCliToken
       && restrictedCliRoute(request.method ?? 'GET', request.url ?? '/')) return true
     if (typeof token !== 'string') return false
-    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/auth-totp/enrollments', '/_dsh_platform/api/v1/auth-totp/enrollments/confirm', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', '/_dsh_platform/api/v1/auth-totp/disable-confirmations', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/confirm', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/cancel', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
+    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/auth-totp/enrollments', '/_dsh_platform/api/v1/auth-totp/enrollments/confirm', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', '/_dsh_platform/api/v1/auth-totp/disable-confirmations', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/confirm', '/_dsh_platform/api/v1/auth-totp/disable-confirmations/cancel', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/management-origin/transitions/failure', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     return consumeInternalCapability(access, {
       token, audience, method: request.method ?? 'GET', target: request.url ?? '/',
     })
@@ -236,6 +236,15 @@ server = createManagementServer({
       method: request.method,
       target: request.url,
     })
+  },
+  reportManagementOriginTransitionFailure: async value => {
+    if (value?.stage !== 'browser-probe' || !['compat', 'isolated'].includes(value?.mode)) {
+      throw Object.assign(new Error('Management origin transition failure report is invalid'), { statusCode: 400 })
+    }
+    await logs.diagnostic('platform-management', 'management-origin.probe.failed', {
+      level: 'warning', stage: value.stage, mode: value.mode,
+    })
+    return { reported: true }
   },
   getAuthenticationSettings: async request => {
     return access.request('POST', '/v1/management/settings', {
