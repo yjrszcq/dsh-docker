@@ -9,6 +9,7 @@ import { ManagementExchangeStore } from './exchanges.mjs'
 import { CapabilityStore } from './capabilities.mjs'
 import { ManagementTransitionStore } from './transitions.mjs'
 import { detectRuntimeCapabilities } from './runtime-capabilities.mjs'
+import { TotpFlowStore, TotpRetryLimiter, totpUri, verifyTotpCode } from './totp.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
 function identifier() { return randomBytes(32).toString('base64url') }
@@ -19,6 +20,10 @@ function isLoopbackHostname(hostname) {
     && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
 }
 function digest(value) { return createHash('sha256').update(value).digest('base64url') }
+
+function accountTotp(account) {
+  return account?.totp ?? { enabled: false, version: 0, secret: null, changedAt: null }
+}
 
 function authenticationSource(value) {
   if (typeof value?.authenticationSource === 'string'
@@ -109,6 +114,10 @@ function publicAccount(account) {
       enabled: account.managementAdditionalCredential.enabled,
       version: account.managementAdditionalCredential.version,
     },
+    totp: {
+      enabled: accountTotp(account).enabled,
+      version: accountTotp(account).version,
+    },
     managementAccess: { ...account.managementAccess },
   }
 }
@@ -122,6 +131,9 @@ export class AccessService {
     exchanges = new ManagementExchangeStore(),
     capabilities = new CapabilityStore(),
     transitions,
+    totpFlows,
+    totpLimiter,
+    verifyTotp = verifyTotpCode,
     verify = verifyCredential,
     report = async () => {},
     now = () => Date.now(),
@@ -135,6 +147,9 @@ export class AccessService {
     this.exchanges = exchanges
     this.capabilities = capabilities
     this.transitions = transitions ?? new ManagementTransitionStore({ now })
+    this.totpFlows = totpFlows ?? new TotpFlowStore({ now })
+    this.totpLimiter = totpLimiter ?? new TotpRetryLimiter({ now })
+    this.verifyTotp = verifyTotp
     this.verify = verify
     this.report = report
     this.now = now
@@ -325,6 +340,14 @@ export class AccessService {
     const current = await this.store.state()
     this.requireAuthenticationContext(value, current)
     const authenticated = await this.authenticate(value, current)
+    if (accountTotp(current.account).enabled) {
+      const challenge = this.totpFlows.createLogin(current.account, {
+        origin: value.origin,
+        client: value.client,
+        authenticationSource: authenticationSource(value),
+      })
+      return { ...authenticated, totpRequired: true, challenge }
+    }
     const session = this.sessions.issue('dsh', current.account, {
       origin: value.origin,
       client: value.client,
@@ -332,6 +355,64 @@ export class AccessService {
     })
     await this.report('access.session.created', { accountId: authenticated.accountId, kind: 'dsh' })
     return { ...authenticated, session }
+  }
+
+  async verifyTotpAuthentication(account, code, source, secret = accountTotp(account).secret) {
+    const currentRetry = this.totpLimiter.retry(account.accountId, source)
+    if (currentRetry.retryAfterSeconds > 0) {
+      throw new AccessError(
+        currentRetry.kind === 'rate' ? 'TOTP_RATE_LIMITED' : 'TOTP_RETRY_REQUIRED',
+        currentRetry.kind === 'rate'
+          ? 'too many two-factor authentication attempts'
+          : 'two-factor authentication retry is required',
+        429,
+        { retryAfterSeconds: currentRetry.retryAfterSeconds },
+      )
+    }
+    const valid = this.verifyTotp(code, secret, { now: this.now() })
+    if (!valid) {
+      const retry = this.totpLimiter.fail(account.accountId, source)
+      await this.report('access.totp.failed', { accountId: account.accountId, level: 'warning' })
+      if (retry.retryAfterSeconds > 0) {
+        throw new AccessError(
+          retry.kind === 'rate' ? 'TOTP_RATE_LIMITED' : 'TOTP_RETRY_REQUIRED',
+          retry.kind === 'rate'
+            ? 'too many two-factor authentication attempts'
+            : 'two-factor authentication retry is required',
+          429,
+          { retryAfterSeconds: retry.retryAfterSeconds },
+        )
+      }
+      throw new AccessError('TOTP_INVALID', 'two-factor authentication code is invalid', 401)
+    }
+    this.totpLimiter.succeed(account.accountId, source)
+    await this.report('access.totp.succeeded', { accountId: account.accountId })
+  }
+
+  async completeDshTotp(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined || !accountTotp(current.account).enabled) {
+      throw new AccessError('TOTP_LOGIN_INVALID', 'two-factor authentication login is invalid or expired', 401)
+    }
+    this.requireAuthenticationContext(value, current)
+    const pending = this.totpFlows.login(value.challengeToken, current.account)
+    if (pending === undefined || pending.value.origin !== value.origin
+      || pending.value.authenticationSource !== authenticationSource(value)) {
+      throw new AccessError('TOTP_LOGIN_INVALID', 'two-factor authentication login is invalid or expired', 401)
+    }
+    await this.verifyTotpAuthentication(
+      current.account,
+      value.code,
+      pending.value.authenticationSource,
+    )
+    this.totpFlows.consumeLogin(pending.key)
+    const session = this.sessions.issue('dsh', current.account, {
+      origin: pending.value.origin,
+      client: pending.value.client,
+      authenticationSource: pending.value.authenticationSource,
+    })
+    await this.report('access.session.created', { accountId: current.account.accountId, kind: 'dsh' })
+    return { authenticated: true, session }
   }
 
   async validateSession(value) {
@@ -528,6 +609,44 @@ export class AccessService {
     }
   }
 
+  async beginTotpEnrollment(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    if (accountTotp(current.account).enabled) {
+      throw new AccessError('TOTP_ALREADY_ENABLED', 'two-factor authentication is already enabled', 409)
+    }
+    const managementSession = this.sessions.details(authorization.sessionId)
+    const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+    await this.verifyFreshAuthentication(
+      current.account,
+      value.currentPassword,
+      sourceSession?.authenticationSource ?? 'unknown',
+    )
+    const username = value.username === undefined ? current.account.username : normalizeUsername(value.username)
+    const enrollment = this.totpFlows.createEnrollment(current.account, authorization.sessionId)
+    await this.report('access.totp.enrollment.created', { accountId: current.account.accountId })
+    return {
+      enrollmentToken: enrollment.token,
+      secret: enrollment.secret,
+      uri: totpUri({ secret: enrollment.secret, username }),
+      expiresAt: enrollment.expiresAt,
+    }
+  }
+
+  async cancelTotpEnrollment(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    const canceled = this.totpFlows.cancelEnrollment(value.enrollmentToken, current.account, authorization.sessionId)
+    if (canceled) await this.report('access.totp.enrollment.canceled', { accountId: current.account.accountId })
+    return { canceled }
+  }
+
   async revokeBrowserSessions(value) {
     const current = await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
@@ -575,12 +694,24 @@ export class AccessService {
     if (!['all', 'global'].includes(scope)) {
       throw new AccessError('REQUEST_INVALID', 'authentication retry clear scope is invalid')
     }
-    if (!['all', 'main', 'management'].includes(credential)) {
+    if (!['all', 'main', 'management', 'totp'].includes(credential)) {
       throw new AccessError('REQUEST_INVALID', 'authentication retry credential is invalid')
     }
-    const result = scope === 'global'
-      ? this.limiter.clearGlobal(credential)
-      : this.limiter.clear(current.account.accountId, credential)
+    let result
+    if (credential === 'totp') {
+      result = this.totpLimiter.clearDailyLimits(current.account.accountId, { globalOnly: scope === 'global' })
+    }
+    else if (credential === 'all') {
+      const passwordResult = scope === 'global'
+        ? this.limiter.clearGlobal('all')
+        : this.limiter.clear(current.account.accountId, 'all')
+      const totpResult = this.totpLimiter.clearDailyLimits(current.account.accountId, { globalOnly: scope === 'global' })
+      result = { ...passwordResult, twoFactorDailyCleared: totpResult.cleared }
+    } else {
+      result = scope === 'global'
+        ? this.limiter.clearGlobal(credential)
+        : this.limiter.clear(current.account.accountId, credential)
+    }
     await this.report('access.authentication-retry.cleared', {
       accountId: current.account.accountId,
       scope,
@@ -827,10 +958,15 @@ export class AccessService {
     const additionalChanged = value.additionalPassword !== undefined
       || (value.additionalEnabled !== undefined
         && value.additionalEnabled !== current.account.managementAdditionalCredential.enabled)
+    if (value.totpEnabled !== undefined && typeof value.totpEnabled !== 'boolean') {
+      throw new AccessError('REQUEST_INVALID', 'two-factor authentication setting is invalid')
+    }
+    const totpChanged = value.totpEnabled !== undefined
+      && value.totpEnabled !== accountTotp(current.account).enabled
     if (value.mode !== undefined || value.isolatedEntry !== undefined) {
       throw new AccessError('TRANSITION_REQUIRED', 'Management access changes require a verified transition', 409)
     }
-    if (!usernameChanged && !mainPasswordChanged && !additionalChanged) {
+    if (!usernameChanged && !mainPasswordChanged && !additionalChanged && !totpChanged) {
       return {
         account: publicAccount(current.account),
         changed: false,
@@ -839,14 +975,23 @@ export class AccessService {
         allSessionsRevoked: false,
       }
     }
-    if (mainPasswordChanged || additionalChanged) {
-      const managementSession = this.sessions.details(authorization.sessionId)
-      const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+    const managementSession = this.sessions.details(authorization.sessionId)
+    const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+    const authenticationSourceId = sourceSession?.authenticationSource ?? 'unknown'
+    if (mainPasswordChanged || additionalChanged || totpChanged) {
       await this.verifyFreshAuthentication(
         current.account,
         value.currentPassword,
-        sourceSession?.authenticationSource ?? 'unknown',
+        authenticationSourceId,
       )
+    }
+    let enrollment
+    if (totpChanged && value.totpEnabled === true) {
+      enrollment = this.totpFlows.enrollment(value.totpEnrollmentToken, current.account, authorization.sessionId)
+      if (enrollment === undefined) {
+        throw new AccessError('TOTP_ENROLLMENT_INVALID', 'two-factor authentication enrollment is invalid or expired', 401)
+      }
+      await this.verifyTotpAuthentication(current.account, value.totpCode, authenticationSourceId, enrollment.value.secret)
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
     if (value.password !== undefined) {
@@ -884,18 +1029,27 @@ export class AccessService {
         throw new AccessError('PASSWORD_REQUIRED', 'Management console password is required')
       }
     }
+    if (totpChanged) {
+      const version = accountTotp(current.account).version + 1
+      account.totp = value.totpEnabled
+        ? { enabled: true, version, secret: enrollment.value.secret, changedAt: new Date().toISOString() }
+        : { enabled: false, version, secret: null, changedAt: new Date().toISOString() }
+    }
     const next = await this.store.replaceAccount(account, current.account.revision)
-    const revokedSessionCount = mainPasswordChanged
+    if (enrollment !== undefined) this.totpFlows.consumeEnrollment(enrollment.key)
+    const allSessionsRevoked = mainPasswordChanged || totpChanged
+    const revokedSessionCount = allSessionsRevoked
       ? this.sessions.revokeAll()
       : additionalChanged ? this.sessions.revokeKind('management') : 0
     this.exchanges.clear?.()
+    if (allSessionsRevoked) this.totpFlows.clear()
     await this.report('access.authentication.settings.changed', { usernameChanged })
     return {
       account: publicAccount(next),
       changed: true,
-      currentManagementSessionRevoked: mainPasswordChanged || additionalChanged,
-      managementSessionsRevoked: mainPasswordChanged || additionalChanged ? revokedSessionCount : 0,
-      allSessionsRevoked: mainPasswordChanged,
+      currentManagementSessionRevoked: allSessionsRevoked || additionalChanged,
+      managementSessionsRevoked: allSessionsRevoked || additionalChanged ? revokedSessionCount : 0,
+      allSessionsRevoked,
     }
   }
 }
@@ -924,6 +1078,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/dsh/initialize') return send(response, 201, await service.initializeDsh(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/reset-authentication') return send(response, 201, await service.resetDshAuthentication(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/login') return send(response, 200, await service.loginDsh(value))
+      if (request.method === 'POST' && pathname === '/v1/dsh/totp/complete') return send(response, 200, await service.completeDshTotp(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/validate') return send(response, 200, await service.validateSession(value))
       if (request.method === 'POST' && pathname === '/v1/sessions/logout') return send(response, 200, await service.logout(value))
       if (request.method === 'POST' && pathname === '/v1/dsh/browser-logout') return send(response, 200, await service.logoutDshBrowser(value))
@@ -934,6 +1089,8 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/dsh/capabilities') return send(response, 201, await service.issuePluginCapability(value))
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
       if (request.method === 'POST' && pathname === '/v1/management/settings') return send(response, 200, await service.authenticationSettings(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments') return send(response, 201, await service.beginTotpEnrollment(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments/cancel') return send(response, 200, await service.cancelTotpEnrollment(value))
       if (request.method === 'POST' && pathname === '/v1/management/sessions/revoke') return send(response, 200, await service.revokeBrowserSessions(value))
       if (request.method === 'POST' && pathname === '/v1/management/transitions') return send(response, 201, await service.createManagementTransition(value))
       if (request.method === 'POST' && pathname === '/v1/management/transitions/probe') return send(response, 200, await service.probeManagementTransition(value))

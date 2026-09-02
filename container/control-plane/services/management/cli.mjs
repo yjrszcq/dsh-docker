@@ -15,11 +15,11 @@ commands:
   start|stop|restart [--wait]
   channel [stable|experimental]
   retry|rollback|return-stable
-  recover [--image-baseline] [--main-password|--management-password]
+  recover [--image-baseline] [--main-password|--management-password|--two-factor]
   logs [--source NAME] [--since ISO] [--limit N]
   access status|reset|set-username|reset-password
   access reset-management-password|disable-management-password|generate-key
-  access clear-retry [--global-only]
+  access clear-retry [--global-only] [--two-factor]
   trust status|reset`
 }
 
@@ -33,14 +33,16 @@ export function parseCli(argv) {
     return { command, channel: rest[0] }
   }
   if (command === 'recover') {
+    const credentialOptions = rest.filter(value => ['--main-password', '--management-password', '--two-factor'].includes(value))
     if (new Set(rest).size !== rest.length
-      || rest.some(value => !['--image-baseline', '--main-password', '--management-password'].includes(value))
-      || (rest.includes('--main-password') && rest.includes('--management-password'))) throw new Error(usage())
+      || rest.some(value => !['--image-baseline', '--main-password', '--management-password', '--two-factor'].includes(value))
+      || credentialOptions.length > 1) throw new Error(usage())
     return {
       command,
       imageBaseline: rest.includes('--image-baseline'),
       credential: rest.includes('--main-password')
-        ? 'main' : rest.includes('--management-password') ? 'management' : 'all',
+        ? 'main' : rest.includes('--management-password') ? 'management'
+          : rest.includes('--two-factor') ? 'totp' : 'all',
     }
   }
   if (['update', 'start', 'stop', 'restart'].includes(command)) {
@@ -66,8 +68,17 @@ export function parseCli(argv) {
   if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'generate-key', 'clear-retry'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 2 && rest[0] === 'clear-retry' && rest[1] === '--global-only') {
-    return { command, operation: 'clear-retry', globalOnly: true }
+  if (command === 'access' && rest[0] === 'clear-retry') {
+    const options = rest.slice(1)
+    if (options.length > 0 && options.length <= 2 && new Set(options).size === options.length
+      && options.every(value => ['--global-only', '--two-factor'].includes(value))) {
+      return {
+        command,
+        operation: 'clear-retry',
+        ...(options.includes('--global-only') ? { globalOnly: true } : {}),
+        ...(options.includes('--two-factor') ? { credential: 'totp' } : {}),
+      }
+    }
   }
   throw new Error(usage())
 }
@@ -233,14 +244,21 @@ export async function runCli({
       return 0
     }
     if (parsed.operation === 'clear-retry') {
-      const question = parsed.globalOnly
-        ? 'Clear instance-wide administrator login rate limits? y/[n]: '
-        : 'Clear all administrator login retry limits? y/[n]: '
+      const question = parsed.credential === 'totp'
+        ? parsed.globalOnly
+          ? 'Clear the instance-wide two-factor daily limit? y/[n]: '
+          : 'Clear two-factor daily limits? The fixed 10-second retry remains active. y/[n]: '
+        : parsed.globalOnly
+          ? 'Clear instance-wide administrator login rate limits? y/[n]: '
+          : 'Clear all administrator login retry limits? y/[n]: '
       if (!await confirm(question)) return cancel()
       write(json(await access.request(
         'POST',
         '/v1/recovery/clear-retry',
-        parsed.globalOnly ? { scope: 'global' } : { scope: 'all' },
+        {
+          scope: parsed.globalOnly ? 'global' : 'all',
+          ...(parsed.credential === undefined ? {} : { credential: parsed.credential }),
+        },
       )))
       return 0
     }
@@ -302,7 +320,8 @@ export async function runCli({
     if (getuid() !== 0) throw new Error('recovery requires root')
     if (!input.isTTY || !output.isTTY) throw new Error('recovery requires an interactive container console')
     const label = parsed.credential === 'main'
-      ? 'main password' : parsed.credential === 'management' ? 'Management console password' : 'all administrator passwords'
+      ? 'main password' : parsed.credential === 'management' ? 'Management console password'
+        : parsed.credential === 'totp' ? 'two-factor daily' : 'all administrator'
     if (!affirmative(await ask(`Clear ${label} login retry limits? y/[n]: `), 'confirmation')) {
       write(json({ status: 'cancelled' }))
       return 0

@@ -123,6 +123,7 @@ test('management socket exposes status, check, update, logs, and local rollback'
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-'))
   const coordinator = new Coordinator()
   const originTransitions = []
+  const totpEnrollments = []
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   await logs.append('gateway', 'stdout', 'ready')
   const server = createManagementServer({
@@ -132,6 +133,14 @@ test('management socket exposes status, check, update, logs, and local rollback'
     updateAutomaticCheck: async value => value,
     getAuthenticationSettings: async () => ({ account: { username: 'admin' } }),
     updateAuthenticationSettings: async value => ({ account: { username: value.username } }),
+    beginTotpEnrollment: async value => {
+      totpEnrollments.push({ action: 'begin', value })
+      return { enrollmentToken: 'dshte_test', qrCode: 'data:image/svg+xml,test', secret: 'SECRET' }
+    },
+    cancelTotpEnrollment: async value => {
+      totpEnrollments.push({ action: 'cancel', value })
+      return { canceled: true }
+    },
     revokeAuthenticationSessions: async value => ({ revoked: value.scope === 'all' ? 2 : 1 }),
     createManagementOriginTransition: async value => {
       originTransitions.push({ stage: 'create', value })
@@ -163,6 +172,16 @@ test('management socket exposes status, check, update, logs, and local rollback'
     }), { enabled: true, intervalSeconds: 21_600, notificationsEnabled: false })
     assert.equal((await client.request('GET', '/_dsh_platform/api/v1/auth-settings')).account.username, 'admin')
     assert.equal((await client.request('PUT', '/_dsh_platform/api/v1/auth-settings', { username: 'operator' })).account.username, 'operator')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments', {
+      currentPassword: 'correct password',
+    })).enrollmentToken, 'dshte_test')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', {
+      enrollmentToken: 'dshte_test',
+    })).canceled, true)
+    assert.deepEqual(totpEnrollments, [
+      { action: 'begin', value: { currentPassword: 'correct password' } },
+      { action: 'cancel', value: { enrollmentToken: 'dshte_test' } },
+    ])
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-sessions/revoke', {
       sessionId: 'session-two',
     })).revoked, 1)
@@ -1559,6 +1578,10 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.doesNotMatch(html, /Compatibility path \(3080\)/)
   assert.doesNotMatch(html, /id="auth-settings-save"/)
   assert.match(html, /class="auth-additional-heading"[^>]*>[\s\S]*data-i18n="authAdditionalTitle"[\s\S]*class="toggle"[^>]*data-i18n-aria-label="authAdditionalEnabled"[\s\S]*id="auth-additional-enabled"/)
+  assert.match(html, /class="auth-two-factor auth-additional-heading"[^>]*>[\s\S]*data-i18n="authTotpTitle"[\s\S]*id="auth-totp-enabled"/)
+  assert.ok(html.indexOf('id="auth-totp-enabled"') < html.indexOf('id="auth-additional-enabled"'))
+  assert.doesNotMatch(html, /id="auth-totp-fields"/)
+  assert.match(html, /id="auth-totp-dialog"[\s\S]*id="auth-totp-qr"[\s\S]*id="auth-totp-secret-toggle"[\s\S]*id="auth-totp-code"[\s\S]*id="auth-totp-confirm"/)
   assert.doesNotMatch(html, /id="auth-current-additional-password"/)
   assert.match(html, /id="auth-additional-fields" class="auth-password-grid" hidden/)
   assert.doesNotMatch(html, />Require an additional password for Management</)
@@ -1580,13 +1603,17 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function authenticationAccountDraft\(\)/)
   assert.match(script, /function validateCurrentPassword\(draft/)
   assert.match(script, /function renderAuthenticationAccountSaveState\(\)/)
+  assert.match(script, /await api\('auth-totp\/enrollments'/)
+  assert.match(script, /await api\('auth-totp\/enrollments\/cancel'/)
+  assert.match(script, /function showTotpRetryCountdown\(error\)/)
+  assert.match(script, /totpEnabled: true,[\s\S]*totpEnrollmentToken:[\s\S]*totpCode: code/)
   assert.match(script, /if \(!accountDraftChanged\(draft\)\) return/)
   assert.match(script, /authCurrentPasswordRequired: '请输入当前主密码。'/)
   assert.match(script, /authCurrentPasswordIncorrect: '当前主密码不正确。'/)
   assert.match(script, /authManagementPasswordRequired: '请输入新的管理中心密码。'/)
   assert.match(script, /renderPasswordConfirmation\('auth-password', 'auth-password-confirm'/)
   assert.match(script, /renderPasswordConfirmation\('auth-additional-password', 'auth-additional-password-confirm'/)
-  assert.match(script, /errorCode !== 'FRESH_AUTH_FAILED'/)
+  assert.match(script, /!\['FRESH_AUTH_FAILED', 'TOTP_INVALID', 'TOTP_ENROLLMENT_INVALID'\]\.includes\(errorCode\)/)
   assert.match(script, /error\.code === 'FRESH_AUTH_FAILED'/)
   assert.match(script, /authSavedAllSessionsRevoked/)
   assert.match(script, /authSavedManagementSessionsRevoked/)
@@ -2165,6 +2192,12 @@ test('management CLI clears login retry wait only after Root TTY confirmation', 
   assert.deepEqual(parseCli(['access', 'clear-retry', '--global-only']), {
     command: 'access', operation: 'clear-retry', globalOnly: true,
   })
+  assert.deepEqual(parseCli(['access', 'clear-retry', '--two-factor']), {
+    command: 'access', operation: 'clear-retry', credential: 'totp',
+  })
+  assert.deepEqual(parseCli(['access', 'clear-retry', '--global-only', '--two-factor']), {
+    command: 'access', operation: 'clear-retry', globalOnly: true, credential: 'totp',
+  })
   assert.throws(() => parseCli(['access', 'clear-retry', 'now']))
   const tty = { isTTY: true }
   const calls = []
@@ -2236,6 +2269,27 @@ test('management CLI clears login retry wait only after Root TTY confirmation', 
     ['GET', '/v1/recovery/status', undefined],
     ['POST', '/v1/recovery/clear-retry', { scope: 'global' }],
   ])
+
+  const totpCalls = []
+  assert.equal(await runCli({
+    argv: ['access', 'clear-retry', '--two-factor'],
+    access: { request: async (method, path, body) => {
+      totpCalls.push([method, path, body])
+      return method === 'GET'
+        ? { state: 'initialized', account: { revision: 'revision-a' } }
+        : { status: 'cleared', scope: 'all', credential: 'totp', cleared: 2 }
+    } },
+    getuid: () => 0, input: tty, output: tty,
+    ask: async prompt => {
+      assert.equal(prompt, 'Clear two-factor daily limits? The fixed 10-second retry remains active. y/[n]: ')
+      return 'y'
+    },
+    write: () => {},
+  }), 0)
+  assert.deepEqual(totpCalls, [
+    ['GET', '/v1/recovery/status', undefined],
+    ['POST', '/v1/recovery/clear-retry', { scope: 'all', credential: 'totp' }],
+  ])
 })
 
 test('recover combines selective retry clearing with optional image baseline recovery', async () => {
@@ -2248,10 +2302,16 @@ test('recover combines selective retry clearing with optional image baseline rec
   assert.deepEqual(parseCli(['recover', '--management-password', '--image-baseline']), {
     command: 'recover', imageBaseline: true, credential: 'management',
   })
+  assert.deepEqual(parseCli(['recover', '--two-factor']), {
+    command: 'recover', imageBaseline: false, credential: 'totp',
+  })
+  assert.deepEqual(parseCli(['recover', '--two-factor', '--image-baseline']), {
+    command: 'recover', imageBaseline: true, credential: 'totp',
+  })
   assert.throws(
     () => parseCli(['recover', '--main-password', '--management-password']),
     error => error.message.includes('\ncommands:\n')
-      && error.message.includes('recover [--image-baseline] [--main-password|--management-password]'),
+      && error.message.includes('recover [--image-baseline] [--main-password|--management-password|--two-factor]'),
   )
   let recoverError
   let commandError

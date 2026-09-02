@@ -7,6 +7,7 @@ export const DSH_SESSION_COOKIE = 'dsh_gateway_session'
 export const DSH_CSRF_COOKIE = 'dsh_gateway_csrf'
 export const AUTH_CSRF_COOKIE = 'dsh_auth_csrf'
 export const AUTH_RETRY_COOKIE = 'dsh_auth_retry_source'
+export const TOTP_LOGIN_COOKIE = 'dsh_totp_login'
 export const MANAGEMENT_SESSION_COOKIE = 'dsh_management_compat_session'
 export const MANAGEMENT_CSRF_COOKIE = 'dsh_management_csrf'
 export const MANAGEMENT_PENDING_COOKIE = 'dsh_management_pending'
@@ -16,6 +17,7 @@ const RESERVED_COOKIES = new Set([
   DSH_CSRF_COOKIE,
   AUTH_CSRF_COOKIE,
   AUTH_RETRY_COOKIE,
+  TOTP_LOGIN_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
   MANAGEMENT_CSRF_COOKIE,
   MANAGEMENT_PENDING_COOKIE,
@@ -112,6 +114,7 @@ function sessionCookies(session, origin) {
   return [
     `${DSH_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Lax; Path=/${secureCookie(origin)}`,
     `${DSH_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=/${secureCookie(origin)}`,
+    `${TOTP_LOGIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 
@@ -120,6 +123,7 @@ function clearSessionCookies(origin) {
     `${DSH_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookie(origin)}`,
     `${DSH_CSRF_COOKIE}=; SameSite=Strict; Path=/; Max-Age=0${secureCookie(origin)}`,
     `${AUTH_CSRF_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
+    `${TOTP_LOGIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
 
@@ -127,6 +131,7 @@ function clearInvalidBrowserSessionCookies(origin, managementPath = '/_dsh_platf
   return [
     `${DSH_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookie(origin)}`,
     `${DSH_CSRF_COOKIE}=; SameSite=Strict; Path=/; Max-Age=0${secureCookie(origin)}`,
+    `${TOTP_LOGIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
     ...clearManagementCookies(origin, managementPath),
   ]
 }
@@ -149,6 +154,10 @@ function clearManagementCookies(origin, path = '/_dsh_platform/') {
 
 function pendingCookie(pending, origin, authPrefix = AUTH_PREFIX) {
   return `${MANAGEMENT_PENDING_COOKIE}=${pending.token}; HttpOnly; SameSite=Strict; Path=${authPrefix}${secureCookie(origin)}`
+}
+
+function totpLoginCookie(challenge, origin, authPrefix = AUTH_PREFIX) {
+  return `${TOTP_LOGIN_COOKIE}=${challenge.token}; HttpOnly; SameSite=Strict; Path=${authPrefix}; Max-Age=300${secureCookie(origin)}`
 }
 
 function authenticationContext(request, origin, authPrefix = AUTH_PREFIX) {
@@ -253,7 +262,7 @@ const PASSWORD_INPUT_PATTERN = String.raw`[^\p{Cc}\u061c\u200e\u200f\u202a-\u202
 function authenticationPage(request, state, csrf, authenticationContextId, returnPath, { resetForm = false } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
-    brand: 'HARNESS', username: '用户名', password: '密码', register: '注册', login: '登录',
+    brand: 'HARNESS', username: '用户名', password: '密码', totp: '动态验证码', register: '注册', login: '登录',
     initializing: '正在创建管理员账户…', signingIn: '正在登录…', resetting: '正在重置管理员认证…',
     failed: '用户名或密码不正确，请重试。', registrationFailed: '无法创建管理员账户，请检查填写内容后重试。',
     concurrent: '管理员账户已创建，请使用现有账户登录。',
@@ -261,6 +270,10 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
     invalidPassword: '密码支持 8 至 1024 个字符，可使用中文、字母、数字、空格和符号；不能包含控制字符或双向控制字符。',
     retryRequired: '当前浏览器已连续多次输入错误，请在 {seconds} 秒后重试。',
     rateLimited: '管理员登录尝试过多，请在 {seconds} 秒后重试。',
+    totpRequired: '请输入身份验证器中的 6 位动态验证码。', totpFailed: '动态验证码不正确，请重试。',
+    loginUpdated: '登录状态已更新，请重新输入主密码。',
+    totpRetryRequired: '动态验证码连续多次错误，请在 {seconds} 秒后重试。',
+    totpRateLimited: '动态验证码尝试次数过多，请在 {seconds} 秒后重试。',
     serviceUnavailable: '认证服务暂不可用，请稍后重试。',
     invalidResetKey: '认证重置密钥无效、已过期或已使用，请重新生成。',
     migrationTitle: '需要迁移管理员认证', migrationDetail: '请在容器 Root 终端运行 dsh-platform access generate-key，然后使用一次性密钥创建新账户。',
@@ -268,7 +281,7 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
     recoveryTitle: '需要恢复管理员认证', recoveryDetail: '认证状态损坏或缺失。请使用 Root 终端生成认证重置密钥，然后重新创建管理员账户。', recoveryAction: '重置管理员认证',
     waitingTitle: '正在准备认证服务', waitingDetail: '平台正在确认本地管理员状态，请稍候。',
   } : {
-    brand: 'HARNESS', username: 'Username', password: 'Password', register: 'Register', login: 'Sign in',
+    brand: 'HARNESS', username: 'Username', password: 'Password', totp: 'Authentication code', register: 'Register', login: 'Sign in',
     initializing: 'Creating the administrator account…', signingIn: 'Signing in…', resetting: 'Resetting administrator authentication…',
     failed: 'The username or password is incorrect. Try again.', registrationFailed: 'The administrator account could not be created. Check the entered values and try again.',
     concurrent: 'The administrator account already exists. Sign in with it.',
@@ -276,6 +289,10 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
     invalidPassword: 'Use 8 to 1024 characters. Unicode letters, numbers, spaces, and symbols are supported; control and bidirectional-control characters are not.',
     retryRequired: 'This browser has made several consecutive failed attempts. Try again in {seconds} seconds.',
     rateLimited: 'Too many administrator sign-in attempts. Try again in {seconds} seconds.',
+    totpRequired: 'Enter the 6-digit code from your authenticator app.', totpFailed: 'The authentication code is incorrect. Try again.',
+    loginUpdated: 'The sign-in state has changed. Enter the main password again.',
+    totpRetryRequired: 'Too many incorrect codes. Try again in {seconds} seconds.',
+    totpRateLimited: 'Too many authentication-code attempts. Try again in {seconds} seconds.',
     serviceUnavailable: 'The authentication service is temporarily unavailable. Try again shortly.',
     invalidResetKey: 'The authentication reset key is invalid, expired, or already used. Generate a new key.',
     migrationTitle: 'Administrator migration required', migrationDetail: 'Run dsh-platform access generate-key from a root container terminal, then create a new account with the one-time key.',
@@ -319,7 +336,9 @@ function authenticationPage(request, state, csrf, authenticationContextId, retur
     // authority for registration, recovery, and credential validation.
     const validationGate = validateCredentials
       ? `validateField('username');validateField('password');` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};let csrfToken=${JSON.stringify(csrf)},authenticationContextId=${JSON.stringify(authenticationContextId)};${authenticationCountdownScript(submit)}${validationScript}async function submitAuthentication(values,retry=true){const body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password'),authenticationContext:authenticationContextId}),response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry){const refreshed=await fetch(${JSON.stringify(`${AUTH_PREFIX}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'&&typeof next.authenticationContext==='string'){csrfToken=next.csrfToken;authenticationContextId=next.authenticationContext;return submitAuthentication(values,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const{response,payload}=await submitAuthentication(values);if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}if(!showRetryFailure(payload)){error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)};error.hidden=false}finally{if(retryUntil<=Date.now())button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    const totpField = state === 'initialized'
+      ? `<label id="totp-field" hidden>${copy.totp}<input name="totpCode" autocomplete="one-time-code" inputmode="numeric" maxlength="6"></label>` : ''
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label data-credential-field>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label data-credential-field>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label>${totpField}<button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),totpField=document.querySelector('#totp-field'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)},totpRetryMessage=${JSON.stringify(copy.totpRetryRequired)},totpRateLimitMessage=${JSON.stringify(copy.totpRateLimited)};let csrfToken=${JSON.stringify(csrf)},authenticationContextId=${JSON.stringify(authenticationContextId)},totpPending=false;${authenticationCountdownScript(submit)}${validationScript}function showTotp(){totpPending=true;for(const field of form.querySelectorAll('[data-credential-field]'))field.hidden=true;totpField.hidden=false;form.elements.password.value='';error.textContent=${JSON.stringify(copy.totpRequired)};error.hidden=false;form.elements.totpCode.focus()}function resetTotp(message){totpPending=false;for(const field of form.querySelectorAll('[data-credential-field]'))field.hidden=false;totpField.hidden=true;form.elements.totpCode.value='';error.textContent=message;error.hidden=false;form.elements.username.focus()}async function submitAuthentication(values,retry=true){const requestBody=totpPending?{totpCode:values.get('totpCode')}:{${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')},body=JSON.stringify({...requestBody,authenticationContext:authenticationContextId}),response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry&&!totpPending){const refreshed=await fetch(${JSON.stringify(`${AUTH_PREFIX}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'&&typeof next.authenticationContext==='string'){csrfToken=next.csrfToken;authenticationContextId=next.authenticationContext;return submitAuthentication(values,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;if(!totpPending){${validationGate}}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const{response,payload}=await submitAuthentication(values);if(response.ok&&payload.totpRequired===true){showTotp();return}if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}if(totpPending){if(payload.code==='TOTP_LOGIN_INVALID'||payload.code==='AUTHENTICATION_CONTEXT_STALE'){resetTotp(${JSON.stringify(copy.loginUpdated)})}else if(payload.code==='TOTP_RETRY_REQUIRED'||payload.code==='TOTP_RATE_LIMITED'){showRetryCountdown(payload.code==='TOTP_RATE_LIMITED'?totpRateLimitMessage:totpRetryMessage,payload.retryAfterSeconds)}else{error.textContent=${JSON.stringify(copy.totpFailed)};error.hidden=false;form.elements.totpCode.select()}}else if(!showRetryFailure(payload)){error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)};error.hidden=false}finally{if(retryUntil<=Date.now())button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -697,7 +716,9 @@ export function createBrowserAuthentication({
       const origin = requestOrigin(request, { requireHeader: true })
       const value = await jsonBody(request)
       const current = await authenticationStatus()
-      const route = current.state === 'never-initialized' ? '/v1/dsh/initialize' : '/v1/dsh/login'
+      const completingTotp = current.state === 'initialized' && typeof value.totpCode === 'string'
+      const route = current.state === 'never-initialized'
+        ? '/v1/dsh/initialize' : completingTotp ? '/v1/dsh/totp/complete' : '/v1/dsh/login'
       if (!['never-initialized', 'initialized'].includes(current.state)) {
         sendJson(response, 409, { error: 'administrator access is unavailable', code: 'ACCESS_UNAVAILABLE' })
         return true
@@ -708,7 +729,16 @@ export function createBrowserAuthentication({
           origin,
           client: loginClient(request),
           authenticationSource: authenticationSource(request),
+          ...(completingTotp
+            ? { challengeToken: cookieValue(request.headers.cookie, TOTP_LOGIN_COOKIE), code: value.totpCode }
+            : {}),
         })
+        if (result.totpRequired === true && result.challenge !== undefined) {
+          sendJson(response, 202, { authenticated: false, totpRequired: true }, {
+            'set-cookie': totpLoginCookie(result.challenge, origin, authPrefix),
+          })
+          return true
+        }
         const returnPath = safeReturnPath(searchParams.get('return'))
         const next = current.state === 'initialized' && returnPath === `${authPrefix}management/start`
           ? await managementHandoffLocation(current, { dshToken: result.session.token, dshOrigin: origin })

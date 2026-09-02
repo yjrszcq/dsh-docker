@@ -125,6 +125,8 @@ export function createManagementServer({
   commitManagementOriginTransition = async () => { throw new Error('Management origin transition is not configured') },
   getAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
   updateAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
+  beginTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
+  cancelTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
   revokeAuthenticationSessions = async () => { throw new Error('Authentication session management is not configured') },
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
   updateProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
@@ -777,6 +779,10 @@ export function createManagementServer({
         const value = await updateAuthenticationSettings(body, request)
         await audit('access.authentication.settings.changed', {})
         send(response, 200, value)
+      } else if (request.method === 'POST' && route === 'auth-totp/enrollments') {
+        send(response, 201, await beginTotpEnrollment(await jsonBody(request), request))
+      } else if (request.method === 'POST' && route === 'auth-totp/enrollments/cancel') {
+        send(response, 200, await cancelTotpEnrollment(await jsonBody(request), request))
       } else if (request.method === 'POST' && route === 'auth-sessions/revoke') {
         const body = await jsonBody(request)
         const value = await revokeAuthenticationSessions(body, request)

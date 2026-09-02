@@ -446,6 +446,7 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
       status: 'cleared', scope: 'all', credential: 'all', cleared: true, activeSources: 1,
       consecutiveFailures: 1, retryAfterSeconds: 1,
       sourceRetryAfterSeconds: 0, globalFailures: 1, globalRetryAfterSeconds: 0,
+      twoFactorDailyCleared: 0,
     })
     assert.equal((await access.request('POST', '/v1/authenticate', {
       username: 'admin', password: 'correct horse battery staple', authenticationSource: 'browser:test',
@@ -458,7 +459,7 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     const globalCleared = await recovery.request('POST', '/v1/recovery/clear-retry', { scope: 'global' })
     assert.deepEqual(globalCleared, {
       status: 'cleared', scope: 'global', credential: 'all', cleared: true,
-      globalFailures: 1, globalRetryAfterSeconds: 0,
+      globalFailures: 1, globalRetryAfterSeconds: 0, twoFactorDailyCleared: 0,
     })
     assert.equal((await recovery.request('GET', '/v1/recovery/status'))
       .authenticationRetry.consecutiveFailures, 1)
@@ -1227,6 +1228,97 @@ test('requires fresh authentication and applies credential-specific session revo
   assert.equal((await service.validateSession({
     kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
   })).authenticated, false)
+})
+
+test('enables account TOTP through one-time enrollment and completes the same login challenge after recovery clear', async () => {
+  let now = Date.parse('2026-08-28T00:00:00.000Z')
+  const { service, store } = await fixture({
+    now: () => now,
+    sessions: new BrowserSessionStore({ now: () => now }),
+    verifyTotp: code => code === '123456',
+  })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    authenticationSource: 'browser:a',
+  })
+  const handoff = await service.createManagementHandoff({
+    dshToken: initialized.session.token,
+    dshOrigin: 'https://dsh.example',
+    targetOrigin: 'https://dsh.example',
+  })
+  const management = await service.consumeManagementHandoff({
+    token: handoff.handoff.token, origin: 'https://dsh.example',
+  })
+  const capability = async (method, target) => (await service.issueCapability({
+    managementToken: management.session.token,
+    origin: 'https://dsh.example',
+    csrfToken: management.session.csrfToken,
+    requireCsrf: true,
+    audience: 'management', method, target,
+  })).capability.token
+  const enrollmentTarget = '/_dsh_platform/api/v1/auth-totp/enrollments'
+  const settingsTarget = '/_dsh_platform/api/v1/auth-settings'
+  const enrollment = await service.beginTotpEnrollment({
+    internalCapability: await capability('POST', enrollmentTarget),
+    method: 'POST', target: enrollmentTarget,
+    currentPassword: 'correct horse battery staple',
+  })
+  assert.match(enrollment.enrollmentToken, /^dshte_/)
+  assert.match(enrollment.uri, /^otpauth:\/\/totp\//)
+  const enabled = await service.updateAuthenticationSettings({
+    internalCapability: await capability('PUT', settingsTarget),
+    method: 'PUT', target: settingsTarget,
+    currentPassword: 'correct horse battery staple',
+    totpEnabled: true,
+    totpEnrollmentToken: enrollment.enrollmentToken,
+    totpCode: '123456',
+  })
+  assert.equal(enabled.account.totp.enabled, true)
+  assert.equal(enabled.allSessionsRevoked, true)
+  assert.equal(JSON.stringify(enabled).includes(enrollment.secret), false)
+  assert.equal((await store.state()).account.totp.secret, enrollment.secret)
+
+  const pending = await loginDsh(service, {
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    authenticationSource: 'browser:a',
+  })
+  assert.equal(pending.totpRequired, true)
+  assert.equal(pending.session, undefined)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await assert.rejects(service.completeDshTotp({
+      challengeToken: pending.challenge.token,
+      code: '000000',
+      origin: 'https://dsh.example',
+      authenticationSource: 'browser:a',
+      authenticationContext: (await service.status()).authenticationContext,
+    }), error => error.code === 'TOTP_INVALID')
+  }
+  await assert.rejects(service.completeDshTotp({
+    challengeToken: pending.challenge.token,
+    code: '000000',
+    origin: 'https://dsh.example',
+    authenticationSource: 'browser:a',
+    authenticationContext: (await service.status()).authenticationContext,
+  }), error => error.code === 'TOTP_RETRY_REQUIRED' && error.details.retryAfterSeconds === 10)
+  assert.equal((await service.clearAuthenticationRetry({ credential: 'totp' })).credential, 'totp')
+  await assert.rejects(service.completeDshTotp({
+    challengeToken: pending.challenge.token,
+    code: '123456',
+    origin: 'https://dsh.example',
+    authenticationSource: 'browser:a',
+    authenticationContext: (await service.status()).authenticationContext,
+  }), error => error.code === 'TOTP_RETRY_REQUIRED')
+  now += 10_000
+  const loggedIn = await service.completeDshTotp({
+    challengeToken: pending.challenge.token,
+    code: '123456',
+    origin: 'https://dsh.example',
+    authenticationSource: 'browser:a',
+    authenticationContext: (await service.status()).authenticationContext,
+  })
+  assert.equal(loggedIn.authenticated, true)
+  assert.match(loggedIn.session.token, /^dshs_/)
 })
 
 test('changes the Management console password using only the current main password', async () => {

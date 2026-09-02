@@ -74,6 +74,7 @@ button { letter-spacing: 0; }
 .auth-subsection { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
 .auth-subsection h3 { margin: 0; font-size: 14px; }
 .auth-additional { display: grid; gap: 12px; margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--border); }
+.auth-two-factor { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--border); }
 .auth-additional-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .auth-additional-heading > .toggle { width: 34px; height: 20px; margin-left: auto; justify-content: flex-start; }
 .auth-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -98,6 +99,16 @@ button { letter-spacing: 0; }
 .auth-comparison-table > * { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .auth-comparison-table > :nth-child(3n + 2), .auth-comparison-table > :nth-child(3n + 3) { border-left: 1px solid var(--border); text-align: center; }
 .auth-comparison-table > :nth-last-child(-n + 3) { border-bottom: 0; }
+.auth-totp-dialog { width: min(420px, calc(100% - 32px)); }
+.auth-totp-dialog form { display: grid; gap: 14px; }
+.auth-totp-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-totp-dialog p { margin: -4px 0 0; }
+.auth-totp-dialog img { display: block; width: min(240px, 100%); aspect-ratio: 1; margin: 0 auto; border-radius: 6px; background: #fff; }
+.auth-totp-dialog label { display: grid; gap: 7px; }
+.auth-totp-dialog input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); }
+.auth-totp-dialog .icon-button { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 22px; line-height: 32px; }
+.auth-totp-dialog .icon-button:hover { color: var(--text); background: var(--hover); }
+.auth-totp-secret { padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; text-align: center; user-select: all; }
 
 .connection, .log-connection {
   display: inline-flex;

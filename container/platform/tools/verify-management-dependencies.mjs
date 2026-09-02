@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const EXPECTED = Object.freeze({
   '@xterm/addon-fit': '0.11.0',
   '@xterm/xterm': '6.0.0',
+  'qrcode-generator': '2.0.4',
   undici: '8.10.0',
   ws: '8.21.3',
 })
@@ -24,7 +25,10 @@ export async function verifyManagementDependencies(rootArg) {
     if (metadata.name !== name || metadata.version !== expectedVersion) {
       throw new Error(`Management dependency ${name} must be exactly ${expectedVersion}`)
     }
-    await requireFile(packageRoot, 'LICENSE')
+    if (name === 'qrcode-generator') {
+      if (metadata.license !== 'MIT') throw new Error('Management dependency qrcode-generator must remain MIT licensed')
+      await requireFile(packageRoot, 'README.md')
+    } else await requireFile(packageRoot, 'LICENSE')
   }
   for (const path of [
     'node_modules/ws/index.js',

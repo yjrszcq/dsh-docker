@@ -7,6 +7,7 @@ import {
   AUTH_RETRY_COOKIE,
   DSH_SESSION_COOKIE,
   MANAGEMENT_SESSION_COOKIE,
+  TOTP_LOGIN_COOKIE,
 } from '../lib/browser-auth.mjs'
 import { safeReturnPath } from '../lib/proxy.mjs'
 
@@ -63,6 +64,7 @@ function fixture(initialState = 'never-initialized', options = {}) {
         account: state === 'initialized'
           ? {
               managementAdditionalCredential: { enabled: options.managementAdditionalEnabled ?? true },
+              totp: { enabled: options.totpEnabled === true },
               managementAccess: options.managementAccess
                 ?? { mode: 'compat', isolatedEntry: null, dshPublicOrigin: null },
             }
@@ -85,8 +87,21 @@ function fixture(initialState = 'never-initialized', options = {}) {
         if (body.password !== 'correct password') throw Object.assign(new Error('username or password is incorrect'), {
           code: 'AUTHENTICATION_FAILED', statusCode: 401,
         })
+        if (options.totpEnabled === true) {
+          return { totpRequired: true, challenge: { token: 'dshtl_login', expiresAt: new Date(Date.now() + 300_000).toISOString() } }
+        }
         sessions.set('dshs_logged_in', body.origin)
         return { session: { token: 'dshs_logged_in', csrfToken: 'dshc_logged_in' } }
+      }
+      if (path === '/v1/dsh/totp/complete') {
+        if (body.challengeToken !== 'dshtl_login') throw Object.assign(new Error('login challenge invalid'), {
+          code: 'TOTP_LOGIN_INVALID', statusCode: 401,
+        })
+        if (body.code !== '123456') throw Object.assign(new Error('authentication code is incorrect'), {
+          code: 'TOTP_INVALID', statusCode: 401,
+        })
+        sessions.set('dshs_totp', body.origin)
+        return { session: { token: 'dshs_totp', csrfToken: 'dshc_totp' } }
       }
       if (path === '/v1/sessions/validate') return {
         authenticated: body.kind === 'dsh'
@@ -502,6 +517,48 @@ test('successful DSH and Management logins preserve parallel login-page context'
     assert.equal(incorrect.status, 401)
     assert.equal(JSON.parse(incorrect.body).code, 'AUTHENTICATION_FAILED')
     assert.equal(current.calls.filter(call => call.path === '/v1/dsh/login').length, 4)
+  } finally { await close(current.server) }
+})
+
+test('TOTP completes on the existing login page and replaces its one-time challenge with a DSH session', async () => {
+  const current = fixture('initialized', { totpEnabled: true })
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    const page = await request(port, {
+      path: '/_dsh_platform/auth/', headers: { host, 'accept-language': 'zh-CN' },
+    })
+    assert.equal(page.status, 200)
+    assert.match(page.body, /动态验证码/)
+    assert.doesNotMatch(page.body, /name="totpCode"[^>]+pattern=/)
+    const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
+    const retryCookie = page.headers['set-cookie'][1].split(';')[0]
+    const csrf = csrfCookie.split('=')[1]
+    const headers = {
+      host, origin, cookie: `${csrfCookie}; ${retryCookie}`,
+      'content-type': 'application/json', 'x-dsh-csrf': csrf,
+      'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+    }
+    const password = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST', headers,
+      body: JSON.stringify({ username: 'admin', password: 'correct password' }),
+    })
+    assert.equal(password.status, 202)
+    assert.deepEqual(JSON.parse(password.body), { authenticated: false, totpRequired: true })
+    const challengeCookie = password.headers['set-cookie'].find(value => value.startsWith(`${TOTP_LOGIN_COOKIE}=`)).split(';')[0]
+    const completed = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: { ...headers, cookie: `${csrfCookie}; ${retryCookie}; ${challengeCookie}` },
+      body: JSON.stringify({ totpCode: '123456' }),
+    })
+    assert.equal(completed.status, 200)
+    assert.equal(JSON.parse(completed.body).authenticated, true)
+    assert.equal(completed.headers['set-cookie'].some(value => value.startsWith(`${DSH_SESSION_COOKIE}=dshs_totp`)), true)
+    assert.equal(completed.headers['set-cookie'].some(value => value.startsWith(`${TOTP_LOGIN_COOKIE}=;`)), true)
+    const completion = current.calls.find(value => value.path === '/v1/dsh/totp/complete')
+    assert.equal(completion.body.challengeToken, 'dshtl_login')
+    assert.equal(completion.body.code, '123456')
   } finally { await close(current.server) }
 })
 

@@ -128,7 +128,7 @@ test('Management terminal dependencies are exact, licensed, and architecture-neu
   assert.equal(Object.hasOwn(lock.packages[''], 'version'), false)
   const result = await verifyManagementDependencies(root)
   assert.deepEqual(result.packages, {
-    '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', undici: '8.10.0', ws: '8.21.3',
+    '@xterm/addon-fit': '0.11.0', '@xterm/xterm': '6.0.0', 'qrcode-generator': '2.0.4', undici: '8.10.0', ws: '8.21.3',
   })
   assert.equal(result.nativeModules, 0)
 })

@@ -36,6 +36,7 @@ import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
 import { requestOrigin } from '../gateway/lib/browser-auth.mjs'
 import { createRestrictedCliServer, restrictedCliRoute } from './restricted-cli.mjs'
+import qrcode from 'qrcode-generator'
 
 const dataRoot = process.env.DSH_PLATFORM_DATA ?? '/data/platform'
 const runRoot = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
@@ -59,6 +60,14 @@ const updateFetch = createScopedFetch('updates')
 const providerInventory = new ProviderInventory({
   cachePath: paths.proxyProviderInventoryPath,
 })
+
+function qrCodeDataUri(value) {
+  const code = qrcode(0, 'M')
+  code.addData(value, 'Byte')
+  code.make()
+  const svg = code.createSvgTag({ cellSize: 5, margin: 10, scalable: true })
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+}
 
 let lastProxyConfiguration
 
@@ -207,7 +216,7 @@ server = createManagementServer({
     if (restrictedToken === restrictedCliToken
       && restrictedCliRoute(request.method ?? 'GET', request.url ?? '/')) return true
     if (typeof token !== 'string') return false
-    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
+    if (['/_dsh_platform/api/v1/auth-settings', '/_dsh_platform/api/v1/auth-totp/enrollments', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', '/_dsh_platform/api/v1/management-origin/transitions', '/_dsh_platform/api/v1/management-origin/transitions/commit', '/_dsh_platform/api/v1/auth-sessions/revoke'].includes(request.url)) return true
     return consumeInternalCapability(access, {
       token, audience, method: request.method ?? 'GET', target: request.url ?? '/',
     })
@@ -238,6 +247,23 @@ server = createManagementServer({
   },
   updateAuthenticationSettings: async (value, request) => {
     return access.request('POST', '/v1/management/auth-settings', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+  },
+  beginTotpEnrollment: async (value, request) => {
+    const enrollment = await access.request('POST', '/v1/management/totp/enrollments', {
+      ...value,
+      internalCapability: request.headers['x-dsh-internal-capability'],
+      method: request.method,
+      target: request.url,
+    })
+    return { ...enrollment, qrCode: qrCodeDataUri(enrollment.uri), uri: undefined }
+  },
+  cancelTotpEnrollment: async (value, request) => {
+    return access.request('POST', '/v1/management/totp/enrollments/cancel', {
       ...value,
       internalCapability: request.headers['x-dsh-internal-capability'],
       method: request.method,

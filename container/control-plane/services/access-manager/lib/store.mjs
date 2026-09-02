@@ -3,6 +3,7 @@ import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { AccessError } from './errors.mjs'
 import { createCredential, normalizeUsername, validCredential } from './credentials.mjs'
+import { validTotpSecret } from './totp.mjs'
 
 const STATES = new Set(['never-initialized', 'migration-required', 'initialized', 'recovery-required'])
 
@@ -52,6 +53,7 @@ export function validInitialization(value) {
 
 export function validAccount(value) {
   const additional = value?.managementAdditionalCredential
+  const totp = value?.totp
   const access = value?.managementAccess
   const validOrigin = origin => {
     try {
@@ -66,6 +68,11 @@ export function validAccount(value) {
     && Number.isInteger(additional.version) && additional.version >= 1
     && Number.isFinite(Date.parse(additional.changedAt))
     && (additional.enabled ? validCredential(additional.verifier) : additional.verifier === null)
+  const totpValid = totp === undefined || (totp !== null && typeof totp === 'object'
+    && typeof totp.enabled === 'boolean'
+    && Number.isInteger(totp.version) && totp.version >= 1
+    && Number.isFinite(Date.parse(totp.changedAt))
+    && (totp.enabled ? validTotpSecret(totp.secret) : totp.secret === null))
   const isolatedEntryValid = access?.mode === 'compat'
     ? access.isolatedEntry === null && access.dshPublicOrigin === null
     : access?.mode === 'isolated' && access.isolatedEntry !== null && typeof access.isolatedEntry === 'object'
@@ -85,7 +92,7 @@ export function validAccount(value) {
     && typeof value.accountId === 'string' && Buffer.from(value.accountId, 'base64url').byteLength === 32
     && (() => { try { return normalizeUsername(value.username) === value.username } catch { return false } })()
     && validCredential(value.mainCredential)
-    && additionalValid && isolatedEntryValid
+    && additionalValid && totpValid && isolatedEntryValid
     && Number.isInteger(access?.version) && access.version >= 1
     && Number.isFinite(Date.parse(access.changedAt))
     && Number.isFinite(Date.parse(value.createdAt)) && Number.isFinite(Date.parse(value.updatedAt))
@@ -206,6 +213,7 @@ export class AccessStateStore {
       accountId: identifier(this.random),
       username: normalized,
       mainCredential: verifier,
+      totp: { enabled: false, version: 1, secret: null, changedAt: now },
       managementAdditionalCredential: { enabled: false, version: 1, verifier: null, changedAt: now },
       managementAccess: {
         mode: 'compat', version: 1, isolatedEntry: null, dshPublicOrigin: null, changedAt: now,
