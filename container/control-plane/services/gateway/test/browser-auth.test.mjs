@@ -1045,7 +1045,7 @@ test('Management pending page asks only for the additional password', () => {
       assert.match(page.body, /AUTHENTICATION_RETRY_REQUIRED/)
       assert.match(page.body, /AUTHENTICATION_RATE_LIMITED/)
       assert.match(page.body, /AUTHENTICATION_CONTEXT_STALE/)
-      assert.match(page.body, /auth\/context/)
+      assert.match(page.body, /location\.replace\("\/_dsh_platform\/auth\/management"\)/)
       assert.match(page.body, /retryUntil=Date\.now\(\)\+seconds\*1000/)
       assert.match(page.body, /Math\.ceil\(\(retryUntil-Date\.now\(\)\)\/1000\)/)
       assert.match(page.body, /button\.disabled=true/)
