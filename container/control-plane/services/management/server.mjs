@@ -126,6 +126,7 @@ export function createManagementServer({
   getAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
   updateAuthenticationSettings = async () => { throw new Error('Authentication settings are not configured') },
   beginTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
+  confirmTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
   cancelTotpEnrollment = async () => { throw new Error('Two-factor enrollment is not configured') },
   revokeAuthenticationSessions = async () => { throw new Error('Authentication session management is not configured') },
   getProxyConfiguration = async () => { throw new Error('outbound proxy configuration is not configured') },
@@ -781,6 +782,8 @@ export function createManagementServer({
         send(response, 200, value)
       } else if (request.method === 'POST' && route === 'auth-totp/enrollments') {
         send(response, 201, await beginTotpEnrollment(await jsonBody(request), request))
+      } else if (request.method === 'POST' && route === 'auth-totp/enrollments/confirm') {
+        send(response, 200, await confirmTotpEnrollment(await jsonBody(request), request))
       } else if (request.method === 'POST' && route === 'auth-totp/enrollments/cancel') {
         send(response, 200, await cancelTotpEnrollment(await jsonBody(request), request))
       } else if (request.method === 'POST' && route === 'auth-sessions/revoke') {

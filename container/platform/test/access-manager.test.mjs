@@ -1258,6 +1258,7 @@ test('enables account TOTP through one-time enrollment and completes the same lo
     audience: 'management', method, target,
   })).capability.token
   const enrollmentTarget = '/_dsh_platform/api/v1/auth-totp/enrollments'
+  const confirmationTarget = '/_dsh_platform/api/v1/auth-totp/enrollments/confirm'
   const settingsTarget = '/_dsh_platform/api/v1/auth-settings'
   const enrollment = await service.beginTotpEnrollment({
     internalCapability: await capability('POST', enrollmentTarget),
@@ -1266,18 +1267,42 @@ test('enables account TOTP through one-time enrollment and completes the same lo
   })
   assert.match(enrollment.enrollmentToken, /^dshte_/)
   assert.match(enrollment.uri, /^otpauth:\/\/totp\//)
+  await assert.rejects(service.updateAuthenticationSettings({
+    internalCapability: await capability('PUT', settingsTarget),
+    method: 'PUT', target: settingsTarget,
+    currentPassword: 'correct horse battery staple',
+    totpEnabled: true,
+    totpEnrollmentToken: enrollment.enrollmentToken,
+  }), error => error.code === 'TOTP_ENROLLMENT_UNCONFIRMED')
+  const confirmed = await service.confirmTotpEnrollment({
+    internalCapability: await capability('POST', confirmationTarget),
+    method: 'POST', target: confirmationTarget,
+    enrollmentToken: enrollment.enrollmentToken,
+    totpCode: '123456',
+  })
+  assert.equal(confirmed.confirmed, true)
+  assert.equal((await store.state()).account.totp.enabled, false)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
   const enabled = await service.updateAuthenticationSettings({
     internalCapability: await capability('PUT', settingsTarget),
     method: 'PUT', target: settingsTarget,
     currentPassword: 'correct horse battery staple',
     totpEnabled: true,
     totpEnrollmentToken: enrollment.enrollmentToken,
-    totpCode: '123456',
   })
   assert.equal(enabled.account.totp.enabled, true)
-  assert.equal(enabled.allSessionsRevoked, true)
+  assert.equal(enabled.allSessionsRevoked, false)
+  assert.equal(enabled.currentManagementSessionRevoked, false)
   assert.equal(JSON.stringify(enabled).includes(enrollment.secret), false)
   assert.equal((await store.state()).account.totp.secret, enrollment.secret)
+  assert.equal((await service.validateSession({
+    kind: 'management', token: management.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
+  assert.equal((await service.validateSession({
+    kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
+  })).authenticated, true)
 
   const pending = await loginDsh(service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',

@@ -109,6 +109,7 @@ export class TotpFlowStore {
       accountRevision: account.revision,
       sessionId,
       secret,
+      confirmed: false,
       expiresAt,
     })
     return Object.freeze({ token: value, secret, expiresAt: new Date(expiresAt).toISOString() })
@@ -127,6 +128,13 @@ export class TotpFlowStore {
   cancelEnrollment(value, account, sessionId) {
     const enrollment = this.enrollment(value, account, sessionId)
     return enrollment === undefined ? false : this.enrollments.delete(enrollment.key)
+  }
+
+  confirmEnrollment(key) {
+    const enrollment = this.enrollments.get(key)
+    if (enrollment === undefined) return false
+    enrollment.confirmed = true
+    return true
   }
 
   consumeEnrollment(key) { return this.enrollments.delete(key) }

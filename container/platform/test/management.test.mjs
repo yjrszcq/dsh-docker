@@ -137,6 +137,10 @@ test('management socket exposes status, check, update, logs, and local rollback'
       totpEnrollments.push({ action: 'begin', value })
       return { enrollmentToken: 'dshte_test', qrCode: 'data:image/svg+xml,test', secret: 'SECRET' }
     },
+    confirmTotpEnrollment: async value => {
+      totpEnrollments.push({ action: 'confirm', value })
+      return { confirmed: true }
+    },
     cancelTotpEnrollment: async value => {
       totpEnrollments.push({ action: 'cancel', value })
       return { canceled: true }
@@ -175,11 +179,15 @@ test('management socket exposes status, check, update, logs, and local rollback'
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments', {
       currentPassword: 'correct password',
     })).enrollmentToken, 'dshte_test')
+    assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments/confirm', {
+      enrollmentToken: 'dshte_test', totpCode: '123456',
+    })).confirmed, true)
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-totp/enrollments/cancel', {
       enrollmentToken: 'dshte_test',
     })).canceled, true)
     assert.deepEqual(totpEnrollments, [
       { action: 'begin', value: { currentPassword: 'correct password' } },
+      { action: 'confirm', value: { enrollmentToken: 'dshte_test', totpCode: '123456' } },
       { action: 'cancel', value: { enrollmentToken: 'dshte_test' } },
     ])
     assert.equal((await client.request('POST', '/_dsh_platform/api/v1/auth-sessions/revoke', {
@@ -1604,9 +1612,14 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /function validateCurrentPassword\(draft/)
   assert.match(script, /function renderAuthenticationAccountSaveState\(\)/)
   assert.match(script, /await api\('auth-totp\/enrollments'/)
+  assert.match(script, /await api\('auth-totp\/enrollments\/confirm'/)
   assert.match(script, /await api\('auth-totp\/enrollments\/cancel'/)
   assert.match(script, /function showTotpRetryCountdown\(error\)/)
-  assert.match(script, /totpEnabled: true,[\s\S]*totpEnrollmentToken:[\s\S]*totpCode: code/)
+  assert.match(script, /body\.totpEnabled = true[\s\S]*body\.totpEnrollmentToken = pendingTotpEnrollment\.enrollment\.enrollmentToken/)
+  assert.match(script, /pending\.confirmed = true[\s\S]*showAuthenticationStatus\(t\('authTotpConfirmedDraft'\)\)/)
+  assert.match(script, /elements\['auth-totp-enabled'\]\.addEventListener\('change',[\s\S]*changeTotpEnabled/)
+  assert.match(script, /auth-account-save'\]\.disabled = totpUnverified \|\| !accountDraftChanged\(\)/)
+  assert.match(style, /\.auth-totp-control\[data-state="unverified"\][^}]+background: var\(--warning\)/)
   assert.match(script, /if \(!accountDraftChanged\(draft\)\) return/)
   assert.match(script, /authCurrentPasswordRequired: '请输入当前主密码。'/)
   assert.match(script, /authCurrentPasswordIncorrect: '当前主密码不正确。'/)

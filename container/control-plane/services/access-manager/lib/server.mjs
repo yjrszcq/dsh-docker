@@ -647,6 +647,31 @@ export class AccessService {
     return { canceled }
   }
 
+  async confirmTotpEnrollment(value) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
+    }
+    const authorization = this.consumeInternalCapability(value, current.account)
+    const enrollment = this.totpFlows.enrollment(value.enrollmentToken, current.account, authorization.sessionId)
+    if (enrollment === undefined) {
+      throw new AccessError('TOTP_ENROLLMENT_INVALID', 'two-factor authentication enrollment is invalid or expired', 401)
+    }
+    const managementSession = this.sessions.details(authorization.sessionId)
+    const sourceSession = this.sessions.details(managementSession?.sourceDshSessionId)
+    await this.verifyTotpAuthentication(
+      current.account,
+      value.totpCode,
+      sourceSession?.authenticationSource ?? 'unknown',
+      enrollment.value.secret,
+    )
+    if (!this.totpFlows.confirmEnrollment(enrollment.key)) {
+      throw new AccessError('TOTP_ENROLLMENT_INVALID', 'two-factor authentication enrollment is invalid or expired', 401)
+    }
+    await this.report('access.totp.enrollment.confirmed', { accountId: current.account.accountId })
+    return { confirmed: true, expiresAt: new Date(enrollment.value.expiresAt).toISOString() }
+  }
+
   async revokeBrowserSessions(value) {
     const current = await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
@@ -991,7 +1016,9 @@ export class AccessService {
       if (enrollment === undefined) {
         throw new AccessError('TOTP_ENROLLMENT_INVALID', 'two-factor authentication enrollment is invalid or expired', 401)
       }
-      await this.verifyTotpAuthentication(current.account, value.totpCode, authenticationSourceId, enrollment.value.secret)
+      if (enrollment.value.confirmed !== true) {
+        throw new AccessError('TOTP_ENROLLMENT_UNCONFIRMED', 'two-factor authentication enrollment is not confirmed', 409)
+      }
     }
     if (value.username !== undefined) account.username = normalizeUsername(value.username)
     if (value.password !== undefined) {
@@ -1037,7 +1064,7 @@ export class AccessService {
     }
     const next = await this.store.replaceAccount(account, current.account.revision)
     if (enrollment !== undefined) this.totpFlows.consumeEnrollment(enrollment.key)
-    const allSessionsRevoked = mainPasswordChanged || totpChanged
+    const allSessionsRevoked = mainPasswordChanged
     const revokedSessionCount = allSessionsRevoked
       ? this.sessions.revokeAll()
       : additionalChanged ? this.sessions.revokeKind('management') : 0
@@ -1090,6 +1117,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (request.method === 'POST' && pathname === '/v1/capabilities/consume') return send(response, 200, await service.consumeCapability(value))
       if (request.method === 'POST' && pathname === '/v1/management/settings') return send(response, 200, await service.authenticationSettings(value))
       if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments') return send(response, 201, await service.beginTotpEnrollment(value))
+      if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments/confirm') return send(response, 200, await service.confirmTotpEnrollment(value))
       if (request.method === 'POST' && pathname === '/v1/management/totp/enrollments/cancel') return send(response, 200, await service.cancelTotpEnrollment(value))
       if (request.method === 'POST' && pathname === '/v1/management/sessions/revoke') return send(response, 200, await service.revokeBrowserSessions(value))
       if (request.method === 'POST' && pathname === '/v1/management/transitions') return send(response, 201, await service.createManagementTransition(value))

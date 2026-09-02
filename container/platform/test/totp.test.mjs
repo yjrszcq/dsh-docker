@@ -34,9 +34,14 @@ test('binds one-time TOTP enrollment and login challenges to account state and s
   const account = { accountId: 'account-a', revision: 'revision-a' }
   const enrollment = flows.createEnrollment(account, 'management-a')
   assert.equal(flows.enrollment(enrollment.token, account, 'management-a')?.value.secret, enrollment.secret)
+  assert.equal(flows.enrollment(enrollment.token, account, 'management-a')?.value.confirmed, false)
+  const boundEnrollment = flows.enrollment(enrollment.token, account, 'management-a')
+  assert.equal(flows.confirmEnrollment(boundEnrollment.key), true)
+  assert.equal(flows.enrollment(enrollment.token, account, 'management-a')?.value.confirmed, true)
   assert.equal(flows.enrollment(enrollment.token, account, 'management-b'), undefined)
   assert.equal(flows.enrollment(enrollment.token, { ...account, revision: 'revision-b' }, 'management-a'), undefined)
   assert.equal(flows.cancelEnrollment(enrollment.token, account, 'management-a'), true)
+  assert.equal(flows.confirmEnrollment(boundEnrollment.key), false)
   assert.equal(flows.enrollment(enrollment.token, account, 'management-a'), undefined)
 
   const login = flows.createLogin(account, { origin: 'https://dsh.example', authenticationSource: 'browser:a' })

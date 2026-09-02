@@ -532,6 +532,7 @@ test('TOTP completes on the existing login page and replaces its one-time challe
     assert.equal(page.status, 200)
     assert.match(page.body, /动态验证码/)
     assert.doesNotMatch(page.body, /name="totpCode"[^>]+pattern=/)
+    assert.match(page.body, /if\(error\.textContent===initialMessage\)sync\(\)/)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const retryCookie = page.headers['set-cookie'][1].split(';')[0]
     const csrf = csrfCookie.split('=')[1]
