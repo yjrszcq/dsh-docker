@@ -4422,7 +4422,10 @@ function renderManagementOriginSaveState() {
   const nextAccess = selectedManagementAccess()
   const changed = nextAccess.mode !== previousAccess.mode
     || (nextAccess.mode === 'isolated' && nextAccess.candidateOrigin !== previousAccess.origin)
-  elements['auth-origin-save'].disabled = !changed
+  const localPort = elements['auth-mode'].value === 'isolated-local' ? elements['auth-local-port'].value.trim() : ''
+  const localPortValid = localPort !== '' && /^\d+$/u.test(localPort) && Number(localPort) >= 1 && Number(localPort) <= 65535
+  elements['auth-local-port-error'].hidden = elements['auth-mode'].value !== 'isolated-local' || localPort === '' || localPortValid
+  elements['auth-origin-save'].disabled = !changed || (elements['auth-mode'].value === 'isolated-local' && !localPortValid)
 }
 
 function confirmIsolationEnable() {
@@ -4761,7 +4764,13 @@ async function saveManagementOrigin() {
   const accessInput = elements['auth-mode'].value === 'isolated-local'
     ? elements['auth-local-port']
     : elements['auth-origin']
-  if (elements['auth-mode'].value !== 'compat' && !accessInput.reportValidity()) return
+  if (elements['auth-mode'].value === 'isolated-local') {
+    const localPort = accessInput.value.trim()
+    if (localPort === '' || !/^\d+$/u.test(localPort) || Number(localPort) < 1 || Number(localPort) > 65535) {
+      elements['auth-local-port-error'].hidden = false
+      return
+    }
+  } else if (elements['auth-mode'].value !== 'compat' && !accessInput.reportValidity()) return
   button.disabled = true
   try {
     const previousAccess = currentManagementAccessSelection(authenticationSettings?.account?.managementAccess)
