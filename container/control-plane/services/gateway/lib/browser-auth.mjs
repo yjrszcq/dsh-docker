@@ -357,6 +357,14 @@ function managementConsoleDestination(searchParams, consolePath) {
   return searchParams?.get('tab') === 'auth-settings' ? `${consolePath}#auth-settings` : consolePath
 }
 
+function configuredManagementConsoleHref(current) {
+  const access = current.account?.managementAccess
+  if (access?.mode !== 'isolated') return '/_dsh_platform/console/'
+  const entry = access.isolatedEntry
+  const origin = entry?.kind === 'public' ? entry.managementPublicOrigin : entry?.managementLocalOrigin
+  return typeof origin === 'string' ? `${origin}/` : '/_dsh_platform/console/'
+}
+
 function managementLoginPage(request, csrf, authenticationContextId, mainCredentialVersion, {
   authPrefix = AUTH_PREFIX,
   consolePath = '/_dsh_platform/console/',
@@ -797,6 +805,7 @@ export function createBrowserAuthentication({
       sendJson(response, 200, {
         managementAdditionalPasswordEnabled:
           current.account?.managementAdditionalCredential?.enabled === true,
+        managementConsoleHref: configuredManagementConsoleHref(current),
       })
       return true
     }

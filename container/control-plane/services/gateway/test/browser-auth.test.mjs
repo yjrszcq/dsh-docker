@@ -901,7 +901,10 @@ test('DSH browser logout exposes only additional-password state and revokes the 
       path: '/_dsh_platform/auth/session-context', headers: { host, cookie: dshCookies },
     })
     assert.equal(context.status, 200)
-    assert.deepEqual(JSON.parse(context.body), { managementAdditionalPasswordEnabled: true })
+    assert.deepEqual(JSON.parse(context.body), {
+      managementAdditionalPasswordEnabled: true,
+      managementConsoleHref: '/_dsh_platform/console/',
+    })
     assert.doesNotMatch(context.body, /account|username|verifier|password.*version/i)
 
     const managementOnly = await request(port, {
@@ -937,6 +940,25 @@ test('DSH browser logout exposes only additional-password state and revokes the 
     assert.equal(logoutCall.body.dshOrigin, origin)
     assert.equal(logoutCall.body.dshToken, 'dshs_existing')
   } finally { await close(current.server) }
+})
+
+test('DSH session context publishes the configured separate Management Console URL', async () => {
+  for (const [managementAccess, expected] of [
+    [{ mode: 'isolated', isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' } }, 'https://manage.example/'],
+    [{ mode: 'isolated', isolatedEntry: { kind: 'local-only', managementLocalOrigin: 'http://127.0.0.1:43081' } }, 'http://127.0.0.1:43081/'],
+  ]) {
+    const current = fixture('initialized', { managementAccess })
+    current.sessions.set('dshs_existing', 'http://dsh.example')
+    const port = await listen(current.server)
+    try {
+      const response = await request(port, {
+        path: '/_dsh_platform/auth/session-context',
+        headers: { host: 'dsh.example', cookie: `${DSH_SESSION_COOKIE}=dshs_existing` },
+      })
+      assert.equal(response.status, 200)
+      assert.equal(JSON.parse(response.body).managementConsoleHref, expected)
+    } finally { await close(current.server) }
+  }
 })
 
 test('DSH browser sessions authorize only path-bound Plugin API capabilities', async () => {

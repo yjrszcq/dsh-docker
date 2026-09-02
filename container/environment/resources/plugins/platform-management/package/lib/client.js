@@ -1938,7 +1938,7 @@ function ProxySettings({ active, t }) {
           h('pre', null, (configuration.noProxy?.system ?? []).join('\n'))))))
 }
 
-function AuthenticationSettings({ active, t }) {
+function AuthenticationSettings({ active, managementConsoleHref, t }) {
   const [context, setContext] = useState(null)
   const [loading, setLoading] = useState(false)
   const [working, setWorking] = useState(null)
@@ -1989,7 +1989,9 @@ function AuthenticationSettings({ active, t }) {
           h('p', null, t('accountAccessDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.authenticationButton}`,
-          href: '/_dsh_platform/auth/management/start?tab=auth-settings',
+          href: managementConsoleHref === null ? undefined : `${managementConsoleHref}#auth-settings`,
+          'aria-disabled': managementConsoleHref === null,
+          onClick: event => { if (managementConsoleHref === null) event.preventDefault() },
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement'))),
@@ -2035,6 +2037,7 @@ function PlatformManagement({ t }) {
   const [dismissedProgressTaskId, setDismissedProgressTaskId] = useState(null)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [focusedLogTaskId, setFocusedLogTaskId] = useState(null)
+  const [managementConsoleHref, setManagementConsoleHref] = useState(null)
   const statusLoad = useRef()
   const statusLoadRevision = useRef(0)
   const inventoryLoads = useRef({ plugins: undefined, skills: undefined })
@@ -2044,6 +2047,17 @@ function PlatformManagement({ t }) {
   activeTabRef.current = activeTab
 
   useEffect(() => makeHorizontalTabStripScrollable(tabsRef.current), [])
+
+  useEffect(() => {
+    const refreshManagementConsoleHref = () => {
+      void authenticationRequest('session-context')
+        .then(value => setManagementConsoleHref(value.managementConsoleHref ?? '/_dsh_platform/console/'))
+        .catch(() => setManagementConsoleHref(null))
+    }
+    refreshManagementConsoleHref()
+    window.addEventListener('focus', refreshManagementConsoleHref)
+    return () => window.removeEventListener('focus', refreshManagementConsoleHref)
+  }, [])
 
   const refresh = useCallback(() => {
     statusLoadRevision.current += 1
@@ -2349,7 +2363,7 @@ function PlatformManagement({ t }) {
       role: 'tabpanel',
       'aria-labelledby': 'platform-tab-authentication-button',
       hidden: activeTab !== 'authentication',
-    }, h(AuthenticationSettings, { active: activeTab === 'authentication', t })),
+    }, h(AuthenticationSettings, { active: activeTab === 'authentication', managementConsoleHref, t })),
 
     h('div', {
       id: 'platform-tab-proxy',
@@ -2466,7 +2480,9 @@ function PlatformManagement({ t }) {
           h('p', null, t('standaloneManagementDetail'))),
         h('a', {
           className: `${css.secondaryButton} ${css.maintenanceButton}`,
-          href: '/_dsh_platform/auth/management/start',
+          href: managementConsoleHref ?? undefined,
+          'aria-disabled': managementConsoleHref === null,
+          onClick: event => { if (managementConsoleHref === null) event.preventDefault() },
           target: '_blank',
           rel: 'noopener noreferrer',
         }, t('openPlatformManagement')))),
