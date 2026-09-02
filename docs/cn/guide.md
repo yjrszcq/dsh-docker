@@ -344,16 +344,18 @@ docker exec -it --user root deepseek-harness dsh-platform access disable-managem
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --two-factor
 docker exec -it --user root deepseek-harness dsh-platform recover
 docker exec -it --user root deepseek-harness dsh-platform recover --main-password
 docker exec -it --user root deepseek-harness dsh-platform recover --management-password
+docker exec -it --user root deepseek-harness dsh-platform recover --two-factor
 ```
 
 推荐使用组合恢复命令 `access reset`。它会分别询问是否修改用户名和主密码；当前已启用管理中心密码时，还会用编号菜单选择保留、关闭或重设管理中心密码。所有选定输入完成前不会保存，途中取消或 TTY 断开不会留下只改了一半的账户状态。所有是/否恢复提示只接受 `y` 或 `n`，方括号标识默认项。原有细分交互命令继续用于单项凭据恢复。成功完成账户恢复后，现有 DSH 与 Management 浏览器会话都会失效。
 
 `access clear-retry` 会询问 `Clear all administrator login retry limits? y/[n]:`。确认后清除所有浏览器来源的指数等待、来源滚动窗口和实例总量失败窗口。添加 `--global-only` 时改为询问 `Clear instance-wide administrator login rate limits? y/[n]:`，并且只清除实例总量窗口，浏览器等待和来源窗口保持有效。两种形式都不修改凭据或浏览器会话。
 
-`recover` 同样只允许从 Root TTY 执行；不带密码参数时解除主密码和管理中心密码的全部登录退避，`--main-password` 或 `--management-password` 可只解除对应凭据的退避。任一形式均可与 `--image-baseline` 组合；实例总量窗口仍由两类登录失败共同计数，定向解除只移除对应凭据产生的记录。
+`recover` 同样只允许从 Root TTY 执行；不带选择参数时解除主密码和管理中心密码的全部登录退避，`--main-password` 或 `--management-password` 可只解除对应凭据的退避，`--two-factor` 只清理 2FA 每日限额，不解除固定 10 秒动态码退避。三种选择均可与 `--image-baseline` 组合；实例总量窗口仍由两类密码登录失败共同计数，定向解除只移除对应类别产生的记录。
 
 空平台卷始终进入普通首次注册，不需要密钥；仅配置遗留密码环境变量不能把空卷误判为旧部署。已有持久化数据但没有新版账户的部署进入 `migration-required`，已初始化账户缺失或损坏时进入 `recovery-required`。两种状态都在 Root TTY 中执行 `dsh-platform access generate-key`，生成十分钟有效且单次使用的认证重置密钥，再通过浏览器创建替代账户；新 key 会立即使旧 key 失效。旧环境密码只能作为已有持久化部署的附加迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 
