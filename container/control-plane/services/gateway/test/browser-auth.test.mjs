@@ -782,6 +782,47 @@ test('migration and initialization pages distinguish registration errors from lo
   }
 })
 
+test('a parallel TOTP page reuses the DSH session completed by another tab', async () => {
+  const current = fixture('initialized', { totpEnabled: true })
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    current.sessions.set('dshs_existing', origin)
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/session?return=%2F_dsh_platform%2Fauth%2Fmanagement%2Fstart',
+      method: 'POST',
+      headers: {
+        host, origin,
+        cookie: `${DSH_SESSION_COOKIE}=dshs_existing; ${TOTP_LOGIN_COOKIE}=dshtl_consumed`,
+        'content-type': 'application/json',
+        'x-dsh-csrf': 'dsha_stale',
+        'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ totpCode: '123456' }),
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(JSON.parse(response.body), {
+      authenticated: true,
+      next: '/_dsh_platform/auth/management/start',
+    })
+    assert.equal(response.headers['set-cookie'].some(value => value.startsWith(`${TOTP_LOGIN_COOKIE}=;`)), true)
+    assert.equal(current.calls.some(call => call.path === '/v1/dsh/totp/complete'), false)
+
+    const forbidden = await request(port, {
+      path: '/_dsh_platform/auth/session', method: 'POST',
+      headers: {
+        host, origin: 'https://attacker.example',
+        cookie: `${DSH_SESSION_COOKIE}=dshs_existing`,
+        'content-type': 'application/json',
+        'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors',
+      },
+      body: JSON.stringify({ totpCode: '123456' }),
+    })
+    assert.equal(forbidden.status, 403)
+  } finally { await close(current.server) }
+})
+
 test('damaged authentication requires an explicit reset page and never places credentials in its URL', async () => {
   const current = fixture('recovery-required')
   const port = await listen(current.server)

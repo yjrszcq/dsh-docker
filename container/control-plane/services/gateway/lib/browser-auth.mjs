@@ -160,6 +160,10 @@ function totpLoginCookie(challenge, origin, authPrefix = AUTH_PREFIX) {
   return `${TOTP_LOGIN_COOKIE}=${challenge.token}; HttpOnly; SameSite=Strict; Path=${authPrefix}; Max-Age=300${secureCookie(origin)}`
 }
 
+function clearTotpLoginCookie(origin, authPrefix = AUTH_PREFIX) {
+  return `${TOTP_LOGIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=${authPrefix}; Max-Age=0${secureCookie(origin)}`
+}
+
 function authenticationContext(request, origin, authPrefix = AUTH_PREFIX) {
   const csrfToken = cookieValue(request.headers.cookie, AUTH_CSRF_COOKIE) ?? token('dsha')
   const retrySource = cookieValue(request.headers.cookie, AUTH_RETRY_COOKIE) ?? token('dshr')
@@ -768,14 +772,21 @@ export function createBrowserAuthentication({
         sendJson(response, 403, { error: 'authentication request rejected', code: 'REQUEST_FORBIDDEN' })
         return true
       }
-      if (!validBrowserMutation(request, csrf)) {
-        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
-        return true
-      }
       const origin = requestOrigin(request, { requireHeader: true })
       const value = await jsonBody(request)
       const current = await authenticationStatus()
       const completingTotp = current.state === 'initialized' && typeof value.totpCode === 'string'
+      if (completingTotp && (await validateDsh(request)).authenticated) {
+        sendJson(response, 200, {
+          authenticated: true,
+          next: safeReturnPath(searchParams.get('return')),
+        }, { 'set-cookie': clearTotpLoginCookie(origin, authPrefix) })
+        return true
+      }
+      if (!validBrowserMutation(request, csrf)) {
+        sendJson(response, 409, { error: 'authentication context is stale', code: 'AUTHENTICATION_CONTEXT_STALE' })
+        return true
+      }
       const route = current.state === 'never-initialized'
         ? '/v1/dsh/initialize' : completingTotp ? '/v1/dsh/totp/complete' : '/v1/dsh/login'
       if (!['never-initialized', 'initialized'].includes(current.state)) {
