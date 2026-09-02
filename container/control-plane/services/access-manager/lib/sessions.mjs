@@ -81,6 +81,7 @@ export class BrowserSessionStore {
     const sessionId = identifier(this.random, 16)
     const createdAt = this.now()
     const sourceClient = sourceDshSession === undefined ? sessionClient(client) : sourceDshSession.client
+    const expiresAt = Math.min(createdAt + policy.absoluteMs, sourceDshSession?.expiresAt ?? Number.POSITIVE_INFINITY)
     this.sessions.set(digest(token).toString('hex'), {
       sessionId,
       kind,
@@ -97,14 +98,14 @@ export class BrowserSessionStore {
       csrfDigest: digest(csrfToken),
       createdAt,
       lastSeenAt: createdAt,
-      expiresAt: Math.min(createdAt + policy.absoluteMs, sourceDshSession?.expiresAt ?? Number.POSITIVE_INFINITY),
+      expiresAt,
       idleMs: policy.idleMs,
     })
     return Object.freeze({
       token,
       csrfToken,
       sessionId,
-      expiresAt: new Date(createdAt + policy.absoluteMs).toISOString(),
+      expiresAt: new Date(expiresAt).toISOString(),
     })
   }
 

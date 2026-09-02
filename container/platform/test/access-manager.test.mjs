@@ -883,6 +883,10 @@ test('management password failures use the shared backend retry state', async ()
 })
 
 test('stores only digests for origin-bound DSH sessions with absolute and idle expiry', async () => {
+  assert.deepEqual(new BrowserSessionStore().policy, {
+    dsh: { absoluteMs: 12 * 60 * 60_000, idleMs: 2 * 60 * 60_000 },
+    management: { absoluteMs: 8 * 60 * 60_000, idleMs: 30 * 60_000 },
+  })
   let now = 1_000
   const sessions = new BrowserSessionStore({
     now: () => now,
@@ -907,8 +911,97 @@ test('stores only digests for origin-bound DSH sessions with absolute and idle e
   assert.equal(sessions.validate(issued.token, 'dsh', account, {
     origin: 'https://dsh.example', csrfToken: 'wrong', requireCsrf: true,
   }), undefined)
+  account.mainCredential.version += 1
+  assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+  account.mainCredential.version -= 1
+  account.managementAccess.version += 1
+  assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+  account.managementAccess.version -= 1
   now += 101
   assert.equal(sessions.validate(issued.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+
+  now = 2_000
+  const absoluteSessions = new BrowserSessionStore({
+    now: () => now, dshAbsoluteMs: 100, dshIdleMs: 1_000,
+  })
+  const absolute = absoluteSessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  now += 101
+  assert.equal(absoluteSessions.validate(absolute.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+})
+
+test('Management sessions inherit source DSH expiry and bind every account version', async () => {
+  let now = 1_000
+  const sessions = new BrowserSessionStore({
+    now: () => now,
+    dshAbsoluteMs: 100,
+    dshIdleMs: 1_000,
+    managementAbsoluteMs: 500,
+    managementIdleMs: 500,
+  })
+  const account = {
+    accountId: 'account',
+    mainCredential: { version: 2 },
+    managementAdditionalCredential: { enabled: true, version: 4 },
+    managementAccess: { version: 3 },
+  }
+  const dsh = sessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  now += 10
+  const management = sessions.issue('management', account, {
+    origin: 'https://manage.example',
+    sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: dsh.sessionId,
+  })
+  assert.equal(management.expiresAt, dsh.expiresAt)
+  assert.doesNotMatch(JSON.stringify([...sessions.sessions.values()]), new RegExp(management.token))
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://manage.example',
+  })?.sourceDshSessionId, dsh.sessionId)
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://other.example',
+  }), undefined)
+
+  account.managementAdditionalCredential.version += 1
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://manage.example',
+  }), undefined)
+  account.managementAdditionalCredential.version -= 1
+  account.mainCredential.version += 1
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://manage.example',
+  }), undefined)
+  account.mainCredential.version -= 1
+  account.managementAccess.version += 1
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://manage.example',
+  }), undefined)
+  account.managementAccess.version -= 1
+  now = 1_101
+  assert.equal(sessions.validate(management.token, 'management', account, {
+    origin: 'https://manage.example',
+  }), undefined)
+
+  for (const [expiry, options] of [
+    ['idle', { managementAbsoluteMs: 1_000, managementIdleMs: 50 }],
+    ['absolute', { managementAbsoluteMs: 50, managementIdleMs: 1_000 }],
+  ]) {
+    now = 2_000
+    const expiring = new BrowserSessionStore({
+      now: () => now, dshAbsoluteMs: 1_000, dshIdleMs: 1_000, ...options,
+    })
+    const source = expiring.issue('dsh', account, { origin: 'https://dsh.example' })
+    const target = expiring.issue('management', account, {
+      origin: 'https://manage.example',
+      sourceDshOrigin: 'https://dsh.example',
+      sourceDshSessionId: source.sessionId,
+    })
+    now += 51
+    assert.equal(expiring.validate(target.token, 'management', account, {
+      origin: 'https://manage.example',
+    }), undefined, `Management ${expiry} expiry must invalidate the session`)
+    assert.equal(expiring.validate(source.token, 'dsh', account, {
+      origin: 'https://dsh.example', touch: false,
+    })?.kind, 'dsh')
+  }
 })
 
 test('probes the current instance before atomically changing Management origin', async () => {
