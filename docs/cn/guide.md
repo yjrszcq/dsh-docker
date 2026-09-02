@@ -328,7 +328,7 @@ Access Manager 按浏览器来源统计密码失败。第 5 次连续失败后�
 
 DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览器导航会在认证前收到 Gateway 的通用等待或恢复页。页面不泄露 Runtime 错误细节，并提供管理中心恢复入口；非页面、API 和 WebSocket 请求继续返回对应的服务不可用响应，不会收到 HTML。DSH 恢复 Ready 后，普通页面访问仍须持有有效的 DSH Session。
 
-默认兼容模式在 `3080` 的 `/_dsh_platform/console/` 提供管理中心。可选强隔离模式从单独发布的 `3081` Origin 根路径提供管理中心，且该入口不提供 DSH upstream。平台会先校验候选 Origin 和当前实例，再切换并注销旧 Management Session。仓库 Compose 默认不发布 `3081`，需要由运维人员显式映射或反向代理。当 DSH 可以取得容器 Root 时，界面会如实说明进程级隔离无效并锁定模式切换；Origin 分离仍能阻止同源 DSH 客户端插件取得 Management Session。
+默认兼容模式在 `3080` 的 `/_dsh_platform/console/` 提供管理中心。可选强隔离模式从容器内独立管理入口提供管理中心，且该入口不提供 DSH upstream：公开独立入口填写实际公开 Origin，本机独立入口只填写映射到容器入口的宿主机端口（默认 `3081`，可改为任意有效端口）。平台会先校验候选入口和当前实例，再切换并注销旧 Management Session。仓库 Compose 默认不发布独立入口，需要由运维人员显式映射或反向代理。当 DSH 可以取得容器 Root 时，界面会如实说明进程级隔离无效并锁定模式切换；Origin 分离仍能阻止同源 DSH 客户端插件取得 Management Session。
 
 每个特权 Management 或 Maintenance 操作还会在最终 Unix Socket 执行点校验短时、单次 capability；它绑定 method、path、session、CSRF、credential version 和 access version。直接连接 Socket 不能代替浏览器认证。DSH 内“平台管理”和“设置文档编辑器”通过已认证 DSH Session 使用固定受限 Plugin API，不能访问文件、Root 终端、用户插件恢复、认证设置或完整 Management capability。
 

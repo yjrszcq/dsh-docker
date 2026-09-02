@@ -4,9 +4,9 @@
 
 - Port `3080` is the Gateway and the only normal published service.
 - Port `3079` is the loopback-only DSH upstream inside the container; do not publish or access it remotely.
-- The standalone Management Console is below `/_dsh_platform/console/` on the Gateway.
+- The standalone Management Console is below `/_dsh_platform/console/` on the Gateway in compatibility mode. Separate-origin mode uses the container's dedicated Management entry without a DSH upstream.
 
-For remote access, configure `DSH_TRUSTED_HOSTS` for accepted external Host values, initialize the local administrator in the browser, and terminate HTTPS at a trusted reverse proxy or equivalent network boundary. Never expose port `3080` or the standalone Management Console before authentication: its terminal and file manager operate with Root authority. The reverse proxy must preserve the original `Host` and normal WebSocket upgrade headers. Optional strong isolation publishes Management on port `3081` without a DSH upstream; do not assume it is exposed unless the operator configured that Origin.
+For remote access, configure `DSH_TRUSTED_HOSTS` for accepted external Host values, initialize the local administrator in the browser, and terminate HTTPS at a trusted reverse proxy or equivalent network boundary. Never expose port `3080` or the standalone Management Console before authentication: its terminal and file manager operate with Root authority. The reverse proxy must preserve the original `Host` and normal WebSocket upgrade headers. Optional strong isolation publishes the dedicated Management entry without a DSH upstream; for a public separate origin configure its exact public URL, and for a local separate origin configure the host port mapped to the container entry (default `3081`, but the host port is user-selectable). Do not assume either separate entry is exposed unless the operator configured it.
 
 Do not weaken Host/Origin checks to work around a reverse-proxy error. Diagnose the forwarded Host, scheme, Origin, WebSocket upgrade, and authentication headers first.
 
