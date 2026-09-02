@@ -126,6 +126,7 @@ export class AccessService {
     report = async () => {},
     now = () => Date.now(),
     runtimeCapabilities = detectRuntimeCapabilities,
+    authenticationEpoch = identifier(),
   }) {
     this.store = store
     this.classificationToken = classificationToken
@@ -138,8 +139,20 @@ export class AccessService {
     this.report = report
     this.now = now
     this.runtimeCapabilities = runtimeCapabilities
+    this.authenticationEpoch = authenticationEpoch
     this.authenticationReset = null
     this.transition = Promise.resolve()
+  }
+
+  authenticationContext(current) {
+    const revision = current.account?.revision ?? current.initialization?.instanceId ?? current.state
+    return `${this.authenticationEpoch}.${revision}`
+  }
+
+  requireAuthenticationContext(value, current) {
+    if (!sameToken(value.authenticationContext, this.authenticationContext(current))) {
+      throw new AccessError('AUTHENTICATION_CONTEXT_STALE', 'authentication context is stale', 409)
+    }
   }
 
   serialized(operation) {
@@ -189,6 +202,7 @@ export class AccessService {
       componentReady: true,
       state: current.state,
       instanceId: current.initialization?.instanceId ?? null,
+      authenticationContext: this.authenticationContext(current),
       account: publicAccount(current.account),
       ...capabilities,
     }
@@ -264,8 +278,8 @@ export class AccessService {
     })
   }
 
-  async authenticate(value) {
-    const current = await this.store.state()
+  async authenticate(value, suppliedCurrent) {
+    const current = suppliedCurrent ?? await this.store.state()
     if (current.state !== 'initialized' || current.account === undefined) {
       throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator access is not initialized', 409)
     }
@@ -308,8 +322,9 @@ export class AccessService {
 
 
   async loginDsh(value) {
-    const authenticated = await this.authenticate(value)
     const current = await this.store.state()
+    this.requireAuthenticationContext(value, current)
+    const authenticated = await this.authenticate(value, current)
     const session = this.sessions.issue('dsh', current.account, {
       origin: value.origin,
       client: value.client,

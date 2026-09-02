@@ -10,6 +10,10 @@ function usage() {
   return 'usage: dsh-platform status|check|update [--wait]|start|stop|restart [--wait]|channel [stable|experimental]|retry|rollback|return-stable|recover --image-baseline|logs [--source NAME] [--since ISO] [--limit N]|access status|reset|set-username|reset-password|reset-management-password|disable-management-password|generate-key|clear-retry [--global-only]|trust status|reset'
 }
 
+function recoverUsage() {
+  return 'dsh-platform recover requires --image-baseline\nusage: dsh-platform recover --image-baseline'
+}
+
 export function parseCli(argv) {
   const [command, ...rest] = argv
   if (['status', 'check', 'retry', 'rollback', 'return-stable'].includes(command)) {
@@ -22,6 +26,7 @@ export function parseCli(argv) {
   if (command === 'recover' && rest.length === 1 && rest[0] === '--image-baseline') {
     return { command, imageBaseline: true }
   }
+  if (command === 'recover') throw new Error(recoverUsage())
   if (['update', 'start', 'stop', 'restart'].includes(command)) {
     if (rest.some(value => value !== '--wait') || rest.filter(value => value === '--wait').length > 1) throw new Error(usage())
     return { command, wait: rest.includes('--wait') }

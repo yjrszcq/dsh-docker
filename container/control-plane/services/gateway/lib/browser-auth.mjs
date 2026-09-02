@@ -250,7 +250,7 @@ function htmlEscape(value) {
 const USERNAME_INPUT_PATTERN = String.raw`[^\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]{1,64}`
 const PASSWORD_INPUT_PATTERN = String.raw`[^\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]{8,1024}`
 
-function authenticationPage(request, state, csrf, returnPath, { resetForm = false } = {}) {
+function authenticationPage(request, state, csrf, authenticationContextId, returnPath, { resetForm = false } = {}) {
   const zh = language(request) === 'zh'
   const copy = zh ? {
     brand: 'HARNESS', username: '用户名', password: '密码', register: '注册', login: '登录',
@@ -319,7 +319,7 @@ function authenticationPage(request, state, csrf, returnPath, { resetForm = fals
     // authority for registration, recovery, and credential validation.
     const validationGate = validateCredentials
       ? `validateField('username');validateField('password');` : ''
-    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};let csrfToken=${JSON.stringify(csrf)};${authenticationCountdownScript(submit)}${validationScript}async function submitAuthentication(body,retry=true){const response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry){const refreshed=await fetch(${JSON.stringify(`${AUTH_PREFIX}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'){csrfToken=next.csrfToken;return submitAuthentication(body,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form),body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password')});try{const{response,payload}=await submitAuthentication(body);if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}if(!showRetryFailure(payload)){error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)};error.hidden=false}finally{if(retryUntil<=Date.now())button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
+    content = `${context}<form method="post" action="${htmlEscape(submitPath)}" novalidate>${reset ? `<label>${copy.setupKey}<input name="setupKey" autocomplete="one-time-code" required maxlength="512" autofocus></label>` : ''}<label>${copy.username}<input name="username" autocomplete="username" maxlength="256"${usernameValidation}${reset ? '' : ' autofocus'}>${usernameError}</label><label>${copy.password}<input name="password" type="password" autocomplete="${validateCredentials ? 'new-password' : 'current-password'}" maxlength="1024"${passwordValidation}>${passwordError}</label><button type="submit">${submit}</button><p class="error" role="alert" hidden></p></form><script>const form=document.querySelector('form'),error=document.querySelector('.error'),button=form.querySelector('button'),failureMessages=${JSON.stringify(registrationErrors)},retryMessage=${JSON.stringify(copy.retryRequired)},rateLimitMessage=${JSON.stringify(copy.rateLimited)};let csrfToken=${JSON.stringify(csrf)},authenticationContextId=${JSON.stringify(authenticationContextId)};${authenticationCountdownScript(submit)}${validationScript}async function submitAuthentication(values,retry=true){const body=JSON.stringify({${reset ? "setupKey:values.get('setupKey')," : ''}username:values.get('username'),password:values.get('password'),authenticationContext:authenticationContextId}),response=await fetch(${JSON.stringify(submitPath)},{method:'POST',headers:{'content-type':'application/json','x-dsh-csrf':csrfToken},body});const payload=await response.json().catch(()=>({}));if(response.status===409&&payload.code==='AUTHENTICATION_CONTEXT_STALE'&&retry){const refreshed=await fetch(${JSON.stringify(`${AUTH_PREFIX}context`)},{headers:{accept:'application/json'},cache:'no-store'}),next=await refreshed.json().catch(()=>({}));if(refreshed.ok&&typeof next.csrfToken==='string'&&typeof next.authenticationContext==='string'){csrfToken=next.csrfToken;authenticationContextId=next.authenticationContext;return submitAuthentication(values,false)}}return{response,payload}}form.addEventListener('submit',async event=>{event.preventDefault();error.hidden=true;${validationGate}button.disabled=true;button.textContent=${JSON.stringify(initialize ? copy.initializing : reset ? copy.resetting : copy.signingIn)};const values=new FormData(form);try{const{response,payload}=await submitAuthentication(values);if(response.ok){location.replace(typeof payload.next==='string'?payload.next:${JSON.stringify(returnPath)});return}if(!showRetryFailure(payload)){error.textContent=failureMessages[payload.code]??${JSON.stringify(fallbackError)};error.hidden=false}}catch{error.textContent=${JSON.stringify(copy.serviceUnavailable)};error.hidden=false}finally{if(retryUntil<=Date.now())button.disabled=false;button.textContent=${JSON.stringify(submit)}}})</script>`
   } else if (state === 'recovery-required') {
     const resetPath = `${AUTH_PREFIX}reset?return=${encodeURIComponent(returnPath)}`
     content = `<h1>${copy.recoveryTitle}</h1><p class="detail">${copy.recoveryDetail}</p><a class="button" href="${htmlEscape(resetPath)}">${copy.recoveryAction}</a>`
@@ -632,7 +632,11 @@ export function createBrowserAuthentication({
       }
       const origin = requestOrigin(request)
       const authContext = authenticationContext(request, origin, authPrefix)
-      sendJson(response, 200, { csrfToken: authContext.csrfToken }, { 'set-cookie': authContext.cookies })
+      const current = await authenticationStatus()
+      sendJson(response, 200, {
+        csrfToken: authContext.csrfToken,
+        authenticationContext: current.authenticationContext,
+      }, { 'set-cookie': authContext.cookies })
       return true
     }
     const authenticationEntry = pathname === authPrefix.slice(0, -1) || pathname === authPrefix
@@ -654,7 +658,9 @@ export function createBrowserAuthentication({
         response.end()
         return true
       }
-      const bytes = Buffer.from(authenticationPage(request, current.state, authContext.csrfToken, returnPath, { resetForm }))
+      const bytes = Buffer.from(authenticationPage(
+        request, current.state, authContext.csrfToken, current.authenticationContext, returnPath, { resetForm },
+      ))
       response.writeHead(200, {
         'cache-control': 'no-store',
         'content-length': String(bytes.byteLength),

@@ -59,6 +59,7 @@ function fixture(initialState = 'never-initialized', options = {}) {
       calls.push({ method, path, body })
       if (path === '/v1/status') return {
         state,
+        authenticationContext: 'dsh-authentication-context',
         account: state === 'initialized'
           ? {
               managementAdditionalCredential: { enabled: options.managementAdditionalEnabled ?? true },

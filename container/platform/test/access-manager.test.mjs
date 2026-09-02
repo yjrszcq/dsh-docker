@@ -233,12 +233,17 @@ async function persistIsolatedManagementAccess(store) {
   return account
 }
 
+async function loginDsh(service, value) {
+  const { authenticationContext } = await service.status()
+  return service.loginDsh({ ...value, authenticationContext })
+}
+
 async function loginManagement(service, {
   dshOrigin = 'http://dsh.example:3080',
   targetOrigin = dshOrigin,
   managementPassword,
 } = {}) {
-  const dsh = await service.loginDsh({
+  const dsh = await loginDsh(service, {
     username: 'admin', password: 'correct horse battery staple', origin: dshOrigin,
   })
   const handoff = await service.createManagementHandoff({
@@ -554,6 +559,30 @@ test('authenticates normalized usernames without exposing which credential faile
     service.authenticate({ username: 'ádmin', password: 'incorrect password' }),
     error => error.code === 'AUTHENTICATION_FAILED' && error.statusCode === 401,
   )
+})
+
+test('rejects a login context minted before the Access Manager restarted', async () => {
+  const current = await fixture({ authenticationEpoch: 'epoch-before-restart' })
+  await current.service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  await current.service.initializeDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+  })
+  const staleContext = (await current.service.status()).authenticationContext
+  const restarted = new AccessService({
+    store: current.store,
+    classificationToken: 'classification-token',
+    authenticationEpoch: 'epoch-after-restart',
+  })
+  await assert.rejects(restarted.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    authenticationContext: staleContext,
+  }), error => error.code === 'AUTHENTICATION_CONTEXT_STALE' && error.statusCode === 409)
+  const freshContext = (await restarted.status()).authenticationContext
+  const loggedIn = await restarted.loginDsh({
+    username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
+    authenticationContext: freshContext,
+  })
+  assert.equal(loggedIn.authenticated, true)
 })
 
 test('limits failed authentication before admitting more KDF work', () => {
@@ -1261,7 +1290,7 @@ test('lists login devices and revokes each DSH session with its linked Managemen
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
     client: { ip: '192.0.2.10', userAgent: 'Browser One' },
   })
-  const secondDsh = await service.loginDsh({
+  const secondDsh = await loginDsh(service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
     client: { ip: '192.0.2.11', userAgent: 'Browser Two' },
   })
@@ -1387,7 +1416,7 @@ test('reconciles a persisted isolated Management entry when DSH Root capability 
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   const isolated = await persistIsolatedManagementAccess(store)
-  const session = await service.loginDsh({
+  const session = await loginDsh(service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
 
@@ -1448,7 +1477,7 @@ test('initializes and logs into DSH with separately revocable browser sessions',
     kind: 'dsh', token: initialized.session.token, origin: 'https://dsh.example',
   })).authenticated, false)
 
-  const loggedIn = await current.service.loginDsh({
+  const loggedIn = await loginDsh(current.service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   assert.match(loggedIn.session.token, /^dshs_/)
@@ -1494,7 +1523,7 @@ test('rejects an additional Management password after its source DSH session end
     revision: initialized.account.revision,
     password: 'separate management password',
   })
-  const dsh = await current.service.loginDsh({
+  const dsh = await loginDsh(current.service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
   const handoff = await current.service.createManagementHandoff({
@@ -1520,7 +1549,7 @@ test('revokes Management sessions linked to the current DSH browser without wide
   const firstDsh = await current.service.initializeDsh({
     username: 'admin', password: 'correct horse battery staple', origin: 'https://dsh.example',
   })
-  const secondDsh = await current.service.loginDsh({
+  const secondDsh = await loginDsh(current.service, {
     username: 'admin', password: 'correct horse battery staple', origin: 'https://other.example',
   })
   const exchange = async (dsh, dshOrigin, targetOrigin) => {

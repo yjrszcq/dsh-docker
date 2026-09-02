@@ -2670,6 +2670,10 @@ test('trust reset refuses non-root and non-interactive callers before mutation',
 
 test('image baseline recovery is root/TTY-only and requires the complete image identity', async () => {
   assert.deepEqual(parseCli(['recover', '--image-baseline']), { command: 'recover', imageBaseline: true })
+  assert.throws(
+    () => parseCli(['recover']),
+    /dsh-platform recover requires --image-baseline\nusage: dsh-platform recover --image-baseline/,
+  )
   const calls = []
   const recovery = {
     request: async (method, path, body) => {
