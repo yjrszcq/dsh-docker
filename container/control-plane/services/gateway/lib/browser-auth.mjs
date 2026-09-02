@@ -821,6 +821,15 @@ export function createBrowserAuthentication({
       })
       return true
     }
+    if (pathname === authPrefix + 'management/session-context' && request.method === 'GET') {
+      const valid = await validateManagement(request)
+      if (!valid.authenticated) {
+        sendJson(response, 401, { error: 'authentication required', code: 'AUTHENTICATION_REQUIRED' })
+        return true
+      }
+      sendJson(response, 200, { authenticated: true })
+      return true
+    }
     if (pathname === authPrefix + 'browser-logout' && request.method === 'POST') {
       const valid = await validateDsh(request, { requireCsrf: true })
       const origin = requestOrigin(request, { requireHeader: true })

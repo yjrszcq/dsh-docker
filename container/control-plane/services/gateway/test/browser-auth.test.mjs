@@ -185,7 +185,7 @@ function fixture(initialState = 'never-initialized', options = {}) {
       if (!handled) { response.writeHead(404); response.end() }
     })
   })
-  return { access, authentication, calls, server, sessions, managementSessions, state: () => state }
+  return { access, authentication, calls, server, sessions, managementSessions, managementSources, state: () => state }
 }
 
 test('Management transition probe exposes a proof only to its exact source Origin and consumes the nonce', async () => {
@@ -976,6 +976,20 @@ test('DSH session context publishes the configured separate Management Console U
       assert.equal(JSON.parse(response.body).managementConsoleHref, expected)
     } finally { await close(current.server) }
   }
+})
+
+test('Management session context rejects a browser after its linked session is revoked', async () => {
+  const current = fixture('initialized')
+  current.sessions.set('dshs_existing', 'http://dsh.example')
+  current.managementSessions.set('dshms_existing', 'http://dsh.example')
+  current.managementSources.set('dshms_existing', 'dshs_existing')
+  const port = await listen(current.server)
+  try {
+    const headers = { host: 'dsh.example', cookie: `${MANAGEMENT_SESSION_COOKIE}=dshms_existing` }
+    assert.equal((await request(port, { path: '/_dsh_platform/auth/management/session-context', headers })).status, 200)
+    current.managementSessions.delete('dshms_existing')
+    assert.equal((await request(port, { path: '/_dsh_platform/auth/management/session-context', headers })).status, 401)
+  } finally { await close(current.server) }
 })
 
 test('DSH browser sessions authorize only path-bound Plugin API capabilities', async () => {

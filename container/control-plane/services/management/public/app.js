@@ -1066,6 +1066,27 @@ function clearError() {
   elements.error.textContent = ''
 }
 
+function startManagementSessionGuard() {
+  let checking = false
+  const inspect = async () => {
+    if (checking) return
+    checking = true
+    try {
+      const response = await fetch('/_dsh_platform/auth/management/session-context', {
+        cache: 'no-store', credentials: 'same-origin',
+      })
+      if (response.status === 401) window.location.reload()
+    } catch {}
+    finally { checking = false }
+  }
+  setInterval(inspect, 5_000)
+  window.addEventListener('focus', inspect)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') inspect()
+  })
+  void inspect()
+}
+
 function browserCookie(name) {
   for (const part of document.cookie.split(';')) {
     const separator = part.indexOf('=')
@@ -5291,6 +5312,7 @@ applyTranslations()
 void selectTab(window.location.hash === '#auth-settings' ? 'auth-settings' : 'maintenance')
 renderLogs()
 connectEvents()
+startManagementSessionGuard()
 void (async () => {
   const initial = await loadStatus()
   void loadProxy()
