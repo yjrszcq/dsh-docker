@@ -418,7 +418,9 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     assert.doesNotMatch(JSON.stringify(authenticated), /salt|hash|password|verifier/i)
     await assert.rejects(access.request('POST', '/v1/authenticate', {
       username: 'admin', password: 'incorrect password', authenticationSource: 'browser:test',
-    }), error => error.statusCode === 401 && error.code === 'AUTHENTICATION_FAILED')
+    }), error => error.statusCode === 429
+      && error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.retryAfterSeconds === 1)
     await assert.rejects(access.request('POST', '/v1/authenticate', {
       username: 'admin', password: 'correct horse battery staple', authenticationSource: 'browser:test',
     }), error => error.statusCode === 429
@@ -440,7 +442,9 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     })).authenticated, true)
     await assert.rejects(access.request('POST', '/v1/authenticate', {
       username: 'admin', password: 'incorrect password', authenticationSource: 'browser:global-only',
-    }), error => error.code === 'AUTHENTICATION_FAILED')
+    }), error => error.statusCode === 429
+      && error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.retryAfterSeconds === 1)
     const globalCleared = await recovery.request('POST', '/v1/recovery/clear-retry', { scope: 'global' })
     assert.deepEqual(globalCleared, {
       status: 'cleared', scope: 'global', cleared: true,
@@ -755,7 +759,7 @@ test('prunes expired browser source histories during later authentication', () =
 test('main login and fresh authentication share backend retry state', async () => {
   let now = 1_000
   const limiter = new AuthenticationLimiter({
-    globalLimit: 100, initialBackoffMs: 1_000, clock: () => now,
+    globalLimit: 100, clock: () => now,
   })
   const { service } = await fixture({ limiter })
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
@@ -771,20 +775,26 @@ test('main login and fresh authentication share backend retry state', async () =
   const account = (await service.store.state()).account
   await assert.rejects(
     service.verifyFreshAuthentication(account, 'incorrect password'),
-    error => error.code === 'FRESH_AUTH_FAILED',
+    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.details.retryAfterSeconds === 30,
   )
   await assert.rejects(
     service.authenticate({ username: 'admin', password: 'correct horse battery staple' }),
     error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
-      && error.details.retryAfterSeconds === 1,
+      && error.details.retryAfterSeconds === 30,
   )
   assert.equal((await service.recoveryStatus()).authenticationRetry.consecutiveFailures, 5)
+  now += 30_000
+  await assert.rejects(
+    service.authenticate({ username: 'admin', password: 'incorrect password' }),
+    error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+      && error.details.retryAfterSeconds === 60,
+  )
   assert.equal((await service.clearAuthenticationRetry()).cleared, true)
   assert.equal((await service.authenticate({
     username: initialized.account.username,
     password: 'correct horse battery staple',
   })).authenticated, true)
-  now += 1_000
 })
 
 test('management password failures use the shared backend retry state', async () => {
@@ -807,13 +817,19 @@ test('management password failures use the shared backend retry state', async ()
     sourceDshOrigin: 'https://dsh.example',
     sourceDshSessionId: initialized.session.sessionId,
   })).pending
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     await assert.rejects(service.completeManagementLogin({
       pendingToken: pending.token,
       origin: 'https://manage.example',
       password: 'incorrect management password',
     }), error => error.code === 'AUTHENTICATION_FAILED')
   }
+  await assert.rejects(service.completeManagementLogin({
+    pendingToken: pending.token,
+    origin: 'https://manage.example',
+    password: 'incorrect management password',
+  }), error => error.code === 'AUTHENTICATION_RETRY_REQUIRED'
+    && error.details.retryAfterSeconds === 1)
   await assert.rejects(service.completeManagementLogin({
     pendingToken: pending.token,
     origin: 'https://manage.example',

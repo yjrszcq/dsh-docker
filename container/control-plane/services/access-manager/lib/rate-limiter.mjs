@@ -131,7 +131,7 @@ export class AuthenticationLimiter {
     this.active += 1
     let released = false
     const release = success => {
-      if (released) return
+      if (released) return this.sourceStatus(accountId, sourceId)
       released = true
       this.active -= 1
       if (success !== true) {
@@ -154,6 +154,7 @@ export class AuthenticationLimiter {
         this.consecutiveFailures.delete(this.retryKey(accountId, sourceId))
         this.sources.delete(this.retryKey(accountId, sourceId))
       }
+      return this.sourceStatus(accountId, sourceId)
     }
     return { release }
   }

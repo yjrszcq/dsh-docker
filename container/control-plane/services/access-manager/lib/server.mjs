@@ -28,6 +28,21 @@ function authenticationSource(value) {
     ? `ip:${digest(ip)}` : 'unknown'
 }
 
+function enforceAuthenticationRetry(retry) {
+  if (retry?.retryAfterSeconds <= 0) return
+  throw new AccessError(
+    'AUTHENTICATION_RETRY_REQUIRED',
+    `authentication retry is available in ${retry.retryAfterSeconds} seconds`,
+    429,
+    { retryAfterSeconds: retry.retryAfterSeconds },
+  )
+}
+
+function releaseAuthentication(admission, authenticated) {
+  const retry = admission.release(authenticated)
+  if (!authenticated) enforceAuthenticationRetry(retry)
+}
+
 function normalizeManagementAccess(mode, entry) {
   if (!['compat', 'isolated'].includes(mode)) throw new AccessError('ACCESS_MODE_INVALID', 'management access mode is invalid')
   if (mode === 'compat') return null
@@ -273,7 +288,7 @@ export class AccessService {
         mainCredentialVersion: current.account.mainCredential.version,
         managementAccessVersion: current.account.managementAccess.version,
       }
-    } finally { admission.release(authenticated) }
+    } finally { releaseAuthentication(admission, authenticated) }
   }
 
   async verifyFreshAuthentication(account, mainPassword, sourceId = 'unknown') {
@@ -288,7 +303,7 @@ export class AccessService {
         throw new AccessError('FRESH_AUTH_FAILED', 'current administrator credentials are incorrect', 401)
       }
       await this.report('access.fresh-authentication.succeeded', { accountId: account.accountId })
-    } finally { admission.release(authenticated) }
+    } finally { releaseAuthentication(admission, authenticated) }
   }
 
 
@@ -418,7 +433,7 @@ export class AccessService {
       await this.report('access.authentication.succeeded', {
         accountId: current.account.accountId, kind: 'management',
       })
-    } finally { admission.release(valid) }
+    } finally { releaseAuthentication(admission, valid) }
     this.exchanges.consumePending(pending.key)
     const session = this.sessions.issue('management', current.account, {
       origin: value.origin,
