@@ -4632,6 +4632,7 @@ async function cancelTotpChange({ resetToggle = true } = {}) {
   resetTotpDialog()
   elements['auth-totp-close'].disabled = false
   if (elements['auth-totp-dialog'].open) elements['auth-totp-dialog'].close()
+  if (resetToggle) elements['auth-totp-enabled'].focus({ preventScroll: true })
   elements['auth-account-save'].disabled = false
   renderAuthenticationAccountSaveState()
   return true
