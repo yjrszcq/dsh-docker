@@ -140,11 +140,11 @@ function json(value) {
 }
 
 function managementPasswordAction(value) {
-  const normalized = value.trim()
-  if (['', '1'].includes(normalized)) return 'preserve'
-  if (normalized === '2') return 'disable'
-  if (normalized === '3') return 'reset'
-  throw new Error('management password choice must be 1, 2, or 3')
+  const normalized = value.trim().toLowerCase()
+  if (['', 'n'].includes(normalized)) return 'preserve'
+  if (normalized === 'd') return 'disable'
+  if (normalized === 'y') return 'reset'
+  throw new Error('management password choice must be y, n, or d')
 }
 
 function affirmative(value, label) {
@@ -310,7 +310,7 @@ export async function runCli({
       let managementPassword
       if (current.account.managementAdditionalCredential.enabled) {
         action = managementPasswordAction(await ask(
-          'Management console password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+          'Change Management console password? (y)es/[n]o/(d)isable: ',
         ))
         if (action === 'reset') {
           managementPassword = await readPassword(input, output, 'New management password: ')
@@ -318,11 +318,9 @@ export async function runCli({
       }
       let totpAction = 'preserve'
       if (current.account.totp?.enabled === true) {
-        const choice = await ask(
-          'Two-factor authentication:\n  [1] Keep enabled\n   2  Disable\nEnter choice [1-2] (default: 1): ',
-        )
-        if (choice !== '' && choice !== '1' && choice !== '2') throw new Error('two-factor choice must be 1 or 2')
-        if (choice === '2') totpAction = 'disable'
+        if (affirmative(await ask('Disable two-factor authentication? y/[n]: '), 'two-factor')) {
+          totpAction = 'disable'
+        }
       }
       if (username === undefined && password === undefined && action === 'preserve' && totpAction === 'preserve') return cancel()
       write(json(await access.request('POST', '/v1/recovery/reset-access', {

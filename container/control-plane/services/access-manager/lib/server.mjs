@@ -757,17 +757,7 @@ export class AccessService {
       state: current.state,
       authenticationRetry: current.account === undefined
         ? null : this.limiter.status(current.account.accountId),
-      account: current.account === undefined ? null : {
-        accountId: current.account.accountId,
-        username: current.account.username,
-        revision: current.account.revision,
-        mainCredentialVersion: current.account.mainCredential.version,
-        managementAdditionalCredential: {
-          enabled: current.account.managementAdditionalCredential.enabled,
-          version: current.account.managementAdditionalCredential.version,
-        },
-        managementAccess: { ...current.account.managementAccess },
-      },
+      account: publicAccount(current.account),
     }
   }
 

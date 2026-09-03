@@ -2567,7 +2567,7 @@ test('management CLI resets administrator access through one atomic recovery req
   const prompts = []
   const output = []
   const passwords = ['new administrator password', 'new management password']
-  const answers = ['y', 'operator', 'y', '3']
+  const answers = ['y', 'operator', 'y', 'y', 'y']
   const tty = { isTTY: true }
   assert.equal(await runCli({
     argv: ['access', 'reset'],
@@ -2579,6 +2579,7 @@ test('management CLI resets administrator access through one atomic recovery req
           account: {
             revision: 'revision-a',
             managementAdditionalCredential: { enabled: true, version: 2 },
+            totp: { enabled: true, version: 1 },
           },
         }
         return { account: { revision: 'revision-b', mainCredentialVersion: 2 } }
@@ -2602,8 +2603,9 @@ test('management CLI resets administrator access through one atomic recovery req
     'New administrator username: ',
     'Change administrator password? y/[n]: ',
     'New administrator password: ',
-    'Management console password:\n  [1] Keep current password\n   2  Disable password\n   3  Reset password\nEnter choice [1-3] (default: 1): ',
+    'Change Management console password? (y)es/[n]o/(d)isable: ',
     'New management password: ',
+    'Disable two-factor authentication? y/[n]: ',
   ])
   assert.deepEqual(calls, [
     { method: 'GET', path: '/v1/recovery/status', body: undefined },
@@ -2616,6 +2618,7 @@ test('management CLI resets administrator access through one atomic recovery req
         password: 'new administrator password',
         managementPasswordAction: 'reset',
         managementPassword: 'new management password',
+        totpAction: 'disable',
       },
     },
   ])
@@ -2661,7 +2664,7 @@ test('management CLI skips the additional-password choice when it is disabled', 
 
 test('management CLI preserves or disables an existing additional password by choice', async () => {
   const tty = { isTTY: true }
-  for (const [choice, action] of [['', 'preserve'], ['2', 'disable']]) {
+  for (const [choice, action] of [['', 'preserve'], ['d', 'disable']]) {
     let submitted
     const answers = ['n', 'y', choice]
     assert.equal(await runCli({
@@ -2691,9 +2694,46 @@ test('management CLI preserves or disables an existing additional password by ch
   }
 })
 
+test('management CLI combined reset can disable only two-factor authentication', async () => {
+  const calls = []
+  const answers = ['n', 'n', 'n', 'y']
+  const tty = { isTTY: true }
+  assert.equal(await runCli({
+    argv: ['access', 'reset'],
+    access: {
+      request: async (method, path, body) => {
+        calls.push({ method, path, body })
+        if (method === 'GET') return {
+          state: 'initialized',
+          account: {
+            revision: 'revision-a',
+            managementAdditionalCredential: { enabled: true, version: 2 },
+            totp: { enabled: true, version: 1 },
+          },
+        }
+        return { account: { revision: 'revision-b', totp: { enabled: false, version: 2 } } }
+      },
+    },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async () => answers.shift(),
+    write: () => {},
+  }), 0)
+  assert.deepEqual(calls.at(-1), {
+    method: 'POST',
+    path: '/v1/recovery/reset-access',
+    body: {
+      revision: 'revision-a',
+      managementPasswordAction: 'preserve',
+      totpAction: 'disable',
+    },
+  })
+})
+
 test('management CLI rejects ambiguous choices and cancels an empty combined reset', async () => {
   const tty = { isTTY: true }
-  for (const answers of [['yes'], ['n', 'n', '4']]) {
+  for (const answers of [['yes'], ['n', 'n', 'invalid']]) {
     const calls = []
     await assert.rejects(runCli({
       argv: ['access', 'reset'],
@@ -2715,7 +2755,7 @@ test('management CLI rejects ambiguous choices and cancels an empty combined res
       ask: async () => answers.shift(),
       readPassword: async () => { throw new Error('password must not be requested') },
       write: () => {},
-    }), /choice must be y or n|management password choice must be 1, 2, or 3/)
+    }), /choice must be y or n|management password choice must be y, n, or d/)
     assert.deepEqual(calls, [
       { method: 'GET', path: '/v1/recovery/status', body: undefined },
     ])

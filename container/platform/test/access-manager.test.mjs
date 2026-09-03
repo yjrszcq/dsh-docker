@@ -596,7 +596,7 @@ test('atomically resets administrator access with an explicit additional-passwor
   assert.equal((await service.recoveryStatus()).account.revision, revision)
 })
 
-test('recovery access reset can disable two-factor authentication and revoke sessions', async () => {
+test('recovery access reset can disable two-factor authentication without revoking sessions', async () => {
   const { service, store } = await fixture()
   await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
   const initialized = await service.initializeDsh({
@@ -605,6 +605,9 @@ test('recovery access reset can disable two-factor authentication and revoke ses
   const state = await store.state()
   state.account.totp = { enabled: true, version: 1, secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', changedAt: new Date().toISOString() }
   await store.replaceAccount(state.account, state.account.revision)
+  const recoveryAccount = (await service.recoveryStatus()).account
+  assert.deepEqual(recoveryAccount.totp, { enabled: true, version: 1 })
+  assert.doesNotMatch(JSON.stringify(recoveryAccount), /JBSWY3DPEHPK3PXP/)
   const reset = await service.resetRecoveryAccess({
     revision: state.account.revision,
     managementPasswordAction: 'preserve',
