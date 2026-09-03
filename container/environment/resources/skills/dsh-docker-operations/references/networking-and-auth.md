@@ -33,13 +33,13 @@ After five consecutive failures from one browser source, Access Manager imposes 
 Lost credentials can only be recovered by Root from an interactive container TTY:
 
 ```sh
-docker exec -it --user root <container> dsh-platform access status
-docker exec -it --user root <container> dsh-platform access reset
-docker exec -it --user root <container> dsh-platform access clear-retry
-docker exec -it --user root <container> dsh-platform access clear-retry --global-only
-docker exec -it --user root <container> dsh-platform access clear-retry --two-factor
-docker exec -it --user root <container> dsh-platform access disable-two-factor
-docker exec -it --user root <container> dsh-platform access clear-sessions [--management-only]
+dsh-platform access status
+dsh-platform access reset
+dsh-platform access clear-retry
+dsh-platform access clear-retry --global-only
+dsh-platform access clear-retry --two-factor
+dsh-platform access disable-two-factor
+dsh-platform access clear-sessions [--management-only]
 ```
 
 The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the Management console password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. `access clear-retry` uses the same Root/TTY and `y/[n]` boundary; it clears every browser-source wait, every source rolling window, and the instance-wide failure windows without changing credentials or sessions. Add `--global-only` to clear only the instance-wide windows while leaving browser waits and source windows active. The optional `--main-password`, `--management-password`, or `--two-factor` selector limits clearing to one credential class; `--two-factor` clears only its daily limit and leaves the fixed 10-second code backoff active. Fresh empty volumes register without a key. Persisted pre-account deployments and damaged authentication state use `access generate-key`, which issues a single-use authentication reset key valid for ten minutes from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
