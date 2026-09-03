@@ -771,6 +771,7 @@ test('legacy migration exchanges a root-issued authentication reset key for a DS
     assert.match(page.body, /The authentication reset key is invalid, expired, or already used\./)
     assert.match(page.body, /name="username"[^>]+pattern="\[\^\\p\{Cc\}/)
     assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
+    assert.match(page.body, /input:focus-visible,button:focus-visible,\.button:focus-visible\{outline:2px solid/)
     assert.doesNotMatch(page.body, /name="password"[^>]*value=/)
     assertInlineScriptsCompile(page.body)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
@@ -859,6 +860,7 @@ test('damaged authentication requires an explicit reset page and never places cr
       path: '/_dsh_platform/auth/', headers: { host: `127.0.0.1:${port}`, 'accept-language': 'en' },
     })
     assert.match(recovery.body, /Reset administrator authentication/)
+    assert.match(recovery.body, /\.button:focus-visible\{outline:2px solid/)
     assert.doesNotMatch(recovery.body, /name="(?:setupKey|username|password)"/)
 
     const page = await request(port, {
@@ -1133,6 +1135,7 @@ test('Management pending page asks only for the additional password', () => {
       assert.equal(page.headers['set-cookie'].some(value => value.startsWith(`${AUTH_CSRF_COOKIE}=`)), false)
       assertInlineScriptsCompile(page.body)
       assert.match(page.body, /Management console password/)
+      assert.match(page.body, /input:focus-visible,button:focus-visible\{outline:2px solid/)
       assert.match(page.body, /AUTHENTICATION_RETRY_REQUIRED/)
       assert.match(page.body, /AUTHENTICATION_RATE_LIMITED/)
       assert.match(page.body, /AUTHENTICATION_CONTEXT_STALE/)
