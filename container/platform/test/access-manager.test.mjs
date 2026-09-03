@@ -423,6 +423,35 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
       username: 'admin', password: 'correct horse battery staple',
     })
     assert.doesNotMatch(JSON.stringify(initialized), /salt|hash|password|verifier/i)
+    await assert.rejects(access.request('POST', '/v1/initialize', {
+      username: 'other', password: 'registration secret must not enter logs',
+    }), error => error.statusCode === 409 && error.code === 'ALREADY_INITIALIZED')
+    await assert.rejects(access.request('POST', '/v1/dsh/reset-authentication', {
+      setupKey: 'reset key must not enter logs',
+      username: 'other',
+      password: 'reset secret must not enter logs',
+      origin: 'https://dsh.example',
+    }), error => error.statusCode === 401 && error.code === 'AUTHENTICATION_RESET_KEY_INVALID')
+    assert.deepEqual(reports.find(report => report.message === 'access.initialization.failed'), {
+      message: 'access.initialization.failed',
+      fields: { code: 'ALREADY_INITIALIZED' },
+    })
+    assert.deepEqual(reports.find(report => report.message === 'access.authentication-reset.failed'), {
+      message: 'access.authentication-reset.failed',
+      fields: { code: 'AUTHENTICATION_RESET_KEY_INVALID' },
+    })
+    assert.doesNotMatch(JSON.stringify(reports), /registration secret|reset key|reset secret/)
+    const initialize = service.store.initialize.bind(service.store)
+    service.store.initialize = async () => { throw Object.assign(new Error('simulated account write failure'), { code: 'EIO' }) }
+    await assert.rejects(access.request('POST', '/v1/dsh/initialize', {
+      username: 'storage-failure-user',
+      password: 'storage failure secret must not enter logs',
+      origin: 'https://dsh.example',
+    }), error => error.statusCode === 500 && error.code === 'ACCESS_INTERNAL_ERROR')
+    service.store.initialize = initialize
+    assert.ok(reports.some(report => report.message === 'access.initialization.failed'
+      && report.fields.code === 'INTERNAL_ERROR'))
+    assert.doesNotMatch(JSON.stringify(reports), /storage-failure-user|storage failure secret/)
     const authenticated = await access.request('POST', '/v1/authenticate', {
       username: 'admin', password: 'correct horse battery staple',
     })

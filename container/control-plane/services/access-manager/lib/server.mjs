@@ -21,6 +21,11 @@ const RECOVERY_OPERATIONS = new Map([
   ['/v1/recovery/generate-key', 'generate-key'],
   ['/v1/recovery/clear-retry', 'clear-retry'],
 ])
+const ACCESS_FAILURE_EVENTS = new Map([
+  ['/v1/initialize', 'access.initialization.failed'],
+  ['/v1/dsh/initialize', 'access.initialization.failed'],
+  ['/v1/dsh/reset-authentication', 'access.authentication-reset.failed'],
+])
 function identifier() { return randomBytes(32).toString('base64url') }
 function isLoopbackHostname(hostname) {
   if (hostname === 'localhost' || hostname === '[::1]') return true
@@ -1229,6 +1234,13 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       if (recoveryOperation !== undefined) {
         await service.report('access.recovery-operation.failed', {
           operation: recoveryOperation,
+          code: error instanceof AccessError ? error.code : 'INTERNAL_ERROR',
+        })
+      }
+      const accessFailureEvent = surface === 'access' && request.method === 'POST'
+        ? ACCESS_FAILURE_EVENTS.get(failedPathname) : undefined
+      if (accessFailureEvent !== undefined) {
+        await service.report(accessFailureEvent, {
           code: error instanceof AccessError ? error.code : 'INTERNAL_ERROR',
         })
       }

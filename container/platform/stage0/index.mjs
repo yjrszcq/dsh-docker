@@ -87,6 +87,7 @@ const rateLimitedAccessMessages = new Set([
 const auditedAccessMessages = new Set([
   'access.authentication-reset-key.generated',
   'access.authentication-reset.completed',
+  'access.authentication-reset.failed',
   'access.authentication-retry.cleared',
   'access.recovery-account.changed',
   'access.recovery-operation.failed',
