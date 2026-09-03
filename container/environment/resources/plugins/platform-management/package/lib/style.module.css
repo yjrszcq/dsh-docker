@@ -979,6 +979,22 @@ a.secondaryButton { text-decoration: none; }
   box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
   pointer-events: auto;
 }
+.updateReminderClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  font: 20px/28px sans-serif;
+  cursor: pointer;
+}
+.updateReminderClose:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.updateReminderClose:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 .updateReminder strong { display: block; font-size: 14px; line-height: 22px; }
 .updateReminder p { margin: 4px 0 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
 .updateReminderVersions span { display: block; }

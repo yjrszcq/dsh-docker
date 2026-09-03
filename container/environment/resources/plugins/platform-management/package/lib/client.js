@@ -1034,6 +1034,7 @@ function UpdateReminder({ t }) {
   const [tick, setTick] = useState(0)
   const [ownsNotice, setOwnsNotice] = useState(false)
   const ownerId = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`)
+  const previousFocus = useRef(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -1092,6 +1093,9 @@ function UpdateReminder({ t }) {
 
   useEffect(() => {
     if (!ownsNotice) return undefined
+    if (previousFocus.current === null && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+      previousFocus.current = document.activeElement
+    }
     const timer = window.setInterval(() => {
       writeStorage(NOTICE_OWNER_KEY, JSON.stringify({ id: ownerId.current, expiresAt: Date.now() + NOTICE_OWNER_TTL }))
     }, NOTICE_OWNER_TTL / 2)
@@ -1103,6 +1107,10 @@ function UpdateReminder({ t }) {
     else writeStorage(NOTICE_SNOOZE_KEY, JSON.stringify({ identity, until: Date.now() + 3_600_000 }))
     writeStorage(NOTICE_OWNER_KEY, null)
     setTick(value => value + 1)
+    window.requestAnimationFrame(() => {
+      if (previousFocus.current?.isConnected) previousFocus.current.focus()
+      previousFocus.current = null
+    })
   }, [candidate?.kind, identity])
 
   useEffect(() => {
@@ -1134,7 +1142,8 @@ function UpdateReminder({ t }) {
       environmentLine === null ? null : h('span', null, environmentLine)),
     h('div', { className: css.reminderActions },
       h('button', { type: 'button', 'data-notice-action': 'snooze' }, t('later')),
-      h('button', { type: 'button', 'data-notice-action': 'dismiss' }, t('dismissVersion'))))
+      h('button', { type: 'button', 'data-notice-action': 'dismiss' }, t('dismissVersion'))),
+    h('button', { type: 'button', className: css.updateReminderClose, 'data-notice-action': 'snooze', 'aria-label': t('closeReminder'), title: t('closeReminder') }, '×'))
 }
 
 function LifecycleGuard({ connection }) {
@@ -2607,7 +2616,7 @@ export function apply(ctx) {
       systemSkills: '系统技能', systemSkillsDetail: '管理 DSH Docker 提供的系统技能。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillActionWorking: '正在应用技能设置', searchSystemSkills: '搜索系统技能', noMatchingResources: '没有符合搜索条件的项目。', itemsPerPage: '每页数量', itemsPerPageSuffix: '条/页', previousPage: '上一页', nextPage: '下一页', totalItems: '共 {total} 条', goToPage: '前往', pageUnit: '页',
       logs: '实时日志', logsDetail: '查看 DSH 与平台各模块的运行日志。', searchLogs: '搜索日志', logSource: '日志模块', logLevel: '日志级别', logDisplayLimit: '显示条数', logDisplayLimitValue: '最近 {count} 条', allSources: '全部模块', levelAll: '全部级别', levelDebug: '调试', levelInfo: '信息', levelWarning: '警告', levelError: '错误', logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', refreshLogs: '刷新日志', exportLogs: '导出日志', autoScroll: '自动滚动', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
       interval3600: '每 1 小时', interval10800: '每 3 小时', interval21600: '每 6 小时', interval43200: '每 12 小时', interval86400: '每 24 小时',
-      stableNoticeDshTitle: '正式更新：DSH', stableNoticeEnvironmentTitle: '正式更新：Environment', stableNoticeBothTitle: '正式更新：DSH 与 Environment', upstreamNoticeDshTitle: '上游更新：DSH', updateNoticeDshLine: 'DSH：{version}{state}', updateNoticeEnvironmentLine: 'ENV：{version}{state}', noticeWillUpdate: '（将更新）', later: '稍后提醒', dismissVersion: '不再提醒此版本',
+      stableNoticeDshTitle: '正式更新：DSH', stableNoticeEnvironmentTitle: '正式更新：Environment', stableNoticeBothTitle: '正式更新：DSH 与 Environment', upstreamNoticeDshTitle: '上游更新：DSH', updateNoticeDshLine: 'DSH：{version}{state}', updateNoticeEnvironmentLine: 'ENV：{version}{state}', noticeWillUpdate: '（将更新）', later: '稍后提醒', dismissVersion: '不再提醒此版本', closeReminder: '关闭更新提醒',
       online: '已连接', connecting: '正在重连', offline: '连接中断',
     },
     en: {
@@ -2639,7 +2648,7 @@ export function apply(ctx) {
       systemSkills: 'System skills', systemSkillsDetail: 'Manage System Skills provided by DSH Docker.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillActionWorking: 'Applying skill settings', searchSystemSkills: 'Search System Skills', noMatchingResources: 'No items match this search.', itemsPerPage: 'Items per page', itemsPerPageSuffix: '/ page', previousPage: 'Previous', nextPage: 'Next', totalItems: '{total} total', goToPage: 'Go to', pageUnit: 'page',
       logs: 'Live logs', logsDetail: 'View runtime logs from DSH and platform modules.', searchLogs: 'Search logs', logSource: 'Log module', logLevel: 'Log level', logDisplayLimit: 'Entries shown', logDisplayLimitValue: 'Latest {count}', allSources: 'All modules', levelAll: 'All levels', levelDebug: 'Debug', levelInfo: 'Info', levelWarning: 'Warning', levelError: 'Error', logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', refreshLogs: 'Refresh logs', exportLogs: 'Export logs', autoScroll: 'Auto-scroll', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
       interval3600: 'Every hour', interval10800: 'Every 3 hours', interval21600: 'Every 6 hours', interval43200: 'Every 12 hours', interval86400: 'Every 24 hours',
-      stableNoticeDshTitle: 'Supported update: DSH', stableNoticeEnvironmentTitle: 'Supported update: Environment', stableNoticeBothTitle: 'Supported update: DSH and Environment', upstreamNoticeDshTitle: 'Upstream update: DSH', updateNoticeDshLine: 'DSH: {version}{state}', updateNoticeEnvironmentLine: 'ENV: {version}{state}', noticeWillUpdate: ' (will update)', later: 'Remind me later', dismissVersion: 'Do not remind for this version',
+      stableNoticeDshTitle: 'Supported update: DSH', stableNoticeEnvironmentTitle: 'Supported update: Environment', stableNoticeBothTitle: 'Supported update: DSH and Environment', upstreamNoticeDshTitle: 'Upstream update: DSH', updateNoticeDshLine: 'DSH: {version}{state}', updateNoticeEnvironmentLine: 'ENV: {version}{state}', noticeWillUpdate: ' (will update)', later: 'Remind me later', dismissVersion: 'Do not remind for this version', closeReminder: 'Close update reminder',
       online: 'Connected', connecting: 'Reconnecting', offline: 'Disconnected',
     },
   }), 'dsh-platform-management: locale')
