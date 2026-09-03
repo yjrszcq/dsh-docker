@@ -570,6 +570,48 @@ test('management state events keep idle proxy connections alive', async () => {
   }
 })
 
+test('management state fan-out supports many tabs and releases every listener', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-state-fanout-'))
+  const coordinator = new Coordinator()
+  const server = createManagementServer({
+    coordinator,
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const connections = []
+  try {
+    for (let index = 0; index < 12; index += 1) {
+      connections.push(await new Promise((resolve, reject) => {
+        const request = httpRequest({ socketPath, path: `${API_PREFIX}events` }, response => {
+          response.once('data', () => resolve({ request, response }))
+        })
+        request.once('error', reject)
+        request.end()
+      }))
+    }
+    assert.equal(coordinator.getMaxListeners(), 0)
+    assert.equal(server.getMaxListeners(), 0)
+    assert.equal(coordinator.listenerCount('state'), 12)
+    assert.equal(server.listenerCount('management-state'), 12)
+    for (const connection of connections) {
+      connection.request.destroy()
+      connection.response.destroy()
+    }
+    for (let attempt = 0; attempt < 100 && coordinator.listenerCount('state') !== 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    assert.equal(coordinator.listenerCount('state'), 0)
+    assert.equal(server.listenerCount('management-state'), 0)
+  } finally {
+    for (const connection of connections) {
+      connection.request.destroy()
+      connection.response.destroy()
+    }
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management reports unpublished development metadata without an HTTP error', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-unpublished-'))
   const coordinator = new Coordinator()
