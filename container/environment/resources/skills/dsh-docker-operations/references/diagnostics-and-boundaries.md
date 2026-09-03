@@ -38,3 +38,5 @@ Use `dsh-platform trust status` for read-only trust diagnostics. Trust reset is 
 ## Failure reporting
 
 Distinguish among DSH startup, update/restart, automatic rollback, startup failure, prolonged unavailability, Gateway authorization, and an unclassified proxy error. Capture the public status plus complete relevant structured error. Do not label a warning or ordinary stderr line as a failure without its structured level/result, and do not report an operation as successful until its terminal state and postcondition are verified.
+
+Repeated authentication, 2FA, Management-origin probe, and upstream failures are rate-limited by failure class. Treat `suppressedCount` on the next retained event as part of the incident total; do not infer the attempt count from the number of visible warning rows alone.
