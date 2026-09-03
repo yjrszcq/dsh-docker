@@ -103,6 +103,7 @@ test('standalone file smoke covers recovery-mode transfer, edit, search, symlink
   assert.match(script, /\/data\/dsh\/file-management-smoke/)
   assert.match(script, /\/root\/dsh-maintenance-smoke/)
   assert.match(script, /config\.privileged, true/)
+  assert.match(script, /\['queued', 'running'\]\.includes\(state\.status\)/)
 })
 
 test('standalone recovery smoke covers live terminal and consecutive faulty plugins', async () => {
