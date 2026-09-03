@@ -348,7 +348,6 @@ docker exec -it --user root deepseek-harness dsh-platform access generate-key
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --two-factor
-docker exec -it --user root deepseek-harness dsh-platform recover
 ```
 
 `access reset` is the recommended combined recovery command. It independently asks whether to change the username and main password. When a Management console password is enabled, the same atomic operation presents a numbered choice to preserve it, disable it, or replace it. Nothing is saved until every selected prompt is complete, so cancelling or losing the TTY halfway through does not partially update the account. All yes/no recovery prompts accept only `y` or `n` and show their default in brackets. The narrower interactive commands remain available for single-credential recovery. A completed account recovery invalidates existing DSH and Management browser sessions.

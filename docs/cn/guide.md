@@ -348,7 +348,6 @@ docker exec -it --user root deepseek-harness dsh-platform access generate-key
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --two-factor
-docker exec -it --user root deepseek-harness dsh-platform recover
 ```
 
 推荐使用组合恢复命令 `access reset`。它会分别询问是否修改用户名和主密码；当前已启用管理中心密码时，还会用编号菜单选择保留、关闭或重设管理中心密码。所有选定输入完成前不会保存，途中取消或 TTY 断开不会留下只改了一半的账户状态。所有是/否恢复提示只接受 `y` 或 `n`，方括号标识默认项。原有细分交互命令继续用于单项凭据恢复。成功完成账户恢复后，现有 DSH 与 Management 浏览器会话都会失效。
