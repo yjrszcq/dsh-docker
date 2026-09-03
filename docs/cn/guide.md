@@ -358,7 +358,7 @@ docker exec -it --user root deepseek-harness dsh-platform access clear-retry --t
 
 参数含义：`--global-only` 只清理实例级的防洪失败窗口，保留浏览器来源的等待和来源窗口；不加该参数时，来源/浏览器窗口和实例级窗口都会清理。
 
-空平台卷始终进入普通首次注册，不需要密钥；仅配置遗留密码环境变量不能把空卷误判为旧部署。已有持久化数据但没有新版账户的部署进入 `migration-required`，已初始化账户缺失或损坏时进入 `recovery-required`。两种状态都在 Root TTY 中执行 `dsh-platform access generate-key`，生成十分钟有效且单次使用的认证重置密钥，再通过浏览器创建替代账户；新 key 会立即使旧 key 失效。旧环境密码只能作为已有持久化部署的附加迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
+空平台卷始终进入普通首次注册，不需要密钥；仅配置遗留密码环境变量不能把空卷误判为旧部署。已有持久化数据但没有新版账户的部署进入 `migration-required`，已初始化账户缺失或损坏时进入 `recovery-required`。两种状态都在 Root TTY 中执行 `docker exec -it --user root deepseek-harness dsh-platform access generate-key`，生成十分钟有效且单次使用的认证重置密钥，再通过浏览器创建替代账户；新 key 会立即使旧 key 失效。旧环境密码只能作为已有持久化部署的附加迁移证据，其值会在 Bootstrap 和 DSH 启动前删除，绝不保留为隐藏登录旁路。
 
 ### 浏览器兼容
 
