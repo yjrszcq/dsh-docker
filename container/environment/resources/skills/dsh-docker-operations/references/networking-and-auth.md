@@ -30,7 +30,7 @@ Browser authentication forms only transport values; the Access Manager performs 
 
 After five consecutive failures from one browser source, Access Manager imposes a 30-second retry wait and doubles later waits up to 15 minutes. Each source has fixed limits of 12 failures per hour and 24 per 24 hours; the whole instance has wider flood limits of 20 per minute, 60 per hour, and 120 per 24 hours. Treat `AUTHENTICATION_RETRY_REQUIRED` and `AUTHENTICATION_RATE_LIMITED` as backend decisions; do not retry around them or implement credential admission in the browser.
 
-Lost credentials can only be recovered by Root from an interactive container TTY:
+These `access` recovery, credential, session, and retry-clear commands require the user's explicit authorization in addition to Root access. Run them only from an interactive container TTY:
 
 ```sh
 dsh-platform access status

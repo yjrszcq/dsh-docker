@@ -332,7 +332,7 @@ The default compatibility mode serves Management at `/_dsh_platform/console/` on
 
 Every privileged Management or Maintenance operation is authorized again at its final Unix-socket execution point with a short-lived, single-use capability bound to method, path, session, CSRF, credential version, and access version. Direct socket access cannot substitute for a browser session. Authentication Settings groups sessions by the originating DSH browser login and shows the browser, Gateway peer IP, sign-in time, and last activity. Signing out a listed device atomically revokes its DSH Session and every Management Session derived from it. The DSH-side Platform Management and Settings Document Editor use a fixed restricted Plugin API through the authenticated DSH Session; it cannot reach files, the Root terminal, User Plugin recovery, authentication settings, or complete Management capabilities.
 
-Administrator recovery is Root-only and requires an interactive TTY. Passwords are read with echo disabled and are rejected from arguments or pipes:
+Administrator recovery, session clearing, and retry-limit clearing require the user's explicit authorization and are Root-only interactive TTY operations. Passwords are read with echo disabled and are rejected from arguments or pipes:
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
