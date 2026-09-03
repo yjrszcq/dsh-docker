@@ -1598,6 +1598,10 @@ test('standalone console keeps localized feature parity on the shared Management
     'proxy/provider-inventory', 'proxy/test', 'proxy/test/tasks/',
   ]) assert.match(script, new RegExp(route.replace('/', '\\/')))
   assert.match(script, /const COPY = Object\.freeze\(\{[\s\S]*zh:[\s\S]*en:/)
+  assert.match(script, /projected\.enabled \? t\('userPluginEnabled'\) : t\('userPluginDisabled'\)/)
+  assert.match(script, /skill\.enabled \? t\('userSkillEnabled'\) : t\('userSkillDisabled'\)/)
+  assert.match(script, /dialogFocusTriggers = new WeakMap/)
+  assert.match(script, /dialogOpenObserver = new MutationObserver/)
   assert.match(html, /<select id="language-switch"[^>]*data-i18n-aria-label="switchLanguage"/)
   assert.match(html, /<option value="zh">中文<\/option>[\s\S]*<option value="en">English<\/option>/)
   assert.match(html, /<script src="\.\/theme-init\.js"><\/script>[\s\S]*<link rel="stylesheet" href="\.\/style\.css">/)

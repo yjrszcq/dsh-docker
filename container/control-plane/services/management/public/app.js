@@ -1438,6 +1438,7 @@ function renderBundledPlugins(values, busy) {
       checkbox.type = 'checkbox'
       checkbox.checked = projected.enabled
       checkbox.disabled = busy || action === 'install'
+      checkbox.setAttribute('aria-label', `${name.textContent}: ${projected.enabled ? t('userPluginEnabled') : t('userPluginDisabled')}`)
       checkbox.addEventListener('change', event => setSystemPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
@@ -1496,6 +1497,7 @@ function renderSystemSkills(values, busy) {
       checkbox.type = 'checkbox'
       checkbox.checked = skill.enabled
       checkbox.disabled = busy
+      checkbox.setAttribute('aria-label', `${name.textContent}: ${skill.enabled ? t('userSkillEnabled') : t('userSkillDisabled')}`)
       checkbox.addEventListener('change', event => {
         void runSkillTask('system-skills/action', {
           skillId: skill.id,
@@ -4800,6 +4802,53 @@ function trapTotpDialogFocus(event) {
     event.preventDefault()
     first.focus()
   }
+}
+
+// Keep native dialogs keyboard-contained and return focus to the control that opened them.
+const dialogFocusTriggers = new WeakMap()
+let pendingDialogTrigger
+document.addEventListener('click', event => {
+  const trigger = event.target.closest?.('button, input, select, textarea, a, label')
+  if (trigger === null || trigger === undefined) return
+  pendingDialogTrigger = trigger
+  window.queueMicrotask(() => {
+    for (const dialog of document.querySelectorAll('dialog[open]')) {
+      if (!dialogFocusTriggers.has(dialog) && pendingDialogTrigger !== undefined) dialogFocusTriggers.set(dialog, pendingDialogTrigger)
+    }
+    pendingDialogTrigger = undefined
+  })
+}, true)
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Tab') return
+  const dialog = event.target.closest?.('dialog[open]')
+  if (dialog === null || dialog === undefined || dialog.id === 'auth-totp-dialog') return
+  const focusable = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(element => element.getClientRects().length > 0 && !element.hidden)
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if ((event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) || (!event.shiftKey && document.activeElement === last)) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first).focus()
+  }
+}, true)
+const dialogOpenObserver = new MutationObserver(records => {
+  for (const record of records) {
+    if (record.type !== 'attributes' || record.attributeName !== 'open') continue
+    const dialog = record.target
+    if (dialog.open && !dialogFocusTriggers.has(dialog)) {
+      const active = document.activeElement
+      if (active !== dialog && !dialog.contains(active)) dialogFocusTriggers.set(dialog, active)
+    }
+  }
+})
+for (const dialog of document.querySelectorAll('dialog')) dialogOpenObserver.observe(dialog, { attributes: true })
+for (const dialog of document.querySelectorAll('dialog')) {
+  dialog.addEventListener('close', () => {
+    const trigger = dialogFocusTriggers.get(dialog)
+    dialogFocusTriggers.delete(dialog)
+    if (trigger?.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true })
+  })
 }
 
 async function saveManagementOrigin() {
