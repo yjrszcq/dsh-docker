@@ -14,7 +14,7 @@ Restart only DSH, while keeping Gateway and Management available, with:
 dsh-platform restart
 ```
 
-For an Agent running inside the current DSH session, `restart` must remain asynchronous: report the returned task ID and let the browser enter the lifecycle holding page. Never run `restart --wait` or `stop --wait` from that session because DSH shutdown interrupts the tool transport. `--wait` is reserved for `docker exec`, the standalone Management Console terminal, and external automation.
+For an Agent running inside the current DSH session, `restart` must remain asynchronous: report the returned task ID and let the browser enter the lifecycle holding page. Never run `restart --wait` or `stop --wait` from that session because DSH shutdown interrupts the tool transport. `--wait` is reserved for an external operator terminal, the standalone Management Console terminal, and external automation.
 
 The standalone Management Console and CLI also expose explicit lifecycle operations:
 

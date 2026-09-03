@@ -14,7 +14,7 @@ Inspect `dsh-platform status` after the check. Activate the latest supported tar
 dsh-platform update
 ```
 
-For an Agent running inside the current DSH session, activation must remain asynchronous: report the returned task ID and do not use `update --wait`, because switching DSH can interrupt the tool transport. `--wait` is reserved for `docker exec`, the standalone Management Console terminal, and external automation.
+For an Agent running inside the current DSH session, activation must remain asynchronous: report the returned task ID and do not use `update --wait`, because switching DSH can interrupt the tool transport. `--wait` is reserved for an external operator terminal, the standalone Management Console terminal, and external automation.
 
 After submitting an update, use the public `dsh-platform status` result and task-correlated platform logs to report its current phase or terminal outcome. The Management interfaces reconstruct their stage history from this persistent state and JSONL log stream, so a browser refresh does not imply that the operation restarted. Prefer the phase, measurable byte/item/file/service counters, and structured failure details over an estimated elapsed time. Do not inspect updater journals, Deployment slots, or internal sockets to infer progress.
 

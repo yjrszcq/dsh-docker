@@ -30,7 +30,7 @@ Some plugin changes require DSH to restart. Use:
 dsh-platform restart
 ```
 
-When this command is run by an Agent inside a DSH session, submit the asynchronous task and report its task ID. Do not add `--wait`: stopping the current DSH process interrupts the tool transport before a durable result can be returned. Use `--wait` only from `docker exec`, the standalone Management Console terminal, or external automation.
+When this command is run by an Agent inside a DSH session, submit the asynchronous task and report its task ID. Do not add `--wait`: stopping the current DSH process interrupts the tool transport before a durable result can be returned. Use `--wait` only from an external operator terminal, the standalone Management Console terminal, or external automation.
 
 The standalone Management Console can disable or uninstall a faulty Web Profile Bundle while DSH is down. It deliberately manages only DSH bundle plugins, not arbitrary dependencies or hand-written Cordis patch entries.
 
