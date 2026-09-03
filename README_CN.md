@@ -158,8 +158,6 @@ docker run -d \
 
 遗失凭据时只能从交互式 Root 控制台恢复。密码输入会关闭回显，且不接受命令参数或管道输入：
 
-除只读的 `access status` 外，下面的恢复、会话清理和退避清理命令都必须先取得用户明确授权。
-
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset

@@ -158,8 +158,6 @@ Five consecutive password failures from the same browser start a 30-second retry
 
 Lost credentials are recovered only from an interactive Root console. Passwords are read with input echo disabled and are never accepted as command arguments or piped input:
 
-Except for the read-only `access status`, the recovery, session-clearing, and retry-clearing commands below require the user's explicit authorization.
-
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset

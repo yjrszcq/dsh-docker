@@ -332,7 +332,7 @@ DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览�
 
 每个特权 Management 或 Maintenance 操作还会在最终 Unix Socket 执行点校验短时、单次 capability；它绑定 method、path、session、CSRF、credential version 和 access version。直接连接 Socket 不能代替浏览器认证。DSH 内“平台管理”和“设置文档编辑器”通过已认证 DSH Session 使用固定受限 Plugin API，不能访问文件、Root 终端、用户插件恢复、认证设置或完整 Management capability。
 
-管理员恢复、会话清理和退避清理必须先取得用户明确授权，并且只允许 Root 在交互式 TTY 中执行。密码输入会关闭回显，不接受命令参数或管道：
+管理员恢复、会话清理和退避清理只允许 Root 在交互式 TTY 中执行。密码输入会关闭回显，不接受命令参数或管道：
 
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
