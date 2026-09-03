@@ -1651,6 +1651,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /body\.totpEnabled = true[\s\S]*body\.totpEnrollmentToken = pendingTotpChange\.enrollment\.enrollmentToken/)
   assert.match(script, /pending\.confirmed = true[\s\S]*showAuthenticationStatus\(t\('authTotpConfirmedDraft'\)\)/)
   assert.match(script, /elements\['auth-totp-enabled'\]\.addEventListener\('change',[\s\S]*changeTotpEnabled/)
+  assert.match(script, /function trapTotpDialogFocus\(event\)[\s\S]*event\.key !== 'Tab'[\s\S]*elements\['auth-totp-dialog'\]\.addEventListener\('keydown', trapTotpDialogFocus\)/)
   assert.match(script, /auth-account-save'\]\.disabled = totpUnverified \|\| !accountDraftChanged\(\)/)
   assert.match(style, /\.auth-totp-control\[data-state="unverified"\][^}]+background: var\(--warning\)/)
   assert.match(script, /if \(!accountDraftChanged\(draft\)\) return/)

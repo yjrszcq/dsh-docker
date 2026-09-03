@@ -4765,6 +4765,23 @@ async function confirmTotpEnrollment() {
   }
 }
 
+function trapTotpDialogFocus(event) {
+  if (event.key !== 'Tab') return
+  const dialog = elements['auth-totp-dialog']
+  const focusable = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.hidden && element.getClientRects().length > 0)
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 async function saveManagementOrigin() {
   const button = elements['auth-origin-save']
   const currentMode = authenticationSettings?.account?.managementAccess?.mode ?? 'compat'
@@ -5039,6 +5056,7 @@ elements['auth-totp-dialog'].addEventListener('cancel', event => {
   event.preventDefault()
   void cancelTotpChange()
 })
+elements['auth-totp-dialog'].addEventListener('keydown', trapTotpDialogFocus)
 elements['auth-totp-form'].addEventListener('submit', event => {
   event.preventDefault()
   void confirmTotpEnrollment()
