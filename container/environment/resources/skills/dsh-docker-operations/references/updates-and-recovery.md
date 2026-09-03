@@ -32,6 +32,11 @@ Runtime reset rebuilds DSH from verified Pristine content and the current comple
 
 ## Exceptional recovery
 
-`dsh-platform recover` and `dsh-platform trust reset` are Root-only interactive console operations. Use them only when the normal current/previous recovery paths are unavailable and the user explicitly authorizes the risk.
+```sh
+dsh-platform recover
+dsh-platform trust reset
+```
+
+Both commands are Root-only interactive console operations. `recover` restores the image-baseline Deployment after current and previous Deployments are unusable; `trust reset` clears the accepted trust state.
 
 Never manually delete `$DSH_PLATFORM_DATA/state`, rewrite slots, copy objects into Store, edit keyrings, forge receipts, or reinterpret an image reference. If a legacy or corrupt platform volume prevents startup, preserve `$DSH_HOME` and follow the exact platform error/recovery guidance.
