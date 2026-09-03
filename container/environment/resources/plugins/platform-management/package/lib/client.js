@@ -1098,6 +1098,23 @@ function UpdateReminder({ t }) {
     return () => window.clearInterval(timer)
   }, [identity, ownsNotice])
 
+  const dismiss = useCallback(permanent => {
+    if (permanent) writeStorage(`dsh-platform:update-notice-dismissed:${candidate?.kind}`, identity)
+    else writeStorage(NOTICE_SNOOZE_KEY, JSON.stringify({ identity, until: Date.now() + 3_600_000 }))
+    writeStorage(NOTICE_OWNER_KEY, null)
+    setTick(value => value + 1)
+  }, [candidate?.kind, identity])
+
+  useEffect(() => {
+    const handleClick = event => {
+      const button = event.target.closest('button[data-notice-action]')
+      if (button === null || button.closest('aside[role="status"]') === null) return
+      dismiss(button.dataset.noticeAction === 'dismiss')
+    }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [dismiss])
+
   if (!ownsNotice || candidate === undefined) return null
   const notice = updateNoticeModel(candidate, status)
   const scopeName = `${notice.scope[0].toUpperCase()}${notice.scope.slice(1)}`
@@ -1110,20 +1127,14 @@ function UpdateReminder({ t }) {
       .replace('{version}', displayEnvironment(notice.environment))
       .replace('{state}', notice.environmentChanged ? t('noticeWillUpdate') : '')
     : null
-  const dismiss = permanent => {
-    if (permanent) writeStorage(`dsh-platform:update-notice-dismissed:${candidate.kind}`, identity)
-    else writeStorage(NOTICE_SNOOZE_KEY, JSON.stringify({ identity, until: Date.now() + 3_600_000 }))
-    writeStorage(NOTICE_OWNER_KEY, null)
-    setTick(tick + 1)
-  }
   return h('aside', { className: css.updateReminder, role: 'status', 'aria-live': 'polite' },
     h('strong', null, title),
     h('p', { className: css.updateReminderVersions },
       h('span', null, dshLine),
       environmentLine === null ? null : h('span', null, environmentLine)),
     h('div', { className: css.reminderActions },
-      h('button', { type: 'button', onClick: () => dismiss(false) }, t('later')),
-      h('button', { type: 'button', onClick: () => dismiss(true) }, t('dismissVersion'))))
+      h('button', { type: 'button', 'data-notice-action': 'snooze' }, t('later')),
+      h('button', { type: 'button', 'data-notice-action': 'dismiss' }, t('dismissVersion'))))
 }
 
 function LifecycleGuard({ connection }) {
