@@ -3596,7 +3596,9 @@ function clearProxySecrets() {
 }
 
 function renderProxyTransportWarning() {
-  elements['proxy-transport-warning'].hidden = location.protocol === 'https:'
+  const loopback = location.hostname === 'localhost' || location.hostname === '[::1]'
+    || /^127(?:\.\d{1,3}){3}$/u.test(location.hostname)
+  elements['proxy-transport-warning'].hidden = location.protocol === 'https:' || loopback
     || (elements['proxy-password'].value === '' && elements['proxy-username'].value === '')
 }
 
