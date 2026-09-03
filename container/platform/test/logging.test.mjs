@@ -84,6 +84,32 @@ test('assigns default levels and accepts only explicit supported levels', async 
   await assert.rejects(logs.append('component', 'stdout', 'invalid', { level: 'fatal' }), /log level is invalid/)
 })
 
+test('rate-limits repeated diagnostics and reports the suppressed count', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-suppression-'))
+  let now = Date.parse('2026-08-19T00:00:00.000Z')
+  const logs = new JsonlLogManager({ root, now: () => new Date(now) })
+  await logs.diagnosticRateLimited('authentication.failed', 'access-manager', 'access.authentication.failed', {
+    level: 'warning', kind: 'main',
+  })
+  now += 1_000
+  await logs.diagnosticRateLimited('authentication.failed', 'access-manager', 'access.authentication.failed', {
+    level: 'warning', kind: 'main',
+  })
+  now += 30_000
+  await logs.diagnosticRateLimited('authentication.failed', 'access-manager', 'access.authentication.failed', {
+    level: 'warning', kind: 'main',
+  })
+
+  const entries = await logs.query({ sources: ['access-manager'] })
+  assert.equal(entries.length, 2)
+  assert.equal(entries[0].suppressedCount, undefined)
+  assert.equal(entries[1].suppressedCount, 1)
+  await assert.rejects(
+    Promise.resolve().then(() => logs.diagnosticRateLimited('invalid key', 'gateway', 'failed')),
+    /suppression key is invalid/,
+  )
+})
+
 test('applies an explicit shared-reader mode to newly created and rotated log files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-log-mode-'))
   const logs = new JsonlLogManager({ root, fileMode: 0o640, rotateBytes: 1_024 })

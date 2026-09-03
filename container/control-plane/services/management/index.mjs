@@ -241,7 +241,7 @@ server = createManagementServer({
     if (value?.stage !== 'browser-probe' || !['compat', 'isolated'].includes(value?.mode)) {
       throw Object.assign(new Error('Management origin transition failure report is invalid'), { statusCode: 400 })
     }
-    await logs.diagnostic('platform-management', 'management-origin.probe.failed', {
+    await logs.diagnosticRateLimited('management-origin.probe.failed', 'platform-management', 'management-origin.probe.failed', {
       level: 'warning', stage: value.stage, mode: value.mode,
     })
     return { reported: true }

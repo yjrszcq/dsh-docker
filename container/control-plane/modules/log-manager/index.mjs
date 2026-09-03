@@ -11,6 +11,7 @@ const LOG_LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 const MAX_DIAGNOSTIC_STRING = 16 * 1024
 const MAX_ERROR_DEPTH = 3
 const MAX_AGGREGATE_ERRORS = 8
+const SUPPRESSION_KEY_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,255}$/
 
 function boundedString(value) {
   const text = String(value)
@@ -107,6 +108,7 @@ export class JsonlLogManager extends EventEmitter {
     this.fileUid = fileUid
     this.fileGid = fileGid
     this.queue = Promise.resolve()
+    this.suppressedDiagnostics = new Map()
   }
 
   prepare() {
@@ -198,6 +200,27 @@ export class JsonlLogManager extends EventEmitter {
       } catch {}
       return undefined
     }
+  }
+
+  diagnosticRateLimited(key, source, message, fields = {}, { intervalMs = 30_000 } = {}) {
+    if (typeof key !== 'string' || !SUPPRESSION_KEY_PATTERN.test(key)) {
+      throw new Error('diagnostic suppression key is invalid')
+    }
+    if (!Number.isSafeInteger(intervalMs) || intervalMs < 1_000 || intervalMs > 86_400_000) {
+      throw new Error('diagnostic suppression interval is invalid')
+    }
+    const timestamp = this.now().getTime()
+    const previous = this.suppressedDiagnostics.get(key)
+    if (previous !== undefined && timestamp - previous.lastReportedAt < intervalMs) {
+      previous.suppressedCount += 1
+      return Promise.resolve(undefined)
+    }
+    const suppressedCount = previous?.suppressedCount ?? 0
+    this.suppressedDiagnostics.set(key, { lastReportedAt: timestamp, suppressedCount: 0 })
+    return this.diagnostic(source, message, {
+      ...fields,
+      ...(suppressedCount === 0 ? {} : { suppressedCount }),
+    })
   }
 
   async files() {

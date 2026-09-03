@@ -79,6 +79,17 @@ const logs = new JsonlLogManager({
   fileMode: 0o660,
   fileGid: process.getgid?.() === 0 ? 1000 : undefined,
 })
+const rateLimitedAccessMessages = new Set([
+  'access.authentication.failed',
+  'access.fresh-authentication.failed',
+  'access.totp.failed',
+])
+const reportAccess = (message, fields = {}) => rateLimitedAccessMessages.has(message)
+  ? logs.diagnosticRateLimited(
+      `${message}:${fields.kind === 'management' ? 'management' : 'main'}`,
+      'access-manager', message, fields,
+    )
+  : logs.diagnostic('access-manager', message, fields)
 await logs.prepare()
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 const startup = async (phase, operation) => {
@@ -150,7 +161,7 @@ const accessBroker = new AccessLaunchBroker({
   gid: accessGid,
   platformGid,
   capture: (child, source, declaration) => logs.capture(child, source, declaration),
-  report: (message, fields) => logs.diagnostic('access-manager', message, fields),
+  report: reportAccess,
 })
 const accessLaunchServer = createAccessLaunchServer({
   broker: accessBroker,

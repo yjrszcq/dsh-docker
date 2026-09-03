@@ -17,7 +17,12 @@ const logs = new JsonlLogManager({
   output: { stdout: process.stdout, stderr: process.stderr },
 })
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
-const report = (message, fields) => logs.diagnostic('gateway', message, fields)
+const report = (message, fields = {}) => message === 'gateway.access.login-failed'
+  ? logs.diagnosticRateLimited(
+      `gateway.access.login-failed:${typeof fields.code === 'string' ? fields.code.toLowerCase() : 'unknown'}`,
+      'gateway', message, fields,
+    )
+  : logs.diagnostic('gateway', message, fields)
 
 try {
   const config = await loadConfig()
