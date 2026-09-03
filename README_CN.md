@@ -150,7 +150,7 @@ docker run -d \
 
 ### 升级与认证提示
 
-此版本以持久化 Access Manager 管理员账户取代旧的 Gateway/环境密码登录，使用独立的 DSH 与管理中心会话，并支持管理中心密码和两步验证。仓库 Compose 默认保持 `DSH_SUDO_ENABLED=false`；升级前请重点阅读 Root 权限和认证架构变化。替换镜像时必须保留 `/data/dsh` 与 `/data/platform`（尤其是 `/data/platform/state`）。删除 platform volume 会重置管理员账户和认证状态，已有部署可能因此进入迁移或恢复流程。
+管理员账户由 Access Manager 持久化管理，DSH 与管理中心使用独立会话，并支持管理中心密码和两步验证。仓库 Compose 默认保持 `DSH_SUDO_ENABLED=false`。替换镜像时必须保留 `/data/dsh` 与 `/data/platform`（尤其是 `/data/platform/state`）。删除 platform volume 会重置管理员账户和认证状态，已有部署可能因此进入迁移或恢复流程。
 
 认证表单只负责传输输入，所有凭据判断由 Access Manager 完成。登录 DSH 只创建 DSH Session；打开管理中心时会从这个有效会话通过一次性交接创建独立的 Management Session。直接访问管理中心也必须先完成 DSH 主密码登录；配置管理中心密码后，再进行第二层验证。DSH 注销或会话过期会同时使其关联的 Management Session 失效。DSH 发生已分类故障时，顶层页面导航会先显示不泄露故障细节的恢复页，使未登录用户仍能找到独立管理中心入口；API 和 WebSocket 继续关闭访问。“认证设置”按登录设备列出浏览器、对端 IP 和活动时间；注销一台设备会同时撤销它的 DSH Session 与关联 Management Session。管理中心也可切换到公开独立 Origin，或使用映射到容器独立入口的本机宿主机端口（默认 `3081`，可自定义）。
 
