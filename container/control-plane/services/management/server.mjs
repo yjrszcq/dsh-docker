@@ -187,7 +187,7 @@ export function createManagementServer({
   const pluginTasks = new Map()
   if (userPluginState.taskId !== null) userPluginTasks.set(userPluginState.taskId, userPluginState)
   let server
-  coordinator.setMaxListeners(0)
+  coordinator.setMaxListeners?.(0)
   const audit = (message, fields = {}) => logs.diagnostic('audit', message, { stream: 'audit', ...fields })
   const recordAudit = (message, fields = {}) => Promise.resolve().then(() => audit(message, fields)).catch(() => {})
   const refreshLoadedUserPlugins = () => Promise.resolve()
