@@ -334,6 +334,8 @@ Every privileged Management or Maintenance operation is authorized again at its 
 
 Administrator recovery, session clearing, and retry-limit clearing are Root-only interactive TTY operations. Passwords are read with echo disabled and are rejected from arguments or pipes:
 
+Use the `docker exec` form below from a host terminal; in the Management Console Root terminal, run the trailing `dsh-platform ...` command directly.
+
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
@@ -351,6 +353,8 @@ docker exec -it --user root deepseek-harness dsh-platform access clear-retry --t
 ```
 
 `access reset` is the recommended combined recovery command. It independently asks whether to change the username and main password. When a Management console password is enabled, the same atomic operation presents a numbered choice to preserve it, disable it, or replace it. Nothing is saved until every selected prompt is complete, so cancelling or losing the TTY halfway through does not partially update the account. All yes/no recovery prompts accept only `y` or `n` and show their default in brackets. The narrower interactive commands remain available for single-credential recovery. A completed account recovery invalidates existing DSH and Management browser sessions.
+
+`access status` is read-only and reports the current account, initialization state, and retry state.
 
 `access clear-retry` asks `Clear all administrator login retry limits? y/[n]:`. Confirming clears every browser-source exponential wait, all browser rolling windows, and all instance-wide failed-attempt windows. With `--global-only`, the CLI instead asks `Clear instance-wide administrator login rate limits? y/[n]:` and clears only the instance-wide windows; browser waits and source windows remain active. Neither form changes credentials or browser sessions.
 

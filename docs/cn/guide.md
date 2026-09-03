@@ -334,6 +334,8 @@ DSH 处于已分类的停止、启动、恢复或失败状态时，顶层浏览�
 
 管理员恢复、会话清理和退避清理只允许 Root 在交互式 TTY 中执行。密码输入会关闭回显，不接受命令参数或管道：
 
+从宿主机终端使用下面的 `docker exec` 形式；在管理中心 Root 终端中直接执行最后的 `dsh-platform ...` 命令。
+
 ```bash
 docker exec -it --user root deepseek-harness dsh-platform access status
 docker exec -it --user root deepseek-harness dsh-platform access reset
@@ -351,6 +353,8 @@ docker exec -it --user root deepseek-harness dsh-platform access clear-retry --t
 ```
 
 推荐使用组合恢复命令 `access reset`。它会分别询问是否修改用户名和主密码；当前已启用管理中心密码时，还会用编号菜单选择保留、关闭或重设管理中心密码。所有选定输入完成前不会保存，途中取消或 TTY 断开不会留下只改了一半的账户状态。所有是/否恢复提示只接受 `y` 或 `n`，方括号标识默认项。原有细分交互命令继续用于单项凭据恢复。成功完成账户恢复后，现有 DSH 与 Management 浏览器会话都会失效。
+
+`access status` 只读显示当前账户、初始化状态和退避状态。
 
 `access clear-retry` 会询问 `Clear all administrator login retry limits? y/[n]:`。确认后清除所有浏览器来源的指数等待、来源滚动窗口和实例总量失败窗口。添加 `--global-only` 时改为询问 `Clear instance-wide administrator login rate limits? y/[n]:`，并且只清除实例总量窗口，浏览器等待和来源窗口保持有效。两种形式都不修改凭据或浏览器会话。
 

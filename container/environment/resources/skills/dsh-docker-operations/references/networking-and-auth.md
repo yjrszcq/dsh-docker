@@ -35,16 +35,26 @@ These `access` recovery, credential, session, and retry-clear commands require t
 ```sh
 dsh-platform access status
 dsh-platform access reset
+dsh-platform access set-username
+dsh-platform access reset-password
+dsh-platform access reset-management-password
+dsh-platform access disable-management-password
 dsh-platform access clear-retry
 dsh-platform access clear-retry --global-only
+dsh-platform access clear-retry --main-password
+dsh-platform access clear-retry --management-password
 dsh-platform access clear-retry --two-factor
 dsh-platform access disable-two-factor
-dsh-platform access clear-sessions [--management-only]
+dsh-platform access clear-sessions
+dsh-platform access clear-sessions --management-only
+dsh-platform access generate-key
 ```
 
-The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the Management console password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. `access clear-retry` uses the same Root/TTY and `y/[n]` boundary; it clears every browser-source wait, every source rolling window, and the instance-wide failure windows without changing credentials or sessions. Add `--global-only` to clear only the instance-wide windows while leaving browser waits and source windows active. The optional `--main-password`, `--management-password`, or `--two-factor` selector limits clearing to one credential class; `--two-factor` clears only its daily limit and leaves the fixed 10-second code backoff active. Fresh empty volumes register without a key. Persisted pre-account deployments and damaged authentication state use `access generate-key`, which issues a single-use authentication reset key valid for ten minutes from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
+`access status` is read-only and reports the current account, initialization state, and retry state. The combined `access reset` command atomically applies selected username and main-password changes and, when configured, uses a numbered menu to preserve, disable, or reset the Management console password. It submits nothing until all prompts complete. Yes/no recovery prompts accept only `y` or `n`, with the default shown in brackets. Other interactive recovery commands include `access set-username`, `access reset-password`, `access reset-management-password`, and `access disable-management-password`. `access clear-retry` uses the same Root/TTY and `y/[n]` boundary; it clears every browser-source wait, every source rolling window, and the instance-wide failure windows without changing credentials or sessions. Add `--global-only` to clear only the instance-wide windows while leaving browser waits and source windows active. The optional `--main-password`, `--management-password`, or `--two-factor` selector limits clearing to one credential class; `--two-factor` clears only its daily limit and leaves the fixed 10-second code backoff active. Fresh empty volumes register without a key. Persisted pre-account deployments and damaged authentication state use `access generate-key`, which issues a single-use authentication reset key valid for ten minutes from the same Root TTY. Never pass passwords as arguments or pipe them to the CLI.
 
 `--global-only` limits `access clear-retry` to the instance-wide flood windows; without it, both source/browser waits and instance windows are cleared. `access clear-sessions` clears all sessions, or only Management sessions with `--management-only`.
+
+`access set-username` changes only the administrator name; `access reset-password` changes the main password and revokes all sessions; `access reset-management-password` sets or changes the Management password and revokes Management sessions; `access disable-management-password` and `access disable-two-factor` disable those optional layers without logging out existing sessions. `access generate-key` issues the one-time key used by migration or damaged-account recovery.
 
 Do not read configured passwords from environment files, `/proc`, process listings, or service memory. Ask the user to authenticate through the normal browser flow.
 
