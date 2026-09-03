@@ -349,6 +349,8 @@ docker exec -it --user root deepseek-harness dsh-platform access clear-sessions 
 docker exec -it --user root deepseek-harness dsh-platform access generate-key
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --global-only
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --main-password
+docker exec -it --user root deepseek-harness dsh-platform access clear-retry --management-password
 docker exec -it --user root deepseek-harness dsh-platform access clear-retry --two-factor
 ```
 
