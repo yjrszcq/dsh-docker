@@ -132,6 +132,7 @@ test('official-style holding page is self-contained and replaces the spinner wit
   assert.match(page, /prefers-color-scheme:light/)
   assert.match(page, /name="viewport"/)
   assert.match(page, /max-width:520px/)
+  assert.match(page, /management\.href=value\.managementHref/)
   assert.doesNotMatch(page, /spinner|Loading plugins/)
   assert.doesNotMatch(page, /letter-spacing:-/)
 })
@@ -164,6 +165,25 @@ test('Gateway temporary DSH pages link to the configured isolated Management ent
     assert.equal(response.status, 200)
     assert.match(response.body, /href="https:\/\/management\.example\/"/)
     assert.doesNotMatch(response.body, /href="\/_dsh_platform\/console\/"/)
+  } finally {
+    await closeGatewayServer(context.gateway)
+  }
+})
+
+test('Gateway readiness publishes the current Management entry for an already-open temporary page', async () => {
+  let access = { state: 'initialized', account: { managementAccess: { mode: 'compat' } } }
+  const browserAuthentication = {
+    ...UNAUTHENTICATED_BROWSER,
+    status: async () => access,
+  }
+  const context = await unavailableGateway({ browserAuthentication })
+  try {
+    const compatible = JSON.parse((await request(context.port, READINESS_PATH)).body)
+    assert.equal(compatible.managementHref, '/_dsh_platform/console/')
+
+    access = await ISOLATED_UNAUTHENTICATED_BROWSER.status()
+    const isolated = JSON.parse((await request(context.port, READINESS_PATH)).body)
+    assert.equal(isolated.managementHref, 'https://management.example/')
   } finally {
     await closeGatewayServer(context.gateway)
   }
@@ -319,6 +339,7 @@ test('dedicated holding route preserves a safe return path and redirects when re
     assert.equal(redirected.headers.location, target)
     assert.deepEqual(JSON.parse((await request(context.port, READINESS_PATH)).body), {
       ready: true, state: 'ready', pluginRecoveryEligible: false,
+      managementHref: '/_dsh_platform/console/',
     })
     assert.equal((await request(context.port, WAIT_PATH, { method: 'POST' })).status, 405)
   } finally {
@@ -399,6 +420,7 @@ test('readiness immediately reports ready and clears confirmed failure state', a
     assert.equal(healthy.status, 200)
     assert.deepEqual(JSON.parse(healthy.body), {
       ready: true, state: 'ready', pluginRecoveryEligible: false,
+      managementHref: '/_dsh_platform/console/',
     })
     assert.equal(availability.classify({}), 'unknown')
   } finally {

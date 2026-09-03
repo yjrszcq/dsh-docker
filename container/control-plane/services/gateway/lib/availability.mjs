@@ -142,8 +142,8 @@ html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#
 <body>
 <main class="boot"><div class="wordmark">HARNESS</div><div class="status" role="status">${message}</div><div class="actions"><a class="management" href="${String(managementHref).replaceAll('"', '&quot;')}">${managementLink}</a>${allowRefresh ? `<a class="management refresh" href="">${refreshLink}</a>` : ''}</div></main>
 ${poll ? `<script>
-const returnPath=${target};const status=document.querySelector('.status');
-async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}
+const returnPath=${target};const status=document.querySelector('.status');const management=document.querySelector('.management:not(.refresh)');
+async function check(){try{const response=await fetch('/_dsh_gateway/readiness',{cache:'no-store'});const value=await response.json();if(typeof value.managementHref==='string')management.href=value.managementHref;if(value.ready){if(returnPath===null)location.reload();else location.replace(returnPath);return}if(typeof value.message==='string')status.textContent=value.message}catch{}setTimeout(check,1000)}
 setTimeout(check,600);
 </script>` : ''}
 </body>

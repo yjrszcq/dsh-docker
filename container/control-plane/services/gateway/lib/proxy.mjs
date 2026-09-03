@@ -1071,16 +1071,19 @@ export function createGatewayServer({
       }
       if (pathname === READINESS_PATH) {
         const result = await readiness(options)
+        const managementHref = managementAvailabilityHref(currentAccess)
         if (result.ready) sendJson(response, 200, {
           ready: true,
           state: 'ready',
           pluginRecoveryEligible: result.pluginRecoveryEligible,
+          managementHref,
         })
         else {
           sendJson(response, result.state === 'unknown' ? 502 : 503, {
             ready: false,
             state: result.state,
             message: stateMessage(result.state, request.headers, result.platform.dshLifecycle),
+            managementHref,
           })
         }
         return
