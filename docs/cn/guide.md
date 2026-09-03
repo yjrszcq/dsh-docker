@@ -421,7 +421,7 @@ docker exec deepseek-harness sh -lc "ip route | awk '/default/ { print \$3; exit
 
 独立管理中心和 `dsh-platform start|stop|restart` 只控制 `dsh-runtime`，Bootstrap、Gateway、Management 和容器保持运行。主动停止只持续到再次启动 DSH 或容器自身重启。生命周期操作与更新激活、回滚、Runtime 重置和插件事务互斥。
 
-CLI 默认立即返回任务 ID。通过当前 DSH 会话操作的 Agent 必须使用异步 `dsh-platform restart`，不得使用 `restart --wait` 或 `stop --wait`，因为停止 DSH 也会中断本次工具传输。`--wait` 仍适用于 `docker exec`、独立管理中心终端和外部自动化。
+CLI 默认立即返回任务 ID。从当前 DSH 会话执行时应使用异步 `dsh-platform restart`，不要使用 `restart --wait` 或 `stop --wait`，因为停止 DSH 也会中断当前会话的工具传输。`--wait` 仍适用于 `docker exec`、独立管理中心终端和外部自动化。
 
 Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存在于 `/run/dsh-platform/dsh-lifecycle.sock` 的内部 Broker 绑定当前受监督实例。手工命令或第三方 helper 再次执行 `dsh web` 时不能取得第二个实例：DSH 已停止时会提交正式启动任务；运行中、启动中、重启中、恢复中或平台事务占用生命周期时只报告当前状态并退出；failed/recovery mode 则明确引导到独立管理中心。令牌和 Session 不写入日志、持久状态或 Deployment Record。
 
@@ -519,7 +519,7 @@ docker exec deepseek-harness dsh-platform rollback
 docker exec -it deepseek-harness dsh-platform return-stable
 ```
 
-Agent 在当前 DSH 会话内执行激活时，必须使用异步的 `dsh-platform update`，并报告返回的任务 ID。`update --wait` 只用于 `docker exec`、独立管理中心终端和外部自动化，因为激活过程可能切换 DSH 并中断当前工具传输。
+从当前 DSH 会话执行激活时，应使用异步的 `dsh-platform update` 并记录返回的任务 ID。`update --wait` 只用于 `docker exec`、独立管理中心终端和外部自动化，因为激活过程可能切换 DSH 并中断当前会话的工具传输。
 
 更新进行时，独立管理中心和 DSH 内“平台管理”会按“准备、下载与验证、构建 Runtime、切换与健康检查”展示事务总进度、阶段子项和当前阶段日志。下载、复制、Artifact 验证、文件处理和健康检查只显示实际可测量的字节数、项目数、文件数或服务数；无法可靠测量的阶段不会伪造精确百分比。每个已展开阶段都把相关日志限制在独立的定高滚动区内，繁忙事务不会持续拉长整个页面。已完成阶段默认收起，当前或失败阶段默认展开；刷新或短暂断线后，界面会从持久化事务状态和带任务 ID 的 JSONL 日志恢复进度与阶段轨迹。
 

@@ -419,7 +419,7 @@ Automatic checks default to every six hours with jitter and can be disabled or r
 
 The standalone console and `dsh-platform start|stop|restart` control only `dsh-runtime`. Bootstrap, Gateway, Management, and the container remain running. An explicit stop lasts until DSH is started again or the container itself restarts. Lifecycle operations are mutually exclusive with update activation, rollback, Runtime reset, and plugin transactions.
 
-The CLI returns a task ID immediately by default. Agents operating through the current DSH session must use asynchronous `dsh-platform restart` and must not use `restart --wait` or `stop --wait`, because stopping DSH also interrupts that tool transport. `--wait` remains appropriate for `docker exec`, the standalone console terminal, and external automation.
+The CLI returns a task ID immediately by default. When running from the current DSH session, use asynchronous `dsh-platform restart` and do not use `restart --wait` or `stop --wait`, because stopping DSH also interrupts that session's tool transport. `--wait` remains appropriate for `docker exec`, the standalone console terminal, and external automation.
 
 Before each Web Profile launch, Bootstrap issues a one-time token and binds the supervised instance through the internal Broker at `/run/dsh-platform/dsh-lifecycle.sock`. A manual command or third-party helper that runs `dsh web` again cannot create a second instance. It submits a formal start task when DSH is stopped; reports the current state and exits while DSH is running, starting, restarting, recovering, or owned by another platform transaction; and directs the user to the standalone console in failed/recovery mode. Tokens and sessions are never written to logs, persistent state, or Deployment Records.
 
@@ -517,7 +517,7 @@ docker exec deepseek-harness dsh-platform rollback
 docker exec -it deepseek-harness dsh-platform return-stable
 ```
 
-An Agent running inside the current DSH session must start activation asynchronously with `dsh-platform update` and report the returned task ID. `update --wait` is reserved for `docker exec`, the standalone console terminal, and external automation because activation may switch DSH and interrupt the current tool transport.
+When activating from the current DSH session, start asynchronously with `dsh-platform update` and record the returned task ID. `update --wait` is reserved for `docker exec`, the standalone console terminal, and external automation because activation may switch DSH and interrupt that session's tool transport.
 
 During an update, the standalone Management Console and DSH Platform Management show the overall transaction, stage subitems, and current-stage logs across preparation, download and verification, Runtime construction, and switching and health checks. Downloads, copies, Artifact verification, file processing, and health checks report only measurable bytes, items, files, or services; a phase without a trustworthy total does not invent a precise percentage. Each expanded stage keeps its related logs in a bounded, independently scrolling region so a busy transaction does not continuously lengthen the page. Completed stages collapse by default while the current or failed stage remains open. After a refresh or short disconnection, the interfaces reconstruct the progress and stage history from persistent transaction state and task-correlated JSONL logs.
 
