@@ -83,6 +83,17 @@ async function fixture(targetArtifacts, policy = officialDshPolicy()) {
   }
 }
 
+test('empty activation succeeds before release trust is initialized', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-empty-activation-'))
+  const recovery = keyPair()
+  const ledger = new TrustLedger(join(directory, 'trust'), recovery.publicKey)
+  const untrustedRoot = join(directory, 'downloads', 'untrusted')
+  await mkdir(untrustedRoot, { recursive: true })
+  const store = new VerifiedObjectStore({ root: join(directory, 'trust'), untrustedRoot, ledger })
+
+  assert.deepEqual(await store.activate([]), [])
+})
+
 async function importSignature(store, untrustedRoot, signatureBytes) {
   const path = join(untrustedRoot, 'manifest.sig.json')
   await writeFile(path, signatureBytes)

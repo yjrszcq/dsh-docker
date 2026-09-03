@@ -512,14 +512,20 @@ export class VerifiedObjectStore {
 
   activate(tokens) {
     return this.exclusive(async () => {
+      if (!Array.isArray(tokens)) throw new TrustError('activation receipts must be an array')
       const receipts = await this.allReceipts()
       const byToken = new Map(receipts.map(receipt => [receipt.token, receipt]))
       const selected = new Set()
-      const currentKeyring = (await this.ledger.currentKeyring())?.value
-      if (currentKeyring === undefined) throw new TrustError('activation requires a current keyring')
-      const currentTarget = (await this.ledger.currentTarget())?.value
-      if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
-      const currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
+      let currentKeyring
+      let currentTarget
+      let currentOfficialDsh
+      if (tokens.length > 0) {
+        currentKeyring = (await this.ledger.currentKeyring())?.value
+        if (currentKeyring === undefined) throw new TrustError('activation requires a current keyring')
+        currentTarget = (await this.ledger.currentTarget())?.value
+        if (currentTarget === undefined) throw new TrustError('activation requires a current release target')
+        currentOfficialDsh = await this.ledger.currentOfficialDsh().catch(() => undefined)
+      }
       const add = (token) => {
         const receipt = byToken.get(token)
         if (receipt === undefined) throw new TrustError('activation references an unknown receipt')
