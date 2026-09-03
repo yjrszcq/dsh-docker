@@ -596,6 +596,43 @@ test('atomically resets administrator access with an explicit additional-passwor
   assert.equal((await service.recoveryStatus()).account.revision, revision)
 })
 
+test('recovery access reset can disable two-factor authentication and revoke sessions', async () => {
+  const { service, store } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'original administrator password', origin: 'https://dsh.example',
+  })
+  const state = await store.state()
+  state.account.totp = { enabled: true, version: 1, secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', changedAt: new Date().toISOString() }
+  await store.replaceAccount(state.account, state.account.revision)
+  const reset = await service.resetRecoveryAccess({
+    revision: state.account.revision,
+    managementPasswordAction: 'preserve',
+    totpAction: 'disable',
+  })
+  assert.equal(reset.account.totp.enabled, false)
+  assert.equal(reset.allSessionsRevoked, false)
+})
+
+test('Root recovery can clear all sessions or only Management sessions', async () => {
+  const { service } = await fixture()
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  const initialized = await service.initializeDsh({
+    username: 'admin', password: 'original administrator password', origin: 'https://dsh.example',
+  })
+  const dsh = initialized.session.token
+  const handoff = await service.createManagementHandoff({
+    dshToken: dsh, dshOrigin: 'https://dsh.example', targetOrigin: 'https://dsh.example',
+  })
+  await service.consumeManagementHandoff({ token: handoff.handoff.token, origin: 'https://dsh.example' })
+  const management = await service.clearRecoverySessions({ managementOnly: true })
+  assert.equal(management.scope, 'management')
+  assert.equal((await service.validateSession({ kind: 'dsh', token: dsh, origin: 'https://dsh.example' })).authenticated, true)
+  const all = await service.clearRecoverySessions()
+  assert.equal(all.scope, 'all')
+  assert.equal((await service.validateSession({ kind: 'dsh', token: dsh, origin: 'https://dsh.example' })).authenticated, false)
+})
+
 test('audits successful Root account recovery changes without credential material', async () => {
   const reports = []
   const { service } = await fixture({
@@ -627,6 +664,7 @@ test('audits successful Root account recovery changes without credential materia
     'reset-password',
     'reset-access',
   ])
+  assert.equal(audits.at(-3).fields.allSessionsRevoked, false)
   assert.equal(audits.at(-2).fields.allSessionsRevoked, true)
   assert.equal(audits.at(-1).fields.managementSessionsRevoked, 0)
   const serialized = JSON.stringify(audits)

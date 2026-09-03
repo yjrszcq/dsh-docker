@@ -2243,6 +2243,65 @@ test('management CLI creates a root-only one-time authentication reset key', asy
   }), /requires root/)
 })
 
+test('management CLI exposes standalone two-factor disable without session logout', async () => {
+  assert.deepEqual(parseCli(['access', 'disable-two-factor']), {
+    command: 'access', operation: 'disable-two-factor',
+  })
+  const calls = []
+  const tty = { isTTY: true }
+  assert.equal(await runCli({
+    argv: ['access', 'disable-two-factor'],
+    access: { request: async (method, path, body) => {
+      calls.push({ method, path, body })
+      if (method === 'GET') return { state: 'initialized', account: { revision: 'revision-a' } }
+      return { account: { revision: 'revision-b' }, allSessionsRevoked: false }
+    } },
+    getuid: () => 0,
+    input: tty,
+    output: tty,
+    ask: async prompt => { assert.equal(prompt, 'Disable two-factor authentication? y/[n]: '); return 'y' },
+    write: () => {},
+  }), 0)
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/v1/recovery/status', body: undefined },
+    { method: 'POST', path: '/v1/recovery/reset-access', body: {
+      revision: 'revision-a', managementPasswordAction: 'preserve', totpAction: 'disable',
+    } },
+  ])
+})
+
+test('management CLI clears all or only Management sessions', async () => {
+  assert.deepEqual(parseCli(['access', 'clear-sessions']), {
+    command: 'access', operation: 'clear-sessions',
+  })
+  assert.deepEqual(parseCli(['access', 'clear-sessions', '--management-only']), {
+    command: 'access', operation: 'clear-sessions', managementOnly: true,
+  })
+  const tty = { isTTY: true }
+  for (const [argv, expectedScope] of [
+    [['access', 'clear-sessions'], false],
+    [['access', 'clear-sessions', '--management-only'], true],
+  ]) {
+    let submitted
+    await runCli({
+      argv,
+      access: { request: async (method, path, body) => {
+        if (method === 'GET') return { state: 'initialized', account: { revision: 'revision-a' } }
+        submitted = { method, path, body }
+        return { status: 'cleared' }
+      } },
+      getuid: () => 0,
+      input: tty,
+      output: tty,
+      ask: async () => 'y',
+      write: () => {},
+    })
+    assert.deepEqual(submitted, {
+      method: 'POST', path: '/v1/recovery/clear-sessions', body: { managementOnly: expectedScope },
+    })
+  }
+})
+
 test('management CLI clears login retry wait only after Root TTY confirmation', async () => {
   assert.deepEqual(parseCli(['access', 'clear-retry']), { command: 'access', operation: 'clear-retry' })
   assert.deepEqual(parseCli(['access', 'clear-retry', '--global-only']), {
@@ -2348,30 +2407,24 @@ test('management CLI clears login retry wait only after Root TTY confirmation', 
   ])
 })
 
-test('recover combines selective retry clearing with optional image baseline recovery', async () => {
-  assert.deepEqual(parseCli(['recover']), {
-    command: 'recover', imageBaseline: false, credential: 'all',
+test('access clear-retry accepts only retry scope and credential selectors', async () => {
+  assert.deepEqual(parseCli(['access', 'clear-retry']), {
+    command: 'access', operation: 'clear-retry',
   })
-  assert.deepEqual(parseCli(['recover', '--main-password']), {
-    command: 'recover', imageBaseline: false, credential: 'main',
+  assert.deepEqual(parseCli(['access', 'clear-retry', '--main-password']), {
+    command: 'access', operation: 'clear-retry', credential: 'main',
   })
-  assert.deepEqual(parseCli(['recover', '--management-password', '--image-baseline']), {
-    command: 'recover', imageBaseline: true, credential: 'management',
-  })
-  assert.deepEqual(parseCli(['recover', '--two-factor']), {
-    command: 'recover', imageBaseline: false, credential: 'totp',
-  })
-  assert.deepEqual(parseCli(['recover', '--two-factor', '--image-baseline']), {
-    command: 'recover', imageBaseline: true, credential: 'totp',
+  assert.deepEqual(parseCli(['access', 'clear-retry', '--two-factor']), {
+    command: 'access', operation: 'clear-retry', credential: 'totp',
   })
   assert.throws(
-    () => parseCli(['recover', '--main-password', '--management-password']),
+    () => parseCli(['access', 'clear-retry', '--main-password', '--management-password']),
     error => error.message.includes('\ncommands:\n')
-      && error.message.includes('recover [--image-baseline] [--main-password|--management-password|--two-factor]'),
+      && error.message.includes('access clear-retry [--global-only] [--main-password|--management-password|--two-factor]'),
   )
   let recoverError
   let commandError
-  try { parseCli(['recover', '--bad-option']) } catch (error) { recoverError = error }
+  try { parseCli(['access', 'clear-retry', '--bad-option']) } catch (error) { recoverError = error }
   try { parseCli(['unknown-command']) } catch (error) { commandError = error }
   assert.equal(recoverError.message, commandError.message)
   assert.match(recoverError.message, /^usage: dsh-platform <command> \[options\]\ncommands:\n/)
@@ -2380,16 +2433,11 @@ test('recover combines selective retry clearing with optional image baseline rec
   const calls = []
   const output = []
   assert.equal(await runCli({
-    argv: ['recover', '--management-password', '--image-baseline'],
+    argv: ['access', 'clear-retry', '--management-password'],
     access: { request: async (method, path, body) => {
       calls.push(['access', method, path, body])
       return { status: 'cleared', scope: 'all', credential: 'management', cleared: true }
     } },
-    recovery: {},
-    recover: async () => {
-      calls.push(['image-baseline'])
-      return { status: 'recovered', slots: { current: 'image' } }
-    },
     getuid: () => 0,
     input: tty,
     output: tty,
@@ -2400,13 +2448,10 @@ test('recover combines selective retry clearing with optional image baseline rec
     write: line => output.push(line),
   }), 0)
   assert.deepEqual(calls, [
-    ['image-baseline'],
+    ['access', 'GET', '/v1/recovery/status', undefined],
     ['access', 'POST', '/v1/recovery/clear-retry', { scope: 'all', credential: 'management' }],
   ])
-  assert.deepEqual(JSON.parse(output[0]), {
-    status: 'recovered', slots: { current: 'image' },
-    authenticationRetry: { status: 'cleared', scope: 'all', credential: 'management', cleared: true },
-  })
+  assert.deepEqual(JSON.parse(output[0]), { status: 'cleared', scope: 'all', credential: 'management', cleared: true })
 })
 
 test('hidden access input preserves the TTY stream for subsequent prompts', async () => {
@@ -2840,9 +2885,7 @@ test('trust reset refuses non-root and non-interactive callers before mutation',
 })
 
 test('image baseline recovery is root/TTY-only and requires the complete image identity', async () => {
-  assert.deepEqual(parseCli(['recover', '--image-baseline']), {
-    command: 'recover', imageBaseline: true, credential: 'all',
-  })
+  assert.deepEqual(parseCli(['recover']), { command: 'recover' })
   const calls = []
   const recovery = {
     request: async (method, path, body) => {

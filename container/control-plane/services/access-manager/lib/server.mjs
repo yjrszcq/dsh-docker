@@ -808,6 +808,21 @@ export class AccessService {
     return { status: 'cleared', scope, credential, ...result }
   }
 
+  async clearRecoverySessions(value = {}) {
+    const current = await this.store.state()
+    if (current.state !== 'initialized' || current.account === undefined) {
+      throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
+    }
+    if (value.managementOnly !== undefined && typeof value.managementOnly !== 'boolean') {
+      throw new AccessError('REQUEST_INVALID', 'session clear scope is invalid')
+    }
+    const managementOnly = value.managementOnly === true
+    const revoked = managementOnly ? this.sessions.revokeKind('management') : this.sessions.revokeAll()
+    this.exchanges.clear?.()
+    await this.report('access.sessions.cleared', { managementOnly, revoked })
+    return { status: 'cleared', scope: managementOnly ? 'management' : 'all', revoked }
+  }
+
   async authenticationRetryStatus(value = {}) {
     const current = await this.store.state()
     if (current.account === undefined) {
@@ -867,16 +882,25 @@ export class AccessService {
     if (!['preserve', 'disable', 'reset'].includes(action)) {
       throw new AccessError('REQUEST_INVALID', 'management password action is invalid')
     }
+    const totpAction = value.totpAction ?? 'preserve'
+    if (!['preserve', 'disable'].includes(totpAction)) {
+      throw new AccessError('REQUEST_INVALID', 'two-factor action is invalid')
+    }
     const username = value.username === undefined ? null : normalizeUsername(value.username)
     const mainPassword = value.password === undefined ? null : normalizePassword(value.password)
     const managementPassword = action === 'reset' ? normalizePassword(value.managementPassword) : null
-    if (username === null && mainPassword === null && action === 'preserve') {
+    const currentTotpEnabled = accountTotp((await this.store.state()).account).enabled
+    if (username === null && mainPassword === null && action === 'preserve'
+      && (totpAction === 'preserve' || !currentTotpEnabled)) {
       throw new AccessError('REQUEST_INVALID', 'no access changes were selected')
     }
     if (managementPassword !== null && mainPassword !== null && managementPassword === mainPassword) {
       throw new AccessError('PASSWORDS_MUST_DIFFER', 'main and Management console passwords must differ')
     }
-    const revoke = mainPassword !== null ? 'all' : action === 'preserve' ? 'none' : 'management'
+    const revoke = mainPassword !== null ? 'all'
+      : action === 'reset' ? 'management'
+        : action === 'disable' ? 'none'
+          : 'none'
     return this.replaceRecoveryAccount(value, async (account, current) => {
       if (managementPassword !== null && mainPassword === null
         && await verifyCredential(managementPassword, current.mainCredential)) {
@@ -887,16 +911,25 @@ export class AccessService {
         const verifier = await this.store.createVerifier(mainPassword)
         account.mainCredential = { ...verifier, version: account.mainCredential.version + 1 }
       }
-      if (action === 'preserve') return
-      const version = account.managementAdditionalCredential.version + 1
-      account.managementAdditionalCredential = action === 'disable'
-        ? { enabled: false, version, verifier: null, changedAt: new Date().toISOString() }
-        : {
-            enabled: true,
-            version,
-            verifier: { ...await this.store.createVerifier(managementPassword), version },
-            changedAt: new Date().toISOString(),
-          }
+      if (action !== 'preserve') {
+        const version = account.managementAdditionalCredential.version + 1
+        account.managementAdditionalCredential = action === 'disable'
+          ? { enabled: false, version, verifier: null, changedAt: new Date().toISOString() }
+          : {
+              enabled: true,
+              version,
+              verifier: { ...await this.store.createVerifier(managementPassword), version },
+              changedAt: new Date().toISOString(),
+            }
+      }
+      if (totpAction === 'disable' && accountTotp(current).enabled) {
+        account.totp = {
+          enabled: false,
+          version: accountTotp(current).version + 1,
+          secret: null,
+          changedAt: new Date().toISOString(),
+        }
+      }
     }, { revoke, auditOperation: 'reset-access' })
   }
 
@@ -920,7 +953,7 @@ export class AccessService {
         verifier: null,
         changedAt: new Date().toISOString(),
       }
-    }, { revoke: 'management', auditOperation: 'disable-management-password' })
+    }, { revoke: 'none', auditOperation: 'disable-management-password' })
   }
 
   async createManagementTransition(value) {
@@ -1192,6 +1225,7 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
         if (request.method === 'POST' && pathname === '/v1/recovery/disable-management-password') return send(response, 200, await service.disableRecoveryManagementPassword(value))
         if (request.method === 'POST' && pathname === '/v1/recovery/generate-key') return send(response, 201, await service.generateAuthenticationResetKey())
         if (request.method === 'POST' && pathname === '/v1/recovery/clear-retry') return send(response, 200, await service.clearAuthenticationRetry(value))
+        if (request.method === 'POST' && pathname === '/v1/recovery/clear-sessions') return send(response, 200, await service.clearRecoverySessions(value))
         return send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
       }
       const value = await body(request)

@@ -15,35 +15,22 @@ commands:
   start|stop|restart [--wait]
   channel [stable|experimental]
   retry|rollback|return-stable
-  recover [--image-baseline] [--main-password|--management-password|--two-factor]
+  recover
   logs [--source NAME] [--since ISO] [--limit N]
   access status|reset|set-username|reset-password
-  access reset-management-password|disable-management-password|generate-key
-  access clear-retry [--global-only] [--two-factor]
+  access reset-management-password|disable-management-password|disable-two-factor|clear-sessions [--management-only]|generate-key
+  access clear-retry [--global-only] [--main-password|--management-password|--two-factor]
   trust status|reset`
 }
 
 export function parseCli(argv) {
   const [command, ...rest] = argv
-  if (['status', 'check', 'retry', 'rollback', 'return-stable'].includes(command)) {
+  if (['status', 'check', 'retry', 'rollback', 'return-stable', 'recover'].includes(command)) {
     if (rest.length !== 0) throw new Error(usage())
     return { command }
   }
   if (command === 'channel' && (rest.length === 0 || (rest.length === 1 && ['stable', 'experimental'].includes(rest[0])))) {
     return { command, channel: rest[0] }
-  }
-  if (command === 'recover') {
-    const credentialOptions = rest.filter(value => ['--main-password', '--management-password', '--two-factor'].includes(value))
-    if (new Set(rest).size !== rest.length
-      || rest.some(value => !['--image-baseline', '--main-password', '--management-password', '--two-factor'].includes(value))
-      || credentialOptions.length > 1) throw new Error(usage())
-    return {
-      command,
-      imageBaseline: rest.includes('--image-baseline'),
-      credential: rest.includes('--main-password')
-        ? 'main' : rest.includes('--management-password') ? 'management'
-          : rest.includes('--two-factor') ? 'totp' : 'all',
-    }
   }
   if (['update', 'start', 'stop', 'restart'].includes(command)) {
     if (rest.some(value => value !== '--wait') || rest.filter(value => value === '--wait').length > 1) throw new Error(usage())
@@ -65,19 +52,29 @@ export function parseCli(argv) {
   if (command === 'trust' && rest.length === 1 && ['status', 'reset'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
-  if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'generate-key', 'clear-retry'].includes(rest[0])) {
+  if (command === 'access' && rest.length === 1 && ['status', 'reset', 'set-username', 'reset-password', 'reset-management-password', 'disable-management-password', 'disable-two-factor', 'clear-sessions', 'generate-key', 'image-baseline', 'clear-retry'].includes(rest[0])) {
     return { command, operation: rest[0] }
   }
   if (command === 'access' && rest[0] === 'clear-retry') {
     const options = rest.slice(1)
+    const credentialOptions = options.filter(value => ['--main-password', '--management-password', '--two-factor'].includes(value))
     if (options.length > 0 && options.length <= 2 && new Set(options).size === options.length
-      && options.every(value => ['--global-only', '--two-factor'].includes(value))) {
+      && credentialOptions.length <= 1
+      && options.every(value => ['--global-only', '--main-password', '--management-password', '--two-factor'].includes(value))) {
       return {
         command,
         operation: 'clear-retry',
         ...(options.includes('--global-only') ? { globalOnly: true } : {}),
+        ...(options.includes('--main-password') ? { credential: 'main' } : {}),
+        ...(options.includes('--management-password') ? { credential: 'management' } : {}),
         ...(options.includes('--two-factor') ? { credential: 'totp' } : {}),
       }
+    }
+  }
+  if (command === 'access' && rest[0] === 'clear-sessions') {
+    const options = rest.slice(1)
+    if (options.length <= 1 && (options.length === 0 || options[0] === '--management-only')) {
+      return { command, operation: 'clear-sessions', ...(options.length === 1 ? { managementOnly: true } : {}) }
     }
   }
   throw new Error(usage())
@@ -225,6 +222,12 @@ export async function runCli({
   },
 } = {}) {
   const parsed = parseCli(argv)
+  if (parsed.command === 'recover') {
+    if (getuid() !== 0) throw new Error('image baseline recovery must run as root from the container console')
+    if (!input.isTTY || !output.isTTY) throw new Error('image baseline recovery requires an interactive container console')
+    write(json(await recover({ recovery, input, output })))
+    return 0
+  }
   if (parsed.command === 'access') {
     if (getuid() !== 0) throw new Error('access recovery requires root')
     if (!input.isTTY || !output.isTTY) throw new Error('access recovery requires an interactive container console')
@@ -243,23 +246,33 @@ export async function runCli({
       write(json(await access.request('POST', '/v1/recovery/generate-key')))
       return 0
     }
+    if (parsed.operation === 'clear-sessions') {
+      const question = parsed.managementOnly
+        ? 'Clear all Management console sessions? y/[n]: '
+        : 'Clear all DSH and Management console sessions? y/[n]: '
+      if (!await confirm(question)) return cancel()
+      write(json(await access.request('POST', '/v1/recovery/clear-sessions', {
+        managementOnly: parsed.managementOnly === true,
+      })))
+      return 0
+    }
     if (parsed.operation === 'clear-retry') {
+      const credentialLabel = parsed.credential === 'main'
+        ? 'main password' : parsed.credential === 'management' ? 'Management console password'
+          : parsed.credential === 'totp' ? 'two-factor' : 'all administrator'
       const question = parsed.credential === 'totp'
         ? parsed.globalOnly
           ? 'Clear the instance-wide two-factor daily limit? y/[n]: '
           : 'Clear two-factor daily limits? The fixed 10-second retry remains active. y/[n]: '
         : parsed.globalOnly
           ? 'Clear instance-wide administrator login rate limits? y/[n]: '
-          : 'Clear all administrator login retry limits? y/[n]: '
+          : `Clear ${credentialLabel} login retry limits? y/[n]: `
       if (!await confirm(question)) return cancel()
-      write(json(await access.request(
-        'POST',
-        '/v1/recovery/clear-retry',
-        {
-          scope: parsed.globalOnly ? 'global' : 'all',
-          ...(parsed.credential === undefined ? {} : { credential: parsed.credential }),
-        },
-      )))
+      const authenticationRetry = await access.request('POST', '/v1/recovery/clear-retry', {
+        scope: parsed.globalOnly ? 'global' : 'all',
+        ...(parsed.credential === undefined ? {} : { credential: parsed.credential }),
+      })
+      write(json(authenticationRetry))
       return 0
     }
     if (current.account === null) throw new Error('administrator account is unavailable')
@@ -273,6 +286,15 @@ export async function runCli({
     if (parsed.operation === 'disable-management-password') {
       if (!await confirm('Disable management password? y/[n]: ')) return cancel()
       write(json(await access.request('POST', '/v1/recovery/disable-management-password', { revision })))
+      return 0
+    }
+    if (parsed.operation === 'disable-two-factor') {
+      if (!await confirm('Disable two-factor authentication? y/[n]: ')) return cancel()
+      write(json(await access.request('POST', '/v1/recovery/reset-access', {
+        revision,
+        managementPasswordAction: 'preserve',
+        totpAction: 'disable',
+      })))
       return 0
     }
     if (parsed.operation === 'reset') {
@@ -294,12 +316,21 @@ export async function runCli({
           managementPassword = await readPassword(input, output, 'New management password: ')
         }
       }
-      if (username === undefined && password === undefined && action === 'preserve') return cancel()
+      let totpAction = 'preserve'
+      if (current.account.totp?.enabled === true) {
+        const choice = await ask(
+          'Two-factor authentication:\n  [1] Keep enabled\n   2  Disable\nEnter choice [1-2] (default: 1): ',
+        )
+        if (choice !== '' && choice !== '1' && choice !== '2') throw new Error('two-factor choice must be 1 or 2')
+        if (choice === '2') totpAction = 'disable'
+      }
+      if (username === undefined && password === undefined && action === 'preserve' && totpAction === 'preserve') return cancel()
       write(json(await access.request('POST', '/v1/recovery/reset-access', {
         revision,
         ...(username === undefined ? {} : { username }),
         ...(password === undefined ? {} : { password }),
         managementPasswordAction: action,
+        ...(totpAction === 'preserve' ? {} : { totpAction }),
         ...(managementPassword === undefined ? {} : { managementPassword }),
       })))
       return 0
@@ -314,25 +345,6 @@ export async function runCli({
       ? '/v1/recovery/reset-management-password' : '/v1/recovery/reset-password'
     const value = await access.request('POST', route, { revision, password })
     write(json(value))
-    return 0
-  }
-  if (parsed.command === 'recover') {
-    if (getuid() !== 0) throw new Error('recovery requires root')
-    if (!input.isTTY || !output.isTTY) throw new Error('recovery requires an interactive container console')
-    const label = parsed.credential === 'main'
-      ? 'main password' : parsed.credential === 'management' ? 'Management console password'
-        : parsed.credential === 'totp' ? 'two-factor daily' : 'all administrator'
-    if (!affirmative(await ask(`Clear ${label} login retry limits? y/[n]: `), 'confirmation')) {
-      write(json({ status: 'cancelled' }))
-      return 0
-    }
-    const imageBaseline = parsed.imageBaseline
-      ? await recover({ recovery, input, output }) : undefined
-    const authenticationRetry = await access.request('POST', '/v1/recovery/clear-retry', {
-      scope: 'all', credential: parsed.credential,
-    })
-    write(json(imageBaseline === undefined
-      ? authenticationRetry : { ...imageBaseline, authenticationRetry }))
     return 0
   }
   if (parsed.command === 'trust') {
