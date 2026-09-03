@@ -394,10 +394,12 @@ test('recreates a damaged administrator account with a root-issued authenticatio
 })
 
 test('normal and recovery sockets expose distinct bounded protocols without verifier material', async () => {
+  const reports = []
   const { root, service } = await fixture({
     limiter: new AuthenticationLimiter({
       globalLimit: 100, backoffThreshold: 1, initialBackoffMs: 1_000,
     }),
+    report: async (message, fields) => reports.push({ message, fields }),
   })
   const accessPath = join(root, 'access.sock')
   const recoveryPath = join(root, 'recovery.sock')
@@ -475,6 +477,19 @@ test('normal and recovery sockets expose distinct bounded protocols without veri
     assert.equal(reset.account.mainCredentialVersion, 2)
     assert.doesNotMatch(JSON.stringify(reset), /salt|hash|password|verifier/i)
     await assert.rejects(
+      recovery.request('POST', '/v1/recovery/reset-password', {
+        revision: recoveryStatus.account.revision,
+        password: 'credential material must not enter audit logs',
+      }),
+      error => error.statusCode === 409 && error.code === 'REVISION_CONFLICT',
+    )
+    assert.deepEqual(reports.find(report => report.message === 'access.recovery-operation.failed'
+      && report.fields.operation === 'reset-password'), {
+      message: 'access.recovery-operation.failed',
+      fields: { operation: 'reset-password', code: 'REVISION_CONFLICT' },
+    })
+    assert.doesNotMatch(JSON.stringify(reports), /credential material must not enter audit logs/)
+    await assert.rejects(
       recovery.request('POST', '/v1/initialize', { username: 'other', password: 'another password' }),
       error => error.statusCode === 404,
     )
@@ -550,6 +565,46 @@ test('atomically resets administrator access with an explicit additional-passwor
     managementPasswordAction: 'preserve',
   }), error => error.code === 'REQUEST_INVALID')
   assert.equal((await service.recoveryStatus()).account.revision, revision)
+})
+
+test('audits successful Root account recovery changes without credential material', async () => {
+  const reports = []
+  const { service } = await fixture({
+    report: async (message, fields) => reports.push({ message, fields }),
+  })
+  await service.classify({ token: 'classification-token', evidence: { dshProfile: false } })
+  let current = await service.initializeDsh({
+    username: 'admin', password: 'original administrator password', origin: 'https://dsh.example',
+  })
+  current = await service.setRecoveryUsername({ revision: current.account.revision, username: 'operator' })
+  current = await service.resetRecoveryManagementPassword({
+    revision: current.account.revision, password: 'original management password',
+  })
+  current = await service.disableRecoveryManagementPassword({ revision: current.account.revision })
+  current = await service.resetRecoveryPassword({
+    revision: current.account.revision, password: 'replacement administrator password',
+  })
+  await service.resetRecoveryAccess({
+    revision: current.account.revision,
+    managementPasswordAction: 'reset',
+    managementPassword: 'replacement management password',
+  })
+
+  const audits = reports.filter(report => report.message === 'access.recovery-account.changed')
+  assert.deepEqual(audits.map(report => report.fields.operation), [
+    'set-username',
+    'reset-management-password',
+    'disable-management-password',
+    'reset-password',
+    'reset-access',
+  ])
+  assert.equal(audits.at(-2).fields.allSessionsRevoked, true)
+  assert.equal(audits.at(-1).fields.managementSessionsRevoked, 0)
+  const serialized = JSON.stringify(audits)
+  assert.doesNotMatch(serialized, /original administrator password/)
+  assert.doesNotMatch(serialized, /original management password/)
+  assert.doesNotMatch(serialized, /replacement administrator password/)
+  assert.doesNotMatch(serialized, /replacement management password/)
 })
 
 test('authenticates normalized usernames without exposing which credential failed', async () => {
@@ -927,6 +982,90 @@ test('stores only digests for origin-bound DSH sessions with absolute and idle e
   const absolute = absoluteSessions.issue('dsh', account, { origin: 'https://dsh.example' })
   now += 101
   assert.equal(absoluteSessions.validate(absolute.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+})
+
+test('reports bounded session activity, expiry, version invalidation, and source revocation without tokens', () => {
+  let now = 1_000
+  const events = []
+  const sessions = new BrowserSessionStore({
+    now: () => now,
+    dshAbsoluteMs: 1_000,
+    dshIdleMs: 500,
+    managementAbsoluteMs: 1_000,
+    managementIdleMs: 1_000,
+    activityReportMs: 100,
+    onEvent: (message, fields) => events.push({ message, fields }),
+  })
+  const account = {
+    accountId: 'account',
+    mainCredential: { version: 2 },
+    managementAdditionalCredential: { enabled: false, version: 1 },
+    managementAccess: { version: 3 },
+  }
+  const dsh = sessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  const management = sessions.issue('management', account, {
+    origin: 'https://manage.example',
+    sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: dsh.sessionId,
+  })
+
+  now += 49
+  sessions.validate(dsh.token, 'dsh', account, { origin: 'https://dsh.example' })
+  now += 51
+  sessions.validate(dsh.token, 'dsh', account, { origin: 'https://dsh.example' })
+  sessions.validate(dsh.token, 'dsh', account, { origin: 'https://dsh.example' })
+  assert.equal(events.filter(event => event.message === 'access.session.activity').length, 1)
+
+  sessions.revoke(dsh.token)
+  assert.deepEqual(events.find(event => event.message === 'access.session.invalidated'), {
+    message: 'access.session.invalidated',
+    fields: {
+      accountId: 'account', sessionId: management.sessionId, kind: 'management',
+      reason: 'source-dsh-session-revoked',
+    },
+  })
+
+  const versioned = sessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  account.mainCredential.version += 1
+  assert.equal(sessions.validate(versioned.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+  assert.equal(events.at(-1).fields.reason, 'main-credential-version')
+  account.mainCredential.version -= 1
+
+  const expiring = sessions.issue('dsh', account, { origin: 'https://dsh.example' })
+  now += 501
+  assert.equal(sessions.validate(expiring.token, 'dsh', account, { origin: 'https://dsh.example' }), undefined)
+  assert.equal(events.at(-1).message, 'access.session.expired')
+  assert.equal(events.at(-1).fields.reason, 'idle')
+  const serialized = JSON.stringify(events)
+  assert.doesNotMatch(serialized, new RegExp(dsh.token))
+  assert.doesNotMatch(serialized, new RegExp(dsh.csrfToken))
+  assert.doesNotMatch(serialized, new RegExp(management.token))
+  assert.doesNotMatch(serialized, new RegExp(management.csrfToken))
+
+  now = 2_000
+  const linkedEvents = []
+  const linked = new BrowserSessionStore({
+    now: () => now,
+    dshAbsoluteMs: 1_000,
+    dshIdleMs: 50,
+    managementAbsoluteMs: 1_000,
+    managementIdleMs: 1_000,
+    onEvent: (message, fields) => linkedEvents.push({ message, fields }),
+  })
+  const source = linked.issue('dsh', account, { origin: 'https://dsh.example' })
+  const linkedManagement = linked.issue('management', account, {
+    origin: 'https://manage.example',
+    sourceDshOrigin: 'https://dsh.example',
+    sourceDshSessionId: source.sessionId,
+  })
+  now += 51
+  assert.equal(linked.validate(linkedManagement.token, 'management', account, {
+    origin: 'https://manage.example',
+  }), undefined)
+  assert.deepEqual(linkedEvents.map(event => [event.message, event.fields.kind, event.fields.reason]), [
+    ['access.session.expired', 'dsh', 'idle'],
+    ['access.session.invalidated', 'management', 'source-dsh-session'],
+  ])
 })
 
 test('Management sessions inherit source DSH expiry and bind every account version', async () => {

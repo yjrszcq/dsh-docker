@@ -31,6 +31,8 @@ export class BrowserSessionStore {
     dshIdleMs = 2 * 60 * 60_000,
     managementAbsoluteMs = 8 * 60 * 60_000,
     managementIdleMs = 30 * 60_000,
+    activityReportMs = 5 * 60_000,
+    onEvent = () => {},
   } = {}) {
     this.now = now
     this.random = random
@@ -38,17 +40,38 @@ export class BrowserSessionStore {
       dsh: Object.freeze({ absoluteMs: dshAbsoluteMs, idleMs: dshIdleMs }),
       management: Object.freeze({ absoluteMs: managementAbsoluteMs, idleMs: managementIdleMs }),
     })
+    this.activityReportMs = activityReportMs
+    this.onEvent = onEvent
     this.sessions = new Map()
+  }
+
+  setEventSink(onEvent) {
+    this.onEvent = typeof onEvent === 'function' ? onEvent : () => {}
+  }
+
+  emit(message, session, fields = {}) {
+    this.onEvent(message, {
+      accountId: session.accountId,
+      sessionId: session.sessionId,
+      kind: session.kind,
+      ...fields,
+    })
   }
 
   prune() {
     const now = this.now()
     for (const [key, session] of this.sessions) {
-      if (session.expiresAt <= now || session.lastSeenAt + session.idleMs <= now) this.sessions.delete(key)
+      const reason = session.expiresAt <= now
+        ? 'absolute'
+        : session.lastSeenAt + session.idleMs <= now ? 'idle' : null
+      if (reason === null) continue
+      this.sessions.delete(key)
+      this.emit('access.session.expired', session, { reason })
     }
     for (const [key, session] of this.sessions) {
       if (session.kind === 'management' && this.activeDshSession(session.sourceDshSessionId, session.accountId) === undefined) {
         this.sessions.delete(key)
+        this.emit('access.session.invalidated', session, { reason: 'source-dsh-session' })
       }
     }
   }
@@ -98,6 +121,7 @@ export class BrowserSessionStore {
       csrfDigest: digest(csrfToken),
       createdAt,
       lastSeenAt: createdAt,
+      activityReportedAt: createdAt,
       expiresAt,
       idleMs: policy.idleMs,
     })
@@ -115,13 +139,18 @@ export class BrowserSessionStore {
     const key = digest(token).toString('hex')
     const session = this.sessions.get(key)
     if (session === undefined || session.kind !== kind || session.accountId !== account.accountId
-      || session.mainCredentialVersion !== account.mainCredential.version
-      || session.managementAccessVersion !== account.managementAccess.version
-      || session.origin !== origin
-      || (kind === 'management'
-        && session.managementAdditionalCredentialVersion !== (account.managementAdditionalCredential.enabled
-          ? account.managementAdditionalCredential.version : null))
-      || (requireCsrf && !sameDigest(csrfToken, session.csrfDigest))) {
+      || session.origin !== origin || (requireCsrf && !sameDigest(csrfToken, session.csrfDigest))) {
+      return undefined
+    }
+    let invalidationReason = null
+    if (session.mainCredentialVersion !== account.mainCredential.version) invalidationReason = 'main-credential-version'
+    else if (session.managementAccessVersion !== account.managementAccess.version) invalidationReason = 'management-access-version'
+    else if (kind === 'management'
+      && session.managementAdditionalCredentialVersion !== (account.managementAdditionalCredential.enabled
+        ? account.managementAdditionalCredential.version : null)) invalidationReason = 'management-credential-version'
+    if (invalidationReason !== null) {
+      this.sessions.delete(key)
+      this.emit('access.session.invalidated', session, { reason: invalidationReason })
       return undefined
     }
     if (kind === 'management') {
@@ -130,10 +159,18 @@ export class BrowserSessionStore {
         || source.mainCredentialVersion !== account.mainCredential.version
         || source.managementAccessVersion !== account.managementAccess.version) {
         this.sessions.delete(key)
+        this.emit('access.session.invalidated', session, { reason: 'source-dsh-session' })
         return undefined
       }
     }
-    if (touch) session.lastSeenAt = this.now()
+    if (touch) {
+      const now = this.now()
+      session.lastSeenAt = now
+      if (now - session.activityReportedAt >= this.activityReportMs) {
+        session.activityReportedAt = now
+        this.emit('access.session.activity', session)
+      }
+    }
     return Object.freeze({
       sessionId: session.sessionId,
       kind: session.kind,
@@ -151,7 +188,7 @@ export class BrowserSessionStore {
     const key = digest(token).toString('hex')
     const session = this.sessions.get(key)
     if (!this.sessions.delete(key)) return false
-    if (session.kind === 'dsh') this.revokeManagementFromDsh(session.sessionId)
+    if (session.kind === 'dsh') this.revokeManagementFromDsh(session.sessionId, 'source-dsh-session-revoked')
     return true
   }
 
@@ -164,7 +201,7 @@ export class BrowserSessionStore {
       revoked += 1
       if (kind === 'dsh') dshSessionIds.push(session.sessionId)
     }
-    for (const sessionId of dshSessionIds) this.revokeManagementFromDsh(sessionId)
+    for (const sessionId of dshSessionIds) this.revokeManagementFromDsh(sessionId, 'source-dsh-session-revoked')
     return revoked
   }
 
@@ -207,17 +244,18 @@ export class BrowserSessionStore {
     for (const [key, session] of this.sessions) {
       if (session.kind !== 'dsh' || session.sessionId !== sessionId || session.accountId !== accountId) continue
       this.sessions.delete(key)
-      this.revokeManagementFromDsh(session.sessionId)
+      this.revokeManagementFromDsh(session.sessionId, 'source-dsh-session-revoked')
       return true
     }
     return false
   }
 
-  revokeManagementFromDsh(sessionId) {
+  revokeManagementFromDsh(sessionId, reason = 'source-dsh-session') {
     let revoked = 0
     for (const [key, session] of this.sessions) {
       if (session.kind !== 'management' || session.sourceDshSessionId !== sessionId) continue
       this.sessions.delete(key)
+      this.emit('access.session.invalidated', session, { reason })
       revoked += 1
     }
     return revoked
@@ -235,6 +273,7 @@ export class BrowserSessionStore {
     if (session === undefined) return false
     session.mainCredentialVersion = account.mainCredential.version
     session.managementAccessVersion = account.managementAccess.version
+    this.emit('access.session.refreshed', session, { reason: 'management-access-change' })
     return true
   }
 

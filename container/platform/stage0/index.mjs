@@ -84,12 +84,24 @@ const rateLimitedAccessMessages = new Set([
   'access.fresh-authentication.failed',
   'access.totp.failed',
 ])
-const reportAccess = (message, fields = {}) => rateLimitedAccessMessages.has(message)
-  ? logs.diagnosticRateLimited(
+const auditedAccessMessages = new Set([
+  'access.authentication-reset-key.generated',
+  'access.authentication-reset.completed',
+  'access.authentication-retry.cleared',
+  'access.recovery-account.changed',
+  'access.recovery-operation.failed',
+])
+const reportAccess = async (message, fields = {}) => {
+  if (rateLimitedAccessMessages.has(message)) {
+    await logs.diagnosticRateLimited(
       `${message}:${fields.kind === 'management' ? 'management' : 'main'}`,
       'access-manager', message, fields,
     )
-  : logs.diagnostic('access-manager', message, fields)
+  } else {
+    await logs.diagnostic('access-manager', message, fields)
+  }
+  if (auditedAccessMessages.has(message)) await logs.audit(message, fields)
+}
 await logs.prepare()
 logs.on('error', error => { void logs.diagnostic('log-manager', 'capture.failed', { error }) })
 const startup = async (phase, operation) => {

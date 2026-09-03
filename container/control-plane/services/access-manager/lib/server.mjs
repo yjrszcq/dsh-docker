@@ -12,6 +12,15 @@ import { detectRuntimeCapabilities } from './runtime-capabilities.mjs'
 import { TotpFlowStore, TotpRetryLimiter, totpUri, verifyTotpCode } from './totp.mjs'
 
 const MAX_BODY_BYTES = 64 * 1024
+const RECOVERY_OPERATIONS = new Map([
+  ['/v1/recovery/set-username', 'set-username'],
+  ['/v1/recovery/reset-access', 'reset-access'],
+  ['/v1/recovery/reset-password', 'reset-password'],
+  ['/v1/recovery/reset-management-password', 'reset-management-password'],
+  ['/v1/recovery/disable-management-password', 'disable-management-password'],
+  ['/v1/recovery/generate-key', 'generate-key'],
+  ['/v1/recovery/clear-retry', 'clear-retry'],
+])
 function identifier() { return randomBytes(32).toString('base64url') }
 function isLoopbackHostname(hostname) {
   if (hostname === 'localhost' || hostname === '[::1]') return true
@@ -127,7 +136,7 @@ export class AccessService {
     store,
     classificationToken,
     limiter = new AuthenticationLimiter(),
-    sessions = new BrowserSessionStore(),
+    sessions = null,
     exchanges = new ManagementExchangeStore(),
     capabilities = new CapabilityStore(),
     transitions,
@@ -143,7 +152,7 @@ export class AccessService {
     this.store = store
     this.classificationToken = classificationToken
     this.limiter = limiter
-    this.sessions = sessions
+    this.sessions = sessions ?? new BrowserSessionStore()
     this.exchanges = exchanges
     this.capabilities = capabilities
     this.transitions = transitions ?? new ManagementTransitionStore({ now })
@@ -152,6 +161,9 @@ export class AccessService {
     this.verifyTotp = verifyTotp
     this.verify = verify
     this.report = report
+    this.sessions.setEventSink?.((message, fields) => {
+      void Promise.resolve(this.report(message, fields)).catch(() => {})
+    })
     this.now = now
     this.runtimeCapabilities = runtimeCapabilities
     this.authenticationEpoch = authenticationEpoch
@@ -803,7 +815,7 @@ export class AccessService {
     return this.totpLimiter.retry(current.account.accountId, value.source)
   }
 
-  async replaceRecoveryAccount(value, operation, { revoke = 'none' } = {}) {
+  async replaceRecoveryAccount(value, operation, { revoke = 'none', auditOperation } = {}) {
     const current = await this.store.state()
     if (current.account === undefined) throw new AccessError('ACCESS_NOT_INITIALIZED', 'administrator account is unavailable', 409)
     if (value.revision !== current.account.revision) throw new AccessError('REVISION_CONFLICT', 'account revision changed', 409)
@@ -817,24 +829,32 @@ export class AccessService {
       : allSessionsRevoked ? managementSessionsBefore : 0
     if (allSessionsRevoked) this.sessions.revokeAll()
     if (allSessionsRevoked) this.exchanges.clear?.()
-    return {
+    const result = {
       account: publicAccount(next),
       currentManagementSessionRevoked: managementSessionsRevoked > 0,
       managementSessionsRevoked,
       allSessionsRevoked,
     }
+    await this.report('access.recovery-account.changed', {
+      operation: auditOperation,
+      managementSessionsRevoked,
+      allSessionsRevoked,
+    })
+    return result
   }
 
   async setRecoveryUsername(value) {
     const normalized = normalizeUsername(value.username)
-    return this.replaceRecoveryAccount(value, async account => { account.username = normalized })
+    return this.replaceRecoveryAccount(value, async account => { account.username = normalized }, {
+      auditOperation: 'set-username',
+    })
   }
 
   async resetRecoveryPassword(value) {
     const verifier = await this.store.createVerifier(value.password)
     return this.replaceRecoveryAccount(value, async account => {
       account.mainCredential = { ...verifier, version: account.mainCredential.version + 1 }
-    }, { revoke: 'all' })
+    }, { revoke: 'all', auditOperation: 'reset-password' })
   }
 
   async resetRecoveryAccess(value) {
@@ -872,7 +892,7 @@ export class AccessService {
             verifier: { ...await this.store.createVerifier(managementPassword), version },
             changedAt: new Date().toISOString(),
           }
-    }, { revoke })
+    }, { revoke, auditOperation: 'reset-access' })
   }
 
   async resetRecoveryManagementPassword(value) {
@@ -884,7 +904,7 @@ export class AccessService {
         verifier: { ...verifier, version: account.managementAdditionalCredential.version + 1 },
         changedAt: new Date().toISOString(),
       }
-    }, { revoke: 'management' })
+    }, { revoke: 'management', auditOperation: 'reset-management-password' })
   }
 
   async disableRecoveryManagementPassword(value) {
@@ -895,7 +915,7 @@ export class AccessService {
         verifier: null,
         changedAt: new Date().toISOString(),
       }
-    }, { revoke: 'management' })
+    }, { revoke: 'management', auditOperation: 'disable-management-password' })
   }
 
   async createManagementTransition(value) {
@@ -1203,6 +1223,15 @@ export function createAccessHttpServer({ service, surface = 'access' }) {
       send(response, 404, { error: 'not found', code: 'NOT_FOUND' })
     })().catch(async error => {
       const status = error instanceof AccessError ? error.statusCode : 500
+      const failedPathname = new URL(request.url ?? '/', 'http://access.internal').pathname
+      const recoveryOperation = surface === 'recovery' && request.method === 'POST'
+        ? RECOVERY_OPERATIONS.get(failedPathname) : undefined
+      if (recoveryOperation !== undefined) {
+        await service.report('access.recovery-operation.failed', {
+          operation: recoveryOperation,
+          code: error instanceof AccessError ? error.code : 'INTERNAL_ERROR',
+        })
+      }
       if (!(error instanceof AccessError)) await service.report('access.request.failed', {
         error, method: request.method ?? null, pathname: request.url ?? null,
       })
