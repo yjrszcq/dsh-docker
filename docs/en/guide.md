@@ -40,7 +40,7 @@ Docker Hub publishes both variants. GHCR is a Standard-image backup only: `ghcr.
 - **Directory permissions:** Bind-mounted DSH data, platform data, and workspace directories must be writable by UID/GID `1000:1000`. Keep both data directories when replacing or upgrading a container.
 - **Port exposure:** Bind `127.0.0.1:3080:3080` for host-only access. `3080:3080` or `0.0.0.0:3080:3080` publishes DSH on every host interface.
 - **Remote access:** Set `DSH_TRUSTED_HOSTS` to the exact browser-facing IP addresses or domains, initialize the local administrator, and terminate HTTPS outside the container.
-- **Agent root authority:** The `dsh-sudo-true` supplementary group grants DSH and its Agent unrestricted passwordless root access. Omit it when root is unnecessary, or set `DSH_SUDO_ENABLED=false` when using the repository Compose file.
+- **Agent root authority:** DSH/Agent passwordless sudo is disabled by default. Enable it only when unrestricted root access is intentional: set `DSH_SUDO_ENABLED=true` with repository Compose, add `group_add: [dsh-sudo-true]` to custom Compose, or add `--group-add dsh-sudo-true` to `docker run`.
 - **Management root authority:** Disabling Agent sudo does not restrict the standalone DSH Management Console. Its container terminal and file manager intentionally run as root and require authentication and a trusted network boundary.
 - **Recovery access:** `/_dsh_platform/console/` remains available while DSH is stopped or cannot start. It requires a separate authenticated Management Session; lost credentials are recovered only from an interactive Root console.
 
@@ -62,8 +62,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
-    group_add:
-      - dsh-sudo-true
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -90,7 +88,6 @@ The same bind-mount deployment can be started without Compose:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
@@ -98,7 +95,7 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-Open <http://127.0.0.1:3080>. Remove `--group-add dsh-sudo-true` when DSH and its Agent do not need root.
+Open <http://127.0.0.1:3080>.
 
 ### Repository Compose
 
@@ -291,8 +288,6 @@ services:
     restart: unless-stopped
     ports:
       - "3080:3080"
-    group_add:
-      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
     volumes:
@@ -307,7 +302,6 @@ The equivalent command without Compose is:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -v "$(pwd)/data/platform:/data/platform" \
@@ -567,7 +561,7 @@ Before exposing the service to untrusted networks, use a strong local administra
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-Repository Compose disables unrestricted passwordless root access for the agent by default. Set `DSH_SUDO_ENABLED=true` only when that authority is intentional. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
+Repository Compose disables unrestricted passwordless root access for DSH and its Agent by default. Set `DSH_SUDO_ENABLED=true` only when that authority is intentional. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts unless that authority is intentional.
 
 ## Release Automation
 

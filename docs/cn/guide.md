@@ -40,7 +40,7 @@ Docker Hub 同时发布两个变体。GHCR 仅作为标准镜像备份：`ghcr.i
 - **目录权限：** bind mount 的 DSH 数据、平台数据和工作区目录必须允许 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** `127.0.0.1:3080:3080` 只允许从 Docker 宿主机访问；`3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放 DSH。
 - **远程访问：** 将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，初始化本地管理员，并在容器外终止 HTTPS。
-- **Agent Root 权限：** `dsh-sudo-true` 附加用户组会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。不需要时应移除该用户组；使用仓库 Compose 时则设置 `DSH_SUDO_ENABLED=false`。
+- **Agent Root 权限：** DSH/Agent 的免密码 sudo 默认关闭。只有明确需要不受限制的 Root 权限时才开启：仓库 Compose 设置 `DSH_SUDO_ENABLED=true`，自定义 Compose 添加 `group_add: [dsh-sudo-true]`，或为 `docker run` 添加 `--group-add dsh-sudo-true`。
 - **管理中心 Root 权限：** 关闭 Agent sudo 不会限制独立 DSH 管理中心。其容器终端和文件管理会按设计使用 Root 权限，必须放在认证和可信网络边界之后。
 - **恢复入口：** `/_dsh_platform/console/` 在 DSH 停止或无法启动时仍可使用。它要求独立认证的 Management Session；遗失凭据时只能从交互式 Root 控制台恢复。
 
@@ -62,8 +62,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
-    group_add:
-      - dsh-sudo-true
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -90,7 +88,6 @@ sudo chown -R 1000:1000 data workspace
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
@@ -98,7 +95,7 @@ docker run -d \
   szcq/deepseek-harness:latest
 ```
 
-打开 <http://127.0.0.1:3080>。DSH 和 Agent 不需要 Root 权限时，删除 `--group-add dsh-sudo-true`。
+打开 <http://127.0.0.1:3080>。
 
 ### 仓库 Compose
 
@@ -291,8 +288,6 @@ services:
     restart: unless-stopped
     ports:
       - "3080:3080"
-    group_add:
-      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
     volumes:
@@ -307,7 +302,6 @@ services:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -v "$(pwd)/data/platform:/data/platform" \
@@ -569,7 +563,7 @@ Recovery 私钥绝不能进入 GitHub secrets。CI 只接收已签好的公开 k
 ssh -L 3080:127.0.0.1:3080 user@server
 ```
 
-仓库 Compose 默认关闭 Agent 的免密码 root 权限。只有明确需要时才设置 `DSH_SUDO_ENABLED=true`。除非这些权限是有意授予，否则不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机目录挂载。
+仓库 Compose 默认关闭 DSH/Agent 的免密码 Root 权限。只有明确需要时才设置 `DSH_SUDO_ENABLED=true`。除非这些权限是有意授予，否则不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机目录挂载。
 
 ## 发布自动化
 

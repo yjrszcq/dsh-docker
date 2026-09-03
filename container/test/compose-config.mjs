@@ -57,7 +57,7 @@ const configured = render({
   DSH_LISTEN_ADDRESS: '0.0.0.0',
   DSH_PORT: '4080',
   DSH_PROXY_POLYFILL: 'false',
-  DSH_SUDO_ENABLED: 'false',
+  DSH_SUDO_ENABLED: 'true',
   DSH_TELEMETRY_DISABLED: 'false',
   DSH_TRUSTED_HOSTS: '192.168.1.10,dsh.example:8443',
 })
@@ -70,6 +70,6 @@ assert.equal(Object.hasOwn(configured.environment, 'DSH_PLATFORM_PASSWORD'), fal
 assert.equal(configured.environment.DSH_PROXY_POLYFILL, 'false')
 assert.equal(configured.environment.DSH_TELEMETRY_DISABLED, 'false')
 assert.equal(configured.environment.DSH_TRUSTED_HOSTS, '192.168.1.10,dsh.example:8443')
-assert.deepEqual(configured.group_add, ['dsh-sudo-false'])
+assert.deepEqual(configured.group_add, ['dsh-sudo-true'])
 
 console.log('Compose configuration checks passed')

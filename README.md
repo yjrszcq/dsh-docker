@@ -11,7 +11,7 @@ An unofficial Docker image for [DeepSeek Harness](https://github.com/deepseek-ai
 - **Directory permissions:** Bind-mounted `data/dsh`, `data/platform`, and `workspace` must be writable by container UID/GID `1000:1000`. Keep both data directories when replacing or upgrading the container.
 - **Port exposure:** The quick-start configuration binds `127.0.0.1:3080` and is reachable only from the Docker host. Changing it to `3080:3080` or `0.0.0.0:3080:3080` exposes the service on every host interface.
 - **Remote access:** Before allowing LAN or Internet access, set `DSH_TRUSTED_HOSTS` to the exact IP addresses or domains used by browsers, initialize the local administrator account, and use HTTPS or another trusted network boundary. Do not expose privileged Docker or host resources to the container.
-- **Root authority:** `group_add: dsh-sudo-true` gives DSH and its Agent unrestricted passwordless root access. If they do not need root, remove that `group_add` entry from the minimal Compose example (or omit `--group-add dsh-sudo-true` from `docker run`); with the repository Compose file, set `DSH_SUDO_ENABLED=false`. This does not disable the standalone Management Console's terminal and file manager, which always operate as container root and must remain protected by authentication and a trusted network boundary.
+- **Root authority:** DSH/Agent passwordless sudo is disabled by default, including in the quick-start examples and repository Compose. Enable it only when unrestricted root access is intentional: set `DSH_SUDO_ENABLED=true` with repository Compose, add `group_add: [dsh-sudo-true]` to custom Compose, or add `--group-add dsh-sudo-true` to `docker run`. This setting does not restrict the standalone Management Console's root terminal or file manager, which must remain protected by authentication and a trusted network boundary.
 - **DSH Management Console:** `/_dsh_platform/console/` remains available when DSH is stopped or fails to start. It provides updates and recovery, outbound proxy settings, live logs, bundled System Plugin and System Skill management, User Plugin recovery, User Skill management, container files, and a root terminal. The first browser visit creates the local administrator account. Management uses a separate session derived from the active DSH browser session; an optional Management password adds a second login layer.
 
 | Variant | Rolling tag | Versioned tag | Contents |
@@ -39,8 +39,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
-    group_add:
-      - dsh-sudo-true
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -59,7 +57,6 @@ Or use the equivalent `docker run` command:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
@@ -103,8 +100,6 @@ services:
     restart: unless-stopped
     ports:
       - "3080:3080"
-    group_add:
-      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
     volumes:
@@ -119,7 +114,6 @@ Or use the equivalent `docker run` command:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -v "$(pwd)/data/platform:/data/platform" \
@@ -214,7 +208,7 @@ The standalone console also inventories native User Skills from the configured D
 
 An authenticated DSH Session has full DSH authority. A Management Session additionally grants a root container terminal and root file operations, so an admitted administrator can read credentials, execute commands, and modify container data. Use HTTPS and a trusted network boundary for remote access.
 
-Repository Compose disables DSH/Agent passwordless sudo by default. Set `DSH_SUDO_ENABLED=true` only when the agent intentionally needs root access. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts without understanding the impact.
+Repository Compose disables DSH/Agent passwordless sudo by default. Set `DSH_SUDO_ENABLED=true` only when DSH or its Agent intentionally needs root access. Do not combine sudo with privileged mode, the Docker socket, or sensitive host mounts without understanding the impact.
 
 ## Documentation
 

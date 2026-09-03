@@ -11,7 +11,7 @@
 - **目录权限：** bind mount 的 `data/dsh`、`data/platform` 和 `workspace` 必须允许容器 UID/GID `1000:1000` 写入。替换或升级容器时必须保留两个数据目录。
 - **端口暴露：** 快速开始默认绑定 `127.0.0.1:3080`，只能从 Docker 宿主机访问。改成 `3080:3080` 或 `0.0.0.0:3080:3080` 会向宿主机所有网络接口开放服务。
 - **远程访问：** 允许局域网或互联网访问前，必须将 `DSH_TRUSTED_HOSTS` 设置为浏览器实际使用的 IP 地址或域名，初始化本地管理员账户，并通过 HTTPS 或其他可信网络边界提供服务；不要向容器暴露 Docker Socket、特权模式或敏感宿主机资源。
-- **Root 权限：** `group_add: dsh-sudo-true` 会向 DSH 和 Agent 提供不受限制的免密码 Root 权限。如果不需要这项权限，请从精简 Compose 中删除该 `group_add`（使用 `docker run` 时则不要添加 `--group-add dsh-sudo-true`）；使用仓库 Compose 时可设置 `DSH_SUDO_ENABLED=false`。这个设置不会关闭独立管理中心的 Root 终端和文件管理，因此仍必须通过认证和可信网络边界保护管理中心。
+- **Root 权限：** DSH/Agent 的免密码 sudo 默认关闭，快速开始示例和仓库 Compose 均不会默认授予该权限。只有明确需要不受限制的 Root 权限时才开启：仓库 Compose 设置 `DSH_SUDO_ENABLED=true`，自定义 Compose 添加 `group_add: [dsh-sudo-true]`，或为 `docker run` 添加 `--group-add dsh-sudo-true`。该设置不会限制独立管理中心的 Root 终端和文件管理，因此管理中心仍须通过认证和可信网络边界保护。
 - **DSH 管理中心：** `/_dsh_platform/console/` 在 DSH 停止或启动失败时仍可使用，提供更新与恢复、出站代理设置、实时日志、内置系统插件和系统技能管理、用户插件恢复、用户技能管理、容器文件和 Root 终端。首次浏览器访问会创建本地管理员账户。管理中心使用由当前 DSH 浏览器会话派生的独立会话；可选的管理中心密码构成第二层登录。
 
 | 变体 | 滚动标签 | 固定版本标签 | 内容 |
@@ -39,8 +39,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3080:3080"
-    group_add:
-      - dsh-sudo-true
     volumes:
       - ./data/dsh:/data/dsh
       - ./data/platform:/data/platform
@@ -59,7 +57,6 @@ docker compose up -d
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 127.0.0.1:3080:3080 \
   -v "$(pwd)/data/platform:/data/platform" \
   -v "$(pwd)/data/dsh:/data/dsh" \
@@ -103,8 +100,6 @@ services:
     restart: unless-stopped
     ports:
       - "3080:3080"
-    group_add:
-      - dsh-sudo-true
     environment:
       DSH_TRUSTED_HOSTS: "192.168.1.100,dsh.example.com"
     volumes:
@@ -119,7 +114,6 @@ services:
 docker run -d \
   --name deepseek-harness \
   --restart unless-stopped \
-  --group-add dsh-sudo-true \
   -p 3080:3080 \
   -e 'DSH_TRUSTED_HOSTS=192.168.1.100,dsh.example.com' \
   -v "$(pwd)/data/platform:/data/platform" \
@@ -214,7 +208,7 @@ DSH Docker 内置已签名的 `dsh-docker-operations` System Skill，为 Agent �
 
 已认证的 DSH Session 拥有完整 DSH 权限；Management Session 还可使用 root 容器终端和 root 文件操作，因此管理员可以读取凭据、执行命令并修改容器数据。远程访问必须使用 HTTPS 和可信网络边界。
 
-仓库 Compose 默认关闭 DSH/Agent 的免密码 sudo。只有 Agent 明确需要 root 权限时才设置 `DSH_SUDO_ENABLED=true`。不了解影响时，不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机挂载。
+仓库 Compose 默认关闭 DSH/Agent 的免密码 sudo。只有 DSH 或 Agent 明确需要 Root 权限时才设置 `DSH_SUDO_ENABLED=true`。不了解影响时，不要同时使用 sudo、特权模式、Docker Socket 或敏感宿主机挂载。
 
 ## 详细文档
 
