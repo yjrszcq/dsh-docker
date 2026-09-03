@@ -1072,7 +1072,7 @@ function startManagementSessionGuard() {
     if (checking) return
     checking = true
     try {
-      const response = await fetch('/_dsh_platform/auth/management/session-context', {
+      const response = await fetch(`${managementLoginPath()}/session-context`, {
         cache: 'no-store', credentials: 'same-origin',
       })
       if (response.status === 401) window.location.reload()

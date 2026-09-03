@@ -1651,6 +1651,7 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.equal((html.match(/class="theme-icon"[^>]*>[\s\S]*?<svg viewBox="0 0 24 24">/g) ?? []).length, 3)
   assert.match(script, /LANGUAGE_KEY = 'dsh-platform:console-language'/)
   assert.match(script, /THEME_KEY = 'dsh-platform:console-theme'/)
+  assert.match(script, /fetch\(`\$\{managementLoginPath\(\)\}\/session-context`/)
   assert.match(html, /id="auth-isolation-compare"[\s\S]*id="auth-root-warning"[\s\S]*id="auth-mode"/)
   assert.doesNotMatch(html, /authRuntimeTitle|auth-agent-warning/)
   assert.match(html, /<form id="auth-settings-form" class="auth-settings-form" method="post" action="" novalidate>/)
