@@ -4638,6 +4638,25 @@ async function cancelTotpChange({ resetToggle = true } = {}) {
   return true
 }
 
+function discardTotpChangeOnPageLeave() {
+  const pending = pendingTotpChange
+  if (pending === undefined) return
+  pendingTotpChange = undefined
+  const disabling = pending.kind === 'disable'
+  const body = disabling
+    ? { confirmationToken: pending.confirmation?.confirmationToken }
+    : { enrollmentToken: pending.enrollment?.enrollmentToken }
+  elements['auth-totp-enabled'].checked = authenticationSettings?.account?.totp?.enabled === true
+  resetTotpDialog()
+  if (elements['auth-totp-dialog'].open) elements['auth-totp-dialog'].close()
+  void fetch(`${API}/${disabling ? 'auth-totp/disable-confirmations/cancel' : 'auth-totp/enrollments/cancel'}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-dsh-csrf': browserCookie('dsh_management_csrf') },
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => {})
+}
+
 async function changeTotpEnabled() {
   const input = elements['auth-totp-enabled']
   const priorEnabled = authenticationSettings?.account?.totp?.enabled === true
@@ -5343,6 +5362,7 @@ window.addEventListener('beforeunload', () => {
   logSource?.close()
   window.clearInterval(logWatchdogTimer)
 })
+window.addEventListener('pagehide', discardTotpChangeOnPageLeave)
 applyTheme(themePreference)
 applyTranslations()
 void selectTab(window.location.hash === '#auth-settings' ? 'auth-settings' : 'maintenance')
