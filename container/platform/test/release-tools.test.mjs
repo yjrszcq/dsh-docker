@@ -310,6 +310,19 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
   assert.equal(inventory.targetSequence, 1)
   assert.equal(inventory.deployment.dshVersion, supportedDshVersion)
   assert.equal((await lstat(join(seedOutput, 'environments', environmentVersion, 'environment.manifest.json'))).mode & 0o777, 0o444)
+  assert.equal(
+    await readFile(join(seedOutput, 'trust', 'recovery-root.spki.base64'), 'utf8'),
+    await readFile(join(trust, 'recovery-root.spki.base64'), 'utf8'),
+  )
+  assert.deepEqual(
+    await readFile(join(seedOutput, 'trust', 'keyring.json')),
+    await readFile(join(trust, 'keyring.json')),
+  )
+  assert.deepEqual(
+    await readFile(join(seedOutput, 'trust', 'keyring.sig.json')),
+    await readFile(join(trust, 'keyring.sig.json')),
+  )
+  await assert.rejects(lstat(join(seedOutput, 'trust', 'DEVELOPMENT_FIXTURE')), { code: 'ENOENT' })
 
   const environment = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(environment.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)

@@ -147,7 +147,15 @@ await cp(join(pluginBuildRoot, 'versions', environmentVersion), pluginRoot, { re
 await rm(pluginBuildRoot, { recursive: true, force: true })
 await makeFilesReadOnly(environmentOutput)
 
-await cp(join(platformRoot, 'seed', 'trust'), join(output, 'trust'), { recursive: true })
+if (imageInput === undefined) {
+  await cp(join(platformRoot, 'seed', 'trust'), join(output, 'trust'), { recursive: true })
+} else {
+  const trustOutput = join(output, 'trust')
+  await mkdir(trustOutput, { recursive: true })
+  await cp(join(imageInput, 'recovery-root.spki.base64'), join(trustOutput, 'recovery-root.spki.base64'))
+  await cp(join(imageInput, 'release', 'keyring.json'), join(trustOutput, 'keyring.json'))
+  await cp(join(imageInput, 'release', 'keyring.sig.json'), join(trustOutput, 'keyring.sig.json'))
+}
 
 const bootstrapSha256 = await hashTree(bootstrapRoot)
 const environmentSha256 = await hashTree(environmentOutput)
