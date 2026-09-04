@@ -351,8 +351,12 @@ test('management exposes one reconnectable and cancellable outbound proxy test t
     assert.equal((await client.request('GET', `${API_PREFIX}proxy/test/tasks/${taskId}`)).status, 'running')
     assert.equal((await client.request('DELETE', `${API_PREFIX}proxy/test/tasks/${taskId}`)).status, 'cancelled')
     assert.equal(cancelled, true)
-    await new Promise(resolve => setTimeout(resolve, 300))
-    const audit = await logs.query({ sources: ['audit'] })
+    let audit
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      audit = await logs.query({ sources: ['audit'] })
+      if (audit.some(entry => entry.message === 'proxy.test.cancelled' && entry.taskId === taskId)) break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
     assert.equal(audit.some(entry => entry.message === 'proxy.test.started' && entry.taskId === taskId), true)
     assert.equal(audit.some(entry => entry.message === 'proxy.test.stage.changed'
       && entry.taskId === taskId && entry.stage === 'proxy-connect' && entry.status === 'running'), true)

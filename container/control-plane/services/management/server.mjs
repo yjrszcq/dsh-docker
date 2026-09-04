@@ -250,10 +250,23 @@ export function createManagementServer({
     server.emit('management-state', { proxyTestOperation: proxyTestState })
   }
 
-  const watchProxyTest = taskId => {
+  const watchProxyTest = (taskId, initialState) => {
     void (async () => {
-      let lastIdentity = ''
+      let lastIdentity = initialState === undefined ? '' : JSON.stringify(initialState)
       const stageStatuses = new Map()
+      if (initialState !== undefined) {
+        for (const stage of initialState.stages ?? []) {
+          if (stage.status === 'pending') continue
+          stageStatuses.set(stage.stage, stage.status)
+          await recordAudit('proxy.test.stage.changed', {
+            taskId,
+            stage: stage.stage,
+            status: stage.status,
+            durationMs: stage.durationMs ?? null,
+            errorCode: stage.errorCode ?? null,
+          })
+        }
+      }
       while (!proxyWatchClosed) {
         let state
         try { state = await getProxyTest(taskId) } catch (error) {
@@ -572,7 +585,7 @@ export function createManagementServer({
         const task = await startProxyTest(await jsonBody(request, MAX_PROXY_BODY_BYTES))
         await recordAudit('proxy.test.started', { taskId: task.taskId })
         publishProxyTest(task)
-        watchProxyTest(task.taskId)
+        watchProxyTest(task.taskId, task)
         send(response, 202, { taskId: task.taskId })
       } else if (request.method === 'GET' && PROXY_TEST_TASK_ROUTE.test(route)) {
         const state = await getProxyTest(PROXY_TEST_TASK_ROUTE.exec(route)[1])
