@@ -938,6 +938,19 @@ test('Platform Management does not present ordinary DSH stderr as an error', asy
   assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'warning: retrying' }), 'warning')
 })
 
+test('Platform Management summarizes multiline errors until expanded', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const helpers = source.slice(source.indexOf('function logLevel('), source.indexOf('function LogViewer('))
+  const logMessageSummary = new Function(`${helpers}; return logMessageSummary`)()
+  assert.equal(logMessageSummary([
+    'file:///app/index.js:2',
+    '  throw new Error("startup failed")',
+    'Error: startup failed',
+    '    at boot (file:///app/index.js:2:9)',
+  ].join('\n')), 'Error: startup failed')
+  assert.equal(logMessageSummary('ordinary output'), 'ordinary output')
+})
+
 test('Platform Management lifecycle guard recognizes only registered transition states', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   const helpers = source.slice(
@@ -1016,6 +1029,7 @@ test('Platform Management follows DSH settings tokens and responsive layout', as
   assert.match(style, /@media \(max-width: 640px\)/)
   assert.match(style, /\.pluginRestartNotice \{[\s\S]*justify-content: space-between/)
   assert.match(style, /\.pluginActions \.toggle \{ width: auto; \}/)
+  assert.match(style, /\.logEntry\[aria-expanded='false'\] \.logMessageRow > pre \{[^}]*white-space: nowrap;/)
   assert.match(source, /className: css\.resourceHeadingDetail[\s\S]*className: css\.resourceSearch/)
   assert.match(style, /\.resourceHeadingDetail \{[^}]*display: flex;[^}]*align-items: center;/)
   assert.match(style, /\.resourceSearch \{[^}]*width: min\(320px, 45%\);[^}]*margin: 0 0 0 auto;/)

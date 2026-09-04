@@ -2243,6 +2243,13 @@ function logLevel(entry) {
   return /^\s*(warn(?:ing)?)[\s:]/i.test(entry?.message ?? '') ? 'warning' : 'info'
 }
 
+function logMessageSummary(message) {
+  const lines = String(message ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+  return lines.find(line => /^(?:AggregateError|Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):/u.test(line))
+    ?? lines[0]
+    ?? ''
+}
+
 function isJsonFragment(message) {
   return /^(?:[{}\[\]],?|"(?:[^"\\]|\\.)+"\s*:\s*.*)$/.test(message.trim())
 }
@@ -2350,7 +2357,7 @@ function renderLogs() {
     time.dateTime = entry.timestamp
     time.textContent = localTime(entry.timestamp)
     const message = document.createElement('pre')
-    message.textContent = display(entry.message)
+    message.textContent = display(logMessageSummary(entry.message))
     const messageRow = document.createElement('div')
     messageRow.className = 'log-message-row'
     const details = document.createElement('pre')

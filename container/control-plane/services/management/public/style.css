@@ -822,6 +822,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .log-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .log-message-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .log-message-row > pre { flex: 1; min-width: 0; }
+.log-entry[aria-expanded='false'] .log-message-row > pre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log-chevron { position: relative; top: 2px; flex: none; width: 10px; height: 10px; margin-right: 1px; }
 .log-chevron::before { position: absolute; top: 3px; left: 1px; width: 8px; height: 5px; background: var(--faint); clip-path: polygon(0 0, 50% 72%, 100% 0, 100% 28%, 50% 100%, 0 28%); content: ""; transform-origin: center; }
 .log-entry[aria-expanded='true'] .log-chevron::before { transform: rotate(180deg); }

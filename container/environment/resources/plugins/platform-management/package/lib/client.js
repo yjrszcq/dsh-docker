@@ -607,6 +607,13 @@ function logLevel(entry) {
   return /^\s*(warn(?:ing)?)[\s:]/i.test(entry?.message ?? '') ? 'warning' : 'info'
 }
 
+function logMessageSummary(message) {
+  const lines = String(message ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+  return lines.find(line => /^(?:AggregateError|Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):/u.test(line))
+    ?? lines[0]
+    ?? ''
+}
+
 function isJsonFragment(message) {
   const value = message.trim()
   return /^(?:[{}\[\]],?|"(?:[^"\\]|\\.)+"\s*:\s*.*)$/.test(value)
@@ -969,7 +976,7 @@ function LogViewer({ active, focusTaskId, t }) {
               h('span', { className: css.logSource }, display(entry.source)),
               h('time', { dateTime: entry.timestamp }, localTime(entry.timestamp, t('localeCode')))),
             h('div', { className: css.logMessageRow },
-              h('pre', null, display(entry.message)),
+              h('pre', null, display(logMessageSummary(entry.message))),
               h('span', { className: css.logChevron, 'aria-hidden': true })),
             isExpanded ? h('pre', { className: css.logDetails }, JSON.stringify(entry, null, 2)) : null)
         })),

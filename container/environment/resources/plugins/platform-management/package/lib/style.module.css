@@ -896,6 +896,7 @@ a.secondaryButton { text-decoration: none; }
 .logMeta { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .logMessageRow { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .logMessageRow > pre { flex: 1; min-width: 0; }
+.logEntry[aria-expanded='false'] .logMessageRow > pre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .logChevron {
   position: relative;
   top: 2px;
