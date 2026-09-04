@@ -636,9 +636,10 @@ a.secondaryButton { text-decoration: none; }
 .proxySystemRulesBody p { padding: 0; }
 .proxySystemRulesBody pre { margin: 12px 0 0; padding: 9px 11px; overflow: auto; border: 1px solid var(--dsw-alias-border-l2); border-radius: 7px; background: var(--dsw-alias-bg-module-platform); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyScopeCatalog { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px; }
-.proxyScopeCatalog section { margin: 10px 0; }
-.proxyScopeCatalog h4 { margin-bottom: 5px; font-size: 13px; }
-.proxyScopeCatalog section > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 6px 0; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 11px; line-height: 17px; }
+.proxyScopeCatalog section { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(0, 1.5fr) minmax(0, 1.5fr); gap: 0; column-gap: 16px; margin: 0; padding: 0; }
+.proxyScopeCatalog section + section { border-top: 1px solid var(--dsw-alias-border-l2); }
+.proxyScopeCatalog h4 { grid-column: 1; grid-row: 1 / -1; align-self: center; margin: 0; padding: 6px 0; font-size: 13px; font-weight: 600; }
+.proxyScopeCatalog section > div { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 16px; padding: 6px 0; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 11px; line-height: 17px; }
 .proxyScopeSummaries { padding: 9px 16px 14px; border-top: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
 .proxyScopeSummaries p { margin: 3px 0; }
 .settingRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 8px 12px; font-size: 13px; }
@@ -1048,6 +1049,9 @@ body[data-dsh-platform-select-menu='open'] > [role='menu'] > [role='presentation
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }
   .resourceSearch { width: 100%; margin-left: 0; }
   .proxyFormGrid, .proxyRulesGrid, .proxyScopeGrid { grid-template-columns: 1fr; }
+  .proxyScopeCatalog section { display: block; }
+  .proxyScopeCatalog h4 { padding: 6px 0 0; }
+  .proxyScopeCatalog section > div { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
   .proxyProvider { align-items: center; }
   .proxyProviderList { max-height: 280px; }
   .proxyScopeDialog { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
