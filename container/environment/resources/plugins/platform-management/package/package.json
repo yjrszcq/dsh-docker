@@ -22,6 +22,7 @@
       "inject": [
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
@@ -31,6 +32,7 @@
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-client-connection": "*",
     "@deepseek-ai/dsh-client-locale": "*",
+    "@deepseek-ai/dsh-client-ui-primitives": "*",
     "@deepseek-ai/dsh-client-ui-settings": "*",
     "react": "^18.2.0"
   }

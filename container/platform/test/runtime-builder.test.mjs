@@ -44,10 +44,13 @@ export { runProfile as r };
 `)
   const picker = join(root, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(root, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
+  const theme = join(root, 'node_modules/@deepseek-ai/dsh-client-ui-theme/lib')
   await mkdir(picker, { recursive: true })
   await mkdir(connection, { recursive: true })
+  await mkdir(theme, { recursive: true })
   await writeFile(join(picker, 'index.js'), 'const target = resolve(path ?? home);\n')
   await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
+  await writeFile(join(theme, 'client.js'), 'var corner_shape_css_default = "@supports (corner-shape:superellipse(1.5)){:root{--dsw-corner-shape:superellipse(1.5)}*,:before,:after{corner-shape:var(--dsw-corner-shape)}}";\n')
   await mkdir(join(root, 'node_modules/.bin'), { recursive: true })
   await symlink('../tool/bin.js', join(root, 'node_modules/.bin/tool'))
   return root
@@ -105,6 +108,7 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
     join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
     join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
     join(containerRoot, 'environment/resources/patches/managed-lifecycle.mjs'),
+    join(containerRoot, 'environment/resources/patches/native-corners.mjs'),
   ]
   const first = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'one', patchPaths: patches })
   const second = await buildRuntime({ pristineRoot: source, versionsRoot: join(root, 'versions'), runtimeId: 'two', patchPaths: patches })
@@ -114,6 +118,7 @@ test('rebuilds each Runtime from unchanged Pristine with the complete ordered Pa
     assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'), 'utf8'), /isLoopback: true/)
     assert.match(await readFile(join(runtime, 'package/lib/bin.js'), 'utf8'), /prepareManagedInvocation/)
     assert.match(await readFile(join(runtime, 'package/lib/profile-boot-implementation.js'), 'utf8'), /managedSigtermHandler/)
+    assert.match(await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js'), 'utf8'), /corner_shape_css_default = ""/)
     assert.equal(await readlink(join(runtime, 'package/node_modules/.bin/tool')), '../tool/bin.js')
   }
 })
@@ -153,6 +158,7 @@ test('verifies mandatory Patch Artifacts and their applied Runtime effects befor
     join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
     join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
     join(containerRoot, 'environment/resources/patches/managed-lifecycle.mjs'),
+    join(containerRoot, 'environment/resources/patches/native-corners.mjs'),
   ]
   const runtimeRoot = await buildRuntime({
     pristineRoot: source,
@@ -161,7 +167,7 @@ test('verifies mandatory Patch Artifacts and their applied Runtime effects befor
     patchPaths: patches,
   })
   const environmentRoot = await environment(root, patches)
-  assert.deepEqual(await verifyRuntimePatches({ runtimeRoot, environmentRoot }), ['patch-1', 'patch-2', 'patch-3'])
+  assert.deepEqual(await verifyRuntimePatches({ runtimeRoot, environmentRoot }), ['patch-1', 'patch-2', 'patch-3', 'patch-4'])
 
   await writeFile(
     join(runtimeRoot, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'),

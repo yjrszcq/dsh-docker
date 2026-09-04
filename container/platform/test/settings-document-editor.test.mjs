@@ -87,6 +87,7 @@ test('Settings Document Editor follows DSH tokens and has a mobile layout', asyn
   assert.match(style, /\.lineNumbers \{[\s\S]*text-align: right/)
   assert.match(style, /\.editorFrame:focus-within \{ border-color: var\(--dsw-alias-border-l2\); \}/)
   assert.match(style, /\.lineNumbers \{[\s\S]*background: color-mix\(in srgb, var\(--dsw-alias-bg-base\) 72%, var\(--dsw-alias-bg-module-platform\)\)/)
+  assert.match(style, /\.overlay,[\s\S]*?\.overlay \*::after \{[^}]*corner-shape: round;/)
   assert.doesNotMatch(style, /--dsw-alias-state-business-primary/)
   assert.equal((style.match(/ui-monospace/g) ?? []).length, 2)
   assert.doesNotMatch(style, /#[0-9a-f]{3,8}\b/i)

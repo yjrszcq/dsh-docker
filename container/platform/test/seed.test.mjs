@@ -115,10 +115,13 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   await writeFile(join(installed, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.1.0-rc.fixture' }))
   const picker = join(installed, 'node_modules/@deepseek-ai/dsh-host-directory-picker-browse/lib')
   const connection = join(installed, 'node_modules/@deepseek-ai/dsh-client-connection/lib')
+  const theme = join(installed, 'node_modules/@deepseek-ai/dsh-client-ui-theme/lib')
   await mkdir(picker, { recursive: true })
   await mkdir(connection, { recursive: true })
+  await mkdir(theme, { recursive: true })
   await writeFile(join(picker, 'index.js'), 'const target = resolve(path ?? home);\n')
   await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
+  await writeFile(join(theme, 'client.js'), 'var corner_shape_css_default = "@supports (corner-shape:superellipse(1.5)){:root{--dsw-corner-shape:superellipse(1.5)}*,:before,:after{corner-shape:var(--dsw-corner-shape)}}";\n')
   await mkdir(join(installed, 'node_modules/.bin'), { recursive: true })
   await symlink('../tool/bin.js', join(installed, 'node_modules/.bin/tool'))
 
@@ -143,5 +146,5 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   assert.deepEqual(await verifyRuntimePatches({
     runtimeRoot: join(output, 'runtimes', inventory.deployment.runtime.id),
     environmentRoot: join(output, 'environments', inventory.deployment.environment.id),
-  }), ['directory-picker', 'browser-loopback', 'managed-lifecycle'])
+  }), ['directory-picker', 'browser-loopback', 'managed-lifecycle', 'native-corners'])
 })

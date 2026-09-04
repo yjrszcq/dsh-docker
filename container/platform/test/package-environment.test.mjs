@@ -29,7 +29,7 @@ test('packages the initial Environment deterministically from real resources', a
   const manifest = parseEnvironmentManifest(firstManifest)
   assert.deepEqual(manifest.components.map(component => component.id), ['dsh-runtime'])
   assert.deepEqual(manifest.patches.map(patch => patch.id), [
-    'directory-picker', 'browser-loopback', 'managed-lifecycle',
+    'directory-picker', 'browser-loopback', 'managed-lifecycle', 'native-corners',
   ])
   assert.deepEqual(manifest.systemPlugins.map(plugin => plugin.id), [
     'platform-management', 'settings-navigation', 'settings-document-editor',

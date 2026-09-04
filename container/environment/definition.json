@@ -27,6 +27,12 @@
       "artifactId": "patch-managed-lifecycle",
       "source": "resources/patches/managed-lifecycle.mjs",
       "mediaType": "text/javascript"
+    },
+    {
+      "id": "native-corners",
+      "artifactId": "patch-native-corners",
+      "source": "resources/patches/native-corners.mjs",
+      "mediaType": "text/javascript"
     }
   ],
   "systemPlugins": [

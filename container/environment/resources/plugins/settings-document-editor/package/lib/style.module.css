@@ -8,6 +8,13 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.overlay,
+.overlay *,
+.overlay *::before,
+.overlay *::after {
+  corner-shape: round;
+}
+
 .mask {
   position: absolute;
   inset: 0;

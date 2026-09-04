@@ -305,14 +305,10 @@
 }
 .listPagination label,
 .listPagination > div { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-.listPagination select {
+.paginationSelectTrigger {
   min-width: 64px;
   min-height: 30px;
-  padding: 3px 22px 3px 7px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-module-platform);
+  padding: 3px 7px;
 }
 .pageNavigation strong { min-width: 16px; color: var(--dsw-alias-label-primary); text-align: center; font-weight: 600; }
 .pageArrow { width: 30px; min-width: 30px; height: 30px; padding: 0; border-radius: 6px; font-size: 0; line-height: 1; }
@@ -544,7 +540,7 @@ a.secondaryButton { text-decoration: none; }
 .proxyDirectRulesField { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .proxyDirectRulesField textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 6px 9px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyDirectRulesField small { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
-.proxyFormGrid > label, .proxyRulesGrid > label { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.proxyFormGrid > label, .proxyRulesGrid > label, .proxySelectField { display: grid; gap: 5px; min-width: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .proxyTitleLine { display: flex; align-items: center; gap: 7px; }
 .proxyTitleLine h3 { margin: 0; }
 .proxySaveState { padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 16px; }
@@ -563,7 +559,8 @@ a.secondaryButton { text-decoration: none; }
 .proxyPasswordField > label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyClearPassword { min-height: 34px; flex: none; padding: 5px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .proxyClearPassword[aria-pressed='true'] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent); }
-.proxyFormGrid input, .proxyFormGrid select, .proxyRulesGrid textarea { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
+.proxyFormGrid input, .proxyRulesGrid textarea { box-sizing: border-box; width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); font: inherit; }
+.proxySelectTrigger { width: 100%; min-height: 34px; }
 .proxyRulesGrid textarea { min-height: 88px; resize: vertical; font: 12px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .proxyFormGrid label > span, .proxyRulesGrid label > span { color: var(--dsw-alias-label-primary); font-weight: 500; }
 .proxyRulesGrid small { display: block; color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 17px; }
@@ -650,15 +647,9 @@ a.secondaryButton { text-decoration: none; }
 .settingRow b, .settingRow small { display: block; }
 .settingRow b { font-weight: 500; }
 .settingRow small { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
-.settingRow select {
+.settingSelectTrigger {
   min-width: 120px;
   height: 32px;
-  padding: 0 30px 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-module-platform);
-  font: inherit;
 }
 .settingRow input[type='checkbox'] { width: 16px; height: 16px; flex: none; accent-color: var(--dsw-alias-brand-primary); }
 
@@ -705,7 +696,7 @@ a.secondaryButton { text-decoration: none; }
 .pluginIdentity span { margin-top: 2px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .resourceHeading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .resourceHeading > strong { flex: 0 1 auto; max-width: 55%; }
-.statusBadge { flex: 0 0 auto; margin-top: 1px; padding: 1px 6px; border-radius: 4px; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; line-height: 16px; white-space: nowrap; }
+.statusBadge { box-sizing: border-box; display: inline-flex; min-height: 18px; flex: 0 0 auto; align-items: center; margin-top: 1px; padding: 1px 6px; overflow: hidden; border-radius: 999px; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-module-platform); font-size: 10px; line-height: 16px; white-space: nowrap; }
 .statusEnabled {
   color: var(--dsw-alias-state-success-primary);
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);
@@ -798,7 +789,7 @@ a.secondaryButton { text-decoration: none; }
   min-height: 26px;
   padding: 2px 8px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: 999px;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
   font: inherit;
@@ -827,8 +818,40 @@ a.secondaryButton { text-decoration: none; }
   gap: 8px;
 }
 
-.logFilters input,
-.logFilters select {
+.selectMenu {
+  min-width: 0;
+}
+.selectMenu,
+.selectMenu [role='menu'],
+.selectMenu > div {
+  max-height: min(320px, 60dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.selectTrigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  font: inherit;
+  cursor: pointer;
+}
+.selectTrigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.selectTrigger:disabled { cursor: not-allowed; opacity: .45; }
+.selectTrigger svg { flex: none; }
+.logFilters > .selectMenu { width: 100%; }
+.logSelectTrigger { width: 100%; height: 34px; font-size: 12px; }
+.proxySelectField > .selectMenu { width: 100%; }
+.proxySelectTrigger, .settingSelectTrigger, .paginationSelectTrigger { border-radius: 6px; }
+
+.logFilters input {
   box-sizing: border-box;
   min-width: 0;
   height: 34px;
@@ -842,11 +865,14 @@ a.secondaryButton { text-decoration: none; }
 }
 
 .logFilters input::placeholder { color: var(--dsw-alias-label-tertiary); }
-.logFilters input:focus-visible,
-.logFilters select:focus-visible {
-  border-color: var(--dsw-alias-state-business-primary);
-  outline: 1px solid var(--dsw-alias-state-business-primary);
+.proxyFormGrid input:focus-visible,
+.proxyRulesGrid textarea:focus-visible,
+.pageJump input:focus-visible,
+.logFilters input:focus-visible {
+  border-color: var(--dsw-alias-label-primary);
+  outline: none;
 }
+.selectTrigger:focus-visible { outline: none; }
 
 .logSummary {
   color: var(--dsw-alias-label-tertiary);

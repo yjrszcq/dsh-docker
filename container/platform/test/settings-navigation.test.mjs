@@ -20,6 +20,7 @@ test('Settings Navigation is a browser-only optional System Plugin', async () =>
 
 test('Settings Navigation checked-in bundle matches its source', async () => {
   const bundle = await readFile(new URL('lib/client.bundle.js', root), 'utf8')
+  const style = await readFile(new URL('lib/style.module.css', root), 'utf8')
   const rebuilt = await buildSystemPluginClient({
     pluginId: '@dsh-docker/settings-navigation',
     sourcePath: new URL('lib/client.js', root),
@@ -28,6 +29,8 @@ test('Settings Navigation checked-in bundle matches its source', async () => {
   assert.equal(bundle, rebuilt)
   assert.doesNotThrow(() => new Function(bundle))
   assert.match(bundle, /^window\.__ModuleLoader__\.load\(/)
+  assert.doesNotMatch(style, /corner-shape/)
+  assert.doesNotMatch(style, /\.header button:not\(\[aria-label\]\)/)
 })
 
 test('Settings Navigation recognizes the Settings shell without text or generated classes', async () => {

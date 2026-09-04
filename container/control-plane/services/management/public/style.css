@@ -243,7 +243,7 @@ button.primary { background: var(--text); color: var(--surface); }
 button.secondary { border: 1px solid var(--border); }
 button.danger { background: var(--danger); color: var(--button-text); }
 button.danger-text { color: var(--danger); }
-button.compact { min-height: 28px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 11px; }
+button.compact { min-height: 28px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
 button:hover:not(:disabled) { background: var(--hover); }
 button.primary:hover:not(:disabled) { opacity: .86; background: var(--text); }
 button.danger:hover:not(:disabled) { opacity: .9; background: var(--danger); }
@@ -251,6 +251,11 @@ button:disabled { opacity: .42; cursor: default; }
 button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+input:not([type="checkbox"]):focus-visible, select:focus-visible, textarea:focus-visible {
+  border-color: var(--text);
+  outline: none;
 }
 
 .file-section { gap: 14px; }
@@ -564,7 +569,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .proxy-scope-description.expandable { cursor: pointer; }
 .proxy-scope-description.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
 .proxy-provider-list { max-height: 320px; overflow-x: hidden; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; scrollbar-gutter: stable; }
-.proxy-provider-heading > h2 { margin-bottom: 2px; }
+.proxy-provider-heading > h2 { margin: 0 0 2px; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0; }
 .proxy-provider-heading > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .proxy-provider-heading p { min-width: 0; flex: 1; margin: 0; color: var(--muted); font-size: 13px; line-height: 20px; }
 .proxy-provider-heading input { box-sizing: border-box; width: min(320px, 45%); height: 34px; flex: none; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 12px; }
@@ -638,7 +643,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
   font-size: 12px;
 }
 .setting-row select { min-width: 140px; }
-.setting-row input[type="checkbox"] { width: 16px; height: 16px; flex: none; accent-color: var(--success); }
 
 .operation-result { margin: 0; color: var(--muted); font-size: 13px; line-height: 20px; }
 .runtime-reset-progress { display: grid; gap: 7px; }
@@ -719,7 +723,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-description.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
 .user-plugin-description.expanded::after { top: 9px; transform: rotate(225deg); }
 .user-plugin-main > .user-plugin-description { display: block; width: 100%; margin-top: 2px; }
-.user-plugin-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
+.user-plugin-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
 .user-plugin-badge.enabled { color: var(--success); }
 .user-plugin-badge.warning, .user-plugin-badge.pending { color: var(--warning); }
 .user-plugin-badge.danger { color: var(--danger); }

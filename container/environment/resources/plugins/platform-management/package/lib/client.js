@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import css from './style.module.css'
+const { IconChevronDownOutline14, Menu } = require('@deepseek-ai/dsh-client-ui-primitives')
 
 const API = '/_dsh_platform/plugin-api/v1'
 const AUTH_API = '/_dsh_platform/auth'
@@ -38,6 +39,34 @@ const LIST_PAGE_SIZES = Object.freeze([5, 10, 20, 50])
 const LIST_PAGE_SIZE_KEY_PREFIX = 'dsh-platform:plugin-page-size:'
 
 export const inject = ['slots', 'locale', 'connection']
+
+function SelectMenu({ value, items, onSelect, ariaLabel, disabled = false, className = '' }) {
+  const [open, setOpen] = useState(false)
+  const selectedId = String(value)
+  const selected = items.find(item => item.id === selectedId) ?? items[0]
+  return h(Menu, {
+    open: open && !disabled,
+    portal: true,
+    align: 'end',
+    items,
+    selectedId,
+    onClose: () => setOpen(false),
+    onSelect: id => {
+      setOpen(false)
+      onSelect(id)
+    },
+    className: css.selectMenu,
+    anchor: h('button', {
+      type: 'button',
+      className: `${css.selectTrigger}${className ? ` ${className}` : ''}`,
+      disabled,
+      'aria-label': ariaLabel,
+      'aria-haspopup': 'menu',
+      'aria-expanded': open && !disabled,
+      onClick: () => setOpen(current => !current),
+    }, h('span', null, selected?.label ?? selectedId), h(IconChevronDownOutline14, { 'aria-hidden': 'true' })),
+  })
+}
 
 const LIFECYCLE_WAIT_PATH = '/_dsh_gateway/wait'
 const LIFECYCLE_READINESS_PATH = '/_dsh_gateway/readiness'
@@ -413,12 +442,14 @@ function ListPagination({ pagination, total, t }) {
   }
   return h('div', { className: css.listPagination },
     h('span', null, t('totalItems').replace('{total}', String(total))),
-    h('label', null,
-      h('select', {
-        'aria-label': t('itemsPerPage'),
+    h('div', null,
+      h(SelectMenu, {
+        ariaLabel: t('itemsPerPage'),
         value: pagination.pageSize,
-        onChange: event => pagination.setPageSize(Number(event.target.value)),
-      }, LIST_PAGE_SIZES.map(value => h('option', { key: value, value }, String(value)))),
+        items: LIST_PAGE_SIZES.map(value => ({ id: String(value), label: String(value) })),
+        onSelect: value => pagination.setPageSize(Number(value)),
+        className: css.paginationSelectTrigger,
+      }),
       h('span', null, t('itemsPerPageSuffix'))),
     h('div', { className: css.pageNavigation },
       h('button', { type: 'button', className: `${css.smallButton} ${css.pageArrow}`, 'aria-label': t('previousPage'), disabled: pagination.page === 0, onClick: () => pagination.setPage(pagination.page - 1) }),
@@ -886,8 +917,8 @@ function LogViewer({ active, focusTaskId, t }) {
     setEntries([])
   }
 
-  const changeDisplayLimit = event => {
-    const value = Number(event.target.value)
+  const changeDisplayLimit = selected => {
+    const value = Number(selected)
     if (!LOG_DISPLAY_LIMITS.includes(value)) return
     setDisplayLimit(value)
     try { window.localStorage.setItem(LOG_DISPLAY_LIMIT_KEY, String(value)) } catch {}
@@ -927,13 +958,27 @@ function LogViewer({ active, focusTaskId, t }) {
         'aria-label': t('searchLogs'),
         onChange: event => setQuery(event.target.value),
       }),
-      h('select', { value: source, 'aria-label': t('logSource'), onChange: event => setSource(event.target.value) },
-        h('option', { value: 'all' }, t('allSources')),
-        sources.map(value => h('option', { key: value, value }, value))),
-      h('select', { value: level, 'aria-label': t('logLevel'), onChange: event => setLevel(event.target.value) },
-        ['all', 'debug', 'info', 'warning', 'error'].map(value => h('option', { key: value, value }, t(`level${value[0].toUpperCase()}${value.slice(1)}`)))),
-      h('select', { value: displayLimit, 'aria-label': t('logDisplayLimit'), onChange: changeDisplayLimit },
-        LOG_DISPLAY_LIMITS.map(value => h('option', { key: value, value }, t('logDisplayLimitValue').replace('{count}', String(value))))),
+      h(SelectMenu, {
+        value: source,
+        ariaLabel: t('logSource'),
+        items: [{ id: 'all', label: t('allSources') }, ...sources.map(value => ({ id: value, label: value }))],
+        onSelect: setSource,
+        className: css.logSelectTrigger,
+      }),
+      h(SelectMenu, {
+        value: level,
+        ariaLabel: t('logLevel'),
+        items: ['all', 'debug', 'info', 'warning', 'error'].map(value => ({ id: value, label: t(`level${value[0].toUpperCase()}${value.slice(1)}`) })),
+        onSelect: setLevel,
+        className: css.logSelectTrigger,
+      }),
+      h(SelectMenu, {
+        value: displayLimit,
+        ariaLabel: t('logDisplayLimit'),
+        items: LOG_DISPLAY_LIMITS.map(value => ({ id: String(value), label: t('logDisplayLimitValue').replace('{count}', String(value)) })),
+        onSelect: changeDisplayLimit,
+        className: css.logSelectTrigger,
+      }),
     ),
     h('div', { className: css.logSummaryRow },
       h('div', { className: css.logSummary }, t('logCount').replace('{shown}', String(filtered.length)).replace('{total}', String(displayLimit))),
@@ -1836,7 +1881,14 @@ function ProxySettings({ active, t }) {
           h('button', { type: 'button', className: css.secondaryButton, disabled: busy || taskRunning || componentUnavailable, onClick: () => { void startTest() } }, t('proxyTestStart')),
           h('button', { type: 'button', className: css.primaryButton, disabled: busy || taskRunning || componentUnavailable, onClick: () => { void saveConnection() } }, t('proxySave')))),
       h('div', { className: css.proxyFormGrid },
-        h('label', null, h('span', null, t('proxyProtocol')), h('select', { value: connection.protocol, disabled: componentUnavailable, onChange: event => patchConnection(['protocol'], event.target.value) }, h('option', { value: 'http' }, 'HTTP'), h('option', { value: 'socks5' }, 'SOCKS5'))),
+        h('div', { className: css.proxySelectField }, h('span', null, t('proxyProtocol')), h(SelectMenu, {
+          value: connection.protocol,
+          disabled: componentUnavailable,
+          ariaLabel: t('proxyProtocol'),
+          items: [{ id: 'http', label: 'HTTP' }, { id: 'socks5', label: 'SOCKS5' }],
+          onSelect: value => patchConnection(['protocol'], value),
+          className: css.proxySelectTrigger,
+        })),
         h('label', null, h('span', null, t('proxyHost')), h('input', { value: connection.host, disabled: componentUnavailable, maxLength: 253, spellCheck: false, placeholder: '172.17.0.1', onChange: event => patchConnection(['host'], event.target.value) })),
         h('label', null, h('span', null, t('proxyPort')), h('input', { type: 'number', min: 1, max: 65535, value: connection.port ?? '', disabled: componentUnavailable, placeholder: '7890', onChange: event => patchConnection(['port'], event.target.value) })),
         h('label', null, h('span', null, t('proxyUsername')), h('input', { value: connection.username, disabled: componentUnavailable, maxLength: 255, autoComplete: 'off', onChange: event => patchConnection(['username'], event.target.value) })),
@@ -2499,15 +2551,23 @@ function PlatformManagement({ t }) {
           h('span', { 'aria-hidden': 'true' }),
           h('b', null, automaticCheck.enabled ? t('enabled') : t('disabled')))),
       h('div', { className: css.settingRows },
-        h('label', { className: css.settingRow },
+        h('div', { className: css.settingRow },
           h('span', null, t('checkInterval')),
-          h('select', { value: automaticCheck.intervalSeconds, disabled: acting || !automaticCheck.enabled, onChange: event => { void saveAutomaticCheck({ intervalSeconds: Number(event.target.value) }) } },
-            [3_600, 10_800, 21_600, 43_200, 86_400].map(seconds => h('option', { key: seconds, value: seconds }, t(`interval${String(seconds)}`))))),
-        h('label', { className: css.settingRow },
+          h(SelectMenu, {
+            value: automaticCheck.intervalSeconds,
+            disabled: acting || !automaticCheck.enabled,
+            ariaLabel: t('checkInterval'),
+            items: [3_600, 10_800, 21_600, 43_200, 86_400].map(seconds => ({ id: String(seconds), label: t(`interval${String(seconds)}`) })),
+            onSelect: value => { void saveAutomaticCheck({ intervalSeconds: Number(value) }) },
+            className: css.settingSelectTrigger,
+          })),
+        h('div', { className: css.settingRow },
           h('span', null,
             h('b', null, t('updateNotifications')),
             h('small', null, t('updateNotificationsDetail'))),
-          h('input', { type: 'checkbox', checked: automaticCheck.notificationsEnabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) } }))))),
+          h('label', { className: css.toggle, 'aria-label': t('updateNotifications') },
+            h('input', { type: 'checkbox', checked: automaticCheck.notificationsEnabled, disabled: acting, onChange: event => { void saveAutomaticCheck({ notificationsEnabled: event.target.checked }) } }),
+            h('span', { 'aria-hidden': 'true' })))))),
 
     h('div', {
       id: 'platform-tab-maintenance',
