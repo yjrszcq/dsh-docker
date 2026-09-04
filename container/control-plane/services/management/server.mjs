@@ -908,6 +908,7 @@ export function createManagementServer({
         })
         response.flushHeaders()
         event(response, 'heartbeat', { timestamp: new Date().toISOString() })
+        event(response, 'sources', await logs.sources())
         for (const entry of await logs.query(options)) sendLog(entry)
         if (closed) return
         logs.on('entry', listener)

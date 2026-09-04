@@ -323,6 +323,19 @@ export class JsonlLogManager extends EventEmitter {
     return Object.freeze(entries.slice(-limit).map(Object.freeze))
   }
 
+  async sources() {
+    const result = new Set()
+    for (const file of await this.files()) {
+      for (const line of (await readFile(file.path, 'utf8')).split('\n')) {
+        const entry = parseLine(line)
+        if (entry?.source !== undefined) {
+          try { result.add(validateSource(entry.source)) } catch {}
+        }
+      }
+    }
+    return [...result].sort()
+  }
+
   async follow({ sources, since, taskId, operation, phase } = {}, listener, { intervalMs = 250, onError = () => {} } = {}) {
     if (typeof listener !== 'function') throw new Error('log follow listener is required')
     if (!Number.isSafeInteger(intervalMs) || intervalMs < 50) throw new Error('log follow interval is invalid')

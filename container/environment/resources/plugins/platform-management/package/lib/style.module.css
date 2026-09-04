@@ -821,10 +821,13 @@ a.secondaryButton { text-decoration: none; }
 .selectMenu {
   min-width: 0;
 }
-.selectMenu,
-.selectMenu [role='menu'],
-.selectMenu > div {
+body[data-dsh-platform-select-menu='open'] > [role='menu'] {
   max-height: min(320px, 60dvh);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+body[data-dsh-platform-select-menu='open'] > [role='menu'] > [role='presentation'] {
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

@@ -44,6 +44,13 @@ function SelectMenu({ value, items, onSelect, ariaLabel, disabled = false, class
   const [open, setOpen] = useState(false)
   const selectedId = String(value)
   const selected = items.find(item => item.id === selectedId) ?? items[0]
+  useEffect(() => {
+    if (!open || disabled) return undefined
+    document.body.dataset.dshPlatformSelectMenu = 'open'
+    return () => {
+      delete document.body.dataset.dshPlatformSelectMenu
+    }
+  }, [open, disabled])
   return h(Menu, {
     open: open && !disabled,
     portal: true,
@@ -731,6 +738,7 @@ function downloadLogJsonl(entries) {
 
 function LogViewer({ active, focusTaskId, t }) {
   const [entries, setEntries] = useState([])
+  const [sourceCatalog, setSourceCatalog] = useState([])
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
   const [level, setLevel] = useState('all')
@@ -779,6 +787,12 @@ function LogViewer({ active, focusTaskId, t }) {
         }
       } catch {}
     })
+    stream.addEventListener('sources', event => {
+      try {
+        const sources = JSON.parse(event.data)
+        if (Array.isArray(sources)) setSourceCatalog(sources.filter(value => typeof value === 'string'))
+      } catch {}
+    })
     stream.addEventListener('heartbeat', () => { lastActivity = Date.now() })
     stream.onopen = () => {
       lastActivity = Date.now()
@@ -798,7 +812,10 @@ function LogViewer({ active, focusTaskId, t }) {
   }, [active, streamRevision])
 
   const visibleEntries = limitProcessedLogEntries(entries, displayLimit)
-  const sources = [...new Set(visibleEntries.map(item => item.value.source).filter(Boolean))].sort()
+  const sources = [...new Set([
+    ...sourceCatalog,
+    ...visibleEntries.map(item => item.value.source).filter(Boolean),
+  ])].sort()
   const normalizedQuery = query.trim().toLocaleLowerCase(t('localeCode') === 'en' ? 'en-US' : 'zh-CN')
   const filtered = visibleEntries.filter(item => {
     const entry = item.value
