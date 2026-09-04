@@ -1955,7 +1955,7 @@ function ProxySettings({ active, t }) {
         h('h3', { id: 'platform-proxy-providers-title' }, t('proxyProviders')),
         h('div', null,
           h('p', null, t('proxyProvidersDetail')),
-          h('input', { type: 'search', className: css.resourceSearch, value: providerQuery, disabled: componentUnavailable, placeholder: t('proxyProviderSearch'), 'aria-label': t('proxyProviderSearch'), onChange: event => setProviderQuery(event.target.value) }))),
+          h('input', { type: 'search', className: `${css.resourceSearch} ${css.proxyProviderSearch}`, value: providerQuery, disabled: componentUnavailable, placeholder: t('proxyProviderSearch'), 'aria-label': t('proxyProviderSearch'), onChange: event => setProviderQuery(event.target.value) }))),
       visibleProviders.length === 0 ? h('p', { className: css.emptyPlugins }, t('proxyNoProviders')) : h('div', { className: css.proxyProviderList }, visibleProviders.map(provider => {
         const displayName = typeof provider.displayName === 'string' && provider.displayName.trim() !== '' ? provider.displayName : provider.id
         const information = provider.routingCapability === 'forced-direct' ? t('proxyProviderReasonLocal') : provider.routingCapability === 'shared-dsh' ? t('proxyProviderReasonShared') : null

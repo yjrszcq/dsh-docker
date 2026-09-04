@@ -664,15 +664,21 @@ a.secondaryButton { text-decoration: none; }
   width: min(320px, 45%);
   margin: 0 0 0 auto;
   flex: none;
+  min-width: 0;
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-module-platform);
   font: inherit;
   font-size: 12px;
 }
+.resourceSearch:focus-visible { border-color: var(--dsw-alias-label-primary); outline: none; }
+.resourceSearch::placeholder { color: var(--dsw-alias-label-tertiary); }
+.proxyProviderSearch { border-radius: 7px; }
+.proxyProviderSearch:focus-visible { border-color: var(--dsw-alias-label-primary); outline: none; }
+.proxyProviderSearch::placeholder { color: var(--dsw-alias-label-tertiary); }
 .pluginList {
   max-height: min(46dvh, 420px);
   overflow-x: hidden;
