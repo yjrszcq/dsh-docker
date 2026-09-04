@@ -556,7 +556,7 @@ input:not([type="checkbox"]):focus-visible, select:focus-visible, textarea:focus
 .proxy-password-row { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 12px; }
 .proxy-password-row > .secondary { justify-self: end; }
 .proxy-password-row > .proxy-password-field { min-width: 0; }
-.proxy-clear-password { flex: none; min-height: 36px; }
+.proxy-password-field > button.proxy-clear-password { flex: none; height: 34px; min-height: 34px; padding: 6px 10px; border-radius: 6px; }
 .proxy-clear-password[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .proxy-form-grid input, .proxy-form-grid select, .proxy-rules-grid textarea { width: 100%; }
 .proxy-form-grid input, .proxy-form-grid select { height: 34px; min-height: 34px; font-size: 16px; line-height: 22px; }
@@ -583,6 +583,7 @@ input:not([type="checkbox"]):focus-visible, select:focus-visible, textarea:focus
 .proxy-scope-grid strong, .proxy-scope-grid small { display: block; }
 .proxy-scope-grid strong { font-size: 13px; line-height: 20px; }
 .proxy-scope-grid small { color: var(--muted); font-size: 11px; line-height: 17px; }
+.proxy-scope-grid .proxy-scope-description { font-size: 11px; line-height: 17px; }
 .proxy-scope-description { display: -webkit-box; width: 100%; padding: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 11px; line-height: 17px; text-align: left; cursor: default; }
 .proxy-scope-description.expandable { cursor: pointer; }
 .proxy-scope-description.expanded { display: block; overflow: visible; -webkit-line-clamp: initial; }
