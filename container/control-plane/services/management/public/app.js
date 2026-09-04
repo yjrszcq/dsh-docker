@@ -2234,8 +2234,9 @@ function writeStorage(key, value) {
 function logLevel(entry) {
   if (entry?.stream === 'stderr') {
     const message = String(entry?.message ?? '').trim()
-    if (/^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(message)) return 'error'
-    if (/\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(message)) return 'warning'
+    const lines = message.split('\n')
+    if (lines.some(line => /^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(line))) return 'error'
+    if (lines.some(line => /\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(line))) return 'warning'
     return 'info'
   }
   if (['debug', 'info', 'warning', 'error'].includes(entry?.level)) return entry.level

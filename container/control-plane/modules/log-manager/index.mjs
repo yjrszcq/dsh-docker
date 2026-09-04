@@ -74,11 +74,19 @@ function parseForwardedLine(line) {
 export function capturedLogLevel(stream, message) {
   if (stream !== 'stderr') return 'info'
   const text = String(message).trim()
-  if (/^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(text)) {
+  const lines = text.split('\n')
+  if (lines.some(line => /^(?:\s*at\s+|.*\b(?:error|fatal|failed|failure|exception|panic|unhandled)\b)|错误|失败|异常|致命/iu.test(line))) {
     return 'error'
   }
-  if (/\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(text)) return 'warning'
+  if (lines.some(line => /\b(?:warn|warning|deprecated|deprecation)\b|警告|已弃用/iu.test(line))) return 'warning'
   return 'info'
+}
+
+function isCapturedErrorBlock(stream, lines) {
+  return stream === 'stderr' && lines.length > 1 && lines.some(line => (
+    /^\s*(?:AggregateError|Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):/u.test(line)
+    || /^\s+at\s+/u.test(line)
+  ))
 }
 
 export class JsonlLogManager extends EventEmitter {
@@ -364,24 +372,54 @@ export class JsonlLogManager extends EventEmitter {
       const stream = child[streamName]
       if (stream === undefined || stream === null) continue
       let pending = ''
+      let completeLines = []
+      let flushScheduled = false
+      const appendLines = lines => {
+        if (lines.length === 0) return
+        const messages = isCapturedErrorBlock(streamName, lines)
+          ? [boundedString(lines.join('\n'))]
+          : lines
+        for (const message of messages) {
+          void this.append(source, streamName, message, { level: capturedLogLevel(streamName, message) })
+            .catch(error => this.emit('error', error))
+        }
+      }
+      const flush = () => {
+        flushScheduled = false
+        const lines = completeLines
+        completeLines = []
+        let unforwarded = []
+        const flushUnforwarded = () => {
+          appendLines(unforwarded)
+          unforwarded = []
+        }
+        for (const line of lines) {
+          const forwarded = acceptForwarded && this.output !== undefined ? parseForwardedLine(line) : undefined
+          if (forwarded === undefined) unforwarded.push(line)
+          else {
+            flushUnforwarded()
+            this.writeOutput(forwarded.stream, line)
+          }
+        }
+        flushUnforwarded()
+      }
+      const scheduleFlush = () => {
+        if (flushScheduled) return
+        flushScheduled = true
+        setImmediate(flush)
+      }
       stream.setEncoding?.('utf8')
       stream.on('data', chunk => {
         pending += String(chunk)
         const lines = pending.split('\n')
         pending = lines.pop()
-        for (const line of lines) {
-          const forwarded = acceptForwarded && this.output !== undefined ? parseForwardedLine(line) : undefined
-          if (forwarded === undefined) {
-            void this.append(source, streamName, line, { level: capturedLogLevel(streamName, line) })
-              .catch(error => this.emit('error', error))
-          } else this.writeOutput(forwarded.stream, line)
-        }
+        completeLines.push(...lines)
+        scheduleFlush()
       })
       stream.once('end', () => {
-        if (pending !== '') {
-          void this.append(source, streamName, pending, { level: capturedLogLevel(streamName, pending) })
-            .catch(error => this.emit('error', error))
-        }
+        if (pending !== '') completeLines.push(pending)
+        pending = ''
+        flush()
       })
     }
   }

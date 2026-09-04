@@ -934,6 +934,7 @@ test('Platform Management does not present ordinary DSH stderr as an error', asy
     source: 'dsh-runtime', stream: 'stderr', level: 'error', message: '[net-proxy] 已启用代理 http://172.17.0.1:7890',
   }), 'info')
   assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'Error: startup failed' }), 'error')
+  assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'info', message: 'file:///app/index.js:2\nError: startup failed\n    at boot' }), 'error')
   assert.equal(logLevel({ source: 'dsh-runtime', stream: 'stderr', level: 'error', message: 'warning: retrying' }), 'warning')
 })
 
