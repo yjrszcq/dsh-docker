@@ -24,6 +24,7 @@ switch (invocation.mode) {
     const { runProfile } = await import("./profile-boot-fixture.js");
   }
 }
+
 `)
   await writeFile(join(root, 'lib', 'profile-boot-fixture.js'), 'import { r as runProfile } from "./profile-boot-implementation.js";\nexport { runProfile };\n')
   await writeFile(join(root, 'lib', 'profile-boot-implementation.js'), `async function runProfile(options) {
@@ -49,6 +50,15 @@ export { runProfile as r };
   await writeFile(join(connection, 'client.js'), 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n')
   await mkdir(join(root, 'node_modules/.bin'), { recursive: true })
   await symlink('../tool/bin.js', join(root, 'node_modules/.bin/tool'))
+  return root
+}
+
+async function transportOwnedPristine() {
+  const root = await pristine()
+  await writeFile(
+    join(root, 'node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'),
+    'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),\n',
+  )
   return root
 }
 
@@ -119,6 +129,21 @@ test('rejects a Patch mismatch without publishing a partial Runtime', async () =
     patchPaths: [join(containerRoot, 'environment/resources/patches/browser-loopback.mjs')],
   }), /found 0/)
   await assert.rejects(readFile(join(root, 'versions/broken/package/lib/bin.js')), { code: 'ENOENT' })
+})
+
+test('builds a Runtime from the transport-owned browser classification', async () => {
+  const source = await transportOwnedPristine()
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-transport-loopback-'))
+  const runtime = await buildRuntime({
+    pristineRoot: source,
+    versionsRoot: join(root, 'versions'),
+    runtimeId: 'transport-loopback',
+    patchPaths: [join(containerRoot, 'environment/resources/patches/browser-loopback.mjs')],
+  })
+  assert.equal(
+    await readFile(join(runtime, 'package/node_modules/@deepseek-ai/dsh-client-connection/lib/client.js'), 'utf8'),
+    'isLoopback: true,\n',
+  )
 })
 
 test('verifies mandatory Patch Artifacts and their applied Runtime effects before startup', async () => {

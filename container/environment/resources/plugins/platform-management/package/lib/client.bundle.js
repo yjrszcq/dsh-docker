@@ -1159,9 +1159,10 @@ function UpdateReminder({ t }) {
 
 function LifecycleGuard({ connection }) {
   useEffect(() => {
+    const generation = connection.generation ?? connection.hostDescription
     let stopped = false
     let navigating = false
-    let hadConnection = connection.hostDescription.getSnapshot() !== undefined
+    let hadConnection = generation.getSnapshot() !== undefined
     let graceTimer
     let retryTimer
 
@@ -1184,7 +1185,7 @@ function LifecycleGuard({ connection }) {
       }, READINESS_RETRY_MS)
     }
     const verifyReadiness = async () => {
-      if (stopped || connection.hostDescription.getSnapshot() !== undefined) return
+      if (stopped || generation.getSnapshot() !== undefined) return
       try {
         const response = await fetch(LIFECYCLE_READINESS_PATH, {
           headers: { accept: 'application/json' },
@@ -1205,7 +1206,7 @@ function LifecycleGuard({ connection }) {
       } catch {}
     }
     const connectionChanged = () => {
-      if (connection.hostDescription.getSnapshot() !== undefined) {
+      if (generation.getSnapshot() !== undefined) {
         hadConnection = true
         clearTimers()
         return
@@ -1217,7 +1218,7 @@ function LifecycleGuard({ connection }) {
       }, CONNECTION_LOSS_GRACE_MS)
     }
 
-    const unsubscribe = connection.hostDescription.subscribe(connectionChanged)
+    const unsubscribe = generation.subscribe(connectionChanged)
     const unsubscribeEvents = subscribePlatformStateEvents({ state: () => { void inspectPlatformState() } })
     void inspectPlatformState()
     connectionChanged()

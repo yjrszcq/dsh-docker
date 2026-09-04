@@ -2,6 +2,7 @@ import { createGatewayServer, closeGatewayServer } from './proxy.mjs'
 import { createBrowserAuthentication } from './browser-auth.mjs'
 import { LocalApiClient } from '../../../modules/updater/lib/client.mjs'
 import { safeReturnPath } from './proxy.mjs'
+import { DshUpstreamAuthentication } from './dsh-upstream-auth.mjs'
 
 export const EXTERNAL_HOST = '0.0.0.0'
 export const EXTERNAL_PORT = 3080
@@ -32,6 +33,7 @@ export async function runGateway(config, {
   managementSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_SOCKET ?? '/run/dsh-platform/management.sock',
   managementCliSocketPath = process.env.DSH_PLATFORM_MANAGEMENT_CLI_SOCKET ?? '/run/dsh-platform/management-cli.sock',
   maintenanceSocketPath = process.env.DSH_PLATFORM_MAINTENANCE_SOCKET ?? '/run/dsh-platform/maintenance.sock',
+  lifecycleSocketPath = process.env.DSH_PLATFORM_LIFECYCLE_SOCKET ?? '/run/dsh-platform/dsh-lifecycle.sock',
   accessSocketPath = process.env.DSH_PLATFORM_ACCESS_SOCKET ?? '/run/dsh-platform/access/access.sock',
   accessClient,
   managementClient,
@@ -57,6 +59,7 @@ export async function runGateway(config, {
       }
     } } : access
   const browserAuthentication = createBrowserAuthentication({ access: resilientAccess, safeReturnPath, report: record })
+  const dshUpstreamAuthentication = new DshUpstreamAuthentication({ socketPath: lifecycleSocketPath })
   const isolatedBrowserAuthentication = createBrowserAuthentication({
     access: resilientAccess,
     safeReturnPath,
@@ -87,6 +90,7 @@ export async function runGateway(config, {
     managementSocketPath,
     maintenanceSocketPath,
     browserAuthentication,
+    dshUpstreamAuthentication,
     platformStatus,
     report: record,
     surface: 'compat',
@@ -99,6 +103,7 @@ export async function runGateway(config, {
       managementSocketPath,
       maintenanceSocketPath,
       browserAuthentication: isolatedBrowserAuthentication,
+      dshUpstreamAuthentication,
       platformStatus,
       report: record,
       surface: 'management',

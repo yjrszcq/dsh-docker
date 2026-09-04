@@ -17,7 +17,7 @@
   "dsh": {
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-ui-settings"
@@ -29,7 +29,7 @@
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-client-connection": "*",
     "@deepseek-ai/dsh-client-locale": "*",
-    "@deepseek-ai/dsh-client-runtime": "*",
+    "@deepseek-ai/dsh-api-remotes": "*",
     "@deepseek-ai/dsh-client-ui-settings": "*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

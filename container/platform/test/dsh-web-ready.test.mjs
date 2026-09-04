@@ -12,7 +12,10 @@ async function fixture(routes) {
   const server = createServer((request, response) => {
     requests.set(request.url, (requests.get(request.url) ?? 0) + 1)
     const route = routes.get(`${request.method} ${request.url}`) ?? routes.get(request.url)
-    response.writeHead(route?.status ?? 404, { 'content-type': route?.type ?? 'text/plain' })
+    response.writeHead(route?.status ?? 404, {
+      'content-type': route?.type ?? 'text/plain',
+      ...route?.headers,
+    })
     response.end(route?.body ?? '')
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -43,6 +46,66 @@ test('DSH web readiness requires every boot manifest Plugin bundle', async () =>
     assert.equal(context.requests.get('/plugins/one/client.js?rev=one'), 3)
     assert.equal(context.requests.get('/plugins/two/client.js?rev=two'), 3)
     assert.equal(context.requests.get('/api/pluginInventory/list'), 2)
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
+test('DSH web readiness exchanges the private launch token for an authenticated cookie', async () => {
+  const manifest = JSON.stringify({ rev: 'one', entries: [
+    { id: 'one', url: '/plugins/one/client.js?rev=one', rev: 'one' },
+  ] })
+  let expectedCookie = ''
+  const routes = new Map([
+    ['/?token=fixture-token', {
+      status: 303,
+      headers: { location: '/', 'set-cookie': 'dsh-auth-fixture=session; Path=/; HttpOnly; SameSite=Strict' },
+    }],
+  ])
+  const context = await fixture(routes)
+  context.server.removeAllListeners('request')
+  context.server.on('request', (request, response) => {
+    context.requests.set(request.url, (context.requests.get(request.url) ?? 0) + 1)
+    if (request.url === '/?token=fixture-token') {
+      response.writeHead(303, {
+        location: '/',
+        'set-cookie': 'dsh-auth-fixture=session; Path=/; HttpOnly; SameSite=Strict',
+      })
+      response.end()
+      return
+    }
+    expectedCookie = request.headers.cookie ?? ''
+    if (expectedCookie !== 'dsh-auth-fixture=session') {
+      response.writeHead(401)
+      response.end('unauthorized')
+      return
+    }
+    if (request.url === '/') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(`<script>window.__DSH_BOOT__ = ${manifest}</script>`)
+    } else if (request.url === '/plugins/one/client.js?rev=one') {
+      response.writeHead(200, { 'content-type': 'text/javascript' })
+      response.end('one')
+    } else if (request.url === '/api/pluginInventory/list') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        type: 'server-response',
+        rpcId: 'dsh-platform-readiness',
+        result: { ok: true, value: { entries: [{ moduleName: 'ready', enabled: true, fiberPhase: 'active' }] } },
+      }))
+    } else {
+      response.writeHead(404)
+      response.end()
+    }
+  })
+  try {
+    await verifyDshWebReady({
+      port: context.port,
+      stabilityMs: 0,
+      managedReady: async () => ({ ready: true, readyUrl: `http://127.0.0.1:${String(context.port)}/?token=fixture-token` }),
+    })
+    assert.equal(expectedCookie, 'dsh-auth-fixture=session')
+    assert.equal(context.requests.get('/?token=fixture-token'), 1)
   } finally {
     await new Promise(resolve => context.server.close(resolve))
   }

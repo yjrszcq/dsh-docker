@@ -11,6 +11,9 @@ test('Settings Document Editor is an optional DSH web System Plugin', async () =
   assert.equal(metadata.name, '@dsh-docker/settings-document-editor')
   assert.equal(metadata.dshDocker.description.zh, '在浏览器中查看和编辑 DSH 配置文件。')
   assert.equal(metadata.dsh.client.platform, 'web')
+  assert.ok(metadata.dsh.client.inject.includes('@deepseek-ai/dsh-api-remotes'))
+  assert.equal(metadata.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'), false)
+  assert.equal(metadata.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)
   assert.equal(metadata.exports['./client'], './lib/client.bundle.js')
   assert.equal(patch[0].insert[0].id, 'dsh-docker.settings-document-editor.plugin')
 })
@@ -27,12 +30,15 @@ test('Settings Document Editor checked-in bundle matches its source', async () =
   assert.match(bundle, /^window\.__ModuleLoader__\.load\(/)
 })
 
-test('Settings Document Editor replaces and restores the pathless DSH open action', async () => {
+test('Settings Document Editor replaces and restores both pathless DSH open actions', async () => {
   const source = await readFile(new URL('lib/client.js', root), 'utf8')
   assert.match(source, /\/_dsh_platform\/plugin-api\/v1\/settings-document/)
   assert.doesNotMatch(source, /\/_dsh_platform\/api\/v1\/settings-document/)
-  assert.match(source, /connection\.api\.settings\.openDocument = intercepted/)
-  assert.match(source, /connection\.api\.settings\.openDocument = original/)
+  assert.match(source, /interceptDocumentOpen\([\s\S]*connection\.api\.settings,[\s\S]*'openDocument'/)
+  assert.match(source, /interceptDocumentOpen\([\s\S]*child\.remote\.settings,[\s\S]*'openSettingsDocument'/)
+  assert.match(source, /ctx\.inject\(\['remote\.settings'\]/)
+  assert.match(source, /\{ ok: true, value: \{ opened: true \} \}/)
+  assert.match(source, /\{ result: \{ ok: true, value: \{ opened: true \} \} \}/)
   assert.doesNotMatch(source, /openDocument\(.*path|body:.*path/s)
   assert.match(source, /settings\.dshDocumentEditor/)
   assert.match(source, /shell\.overlay/)
@@ -43,6 +49,32 @@ test('Settings Document Editor replaces and restores the pathless DSH open actio
   assert.match(source, /className: css\.lineNumbers/)
   assert.match(source, /lineNumbers\.current\.scrollTop = event\.currentTarget\.scrollTop/)
   assert.match(source, /wrap: 'off'/)
+})
+
+test('Settings Document Editor intercepts old and getter-backed open methods with their native result shapes', async () => {
+  const source = await readFile(new URL('lib/client.js', root), 'utf8')
+  const definition = source.slice(source.indexOf('function interceptDocumentOpen'), source.indexOf('\n\nexport function apply'))
+  const interceptDocumentOpen = new Function(`${definition}; return interceptDocumentOpen`)()
+  let opens = 0
+  const controller = { open: async () => { opens += 1 } }
+
+  for (const [method, result, getterBacked] of [
+    ['openDocument', { result: { ok: true, value: { opened: true } } }, false],
+    ['openSettingsDocument', { ok: true, value: { opened: true } }, true],
+  ]) {
+    const original = async () => ({ original: true })
+    const target = getterBacked ? {} : { [method]: original }
+    if (getterBacked) Object.defineProperty(target, method, {
+      configurable: true,
+      enumerable: true,
+      get: () => original,
+    })
+    const restore = interceptDocumentOpen(target, method, controller, result)
+    assert.deepEqual(await target[method](), result)
+    restore()
+    assert.equal(target[method], original)
+  }
+  assert.equal(opens, 2)
 })
 
 test('Settings Document Editor follows DSH tokens and has a mobile layout', async () => {

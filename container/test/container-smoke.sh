@@ -21,7 +21,8 @@ wait_platform_ready() {
   started="$(date +%s%3N)"
   while ! docker exec "$container" sh -c '
     curl --fail --silent http://127.0.0.1:3080/_dsh_gateway/health >/dev/null \
-      && curl --fail --silent --noproxy "*" http://127.0.0.1:3079/ >/dev/null \
+      && test "$(curl --silent --output /dev/null --write-out "%{http_code}" --noproxy "*" http://127.0.0.1:3079/)" -ge 200 \
+      && test "$(curl --silent --output /dev/null --write-out "%{http_code}" --noproxy "*" http://127.0.0.1:3079/)" -lt 500 \
       && dsh-platform status | jq -e '\''.dshLifecycle.state == "running"'\'' >/dev/null
   ' >/dev/null 2>&1; do
     now="$(date +%s%3N)"
@@ -621,7 +622,9 @@ until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   [ "$attempt" -lt 100 ] || exit 1
   sleep 0.1
 done
-docker exec "$container" curl --fail --silent http://127.0.0.1:3079/ >/dev/null
+internal_status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
+  http://127.0.0.1:3079/)"
+[ "$internal_status" -ge 200 ] && [ "$internal_status" -lt 500 ]
 docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/ >/dev/null
@@ -643,7 +646,9 @@ docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"user-plugin.apply.failed"' >/dev/null
 docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
-docker exec "$container" curl --fail --silent --noproxy '*' http://127.0.0.1:3079/ >/dev/null
+internal_status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' \
+  http://127.0.0.1:3079/)"
+[ "$internal_status" -ge 200 ] && [ "$internal_status" -lt 500 ]
 
 docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
@@ -757,8 +762,9 @@ if docker exec --user node "$container" curl --silent --unix-socket /run/dsh-pla
   exit 1
 fi
 
-docker exec "$container" curl --fail --silent --noproxy '*' \
-  http://127.0.0.1:3079/ >/dev/null
+internal_status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' \
+  http://127.0.0.1:3079/)"
+[ "$internal_status" -ge 200 ] && [ "$internal_status" -lt 500 ]
 
 container_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container")"
 if docker exec "$container" curl --fail --silent --max-time 2 --noproxy '*' \

@@ -6,20 +6,29 @@ import { fileURLToPath } from 'node:url'
 
 const RUN_ROOT = process.env.DSH_PLATFORM_RUN ?? '/run/dsh-platform'
 
-function fetch(host, port, path, options = {}) {
+function fetchResponse(host, port, path, options = {}) {
   return new Promise((resolve, reject) => {
     const outgoing = request({ hostname: host, port, path, ...options }, response => {
       const chunks = []
       response.on('data', chunk => chunks.push(chunk))
       response.once('end', () => {
-        if (response.statusCode !== 200) reject(new Error(`${path} returned HTTP ${String(response.statusCode)}`))
-        else resolve(Buffer.concat(chunks))
+        resolve({
+          body: Buffer.concat(chunks),
+          headers: response.headers,
+          status: response.statusCode,
+        })
       })
     })
-    outgoing.setTimeout(2_000, () => outgoing.destroy(new Error(`${path} timed out`)))
+    outgoing.setTimeout(2_000, () => outgoing.destroy(new Error('DSH Web request timed out')))
     outgoing.once('error', reject)
     outgoing.end(options.body)
   })
+}
+
+async function fetch(host, port, path, options = {}) {
+  const response = await fetchResponse(host, port, path, options)
+  if (response.status !== 200) throw new Error(`${path} returned HTTP ${String(response.status)}`)
+  return response.body
 }
 
 function delay(milliseconds) {
@@ -46,7 +55,11 @@ function lifecycleReadiness() {
           return
         }
         try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))?.ready === true)
+          const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          resolve({
+            ready: value?.ready === true,
+            readyUrl: typeof value?.readyUrl === 'string' ? value.readyUrl : null,
+          })
         } catch (error) {
           reject(error)
         }
@@ -61,14 +74,33 @@ function lifecycleReadiness() {
 async function waitForManagedReady(timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (await lifecycleReadiness()) return
+    const readiness = await lifecycleReadiness()
+    if (readiness.ready) return readiness
     await delay(100)
   }
   throw new Error('DSH managed Web boot did not complete')
 }
 
-async function verifyBootManifest(host, port) {
-  const html = (await fetch(host, port, '/')).toString('utf8')
+async function authenticationHeaders(host, port, readyUrl) {
+  if (readyUrl === null) return {}
+  const url = new URL(readyUrl)
+  if (url.protocol !== 'http:' || url.hostname !== host || Number(url.port) !== port
+    || url.pathname !== '/' || url.username !== '' || url.password !== '' || url.hash !== ''
+    || url.searchParams.getAll('token').length !== 1) {
+    throw new Error('DSH Web readiness URL is invalid')
+  }
+  const exchange = await fetchResponse(host, port, `${url.pathname}${url.search}`, {
+    headers: { 'cache-control': 'no-store' },
+  })
+  const cookie = exchange.headers['set-cookie']?.[0]?.split(';', 1)[0]
+  if (exchange.status !== 303 || exchange.headers.location !== '/' || typeof cookie !== 'string' || cookie === '') {
+    throw new Error('DSH Web authentication exchange failed')
+  }
+  return { cookie }
+}
+
+async function verifyBootManifest(host, port, headers) {
+  const html = (await fetch(host, port, '/', { headers })).toString('utf8')
   const match = /(?:window\.__DSH_BOOT__|globalThis\["__DSH_BOOT__"\])\s*=\s*(\{.*?\})<\/script>/s.exec(html)
   if (match === null) throw new Error('DSH boot manifest is unavailable')
   const manifest = JSON.parse(match[1])
@@ -77,11 +109,11 @@ async function verifyBootManifest(host, port) {
     if (typeof entry?.url !== 'string' || !entry.url.startsWith('/plugins/')) {
       throw new Error('DSH boot manifest contains an invalid Plugin URL')
     }
-    await fetch(host, port, entry.url)
+    await fetch(host, port, entry.url, { headers })
   }))
 }
 
-async function verifyPluginInventory(host, port) {
+async function verifyPluginInventory(host, port, headers) {
   const body = JSON.stringify({
     type: 'client-request',
     rpcId: 'dsh-platform-readiness',
@@ -91,6 +123,7 @@ async function verifyPluginInventory(host, port) {
   const response = JSON.parse((await fetch(host, port, '/api/pluginInventory/list', {
     method: 'POST',
     headers: {
+      ...headers,
       'content-length': Buffer.byteLength(body),
       'content-type': 'application/json',
     },
@@ -115,12 +148,13 @@ export async function verifyDshWebReady({
   stabilityMs = 1_000,
   managedReady = waitForManagedReady,
 } = {}) {
-  await managedReady()
-  await verifyBootManifest(host, port)
-  await verifyPluginInventory(host, port)
+  const readiness = await managedReady()
+  const headers = await authenticationHeaders(host, port, readiness?.readyUrl ?? null)
+  await verifyBootManifest(host, port, headers)
+  await verifyPluginInventory(host, port, headers)
   if (stabilityMs > 0) await delay(stabilityMs)
-  await verifyBootManifest(host, port)
-  await verifyPluginInventory(host, port)
+  await verifyBootManifest(host, port, headers)
+  await verifyPluginInventory(host, port, headers)
 }
 
 if (process.argv[1] !== undefined

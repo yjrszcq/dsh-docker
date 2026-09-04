@@ -14,6 +14,7 @@ import {
   createGatewayServer as createGatewayServerBase,
   HEALTH_PATH,
   INTERNAL_AUTHORITY,
+  applyDshUpstreamCookie,
   upstreamRequestHeaders,
 } from '../lib/proxy.mjs'
 const AUTHENTICATED_BROWSER = Object.freeze({
@@ -227,6 +228,13 @@ test('upstream headers remove connection tokens and gateway authorization', () =
   assert.equal(management.forwarded, 'for=198.51.100.4')
   assert.equal(management['x-forwarded-for'], '198.51.100.4')
   assert.equal(management['x-real-ip'], '198.51.100.4')
+})
+
+test('Gateway replaces browser-supplied DSH authentication with its internal cookie', () => {
+  const headers = { cookie: 'theme=dark; dsh-auth-forged=attacker; plugin=value' }
+  assert.deepEqual(applyDshUpstreamCookie(headers, 'dsh-auth-internal=signed'), {
+    cookie: 'theme=dark; plugin=value; dsh-auth-internal=signed',
+  })
 })
 
 test('upstream responses cannot replace Gateway authentication cookies', async () => {

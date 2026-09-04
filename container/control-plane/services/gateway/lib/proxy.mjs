@@ -163,6 +163,18 @@ export function upstreamRequestHeaders(headers, { dsh = true } = {}) {
   return rewritten
 }
 
+export function applyDshUpstreamCookie(headers, cookie) {
+  if (typeof cookie !== 'string' || cookie === '') return headers
+  const current = typeof headers.cookie === 'string'
+    ? headers.cookie.split(';').map(value => value.trim()).filter(value => {
+        const separator = value.indexOf('=')
+        return separator > 0 && !value.slice(0, separator).startsWith('dsh-auth-')
+      })
+    : []
+  headers.cookie = [...current, cookie].join('; ')
+  return headers
+}
+
 function rejectHttp(response, status, message) {
   if (response.headersSent) {
     response.destroy()
@@ -350,14 +362,16 @@ function isJavaScriptBundle(value) {
     && /(?:java|ecma)script/i.test(contentType)
 }
 
-function fetchPluginBundle(request, options) {
+async function fetchPluginBundle(request, options) {
+  const headers = upstreamRequestHeaders(request.headers)
+  applyDshUpstreamCookie(headers, await options.dshUpstreamAuthentication.cookie())
   return new Promise((resolvePromise, rejectPromise) => {
     const upstream = httpRequest({
       hostname: options.upstreamHost,
       port: options.upstreamPort,
       method: request.method,
       path: request.url,
-      headers: upstreamRequestHeaders(request.headers),
+      headers,
     })
     upstream.once('response', (upstreamResponse) => {
       void (async () => {
@@ -624,10 +638,13 @@ async function rejectDshFailure(request, response, options) {
   return state
 }
 
-function proxyHttp(request, response, options) {
+async function proxyHttp(request, response, options) {
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const context = requestContext(request)
   const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
+  if (upstreamType === 'dsh') {
+    applyDshUpstreamCookie(headers, await options.dshUpstreamAuthentication.cookie())
+  }
   if (typeof options.internalCapability === 'string') delete headers.cookie
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
@@ -745,11 +762,14 @@ function serializeUpgradeRequest(request, headers, target = request.url ?? '/') 
   return `${lines.join('\r\n')}\r\n\r\n`
 }
 
-function proxyUpgrade(request, clientSocket, head, options) {
+async function proxyUpgrade(request, clientSocket, head, options) {
   const context = requestContext(request)
   const upstreamType = options.socketPath === undefined ? 'dsh' : 'management'
   const failureKey = `${upstreamType}-websocket`
   const headers = upstreamRequestHeaders(request.headers, { dsh: upstreamType === 'dsh' })
+  if (upstreamType === 'dsh') {
+    applyDshUpstreamCookie(headers, await options.dshUpstreamAuthentication.cookie())
+  }
   if (typeof options.internalCapability === 'string') delete headers.cookie
   if (options.preserveAuthorization === true && typeof request.headers.authorization === 'string') {
     headers.authorization = request.headers.authorization
@@ -818,6 +838,7 @@ export function createGatewayServer({
     enterManagement: async (request, response) => rejectDshAuthentication(request, response, safeReturnPath),
     handle: async () => false,
   }),
+  dshUpstreamAuthentication = Object.freeze({ cookie: async () => null }),
   report = async () => {},
   now = () => Date.now(),
   failureLogIntervalMs = 30_000,
@@ -873,7 +894,7 @@ export function createGatewayServer({
   }
   const options = {
     trustedHosts, polyfill, upstreamHost, upstreamPort, managementSocketPath, maintenanceSocketPath, systemPluginRoot, platformStatus,
-    availability, probe, isReady, browserAuthentication, reportFailure, reportRecovered,
+    availability, probe, isReady, browserAuthentication, dshUpstreamAuthentication, reportFailure, reportRecovered,
     now, pluginBundleHoldTimeoutMs, pluginBundlePollIntervalMs, pluginBundleMaxBytes,
     pluginBundleRecentWindowMs, pluginBundleCache: createPluginBundleCache(pluginBundleCacheMaxBytes),
     pluginRecoveryAvailable, consumePluginRecovery,
@@ -988,7 +1009,7 @@ export function createGatewayServer({
           }
           const capability = await requireManagement('management', upstreamPath)
           if (capability === undefined) return
-          proxyHttp(request, response, {
+          await proxyHttp(request, response, {
             ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
             ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
           })
@@ -1002,7 +1023,7 @@ export function createGatewayServer({
         const audience = socketPath === options.maintenanceSocketPath ? 'maintenance' : 'management'
         const capability = await requireManagement(audience, upstreamPath)
         if (capability === undefined) return
-        proxyHttp(request, response, {
+        await proxyHttp(request, response, {
           ...options, socketPath, polyfill: false, upstreamPath,
           ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
         })
@@ -1015,7 +1036,7 @@ export function createGatewayServer({
         }
         const capability = await requireManagement('management')
         if (capability === undefined) return
-        proxyHttp(request, response, {
+        await proxyHttp(request, response, {
           ...options, socketPath: options.managementSocketPath, polyfill: false,
           ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
         })
@@ -1035,7 +1056,7 @@ export function createGatewayServer({
           rejectDshAuthentication(request, response, safeReturnPath)
           return
         }
-        proxyHttp(request, response, {
+        await proxyHttp(request, response, {
           ...options, socketPath: options.managementSocketPath, polyfill: false, upstreamPath,
           internalCapability: authorization.capability.token,
           internalCapabilityAudience: 'plugin',
@@ -1051,7 +1072,7 @@ export function createGatewayServer({
         const audience = socketPath === options.maintenanceSocketPath ? 'maintenance' : 'management'
         const capability = await requireManagement(audience)
         if (capability === undefined) return
-        proxyHttp(request, response, {
+        await proxyHttp(request, response, {
           ...options, socketPath, polyfill: false,
           ...(typeof capability === 'string' ? { internalCapability: capability } : {}),
         })
@@ -1132,7 +1153,7 @@ export function createGatewayServer({
         })
         return
       }
-      proxyHttp(request, response, { ...options, trackDsh: true })
+      await proxyHttp(request, response, { ...options, trackDsh: true })
     } catch (error) {
       reportFailure('gateway-request', 'gateway.request.failed', { ...requestContext(request), error })
       if (error?.browserAuthenticationBackend === true) rejectHttp(response, 503, 'authentication service unavailable')
@@ -1186,7 +1207,7 @@ export function createGatewayServer({
           }
           upgradedSockets.add(socket)
           socket.once('close', () => upgradedSockets.delete(socket))
-          proxyUpgrade(request, socket, head, {
+          await proxyUpgrade(request, socket, head, {
             ...options, socketPath: options.maintenanceSocketPath,
             upstreamPath,
             ...(typeof authorization.capability?.token === 'string'
@@ -1205,7 +1226,7 @@ export function createGatewayServer({
         }
         upgradedSockets.add(socket)
         socket.once('close', () => upgradedSockets.delete(socket))
-        proxyUpgrade(request, socket, head, options)
+        await proxyUpgrade(request, socket, head, options)
       })().catch(error => {
         reportFailure('gateway-upgrade-authentication', 'gateway.upgrade-authentication.failed', {
           ...requestContext(request), error,

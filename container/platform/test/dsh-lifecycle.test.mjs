@@ -31,9 +31,9 @@ test('authorizes exactly one claim for each supervised DSH launch', async () => 
   const launch = broker.prepareLaunch('dsh-runtime')
   const first = broker.claim(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN)
   assert.match(first.sessionId, /^[0-9a-f-]{36}$/)
-  assert.deepEqual(broker.readiness(), { ready: false })
+  assert.deepEqual(broker.readiness(), { ready: false, readyUrl: null })
   assert.deepEqual(broker.ready(first.sessionId), { ready: true })
-  assert.deepEqual(broker.readiness(), { ready: true })
+  assert.deepEqual(broker.readiness(), { ready: true, readyUrl: null })
   assert.throws(() => broker.claim(launch.environment.DSH_PLATFORM_LAUNCH_TOKEN), /already consumed/)
   launch.release()
   await assert.rejects(broker.signal(first.sessionId, 'SIGTERM'), /session is invalid/)
@@ -87,7 +87,12 @@ test('serves launch ownership and readiness over a private Unix socket', async t
   assert.equal(claim.status, 200)
   assert.deepEqual(await call(socketPath, '/v1/runtime/readiness', {}), {
     status: 200,
-    body: { ready: false },
+    body: { ready: false, readyUrl: null },
+  })
+  const readyUrl = 'http://127.0.0.1:3079/?token=fixture-token'
+  assert.deepEqual(await call(socketPath, '/v1/runtime/ready', { readyUrl, sessionId: claim.body.sessionId }), {
+    status: 200,
+    body: { ready: true },
   })
   assert.deepEqual(await call(socketPath, '/v1/runtime/ready', { sessionId: claim.body.sessionId }), {
     status: 200,
@@ -95,7 +100,7 @@ test('serves launch ownership and readiness over a private Unix socket', async t
   })
   assert.deepEqual(await call(socketPath, '/v1/runtime/readiness', {}), {
     status: 200,
-    body: { ready: true },
+    body: { ready: true, readyUrl },
   })
   const signal = await call(socketPath, '/v1/runtime/signal', {
     sessionId: claim.body.sessionId,

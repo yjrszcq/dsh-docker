@@ -5,7 +5,7 @@ const { createPortal } = require('react-dom')
 const API = '/_dsh_platform/plugin-api/v1/settings-document'
 const h = React.createElement
 
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'remote']
 
 function browserCookie(name) {
   for (const part of document.cookie.split(';')) {
@@ -192,6 +192,25 @@ function Editor({ controller, t }) {
             h('button', { className: css.danger, type: 'button', onClick: () => controller.close() }, t('discard'))))) : null)), document.body)
 }
 
+function interceptDocumentOpen(target, method, controller, result) {
+  const descriptor = Object.getOwnPropertyDescriptor(target, method)
+  const intercepted = async () => {
+    void controller.open()
+    return result
+  }
+  Object.defineProperty(target, method, {
+    configurable: true,
+    enumerable: descriptor?.enumerable ?? true,
+    value: intercepted,
+    writable: true,
+  })
+  return () => {
+    if (target[method] !== intercepted) return
+    if (descriptor === undefined) Reflect.deleteProperty(target, method)
+    else Object.defineProperty(target, method, descriptor)
+  }
+}
+
 export function apply(ctx) {
   const controller = new DocumentController()
   ctx.effect(() => ctx.locale.register('settings.dshDocumentEditor', {
@@ -210,17 +229,23 @@ export function apply(ctx) {
   }), 'dsh-settings-document-editor: locale')
 
   const connection = ctx.get('connection')
-  ctx.effect(() => {
-    const original = connection.api.settings.openDocument
-    const intercepted = async () => {
-      void controller.open()
-      return { result: { ok: true, value: { opened: true } } }
-    }
-    connection.api.settings.openDocument = intercepted
-    return () => {
-      if (connection.api.settings.openDocument === intercepted) connection.api.settings.openDocument = original
-    }
-  }, 'dsh-settings-document-editor: open action')
+  if (typeof connection.api?.settings?.openDocument === 'function') {
+    ctx.effect(() => interceptDocumentOpen(
+      connection.api.settings,
+      'openDocument',
+      controller,
+      { result: { ok: true, value: { opened: true } } },
+    ), 'dsh-settings-document-editor: legacy open action')
+  } else {
+    ctx.inject(['remote.settings'], child => {
+      child.effect(() => interceptDocumentOpen(
+        child.remote.settings,
+        'openSettingsDocument',
+        controller,
+        { ok: true, value: { opened: true } },
+      ), 'dsh-settings-document-editor: open action')
+    })
+  }
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',

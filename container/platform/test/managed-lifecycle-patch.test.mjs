@@ -284,8 +284,16 @@ test('gates only managed Web launches and routes restart through Management', as
       JSON.parse(await readFile(profileManifest, 'utf8')).dsh.profile.bundles,
       ['built-in-bundle', 'missing-dependency'],
     )
-    await adapter.markManagedReady()
+    await adapter.markManagedReady({
+      get: name => name === 'connection'
+        ? { authenticatedUrl: base => `${base}/?token=fixture-token` }
+        : name === 'webServer' ? { port: 3079 } : undefined,
+    })
     assert.equal(calls.some(value => value.socket === 'broker' && value.path === '/v1/runtime/ready'), true)
+    assert.deepEqual(calls.find(value => value.path === '/v1/runtime/ready')?.body, {
+      sessionId: 'session-1',
+      readyUrl: 'http://127.0.0.1:3079/?token=fixture-token',
+    })
     let provided
     adapter.provideManagedLifecycle({ provide: (name, value) => { provided = { name, value } } })
     assert.equal(provided.name, 'dshPlatformLifecycle')

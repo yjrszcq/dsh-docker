@@ -13,7 +13,7 @@ const SIGTERM_PATCHED = 'process.on("SIGTERM", managedSigtermHandler(interrupt))
 const HOST_PROVIDER = 'hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment);'
 const HOST_PROVIDER_PATCHED = `${HOST_PROVIDER}\n\t\tprovideManagedLifecycle(hostCtx);`
 const PROFILE_RETURN = '\treturn {\n\t\tctx,\n\t\tshutdown\n\t};'
-const PROFILE_RETURN_PATCHED = '\tif (ctx.get("loader") !== void 0) await markManagedReady();\n' + PROFILE_RETURN
+const PROFILE_RETURN_PATCHED = '\tif (ctx.get("loader") !== void 0) await markManagedReady(ctx);\n' + PROFILE_RETURN
 
 const PROFILE_PACKAGE_STORAGE_SOURCE = String.raw`import {
 	closeSync, cpSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync,
@@ -412,10 +412,17 @@ export function managedSigtermHandler(interrupt) {
 	};
 }
 
-export async function markManagedReady() {
+export async function markManagedReady(ctx) {
 	if (managedSessionId === null) return;
+	const connection = ctx?.get?.("connection");
+	const webServer = ctx?.get?.("webServer");
+	const readyUrl = typeof connection?.authenticatedUrl === "function"
+		&& Number.isInteger(webServer?.port)
+		? connection.authenticatedUrl("http://127.0.0.1:" + String(webServer.port))
+		: null;
 	await requestJson(socketPath("dsh-lifecycle.sock"), "POST", "/v1/runtime/ready", {
-		sessionId: managedSessionId
+		sessionId: managedSessionId,
+		readyUrl
 	});
 }
 

@@ -11,6 +11,8 @@ test('Settings Navigation is a browser-only optional System Plugin', async () =>
   assert.equal(metadata.name, '@dsh-docker/settings-navigation')
   assert.equal(metadata.dshDocker.description.zh, '优化 DSH 设置目录滚动和窄屏分级导航。')
   assert.equal(metadata.dsh.client.platform, 'web')
+  assert.equal(metadata.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'), false)
+  assert.equal(metadata.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)
   assert.equal(metadata.exports['./client'], './lib/client.bundle.js')
   assert.equal(patch[0].insert[0].id, 'dsh-docker.settings-navigation.plugin')
   assert.equal(patch[0].insert[0].name, metadata.name)

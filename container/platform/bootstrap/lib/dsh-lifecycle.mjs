@@ -84,19 +84,33 @@ export class DshLifecycleBroker {
     return Object.freeze({ sessionId })
   }
 
-  ready(sessionId) {
+  ready(sessionId, readyUrl = null) {
     if (this.session === null || !matchesSecret(sessionId, this.session.id)) {
       throw Object.assign(new Error('DSH lifecycle session is invalid'), { statusCode: 409 })
     }
+    if (readyUrl !== null) {
+      let parsed
+      try {
+        parsed = new URL(readyUrl)
+      } catch {
+        throw Object.assign(new Error('DSH Web readiness URL is invalid'), { statusCode: 400 })
+      }
+      if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1'
+        || parsed.pathname !== '/' || parsed.username !== '' || parsed.password !== ''
+        || parsed.hash !== '' || parsed.searchParams.getAll('token').length !== 1) {
+        throw Object.assign(new Error('DSH Web readiness URL is invalid'), { statusCode: 400 })
+      }
+    }
     if (!this.session.ready) {
-      this.session = Object.freeze({ ...this.session, ready: true })
+      this.session = Object.freeze({ ...this.session, ready: true, readyUrl })
       void this.record('dsh.launch.ready')
     }
     return Object.freeze({ ready: true })
   }
 
   readiness() {
-    return Object.freeze({ ready: this.session?.ready === true })
+    const ready = this.session?.ready === true
+    return Object.freeze({ ready, readyUrl: ready ? this.session.readyUrl ?? null : null })
   }
 
   async signal(sessionId, signal) {
@@ -129,8 +143,11 @@ export function createDshLifecycleServer(broker) {
         const body = exactObject(await jsonBody(request), ['launchToken'], 'claim request')
         send(response, 200, broker.claim(body.launchToken))
       } else if (pathname === '/v1/runtime/ready') {
-        const body = exactObject(await jsonBody(request), ['sessionId'], 'ready request')
-        send(response, 200, broker.ready(body.sessionId))
+        const value = await jsonBody(request)
+        const body = Object.hasOwn(value, 'readyUrl')
+          ? exactObject(value, ['readyUrl', 'sessionId'], 'ready request')
+          : exactObject(value, ['sessionId'], 'ready request')
+        send(response, 200, broker.ready(body.sessionId, body.readyUrl ?? null))
       } else if (pathname === '/v1/runtime/readiness') {
         exactObject(await jsonBody(request), [], 'readiness request')
         send(response, 200, broker.readiness())
