@@ -84,12 +84,16 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            source/container/control-plane/services/management/package-lock.json
+            source/container/environment/resources/plugins/platform-management/package/package-lock.json
 
       - name: Install Management runtime dependencies
         working-directory: source
         run: |
-          npm ci --omit=dev --ignore-scripts --prefix container/control-plane/services/management
-          npm ci --omit=dev --ignore-scripts --legacy-peer-deps --prefix container/environment/resources/plugins/platform-management/package
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund --prefix container/control-plane/services/management
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund --legacy-peer-deps --prefix container/environment/resources/plugins/platform-management/package
 
       - name: Verify gateway and Compose configuration
         working-directory: source
