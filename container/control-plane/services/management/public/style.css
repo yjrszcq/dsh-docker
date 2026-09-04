@@ -243,7 +243,7 @@ button.primary { background: var(--text); color: var(--surface); }
 button.secondary { border: 1px solid var(--border); }
 button.danger { background: var(--danger); color: var(--button-text); }
 button.danger-text { color: var(--danger); }
-button.compact { min-height: 28px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
+button.compact { min-height: 28px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 11px; }
 button:hover:not(:disabled) { background: var(--hover); }
 button.primary:hover:not(:disabled) { opacity: .86; background: var(--text); }
 button.danger:hover:not(:disabled) { opacity: .9; background: var(--danger); }
@@ -719,7 +719,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .log-list:focus
 .user-plugin-description.expanded { overflow: visible; text-overflow: clip; white-space: normal; }
 .user-plugin-description.expanded::after { top: 9px; transform: rotate(225deg); }
 .user-plugin-main > .user-plugin-description { display: block; width: 100%; margin-top: 2px; }
-.user-plugin-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
+.user-plugin-badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 10px; line-height: 16px; }
 .user-plugin-badge.enabled { color: var(--success); }
 .user-plugin-badge.warning, .user-plugin-badge.pending { color: var(--warning); }
 .user-plugin-badge.danger { color: var(--danger); }
