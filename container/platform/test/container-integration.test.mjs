@@ -181,8 +181,8 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
   const ignore = await readFile(new URL('../../../.dockerignore', import.meta.url), 'utf8')
   const seed = await readFile(new URL('../stage0/lib/seed.mjs', import.meta.url), 'utf8')
   const buildSeed = await readFile(new URL('../tools/build-seed.mjs', import.meta.url), 'utf8')
-  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts[\s\S]*--prefix \/opt\/dsh-platform-source\/control-plane\/services\/management/)
-  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts --legacy-peer-deps[\s\S]*--prefix \/opt\/dsh-platform-source\/environment\/resources\/plugins\/platform-management\/package/)
+  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts --no-audit --no-fund[\s\S]*--prefix \/opt\/dsh-platform-source\/control-plane\/services\/management/)
+  assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts --no-audit --no-fund --legacy-peer-deps[\s\S]*--prefix \/opt\/dsh-platform-source\/environment\/resources\/plugins\/platform-management\/package/)
   assert.match(dockerfile, /util-linux/)
   assert.match(dockerfile, /\n\s+g\+\+ \\\n/)
   assert.match(dockerfile, /\n\s+make \\\n/)
@@ -191,6 +191,12 @@ test('Docker installs locked Management dependencies inside the Seed stage only'
   assert.match(seed, /paths\.managementStateRoot, paths\.fileTasksRoot/)
   assert.match(seed, /paths\.userPluginSnapshotsRoot/)
   assert.match(buildSeed, /file-manager/)
+  const managementManifest = dockerfile.indexOf('COPY container/control-plane/services/management/package.json')
+  const pluginManifest = dockerfile.indexOf('COPY container/environment/resources/plugins/platform-management/package/package.json')
+  const dependencyInstall = dockerfile.indexOf('RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund')
+  const sourceCopy = dockerfile.indexOf('COPY container /opt/dsh-platform-source')
+  assert.ok(managementManifest >= 0 && pluginManifest > managementManifest)
+  assert.ok(dependencyInstall > pluginManifest && sourceCopy > dependencyInstall)
 })
 
 test('local Docker builds resolve the default DSH from the supported target without a sticky latest cache', async () => {

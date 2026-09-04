@@ -33,13 +33,18 @@ RUN apt-get update \
 FROM node:24-bookworm-slim AS platform-seed
 ARG PLATFORM_REVISION=development
 ARG SIGNED_IMAGE_INPUT
-COPY container /opt/dsh-platform-source
 COPY --from=installer /usr/local/lib/node_modules/@deepseek-ai/dsh /opt/installed-dsh
-RUN npm ci --omit=dev --ignore-scripts \
+COPY container/control-plane/services/management/package.json container/control-plane/services/management/package-lock.json \
+    /opt/dsh-platform-source/control-plane/services/management/
+COPY container/environment/resources/plugins/platform-management/package/package.json \
+    container/environment/resources/plugins/platform-management/package/package-lock.json \
+    /opt/dsh-platform-source/environment/resources/plugins/platform-management/package/
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       --prefix /opt/dsh-platform-source/control-plane/services/management \
-    && npm ci --omit=dev --ignore-scripts --legacy-peer-deps \
-      --prefix /opt/dsh-platform-source/environment/resources/plugins/platform-management/package \
-    && case "$SIGNED_IMAGE_INPUT" in \
+    && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --legacy-peer-deps \
+      --prefix /opt/dsh-platform-source/environment/resources/plugins/platform-management/package
+COPY container /opt/dsh-platform-source
+RUN case "$SIGNED_IMAGE_INPUT" in \
       true) image_input=/opt/dsh-platform-source/platform/image-input ;; \
       false) image_input=- ;; \
       *) echo "SIGNED_IMAGE_INPUT must be true or false" >&2; exit 64 ;; \
