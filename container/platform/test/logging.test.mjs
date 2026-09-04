@@ -168,18 +168,36 @@ test('captures one multiline Node error as one log entry', async () => {
   child.stderr = new PassThrough()
   logs.capture(child, 'dsh-runtime', { stdout: false, stderr: true })
 
-  child.stderr.write('file:///app/index.js:2\n  throw new Error("startup failed")\n')
-  child.stderr.end('        ^\n\nError: startup failed\n    at file:///app/index.js:2:9\n\nNode.js v24.20.0\n')
+  child.stderr.write('ordinary before\nfile:///app/index.js:2\n  throw new Error("startup failed")\n')
+  child.stderr.end('        ^\n\nError: startup failed\n    at file:///app/index.js:2:9\n\nNode.js v24.20.0\nordinary after\n')
   await new Promise(resolve => setImmediate(resolve))
   await logs.queue
 
   assert.deepEqual((await logs.query({ sources: ['dsh-runtime'] })).map(entry => ({
     level: entry.level,
     message: entry.message,
-  })), [{
-    level: 'error',
-    message: 'file:///app/index.js:2\n  throw new Error("startup failed")\n        ^\n\nError: startup failed\n    at file:///app/index.js:2:9\n\nNode.js v24.20.0',
-  }])
+  })), [
+    { level: 'info', message: 'ordinary before' },
+    {
+      level: 'error',
+      message: 'file:///app/index.js:2\n  throw new Error("startup failed")\n        ^\n\nError: startup failed\n    at file:///app/index.js:2:9\n\nNode.js v24.20.0',
+    },
+    { level: 'info', message: 'ordinary after' },
+  ])
+})
+
+test('does not group multiline stderr from other components', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-log-other-stderr-'))
+  const logs = new JsonlLogManager({ root })
+  const child = new EventEmitter()
+  child.stderr = new PassThrough()
+  logs.capture(child, 'gateway', { stdout: false, stderr: true })
+  child.stderr.end('Error: first line\n    at second line\nordinary line\n')
+  await new Promise(resolve => setImmediate(resolve))
+  await logs.queue
+  assert.deepEqual((await logs.query({ sources: ['gateway'] })).map(entry => entry.message), [
+    'Error: first line', '    at second line', 'ordinary line',
+  ])
 })
 
 test('mirrors new entries to the matching container output without replaying history', async () => {

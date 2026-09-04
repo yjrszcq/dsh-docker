@@ -82,11 +82,47 @@ export function capturedLogLevel(stream, message) {
   return 'info'
 }
 
-function isCapturedErrorBlock(stream, lines) {
-  return stream === 'stderr' && lines.length > 1 && lines.some(line => (
-    /^\s*(?:AggregateError|Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):/u.test(line)
-    || /^\s+at\s+/u.test(line)
-  ))
+const NODE_ERROR_LINE = /^\s*(?:AggregateError|Error|EvalError|RangeError|ReferenceError|SyntaxError|TypeError|URIError):/u
+const NODE_LOCATION_LINE = /^(?:file:\/\/|\/).*:\d+(?::\d+)?$/u
+
+function isNodeErrorContinuation(line) {
+  return line === ''
+    || /^\s/u.test(line)
+    || NODE_ERROR_LINE.test(line)
+    || /^Node\.js v\d/u.test(line)
+    || /^\s*(?:\[cause\]|\[errors\]|Caused by:)/u.test(line)
+    || /^\s*[{}\[\]},]+$/u.test(line)
+}
+
+function capturedMessages(source, stream, lines) {
+  if (source !== 'dsh-runtime' || stream !== 'stderr') return lines
+  const messages = []
+  let cursor = 0
+  while (cursor < lines.length) {
+    const relativeError = lines.slice(cursor).findIndex(line => NODE_ERROR_LINE.test(line))
+    if (relativeError < 0) {
+      messages.push(...lines.slice(cursor))
+      break
+    }
+    const errorIndex = cursor + relativeError
+    let start = errorIndex
+    for (let index = errorIndex - 1; index >= cursor && index >= errorIndex - 6; index -= 1) {
+      if (NODE_LOCATION_LINE.test(lines[index])) {
+        start = index
+        break
+      }
+    }
+    messages.push(...lines.slice(cursor, start))
+    let end = errorIndex + 1
+    while (end < lines.length && isNodeErrorContinuation(lines[end])) {
+      const terminal = /^Node\.js v\d/u.test(lines[end])
+      end += 1
+      if (terminal) break
+    }
+    messages.push(boundedString(lines.slice(start, end).join('\n')))
+    cursor = end
+  }
+  return messages
 }
 
 export class JsonlLogManager extends EventEmitter {
@@ -376,9 +412,7 @@ export class JsonlLogManager extends EventEmitter {
       let flushScheduled = false
       const appendLines = lines => {
         if (lines.length === 0) return
-        const messages = isCapturedErrorBlock(streamName, lines)
-          ? [boundedString(lines.join('\n'))]
-          : lines
+        const messages = capturedMessages(source, streamName, lines)
         for (const message of messages) {
           void this.append(source, streamName, message, { level: capturedLogLevel(streamName, message) })
             .catch(error => this.emit('error', error))
