@@ -222,6 +222,118 @@ let themePreference = (() => {
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]))
 const channelButtons = [...document.querySelectorAll('[data-channel]')]
 const tabButtons = [...document.querySelectorAll('[data-tab]')]
+elements['language-switch'].value = locale
+
+const customSelectMenus = new Set()
+const customSelectRefreshers = new Set()
+const customSelectValueSyncs = new WeakMap()
+const nativeSelectValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
+Object.defineProperty(HTMLSelectElement.prototype, 'value', {
+  configurable: nativeSelectValue.configurable,
+  enumerable: nativeSelectValue.enumerable,
+  get: nativeSelectValue.get,
+  set(value) {
+    nativeSelectValue.set.call(this, value)
+    customSelectValueSyncs.get(this)?.()
+  },
+})
+let openCustomSelect = null
+function enhanceSelect(select) {
+  if (select.closest('.custom-select')) return
+  const originalWidth = select.getBoundingClientRect().width
+  const wrapper = document.createElement('span')
+  wrapper.className = 'custom-select'
+  if (select.id === 'language-switch') wrapper.classList.add('language-switch-wrapper')
+  if (select.closest('.list-pagination, .file-pagination')) wrapper.classList.add('pagination-select-wrapper')
+  if (originalWidth > 0) wrapper.style.width = `${originalWidth}px`
+  select.parentNode.insertBefore(wrapper, select)
+  wrapper.append(select)
+  select.classList.add('custom-select-native')
+  const trigger = document.createElement('button')
+  trigger.type = 'button'
+  trigger.className = 'custom-select-trigger'
+  if (select.id === 'language-switch') trigger.classList.add('language-switch-trigger')
+  const triggerLabel = document.createElement('span')
+  triggerLabel.className = 'custom-select-label'
+  trigger.append(triggerLabel)
+  trigger.setAttribute('aria-haspopup', 'listbox')
+  trigger.setAttribute('aria-expanded', 'false')
+  trigger.setAttribute('aria-controls', `${select.id}-menu`)
+  wrapper.append(trigger)
+  const menu = document.createElement('div')
+  menu.id = `${select.id}-menu`
+  menu.className = 'custom-select-menu'
+  if (select.id === 'language-switch') menu.classList.add('language-switch-menu')
+  if (select.closest('.list-pagination, .file-pagination')) menu.classList.add('pagination-select-menu')
+  if (select.closest('.log-filters')) menu.classList.add('log-filter-menu')
+  menu.setAttribute('role', 'listbox')
+  document.body.append(menu)
+  customSelectMenus.add(menu)
+  const sync = () => {
+    const selected = select.options[select.selectedIndex]
+    triggerLabel.textContent = selected?.textContent ?? ''
+    trigger.setAttribute('aria-label', select.getAttribute('aria-label') ?? '')
+    for (const option of menu.children) option.setAttribute('aria-selected', String(option.dataset.value === select.value))
+  }
+  const render = () => {
+    menu.replaceChildren(...[...select.options].map(option => {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'custom-select-option'
+      item.dataset.value = option.value
+      item.textContent = option.textContent
+      item.setAttribute('role', 'option')
+      item.addEventListener('click', () => {
+        select.value = option.value
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+        sync()
+        close()
+      })
+      return item
+    }))
+    sync()
+  }
+  customSelectRefreshers.add(render)
+  customSelectValueSyncs.set(select, sync)
+  const close = () => {
+    menu.dataset.open = 'false'
+    trigger.setAttribute('aria-expanded', 'false')
+    if (openCustomSelect === close) openCustomSelect = null
+  }
+  const position = () => {
+    const rect = trigger.getBoundingClientRect()
+    const gap = 4
+    const maxHeight = Math.min(window.innerHeight * .45, 360)
+    menu.style.maxHeight = `${maxHeight}px`
+    menu.style.width = 'max-content'
+    menu.style.minWidth = `${rect.width}px`
+    const menuWidth = Math.min(Math.max(rect.width, menu.getBoundingClientRect().width), window.innerWidth - 8)
+    menu.style.width = `${menuWidth}px`
+    const menuHeight = Math.min(menu.scrollHeight, maxHeight)
+    const below = window.innerHeight - rect.bottom - gap
+    const above = rect.top - gap
+    const top = below >= menuHeight || below >= above ? rect.bottom + gap : rect.top - menuHeight - gap
+    menu.style.left = `${Math.max(4, Math.min(rect.left, window.innerWidth - menuWidth - 4))}px`
+    menu.style.top = `${Math.max(4, top)}px`
+  }
+  menu.addEventListener('reposition', position)
+  trigger.addEventListener('click', () => {
+    if (menu.dataset.open === 'true') return close()
+    if (openCustomSelect) openCustomSelect()
+    render()
+    menu.dataset.open = 'true'
+    position()
+    trigger.setAttribute('aria-expanded', 'true')
+    openCustomSelect = close
+  })
+  select.addEventListener('change', sync)
+  render()
+}
+for (const select of document.querySelectorAll('select')) enhanceSelect(select)
+document.addEventListener('click', event => {
+  if (!event.target.closest('.custom-select')) openCustomSelect?.()
+})
+window.addEventListener('resize', () => openCustomSelect && document.querySelector('.custom-select-menu[data-open="true"]') && [...customSelectMenus].forEach(menu => { if (menu.dataset.open === 'true') menu.dispatchEvent(new Event('reposition')) }))
 makeHorizontalTabStripScrollable(document.querySelector('.tabs'))
 makeLogListVerticallyResizable(elements['log-resize-frame'], elements['log-resize-handle'])
 const RUNTIME_RESET_PHASES = Object.freeze({
@@ -281,6 +393,7 @@ const visibleOperationTasks = new Set()
 const operationResultTimers = new Map()
 let eventSource
 let logSource
+let logModuleCatalog = []
 let progressLogSource
 let progressLogKey
 let progressLogEntries = []
@@ -376,6 +489,7 @@ function applyTranslations() {
   for (const node of document.querySelectorAll('[data-i18n-title]')) node.setAttribute('title', t(node.dataset.i18nTitle))
   for (const node of document.querySelectorAll('[data-i18n-alt]')) node.setAttribute('alt', t(node.dataset.i18nAlt))
   for (const node of document.querySelectorAll('[data-log-limit]')) node.textContent = t('logDisplayLimitValue', { count: node.dataset.logLimit })
+  for (const refresh of customSelectRefreshers) refresh()
   elements['language-switch'].value = locale
   renderThemeControl()
   refreshProxyDescriptions()
@@ -2290,7 +2404,10 @@ function limitProcessedLogEntries(entries, limit) {
 
 function updateLogSources(entries) {
   const selected = elements['log-source'].value
-  const values = [...new Set(entries.map(item => item.value.source).filter(Boolean))].sort()
+  const values = [...new Set([
+    ...logModuleCatalog,
+    ...entries.map(item => item.value.source).filter(Boolean),
+  ])].sort()
   elements['log-source'].replaceChildren()
   const all = document.createElement('option')
   all.value = 'all'
@@ -2338,6 +2455,7 @@ function renderLogs() {
   elements['log-summary'].textContent = t('logCount', { shown: filtered.length, total: logDisplayLimit })
   elements['log-list'].replaceChildren()
   elements['log-list'].hidden = filtered.length === 0
+  elements['log-resize-frame'].hidden = filtered.length === 0
   elements['empty-logs'].hidden = filtered.length !== 0
   elements['empty-logs'].textContent = entries.length === 0 ? t('noLogs') : t('noMatchingLogs')
   for (const item of filtered) {
@@ -3768,6 +3886,7 @@ function renderProxyCatalog() {
     section.className = 'proxy-scope-group'
     const heading = document.createElement('h3')
     heading.textContent = catalog.groups?.[group]?.[locale] ?? group
+    heading.style.gridRow = `1 / span ${entries.length}`
     section.append(heading)
     for (const entry of entries) {
       const row = document.createElement('div')
@@ -4091,6 +4210,14 @@ function connectLogs({ force = false } = {}) {
   elements['log-connection'].dataset.state = 'connecting'
   elements['log-connection'].querySelector('strong').textContent = t('logsConnecting')
   logSource = new EventSource(`${API}/logs/stream?limit=${String(LOG_STREAM_LIMIT)}`)
+  logSource.addEventListener('sources', event => {
+    try {
+      const values = JSON.parse(event.data)
+      if (!Array.isArray(values)) return
+      logModuleCatalog = values.filter(value => typeof value === 'string' && value.length > 0).sort()
+      renderLogs()
+    } catch {}
+  })
   logSource.addEventListener('log', event => {
     logLastActivity = Date.now()
     try { appendLog(JSON.parse(event.data)) } catch {}
