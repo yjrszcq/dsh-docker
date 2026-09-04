@@ -27,3 +27,9 @@ test('fails closed when the upstream theme anchor changes', async () => {
   const { root } = await fixture('var corner_shape_css_default = "changed";')
   assert.throws(() => applyPatch(root), /found 0/)
 })
+
+test('allows upstream packages without the optional theme module', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-native-corners-absent-'))
+  assert.doesNotThrow(() => applyPatch(root))
+  assert.doesNotThrow(() => verifyPatch(root))
+})

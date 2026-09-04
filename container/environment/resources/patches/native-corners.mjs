@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -8,6 +8,7 @@ const BEFORE = 'var corner_shape_css_default = "@supports (corner-shape:superell
 const AFTER = 'var corner_shape_css_default = "";'
 
 export function patchNativeCorners(target) {
+  if (!existsSync(target)) return
   const source = readFileSync(target, 'utf8')
   const matches = source.split(BEFORE).length - 1
   if (matches !== 1) throw new Error(`Expected exactly one DSH global corner theme in ${target}, found ${matches}. The upstream package may have changed; review this patch before building.`)
@@ -20,6 +21,7 @@ export function applyPatch(dshRoot) {
 
 export function verifyPatch(dshRoot) {
   const target = resolve(dshRoot, NATIVE_CORNERS_RELATIVE_TARGET)
+  if (!existsSync(target)) return
   const source = readFileSync(target, 'utf8')
   if (source.split(AFTER).length - 1 !== 1 || source.includes(BEFORE)) throw new Error(`Native corners Patch verification failed for ${target}`)
 }
