@@ -578,7 +578,7 @@ ssh -L 3080:127.0.0.1:3080 user@server
 
 工作流从首个正式 `targetSequence: 1` 开始，将后续签名目标依次追加到 `release-channel` 分支。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。同一源码提交和 keyring 的失败任务重试会复用已经发布的目标，不会额外消耗序列。Recovery 私钥没有任何工作流输入。
 
-GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。
+GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。Bootstrap 内容发生变化时，还必须递增 [`container/platform/bootstrap/VERSION`](../../container/platform/bootstrap/VERSION)；发布检查会拒绝复用旧 Bootstrap 版本。
 
 准备 Environment 发布时，在仓库根目录运行：
 
