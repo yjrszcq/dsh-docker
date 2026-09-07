@@ -1339,11 +1339,32 @@ function toggleExpandedElement(element, identity, expanded) {
   })
 }
 
+const stableScrollPositions = new WeakMap()
+const scrollRestoreGenerations = new WeakMap()
+const trackedScrollableElements = new WeakSet()
+
+function trackScrollablePosition(element) {
+  if (trackedScrollableElements.has(element)) return
+  trackedScrollableElements.add(element)
+  stableScrollPositions.set(element, { left: element.scrollLeft, top: element.scrollTop })
+  element.addEventListener('scroll', () => {
+    if (scrollRestoreGenerations.has(element)) return
+    stableScrollPositions.set(element, { left: element.scrollLeft, top: element.scrollTop })
+  }, { passive: true })
+}
+
 function captureScrollablePositions(element, includeElement = false) {
   const positions = []
   for (let current = includeElement ? element : element.parentElement; current !== null; current = current.parentElement) {
     if (current === element || current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
-      positions.push([current, current.scrollLeft, current.scrollTop])
+      trackScrollablePosition(current)
+      if (!scrollRestoreGenerations.has(current)) {
+        stableScrollPositions.set(current, { left: current.scrollLeft, top: current.scrollTop })
+      }
+      const position = stableScrollPositions.get(current)
+      const generation = (scrollRestoreGenerations.get(current) ?? 0) + 1
+      scrollRestoreGenerations.set(current, generation)
+      positions.push([current, position.left, position.top, generation])
     }
   }
   return positions
@@ -1357,7 +1378,14 @@ function restoreScrollablePositions(positions) {
     }
   }
   restore()
-  window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    restore()
+    for (const [current, left, top, generation] of positions) {
+      if (scrollRestoreGenerations.get(current) !== generation) continue
+      scrollRestoreGenerations.delete(current)
+      stableScrollPositions.set(current, { left, top })
+    }
+  }))
 }
 
 function preserveScrollableAncestors(element, update) {
@@ -4208,7 +4236,16 @@ async function selectTab(tab) {
     button.tabIndex = active ? 0 : -1
     elements[`panel-${button.dataset.tab}`].hidden = !active
   }
-  tabButtons.find(button => button.dataset.tab === tab)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  const activeTab = tabButtons.find(button => button.dataset.tab === tab)
+  if (activeTab !== undefined) {
+    const tablist = activeTab.parentElement
+    const left = activeTab.offsetLeft
+    const right = left + activeTab.offsetWidth
+    const visibleLeft = tablist.scrollLeft
+    const visibleRight = visibleLeft + tablist.clientWidth
+    if (left < visibleLeft) tablist.scrollLeft = left
+    else if (right > visibleRight) tablist.scrollLeft = right - tablist.clientWidth
+  }
   if (tab === 'maintenance') {
     connectLogs()
   }
