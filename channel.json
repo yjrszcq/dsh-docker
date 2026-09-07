@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "sourceCommit": "cc61bb2a4082d931072a3d24322a5af18d9b5311",
+  "sourceCommit": "ce7483bdee30db1bd4bf22d72c69ddb82601ace6",
   "keyringSha256": "fa31652cbe2ea0b1cdf5c862c099dba9325a168eafe4cc2da06fae5ade0d6959",
-  "targetSequence": 29,
+  "targetSequence": 30,
   "dshVersion": "0.1.2-rc.1",
   "environmentVersion": "1.0.9"
 }
