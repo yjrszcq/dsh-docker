@@ -424,6 +424,8 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
     assert.match(page.body, /Math\.ceil\(\(retryUntil-Date\.now\(\)\)\/1000\)/)
     assert.match(page.body, /button\.disabled=true/)
     assert.match(page.body, /error\.hidden=true;button\.disabled=false/)
+    assert.match(page.body, /if\(response\.ok\)\{navigating=true;location\.replace/)
+    assert.match(page.body, /finally\{if\(!navigating&&retryUntil<=Date\.now\(\)\)button\.disabled=false;if\(!navigating\)button\.textContent=/)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const retryCookie = page.headers['set-cookie'][1].split(';')[0]
     const browserCookies = `${csrfCookie}; ${retryCookie}`
@@ -1150,6 +1152,8 @@ test('Management pending page asks only for the additional password', () => {
       assert.match(page.body, /Math\.ceil\(\(retryUntil-Date\.now\(\)\)\/1000\)/)
       assert.match(page.body, /button\.disabled=true/)
       assert.match(page.body, /error\.hidden=true;button\.disabled=false/)
+      assert.match(page.body, /if\(response\.ok\)\{navigating=true;location\.replace/)
+      assert.match(page.body, /finally\{if\(!navigating&&retryUntil<=Date\.now\(\)\)button\.disabled=false}/)
       assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/management\/pending" novalidate>/)
       assert.doesNotMatch(page.body, /minlength="8"|pattern="|field-error|Use 8 to 1024 characters/)
       assert.doesNotMatch(page.body, /name="username"|management\/session/)
