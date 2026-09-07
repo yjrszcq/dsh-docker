@@ -153,10 +153,7 @@ main {
   margin: 0 auto;
   overflow: hidden;
 }
-.management-navigation { z-index: 20; width: 100%; min-width: 0; max-width: 100%; flex: none; padding-top: 30px; background: var(--bg); }
-.page-heading { margin-bottom: 16px; }
-.page-heading h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: 0; }
-.page-heading p { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 20px; }
+.management-navigation { z-index: 20; width: 100%; min-width: 0; max-width: 100%; flex: none; padding-top: 16px; background: var(--bg); }
 
 .tabs {
   display: flex;
@@ -958,7 +955,6 @@ dialog p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; line-height
   .topbar-actions { gap: 7px; }
   .language-switch { max-width: 84px; }
   .topbar-actions .connection strong { display: none; }
-  .management-navigation { padding-top: 24px; }
   .brand div > span { display: none; }
   .section-heading { flex-direction: column; gap: 10px; }
   .auth-password-grid { grid-template-columns: 1fr; }
