@@ -557,6 +557,39 @@ function preserveScrollableAncestors(element, update) {
   restoreScrollableAncestors(positions)
 }
 
+function preserveResourceRowPosition(element, update) {
+  const row = element.closest('article')
+  const panel = element.closest('[role="tabpanel"]')
+  const identity = row?.querySelector('strong')?.textContent
+  const top = row?.getBoundingClientRect().top
+  if (panel === null) {
+    update()
+    return
+  }
+  const positions = []
+  for (let current = element.parentElement; current !== null; current = current.parentElement) {
+    positions.push([current, current.scrollLeft, current.scrollTop])
+    if (current === panel) break
+  }
+  update()
+  restoreScrollableAncestors(positions)
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    for (const [current, left, scrollTop] of positions) {
+      current.scrollLeft = left
+      current.scrollTop = scrollTop
+    }
+    const nextRow = identity === undefined ? undefined : [...(panel?.querySelectorAll('article') ?? [])]
+      .find(candidate => candidate.querySelector('strong')?.textContent === identity)
+    if (nextRow === undefined || top === undefined) return
+    for (const [current, left] of positions) {
+      const offset = nextRow.getBoundingClientRect().top - top
+      if (Math.abs(offset) <= 1) break
+      current.scrollLeft = left
+      if (current.scrollHeight > current.clientHeight) current.scrollTop += offset
+    }
+  }))
+}
+
 function matchesResourceSearch(query, values) {
   const normalized = query.trim().toLocaleLowerCase()
   return normalized === '' || values.some(value => String(value ?? '').toLocaleLowerCase().includes(normalized))
@@ -1357,7 +1390,7 @@ function SystemPluginManager({ plugins, draft, applyingDraft, progress, operatio
                       type: 'button',
                       className: css.primaryButton,
                       disabled: busy,
-                      onClick: () => onAction(plugin, 'install'),
+                      onClick: event => preserveResourceRowPosition(event.currentTarget, () => onAction(plugin, 'install')),
                     }, t('installPlugin')))
                 : plugin.protected
                 ? h('span', { className: css.managedBadge }, t('managed'))
@@ -1367,7 +1400,7 @@ function SystemPluginManager({ plugins, draft, applyingDraft, progress, operatio
                         type: 'checkbox',
                         checked: projected.enabled,
                         disabled: busy || action === 'install',
-                        onChange: event => onAction(plugin, event.target.checked ? 'enable' : 'disable'),
+                        onChange: event => preserveResourceRowPosition(event.currentTarget, () => onAction(plugin, event.target.checked ? 'enable' : 'disable')),
                       }),
                       h('span', { 'aria-hidden': 'true' }))))
           })),
@@ -1410,13 +1443,13 @@ function SystemSkillManager({ skills, operation, busy, error, onAction, t }) {
                 ? h('div', { className: css.pluginActions },
                     h('button', {
                       type: 'button', className: css.primaryButton, disabled: busy,
-                      onClick: () => onAction(skill, 'install'),
+                      onClick: event => preserveResourceRowPosition(event.currentTarget, () => onAction(skill, 'install')),
                     }, t('installPlugin')))
                 : h('div', { className: css.pluginActions },
                     h('label', { className: css.toggle },
                       h('input', {
                         type: 'checkbox', checked: skill.enabled, disabled: busy,
-                        onChange: event => onAction(skill, event.target.checked ? 'enable' : 'disable'),
+                        onChange: event => preserveResourceRowPosition(event.currentTarget, () => onAction(skill, event.target.checked ? 'enable' : 'disable')),
                       }),
                       h('span', { 'aria-hidden': 'true' }))))
           })),

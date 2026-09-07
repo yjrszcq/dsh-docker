@@ -654,7 +654,12 @@ a.secondaryButton { text-decoration: none; }
 }
 .settingRow input[type='checkbox'] { width: 16px; height: 16px; flex: none; accent-color: var(--dsw-alias-brand-primary); }
 
-.pluginSection { border-bottom: 0; }
+.pluginSection { height: 100%; min-height: 0; overflow: visible; border-bottom: 0; }
+.pluginSection > .resourceSectionHeading,
+.pluginSection > .pluginRestartNotice,
+.pluginSection > .listPagination,
+.pluginSection > .error { flex: none; }
+.pluginSection .listPagination { position: static; }
 .resourceSectionHeading { display: block; }
 .resourceHeadingDetail { display: flex; align-items: center; gap: 16px; margin-top: 2px; }
 .resourceHeadingDetail p { min-width: 0; flex: 1; margin: 0; }
@@ -680,7 +685,9 @@ a.secondaryButton { text-decoration: none; }
 .proxyProviderSearch:focus-visible { border-color: var(--dsw-alias-label-primary); outline: none; }
 .proxyProviderSearch::placeholder { color: var(--dsw-alias-label-tertiary); }
 .pluginList {
+  min-height: 68px;
   max-height: min(46dvh, 420px);
+  flex: 0 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1050,6 +1057,7 @@ body[data-dsh-platform-select-menu='open'] > [role='menu'] > [role='presentation
 .reminderActions button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 @media (max-width: 640px) {
+  .pluginList { min-height: 122px; }
   .progressLogGroupListPopulated { height: 180px; }
   .sectionHeading { flex-direction: column; gap: 10px; }
   .resourceHeadingDetail { align-items: stretch; flex-direction: column; gap: 8px; }

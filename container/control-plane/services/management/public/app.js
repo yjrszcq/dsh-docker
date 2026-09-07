@@ -1394,6 +1394,42 @@ function preserveScrollableAncestors(element, update) {
   restoreScrollablePositions(positions)
 }
 
+function preserveResourceRowPosition(element, update) {
+  const row = element.closest('article')
+  const panel = element.closest('.resource-panel')
+  const identity = row?.querySelector('strong')?.textContent
+  const top = row?.getBoundingClientRect().top
+  if (panel === null) {
+    update()
+    return
+  }
+  const positions = []
+  for (let current = element.parentElement; current !== null; current = current.parentElement) {
+    positions.push([current, current.scrollLeft, current.scrollTop])
+    if (current === panel) break
+  }
+  update()
+  const restore = () => {
+    for (const [current, left, scrollTop] of positions) {
+      current.scrollLeft = left
+      current.scrollTop = scrollTop
+    }
+  }
+  restore()
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    restore()
+    const nextRow = identity === undefined ? undefined : [...(panel?.querySelectorAll('article') ?? [])]
+      .find(candidate => candidate.querySelector('strong')?.textContent === identity)
+    if (nextRow === undefined || top === undefined) return
+    for (const [current, left] of positions) {
+      const offset = nextRow.getBoundingClientRect().top - top
+      if (Math.abs(offset) <= 1) break
+      current.scrollLeft = left
+      if (current.scrollHeight > current.clientHeight) current.scrollTop += offset
+    }
+  }))
+}
+
 function refreshProxyDescriptions() {
   for (const description of document.querySelectorAll('.proxy-scope-description')) {
     if (description.dataset.expandListener !== 'true') {
@@ -1541,7 +1577,7 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
   button.className = className
   button.textContent = label
   button.disabled = busy
-  button.addEventListener('click', () => setSystemPluginDraft(plugin, action))
+  button.addEventListener('click', event => preserveResourceRowPosition(event.currentTarget, () => setSystemPluginDraft(plugin, action)))
   return button
 }
 
@@ -1594,7 +1630,7 @@ function renderBundledPlugins(values, busy) {
       checkbox.checked = projected.enabled
       checkbox.disabled = busy || action === 'install'
       checkbox.setAttribute('aria-label', `${name.textContent}: ${projected.enabled ? t('userPluginEnabled') : t('userPluginDisabled')}`)
-      checkbox.addEventListener('change', event => setSystemPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
+      checkbox.addEventListener('change', event => preserveResourceRowPosition(event.currentTarget, () => setSystemPluginDraft(plugin, event.target.checked ? 'enable' : 'disable')))
       const track = document.createElement('span')
       track.setAttribute('aria-hidden', 'true')
       toggle.append(checkbox, track)
@@ -1867,7 +1903,7 @@ function renderUserPlugins(busy) {
     checkbox.checked = action === 'enable' || (action !== 'disable' && plugin.enabled)
     checkbox.disabled = locked || action === 'uninstall' || (!plugin.enabled && (plugin.damaged || plugin.reservedNameConflict))
     checkbox.setAttribute('aria-label', `${plugin.name}: ${checkbox.checked ? t('userPluginEnabled') : t('userPluginDisabled')}`)
-    checkbox.addEventListener('change', event => setUserPluginDraft(plugin, event.target.checked ? 'enable' : 'disable'))
+    checkbox.addEventListener('change', event => preserveResourceRowPosition(event.currentTarget, () => setUserPluginDraft(plugin, event.target.checked ? 'enable' : 'disable')))
     const track = document.createElement('span')
     track.setAttribute('aria-hidden', 'true')
     toggle.append(checkbox, track)
@@ -1877,12 +1913,12 @@ function renderUserPlugins(busy) {
     uninstall.textContent = t(action === 'uninstall' ? 'cancelUninstall' : 'uninstallUserPlugin')
     uninstall.setAttribute('aria-label', `${uninstall.textContent}: ${plugin.name}`)
     uninstall.disabled = locked
-    uninstall.addEventListener('click', () => {
+    uninstall.addEventListener('click', event => preserveResourceRowPosition(event.currentTarget, () => {
       if (action === 'uninstall') userPluginDraft.delete(plugin.name)
       else userPluginDraft.set(plugin.name, 'uninstall')
       userPluginFeedback = null
       renderUserPlugins(runtimeBusy())
-    })
+    }))
     controls.append(toggle, uninstall)
     row.append(identity, controls)
     elements['user-plugin-list'].append(row)
