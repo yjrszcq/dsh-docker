@@ -1842,7 +1842,19 @@ test('standalone console keeps localized feature parity on the shared Management
   const resourceSearch = script.slice(script.indexOf('function resourceSearchValues('), script.indexOf('function filteredResources('))
   assert.doesNotMatch(resourceSearch, /value\.(?:description|version|spec|source)/)
   assert.match(script, /function expandableResourceDescription[\s\S]*scrollWidth > description\.clientWidth/)
-  assert.match(script, /function preserveScrollableAncestors\(element, update\)[\s\S]*current\.scrollTop = top[\s\S]*requestAnimationFrame/)
+  assert.match(script, /function captureScrollablePositions\(element, includeElement = false\)[\s\S]*current\.scrollTop/)
+  assert.match(script, /function restoreScrollablePositions\(positions\)[\s\S]*current\.scrollTop = top[\s\S]*requestAnimationFrame/)
+  for (const [renderer, list] of [
+    ['renderBundledPlugins', 'bundled-plugins'], ['renderSystemSkills', 'system-skills'],
+    ['renderUserSkills', 'user-skills'], ['renderUserPlugins', 'user-plugin-list'],
+  ]) {
+    const start = script.indexOf(`function ${renderer}(`)
+    const end = script.indexOf('\nfunction ', start + 1)
+    const source = script.slice(start, end)
+    assert.match(source, new RegExp(`captureScrollablePositions\\(elements\\['${list}'\\], true\\)`))
+    assert.match(source, /restoreScrollablePositions\(scrollPositions\)/)
+  }
+  assert.match(script, /function render\(next\) \{[\s\S]*\.resource-panel:not\(\[hidden\]\)[\s\S]*captureScrollablePositions\(activeResourcePanel, true\)[\s\S]*restoreScrollablePositions\(resourcePanelScrollPositions\)/)
   assert.match(script, /function toggleExpandedElement[\s\S]*preserveScrollableAncestors\(element, \(\) =>/)
   assert.match(script, /identity\.append\(\s*heading,\s*expandableResourceDescription\(pluginDescription\(plugin\)/)
   assert.match(script, /identity\.append\(\s*heading,\s*expandableResourceDescription\(skill\.description/)

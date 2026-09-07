@@ -1339,22 +1339,31 @@ function toggleExpandedElement(element, identity, expanded) {
   })
 }
 
-function preserveScrollableAncestors(element, update) {
+function captureScrollablePositions(element, includeElement = false) {
   const positions = []
-  for (let current = element.parentElement; current !== null; current = current.parentElement) {
-    if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+  for (let current = includeElement ? element : element.parentElement; current !== null; current = current.parentElement) {
+    if (current === element || current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
       positions.push([current, current.scrollLeft, current.scrollTop])
     }
   }
+  return positions
+}
+
+function restoreScrollablePositions(positions) {
   const restore = () => {
     for (const [current, left, top] of positions) {
       current.scrollLeft = left
       current.scrollTop = top
     }
   }
-  update()
   restore()
   window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
+}
+
+function preserveScrollableAncestors(element, update) {
+  const positions = captureScrollablePositions(element)
+  update()
+  restoreScrollablePositions(positions)
 }
 
 function refreshProxyDescriptions() {
@@ -1506,6 +1515,7 @@ function pluginButton(label, plugin, action, busy, className = 'secondary') {
 }
 
 function renderBundledPlugins(values, busy) {
+  const scrollPositions = captureScrollablePositions(elements['bundled-plugins'], true)
   const filtered = filteredResources('plugins', values)
   const restartRequired = systemPluginDraft.size > 0 || values.some(plugin => plugin.pendingRestart)
   elements['bundled-plugins'].replaceChildren()
@@ -1562,9 +1572,11 @@ function renderBundledPlugins(values, busy) {
     row.append(identity, controls)
     elements['bundled-plugins'].append(row)
   }
+  restoreScrollablePositions(scrollPositions)
 }
 
 function renderSystemSkills(values, busy) {
+  const scrollPositions = captureScrollablePositions(elements['system-skills'], true)
   const filtered = filteredResources('systemSkills', values)
   elements['system-skills'].replaceChildren()
   elements['empty-skills'].hidden = filtered.length !== 0
@@ -1626,6 +1638,7 @@ function renderSystemSkills(values, busy) {
     row.append(identity, controls)
     elements['system-skills'].append(row)
   }
+  restoreScrollablePositions(scrollPositions)
 }
 
 function userSkillSource(source) {
@@ -1648,6 +1661,7 @@ async function runUserSkillAction(skill, action) {
 }
 
 function renderUserSkills(busy) {
+  const scrollPositions = captureScrollablePositions(elements['user-skills'], true)
   const values = userSkillInventory.skills ?? []
   const filtered = filteredResources('userSkills', values)
   const operation = status?.userSkillOperation ?? {}
@@ -1718,6 +1732,7 @@ function renderUserSkills(busy) {
     row.append(identity, controls)
     elements['user-skills'].append(row)
   }
+  restoreScrollablePositions(scrollPositions)
 }
 
 function userPluginSource(value) {
@@ -1742,6 +1757,7 @@ function userPluginBadge(label, className = '') {
 }
 
 function renderUserPlugins(busy) {
+  const scrollPositions = captureScrollablePositions(elements['user-plugin-list'], true)
   const values = userPluginInventory.plugins ?? []
   const filtered = filteredResources('userPlugins', values)
   const operation = status?.userPluginOperation ?? {}
@@ -1865,9 +1881,13 @@ function renderUserPlugins(busy) {
       : operationVisible && operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
   elements['user-plugin-operation'].hidden = !feedback
+  restoreScrollablePositions(scrollPositions)
 }
 
 function render(next) {
+  const activeResourcePanel = document.querySelector('.resource-panel:not([hidden])')
+  const resourcePanelScrollPositions = activeResourcePanel === null
+    ? [] : captureScrollablePositions(activeResourcePanel, true)
   reconcileSystemPluginProgress(next)
   status = next
   rollbackPlan = next.rollbackPlan
@@ -2046,6 +2066,7 @@ function render(next) {
   if (inventoriesLoaded.systemSkills) renderSystemSkills(systemSkills, busy)
   if (inventoriesLoaded.userSkills) renderUserSkills(busy)
   if (inventoriesLoaded.userPlugins) renderUserPlugins(busy)
+  restoreScrollablePositions(resourcePanelScrollPositions)
 }
 
 const INVENTORY_LOADERS = Object.freeze({
