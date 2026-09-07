@@ -188,13 +188,13 @@ The Container Environment includes these DSH-Docker integrations:
 | `@dsh-docker/settings-navigation` | Keeps the desktop Settings directory independently scrollable and provides directory/detail navigation on narrow screens |
 | `@dsh-docker/settings-document-editor` | Replaces desktop-only configuration-file opening with an optional browser editor for `settings.yaml` |
 
-Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Changes are marked pending and take effect after restarting DSH. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.
+Other installed System Plugins can be enabled or disabled from **Platform Management** in DSH; it cannot modify itself. The standalone **DSH Management Console** can install, uninstall, enable, or disable bundled System Plugins, including restoring Platform Management when it is missing. Unsubmitted selections remain page-local; after Apply, the change is retained even when DSH is unavailable or the activation restart fails, and the next successful start uses it. Installation restores verified local Environment assets and does not download from GitHub or npm. Third-party User Plugins remain separate and are not treated as System Plugins.
 
 Platform Management and the Settings Document Editor use the restricted DSH-side platform API through the authenticated DSH Session. They do not require a separate Management Session. Platform Management can revoke the current browser's DSH Session and its linked Management Sessions, but account names, passwords, and complete authentication settings remain available only in the standalone Management Console or Root CLI.
 
 ## User Plugins
 
-The standalone Management Console inventories Bundle plugins in the DSH Web Profile and can enable, disable, or uninstall an exact User Plugin. Applying a change snapshots the complete Web Profile and restarts only DSH. Installation remains in DSH's normal plugin flow or the container terminal; the recovery page does not install arbitrary packages.
+The standalone Management Console inventories Bundle plugins in the DSH Web Profile and can enable, disable, or uninstall an exact User Plugin. Applying a change snapshots the complete Web Profile and restarts only DSH when it is available. A committed change remains stored if DSH is already down or the restart fails, so another faulty plugin can be corrected before retrying startup. Installation remains in DSH's normal plugin flow or the container terminal; the recovery page does not install arbitrary packages.
 
 ## System and User Skills
 

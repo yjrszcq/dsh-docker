@@ -443,7 +443,7 @@ Container Environment 当前包含：
 | `@dsh-docker/settings-navigation` | 让桌面端设置目录独立滚动，并在窄屏提供目录与详情分级导航 |
 | `@dsh-docker/settings-document-editor` | 将只能在桌面打开配置文件的操作替换为可选的浏览器 `settings.yaml` 编辑器 |
 
-独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。变更会标记为“待重启”，只有重启 DSH 后生效；重启前刷新页面会丢弃待应用草稿。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
+独立管理中心会列出当前 Environment 随附的全部 System Plugins，并允许安装、卸载、启用或禁用，包括恢复 `platform-management` DSH 集成。DSH 内的集成对缺失插件显示“安装”，对已安装插件只允许启用或禁用，不提供卸载。选择在点击“应用”前只是当前页面内的草稿，刷新或离开页面会丢弃；点击应用后会持久化每项修改，并通常通过重启 DSH 激活。如果 DSH 已不可用，或修改提交后重启失败，已保存的选择会留待下次成功启动时生效，不再错误显示为尚未应用。安装会从当前 Deployment 的本地可信 Environment Artifact 重建完整 System Plugin Set，并校验其内容 Hash 与 Deployment Record 一致。该过程不访问 GitHub 或 npm，不从已构建 Runtime 复制文件，也不会自动重装缺失插件。
 
 “设置导航”只在语义结构符合官方 Settings 对话框时调整导航呈现，DSH 原生设置内容始终保持挂载。桌面端保留官方双栏布局，目录独立滚动；面板宽度小于 640 像素时先显示可滚动目录，选择项目后进入带返回按钮的详情页。导航和宽窄切换会保留当前分区、未保存内容、目录滚动位置与焦点；禁用、卸载或结构识别失败时恢复未经修改的 DSH 官方布局。
 

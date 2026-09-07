@@ -347,6 +347,115 @@ test('hands Stable activation to Stage-0 when same-version Bootstrap content cha
   assert.equal(built, false)
 })
 
+test('resumes Stable activation after Stage-0 switches to a newer Bootstrap', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bootstrap-update-handoff-'))
+  const state = new UpdateStateStore(join(root, 'state', 'update.json'))
+  const target = {
+    targetSequence: 2,
+    desired: {
+      bootstrap: { version: '2.0.0' },
+      environment: { version: 'env-2' },
+      dsh: { version: '0.1.0-rc.8' },
+    },
+  }
+  const prepared = {
+    stable: target,
+    bootstrap: { manifest: { artifacts: [{ id: 'bootstrap-package' }] } },
+    receipts: new Map([['bootstrap-package', { token: 'bootstrap-receipt' }]]),
+  }
+  const metadata = { check: async () => ({ value: target }) }
+  const preparer = { prepare: async () => prepared }
+  const staged = Promise.withResolvers()
+  let oldBootstrapBuilt = false
+  const oldCoordinator = new UpdateCoordinator({
+    metadata,
+    preparer,
+    activator: new PlatformActivator({
+      dataRoot: root,
+      builder: { buildStable: async () => { oldBootstrapBuilt = true } },
+      bootstrap: {},
+      stage0: {
+        stageBootstrap: async (_token, version) => {
+          assert.equal(version, '2.0.0')
+          staged.resolve()
+          return { status: 'switching', restartRequired: true }
+        },
+      },
+    }),
+    state,
+  })
+
+  oldCoordinator.start()
+  await staged.promise
+  assert.equal((await state.read()).status, 'building-candidate')
+  assert.equal(oldBootstrapBuilt, false)
+
+  let current = {
+    id: 'deployment-old', authority: 'stable', targetSequence: 1,
+    dshVersion: '0.1.0-rc.7', environmentVersion: 'env-1', snapshotId: null,
+    receiptTokens: ['old-receipt'],
+  }
+  const desired = {
+    id: 'deployment-new', authority: 'stable', targetSequence: 2,
+    dshVersion: '0.1.0-rc.8', environmentVersion: 'env-2', snapshotId: null,
+    receiptTokens: ['new-receipt'],
+  }
+  let newBootstrapBuilt = false
+  let restaged = 0
+  const bootstrap = {
+    request: async (method, path, body) => {
+      if (method === 'GET' && path === '/v1/deployments/current') return { record: current }
+      if (method === 'GET' && path === '/v1/health') return { healthy: true, components: [] }
+      if (method === 'POST' && path === '/v1/deployments/activate') {
+        assert.deepEqual(body.record, desired)
+        current = desired
+        return { record: current }
+      }
+      throw new Error(`Unexpected Bootstrap request: ${method} ${path}`)
+    },
+  }
+  const newCoordinator = new UpdateCoordinator({
+    metadata,
+    preparer,
+    activator: new PlatformActivator({
+      dataRoot: root,
+      builder: {
+        buildStable: async () => {
+          newBootstrapBuilt = true
+          return { record: desired }
+        },
+      },
+      bootstrap,
+      stage0: {
+        stageBootstrap: async (_token, version) => {
+          assert.equal(version, '2.0.0')
+          restaged += 1
+          return { status: 'staged', restartRequired: false }
+        },
+      },
+    }),
+    state,
+    channelState: { read: async () => ({ updateChannel: 'stable', holds: [], experimentalBlocked: null }) },
+  })
+  const recovered = await reconcileRecoveredState({
+    journal: new UpdateJournal(join(root, 'state', 'transaction.json')),
+    state,
+  })
+  assert.equal(recovered.persisted.status, 'building-candidate')
+  const resumed = resumeInterruptedReconcile({
+    coordinator: newCoordinator,
+    persisted: recovered.persisted,
+    report: async () => {},
+    audit: async () => {},
+  })
+
+  await resumed.completion
+  assert.equal(newBootstrapBuilt, true)
+  assert.equal(restaged, 1)
+  assert.equal(current.id, desired.id)
+  assert.equal((await state.read()).status, 'success')
+})
+
 test('waits for the initial Deployment while Bootstrap startup is incomplete', async () => {
   const calls = []
   let currentRequests = 0

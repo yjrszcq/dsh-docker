@@ -32,16 +32,16 @@ dsh-platform restart
 
 When this command is run by an Agent inside a DSH session, submit the asynchronous task and report its task ID. Do not add `--wait`: stopping the current DSH process interrupts the tool transport before a durable result can be returned. Use `--wait` only from an external operator terminal, the standalone Management Console terminal, or external automation.
 
-The standalone Management Console can disable or uninstall a faulty Web Profile Bundle while DSH is down. It deliberately manages only DSH bundle plugins, not arbitrary dependencies or hand-written Cordis patch entries.
+The standalone Management Console can disable or uninstall a faulty Web Profile Bundle while DSH is down. It deliberately manages only DSH bundle plugins, not arbitrary dependencies or hand-written Cordis patch entries. After Apply reports that the Profile change was saved, treat that mutation as committed even if DSH remains unavailable or its restart fails; inspect lifecycle logs and correct another faulty plugin or retry startup instead of repeating the saved action.
 
 If a plugin tool reports a successful removal but DSH then fails with `cannot resolve profile bundle`, inspect public DSH Runtime logs and restart once through `dsh-platform restart`. An authorized Web startup atomically removes only an orphaned Bundle which is no longer a declared dependency and cannot be resolved from the Profile or DSH installation. Do not hand-edit `package.json`, the lockfile, or `dsh.profile.bundles`; if the managed repair does not restore readiness, use User Plugin recovery in the standalone Management Console.
 
 ## System Plugins
 
-System Plugins are signed resources supplied by the current DSH Docker Environment. Manage them through **System Plugins** in Platform Management or the standalone Management Console. Do not install, delete, or impersonate `@dsh-docker/*` packages through the normal user-plugin CLI.
+System Plugins are signed resources supplied by the current DSH Docker Environment. Manage them through **System Plugins** in Platform Management or the standalone Management Console. The standalone console remains usable while DSH is down. Its selections are drafts until Apply; once Apply saves a selection, the change remains committed for the next DSH start even if DSH is already unavailable or the activation restart fails. Diagnose that lifecycle failure separately instead of treating the saved plugin action as unapplied. Do not install, delete, or impersonate `@dsh-docker/*` packages through the normal user-plugin CLI.
 
 ## Skills
 
 User and project skills belong to the official DSH roots such as `$DSH_HOME/skills`, `.dsh/skills`, or `.agents/skills`. System Skills are signed platform resources and are managed through **System Skills** in the two management interfaces.
 
-Installing, uninstalling, enabling, or disabling a System Skill hot-refreshes the DSH skill catalog. It does not require a DSH restart. A project or user skill with the same name may override the bundled System Skill according to DSH's native precedence; platform management does not alter or remove that override.
+Installing, uninstalling, enabling, or disabling a System Skill hot-refreshes the DSH skill catalog. It does not require a DSH restart, and the standalone Management Console can still apply the selection while DSH is unavailable. User Skill changes in that console are likewise independent of DSH lifecycle state. A project or user skill with the same name may override the bundled System Skill according to DSH's native precedence; platform management does not alter or remove that override.
