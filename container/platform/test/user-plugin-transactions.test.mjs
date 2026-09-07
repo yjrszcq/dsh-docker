@@ -244,17 +244,38 @@ test('retains a committed plugin change when DSH still fails to restart', async 
   const value = await fixture()
   const before = await value.inventory.read()
   const transaction = manager(value, { restartDsh: async () => { throw new Error('DSH remains broken') } })
-  await assert.rejects(transaction.value.apply({
+  const result = await transaction.value.apply({
     taskId: 'task-restart-failure',
     revision: before.revision,
     actions: [{ name: 'alpha', action: 'disable' }],
-  }), /DSH remains broken/)
+  })
+  assert.equal(result.status, 'success')
+  assert.equal(result.strategy, 'next-start')
+  assert.equal(result.activationError, 'DSH remains broken')
   const manifest = JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8'))
   assert.deepEqual(manifest.dsh.profile.bundles, ['beta'])
   const journal = await value.journal.read()
-  assert.equal(journal.phase, 'failed')
+  assert.equal(journal.phase, 'completed')
   assert.equal(journal.recoveryResult, null)
   await assert.rejects(lstat(value.snapshots.path('task-restart-failure')), { code: 'ENOENT' })
+})
+
+test('applies persistent plugin changes without touching DSH when it is unavailable', async () => {
+  const value = await fixture()
+  const before = await value.inventory.read()
+  const transaction = manager(value)
+  const result = await transaction.value.apply({
+    taskId: 'task-next-start',
+    revision: before.revision,
+    actions: [{ name: 'alpha', action: 'disable' }],
+    strategy: 'next-start',
+  })
+  assert.equal(result.status, 'success')
+  assert.equal(result.strategy, 'next-start')
+  assert.equal(result.activationError, null)
+  assert.deepEqual(transaction.calls.filter(call => typeof call === 'string'), [])
+  assert.deepEqual(JSON.parse(await readFile(join(value.profileRoot, 'package.json'), 'utf8')).dsh.profile.bundles, ['beta'])
+  assert.equal((await value.journal.read()).phase, 'completed')
 })
 
 test('recovers an interrupted pre-commit mutation from its persisted snapshot', async () => {

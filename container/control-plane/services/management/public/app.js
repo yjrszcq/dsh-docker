@@ -80,10 +80,10 @@ const COPY = Object.freeze({
     userPluginEnabled: '已启用', userPluginDisabled: '已禁用', userPluginDamaged: '元数据损坏', userPluginReserved: '与系统插件重名',
     pendingInstall: '待安装', pendingEnable: '待启用', pendingDisable: '待禁用', pendingUninstall: '待卸载', statusInstalling: '安装中', statusEnabling: '启用中', statusDisabling: '禁用中', statusUninstalling: '卸载中', resourceEnabled: '已启用', resourceDisabled: '已禁用', uninstallUserPlugin: '卸载', cancelUninstall: '取消卸载',
     noPendingUserPluginChanges: '没有待应用的修改', pendingUserPluginChanges: '有 {count} 项修改待应用', cancelChanges: '取消修改',
-    applyUserPluginChanges: '应用并重新启动 DSH', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
-    userPluginApplyFailed: '用户插件恢复失败', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
+    applyUserPluginChanges: '应用并重新启动 DSH', applyUserPluginChangesOffline: '应用修改', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
+    userPluginApplyFailed: '用户插件恢复失败', userPluginApplyDeferred: '用户插件修改已保存；DSH 仍不可用，将在下次成功启动时生效。', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
     userPluginRestartRequired: '需要重新启动 DSH', userPluginRestartRequiredDetail: '用户插件已在终端或其他位置发生变化，重新启动 DSH 后生效。',
-    userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，可在运行维护中查看日志。',
+    userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，但仍可修改用户插件和用户技能；相关修改可能使 DSH 恢复。可在运行维护中查看日志。',
     userPluginPhaseValidated: '正在验证修改', userPluginPhasePaused: '正在暂停 DSH', userPluginPhaseSnapshotted: '已备份 Web Profile',
     userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
     terminal: '容器终端', terminalDetail: '使用管理员权限打开交互式容器 Shell；仅重新启动 DSH 时终端会话保持运行。',
@@ -178,10 +178,10 @@ const COPY = Object.freeze({
     userPluginEnabled: 'Enabled', userPluginDisabled: 'Disabled', userPluginDamaged: 'Damaged metadata', userPluginReserved: 'Conflicts with a System Plugin',
     pendingInstall: 'Pending install', pendingEnable: 'Pending enable', pendingDisable: 'Pending disable', pendingUninstall: 'Pending uninstall', statusInstalling: 'Installing', statusEnabling: 'Enabling', statusDisabling: 'Disabling', statusUninstalling: 'Uninstalling', resourceEnabled: 'Enabled', resourceDisabled: 'Disabled', uninstallUserPlugin: 'Uninstall', cancelUninstall: 'Cancel uninstall',
     noPendingUserPluginChanges: 'No pending changes', pendingUserPluginChanges: '{count} changes pending', cancelChanges: 'Cancel changes',
-    applyUserPluginChanges: 'Apply and restart DSH', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
-    userPluginApplyFailed: 'User plugin recovery failed', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
+    applyUserPluginChanges: 'Apply and restart DSH', applyUserPluginChangesOffline: 'Apply changes', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
+    userPluginApplyFailed: 'User plugin recovery failed', userPluginApplyDeferred: 'User plugin changes were saved. DSH remains unavailable and will use them on its next successful start.', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
     userPluginRestartRequired: 'Restart DSH required', userPluginRestartRequiredDetail: 'User plugins changed in the terminal or elsewhere and take effect after DSH restarts.',
-    userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly. Review the Maintenance logs for details.',
+    userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but User Plugins and User Skills remain editable; those changes may restore DSH. Review the Maintenance logs for details.',
     userPluginPhaseValidated: 'Validating changes', userPluginPhasePaused: 'Pausing DSH', userPluginPhaseSnapshotted: 'Web Profile backed up',
     userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
     terminal: 'Container terminal', terminalDetail: 'Open an interactive container shell with administrator privileges. The session remains running when only DSH restarts.',
@@ -1869,16 +1869,23 @@ function renderUserPlugins(busy) {
     : count === 0 ? t('userPluginRestartRequiredDetail') : t('pendingUserPluginChanges', { count })
   elements['cancel-user-plugin-changes'].disabled = locked || count === 0
   elements['apply-user-plugin-changes'].disabled = locked || (count === 0 && !restartRequired)
+  const dshUnavailable = status?.recoveryMode !== null && status?.recoveryMode !== undefined
+    || ['stopped', 'failed'].includes(status?.dshLifecycle?.state)
+  elements['apply-user-plugin-changes'].textContent = t(dshUnavailable
+    ? 'applyUserPluginChangesOffline' : 'applyUserPluginChanges')
   elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
-  elements['user-plugin-recovery-detail'].textContent = locale === 'zh'
+  const recoveryReason = typeof status?.recoveryMode === 'string'
+    ? status.recoveryMode
+    : status?.recoveryMode?.reason ?? status?.recoveryMode?.message
+  elements['user-plugin-recovery-detail'].textContent = recoveryReason === undefined
     ? t('userPluginRecoveryDetail')
-    : typeof status?.recoveryMode === 'string'
-      ? status.recoveryMode
-      : status?.recoveryMode?.reason ?? status?.recoveryMode?.message ?? t('userPluginRecoveryDetail')
+    : `${t('userPluginRecoveryDetail')} ${localizedError(recoveryReason)}`
   const operationVisible = operationResultVisible(operation, 'running')
   const feedback = operation.status === 'running' ? t(phaseKey ?? 'userPluginApplying')
     : operationVisible && operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
-      : operationVisible && operation.status === 'success' ? t('userPluginApplyComplete') : userPluginFeedback
+      : operationVisible && operation.status === 'success'
+        ? t(operation.strategy === 'next-start' ? 'userPluginApplyDeferred' : 'userPluginApplyComplete')
+        : userPluginFeedback
   elements['user-plugin-operation'].textContent = feedback ?? ''
   elements['user-plugin-operation'].hidden = !feedback
   restoreScrollablePositions(scrollPositions)

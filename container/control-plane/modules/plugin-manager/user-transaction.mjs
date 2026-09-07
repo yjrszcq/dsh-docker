@@ -178,7 +178,8 @@ export class UserPluginTransactionManager {
     return Object.freeze({ revision, actions: validateActions(current, actions) })
   }
 
-  async apply({ taskId = randomUUID(), revision, actions, onProgress = () => {} }) {
+  async apply({ taskId = randomUUID(), revision, actions, strategy = 'restart', onProgress = () => {} }) {
+    if (!['restart', 'next-start'].includes(strategy)) throw new Error('User Plugin activation strategy is invalid')
     const validated = await this.validate({ revision, actions })
     const normalized = validated.actions
     const publishProgress = state => { try { onProgress(state) } catch {} }
@@ -189,10 +190,12 @@ export class UserPluginTransactionManager {
     let snapshotCreated = false
     await this.record('user-plugin.transaction.started', { taskId, actions: normalized })
     try {
-      await this.pauseDsh()
-      paused = true
-      state = await this.journal.transition('paused')
-      publishProgress(state)
+      if (strategy === 'restart') {
+        await this.pauseDsh()
+        paused = true
+        state = await this.journal.transition('paused')
+        publishProgress(state)
+      }
       await this.snapshots.create(taskId)
       snapshotCreated = true
       state = await this.journal.transition('snapshotted', { snapshotId: taskId })
@@ -207,14 +210,26 @@ export class UserPluginTransactionManager {
       })
       state = await this.journal.transition('committed')
       publishProgress(state)
-      state = await this.journal.transition('restarting')
-      publishProgress(state)
-      await this.restartDsh()
+      let completedStrategy = strategy
+      let activationError = null
+      if (strategy === 'restart') {
+        state = await this.journal.transition('restarting')
+        publishProgress(state)
+        try {
+          await this.restartDsh()
+        } catch (error) {
+          completedStrategy = 'next-start'
+          activationError = message(error)
+          await this.record('user-plugin.activation.deferred', { taskId, error })
+        }
+      }
       state = await this.journal.transition('completed')
       publishProgress(state)
       await this.snapshots.remove(taskId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', { taskId, error }))
       await this.record('user-plugin.transaction.completed', { taskId })
-      return Object.freeze({ taskId, status: 'success', inventory: result })
+      return Object.freeze({
+        taskId, status: 'success', strategy: completedStrategy, activationError, inventory: result,
+      })
     } catch (error) {
       const committed = ['committed', 'restarting'].includes(state.phase)
       if (committed) {
@@ -229,7 +244,7 @@ export class UserPluginTransactionManager {
           })
           await this.snapshots.restore(snapshotId)
           await this.selectionStore.restore(selectionBefore)
-          await this.restartDsh()
+          if (strategy === 'restart') await this.restartDsh()
           await this.journal.transition('failed', { recoveryResult: 'success' })
           await this.snapshots.remove(snapshotId).catch(cleanupError => this.record('user-plugin.snapshot.cleanup.failed', {
             taskId,

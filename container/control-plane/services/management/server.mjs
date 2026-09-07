@@ -326,23 +326,32 @@ export function createManagementServer({
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const validated = await validateUserPluginActions({ revision: body.revision, actions: body.actions })
+    const platform = await platformStatus()
+    const strategy = platform.recoveryMode !== null && platform.recoveryMode !== undefined
+      || ['stopped', 'failed'].includes(platform.dshLifecycle?.state)
+      ? 'next-start' : 'restart'
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const taskId = randomUUID()
-    publishUserPlugin({ status: 'running', taskId, phase: 'validated', error: null })
+    publishUserPlugin({ status: 'running', taskId, phase: 'validated', strategy: null, error: null })
     userPluginTask = Promise.resolve()
       .then(() => recordAudit('user-plugin.apply.started', { taskId, actions: validated.actions }))
       .then(() => applyUserPluginActions({
         taskId,
         revision: validated.revision,
         actions: validated.actions,
+        strategy,
         onProgress: state => publishUserPlugin({ phase: state.phase }),
       }))
       .then(
-        async () => {
+        async result => {
           await refreshLoadedUserPlugins()
-          await recordAudit('user-plugin.apply.completed', { taskId })
-          publishUserPlugin({ status: 'success', taskId, phase: 'completed', error: null })
+          const completedStrategy = result?.strategy ?? strategy
+          await recordAudit('user-plugin.apply.completed', { taskId, strategy: completedStrategy })
+          publishUserPlugin({
+            status: 'success', taskId, phase: 'completed', strategy: completedStrategy,
+            activationError: result?.activationError ?? null, error: null,
+          })
           publishPlugin({ restartRequired: false })
         },
         async error => {

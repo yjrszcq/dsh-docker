@@ -8,11 +8,11 @@ const PHASES = new Set([
 ])
 const TERMINAL = new Set(['completed', 'failed'])
 const TRANSITIONS = new Map([
-  ['validated', new Set(['paused', 'failed'])],
+  ['validated', new Set(['paused', 'snapshotted', 'failed'])],
   ['paused', new Set(['snapshotted', 'restoring', 'failed'])],
   ['snapshotted', new Set(['mutating', 'restoring'])],
   ['mutating', new Set(['committed', 'restoring'])],
-  ['committed', new Set(['restarting', 'failed'])],
+  ['committed', new Set(['restarting', 'completed', 'failed'])],
   ['restarting', new Set(['completed', 'failed'])],
   ['restoring', new Set(['failed'])],
   ['completed', new Set()],
