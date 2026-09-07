@@ -131,6 +131,8 @@ test('official-style holding page is self-contained and replaces the spinner wit
   assert.match(page, new RegExp(READINESS_PATH))
   assert.match(page, /prefers-color-scheme:light/)
   assert.match(page, /name="viewport"/)
+  assert.match(page, /html\{height:100%\}body\{min-height:100%;margin:0;display:grid;place-items:center;/)
+  assert.doesNotMatch(page, /100(?:d|s|l)?vh/)
   assert.match(page, /max-width:520px/)
   assert.match(page, /management\.href=value\.managementHref/)
   assert.doesNotMatch(page, /spinner|Loading plugins/)
