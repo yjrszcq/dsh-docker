@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
 import { parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
@@ -27,6 +27,29 @@ function runTar(args, { capture = false } = {}) {
 
 async function exists(path) {
   return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+}
+
+export async function retainLegacySystemSkillCatalog({ sourceRoot, outputRoot }) {
+  const source = resolve(sourceRoot)
+  const destination = join(resolve(outputRoot), 'legacy-bootstrap')
+  if (await exists(join(destination, 'catalog.json'))) {
+    await readSystemSkillCatalog(destination)
+    return destination
+  }
+  await readSystemSkillCatalog(source)
+  const staging = `${destination}.${randomUUID()}.tmp`
+  try {
+    await cp(source, staging, { recursive: true, verbatimSymlinks: true })
+    try {
+      await rename(staging, destination)
+    } catch (error) {
+      if (error?.code !== 'EEXIST' && error?.code !== 'ENOTEMPTY') throw error
+    }
+  } finally {
+    await rm(staging, { recursive: true, force: true })
+  }
+  await readSystemSkillCatalog(destination)
+  return destination
 }
 
 export async function materializeSystemSkillCatalog({ environmentRoot, outputRoot }) {

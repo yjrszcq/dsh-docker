@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
-import { materializeSystemSkillCatalog, readSystemSkillCatalog } from '../../control-plane/modules/skill-manager/index.mjs'
+import {
+  materializeSystemSkillCatalog,
+  readSystemSkillCatalog,
+  retainLegacySystemSkillCatalog,
+} from '../../control-plane/modules/skill-manager/index.mjs'
 
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const containerRoot = dirname(platformRoot)
@@ -77,6 +81,32 @@ test('materializes the verified System Skill catalog from an Environment Artifac
     materializeSystemSkillCatalog({ environmentRoot, outputRoot }),
     /differs from its Environment manifest/,
   )
+})
+
+test('retains a legacy Bootstrap System Skill catalog without reading Stage-0 state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-legacy-system-skill-'))
+  const source = join(root, 'seed', 'bootstrap', '1.0.9', 'control-plane', 'skills')
+  const skill = join(source, 'legacy-skill')
+  const output = join(root, 'environments', 'versions', '.system-skill-catalogs')
+  await mkdir(skill, { recursive: true })
+  await writeFile(join(source, 'catalog.json'), JSON.stringify({
+    schema: 1,
+    skills: [{
+      id: 'legacy-skill',
+      source: 'legacy-skill',
+      description: { en: 'Legacy skill', zh: 'Legacy skill' },
+    }],
+  }))
+  await writeFile(join(skill, 'SKILL.md'), '---\nname: legacy-skill\ndescription: Legacy skill\n---\n')
+
+  const retained = await retainLegacySystemSkillCatalog({ sourceRoot: source, outputRoot: output })
+  assert.equal(retained, join(output, 'legacy-bootstrap'))
+  assert.deepEqual((await readSystemSkillCatalog(retained)).map(entry => entry.id), ['legacy-skill'])
+  assert.equal(await retainLegacySystemSkillCatalog({ sourceRoot: join(root, 'missing'), outputRoot: output }), retained)
+
+  const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
+  assert.match(bootstrap, /inventory\.bootstrap\.id, 'control-plane', 'skills'/)
+  assert.doesNotMatch(bootstrap, /bootstrapStateRoot/)
 })
 
 test('checked-in Component manifests satisfy the public contract', async () => {
