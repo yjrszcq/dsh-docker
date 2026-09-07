@@ -1200,6 +1200,39 @@ test('management changes a bundled plugin as an audited task and excludes runtim
   }
 })
 
+test('management completes System Plugin changes for the next start while DSH is unavailable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-management-system-plugin-offline-'))
+  let configured = false
+  const server = createManagementServer({
+    coordinator: new Coordinator(),
+    logs: new JsonlLogManager({ root: join(root, 'logs') }),
+    platformStatus: async () => ({
+      recoveryMode: 'startup failed',
+      dshLifecycle: { state: 'failed' },
+    }),
+    configureBundledPlugin: async () => { configured = true },
+  })
+  const socketPath = join(root, 'run', 'management.sock')
+  await listenManagement(server, socketPath)
+  const client = new LocalApiClient(socketPath)
+  try {
+    await client.request('POST', `${API_PREFIX}bundled-plugins/action`, {
+      id: 'diagnostics', action: 'disable',
+    })
+    let status
+    for (let attempt = 0; attempt < ASYNC_POLL_ATTEMPTS; attempt += 1) {
+      status = await client.request('GET', `${API_PREFIX}status`)
+      if (status.systemPluginOperation.status === 'success') break
+      await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
+    }
+    assert.equal(configured, true)
+    assert.equal(status.systemPluginOperation.strategy, 'next-start')
+    assert.equal(status.systemPluginOperation.restartRequired, false)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
 test('management toggle endpoint accepts only enable and disable actions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-toggle-'))
   const calls = []
@@ -1276,7 +1309,7 @@ test('management discards unapplied System Plugin changes and clears restart sta
   }
 })
 
-test('management keeps the System Plugin restart marker when DSH restart fails', async () => {
+test('management completes the System Plugin change when DSH restart fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-management-plugin-restart-failure-'))
   const logs = new JsonlLogManager({ root: join(root, 'logs') })
   const server = createManagementServer({
@@ -1307,7 +1340,9 @@ test('management keeps the System Plugin restart marker when DSH restart fails',
       await new Promise(resolve => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS))
     }
     assert.equal(status.dshLifecycle.state, 'failed')
-    assert.equal(status.systemPluginOperation.restartRequired, true)
+    assert.equal(status.systemPluginOperation.strategy, 'next-start')
+    assert.equal(status.systemPluginOperation.activationError, 'restart failed')
+    assert.equal(status.systemPluginOperation.restartRequired, false)
     await logs.queue
     assert.equal((await logs.query({ sources: ['audit'] })).find(entry => entry.message === 'dsh.restart.failed').level, 'error')
   } finally {
@@ -2189,6 +2224,16 @@ test('standalone console keeps localized feature parity on the shared Management
   assert.match(script, /applyUserPluginChangesOffline: '应用修改'/)
   assert.match(script, /applyUserPluginChanges: 'Apply and restart DSH'/)
   assert.match(script, /applyUserPluginChangesOffline: 'Apply changes'/)
+  assert.match(script, /userPluginRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改用户插件。故障日志可前往“运行维护”查看。'/)
+  assert.match(script, /systemPluginRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改系统插件。故障日志可前往“运行维护”查看。'/)
+  assert.match(script, /systemSkillRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改系统技能。故障日志可前往“运行维护”查看。'/)
+  assert.match(script, /userSkillRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改用户技能。故障日志可前往“运行维护”查看。'/)
+  assert.doesNotMatch(script, /localizedError\(recoveryReason\)/)
+  for (const id of ['system-plugin-recovery', 'system-skill-recovery', 'user-skill-recovery', 'user-plugin-recovery']) {
+    assert.match(html, new RegExp(`id="${id}"`))
+  }
+  assert.match(script, /operation\.strategy === 'next-start'[\s\S]*systemPluginApplyingDraft\.clear\(\)/)
+  assert.match(script, /!dshUnavailable && plugins\.some\(plugin => plugin\.pendingRestart\)/)
   assert.match(script, /const userPluginDraft = new Map\(\)/)
   assert.match(script, /expandedUserPluginDescriptions/)
   assert.match(script, /plugin\.description/)

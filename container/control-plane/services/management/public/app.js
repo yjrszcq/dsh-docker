@@ -64,15 +64,15 @@ const COPY = Object.freeze({
     logsLive: '实时', logsConnecting: '连接中', logsDisconnected: '已断开', autoScroll: '自动滚动',
     refreshLogs: '刷新日志', exportLogs: '导出日志', clearLogView: '清空显示', logCount: '显示 {shown} / {total} 条', noLogs: '暂无日志', noMatchingLogs: '没有符合筛选条件的日志',
     systemPlugins: '系统插件', systemPluginsConsoleDetail: '管理当前环境提供的所有系统插件，也可恢复 DSH 中的平台管理集成。',
-    noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。',
+    noSystemPlugins: '当前环境没有提供系统插件。', managementIntegration: '平台管理集成，可从此独立页面恢复。', systemPluginRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改系统插件。故障日志可前往“运行维护”查看。',
     notInstalled: '未安装', pluginEnabled: '已安装并启用', pluginDisabled: '已安装但已禁用', pluginPendingRestart: '待重启',
     installPlugin: '安装', uninstallPlugin: '卸载', pluginActionWorking: '正在应用插件设置',
     pluginActionInstall: '正在安装', pluginActionUninstall: '正在卸载',
     pluginActionEnable: '正在启用', pluginActionDisable: '正在禁用', pluginActionComplete: '插件设置已保存',
     pluginChangesPending: '有待应用的修改', pluginChangesPendingDetail: '插件修改尚未应用。应用后将重新启动 DSH 并生效。', pendingSystemPluginChanges: '有 {count} 项修改待应用',
     systemPluginApplyingItem: '{action} @dsh-docker/{id}（{current}/{total}）', systemPluginRestarting: '插件修改已应用，正在重新启动 DSH',
-    systemSkills: '系统技能', systemSkillsConsoleDetail: '管理当前 Bootstrap 提供的已签名 Agent 操作指引。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', skillEnabled: '已安装并启用', skillDisabled: '已安装但已禁用', skillActionWorking: '正在应用技能设置', skillActionComplete: '技能设置已应用',
-    userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSource: '来源', userSkillEntry: '目录项', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
+    systemSkills: '系统技能', systemSkillsConsoleDetail: '管理当前 Bootstrap 提供的已签名 Agent 操作指引。', noSystemSkills: '当前 Bootstrap 没有提供系统技能。', systemSkillRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改系统技能。故障日志可前往“运行维护”查看。', skillEnabled: '已安装并启用', skillDisabled: '已安装但已禁用', skillActionWorking: '正在应用技能设置', skillActionComplete: '技能设置已应用',
+    userSkills: '用户技能', userSkillsDetail: '管理 DSH 用户目录中的技能，无需重新启动 DSH。', noUserSkills: '没有找到用户技能。', userSkillRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改用户技能。故障日志可前往“运行维护”查看。', userSkillEnabled: '已启用', userSkillDisabled: '已禁用', userSkillDamaged: '元数据损坏', userSkillSource: '来源', userSkillEntry: '目录项', userSkillSourceDsh: 'DSH 用户目录', userSkillSourceAgents: 'Agents 用户目录', deleteUserSkill: '删除', deleteUserSkillTitle: '永久删除用户技能', deleteUserSkillDetail: '将永久删除“{name}”及其文件，此操作无法撤销。', userSkillActionWorking: '正在应用用户技能设置', userSkillActionComplete: '用户技能设置已应用', userSkillActionFailed: '用户技能操作失败',
     userPlugins: '用户插件', userPluginsDetail: '无需启动 DSH，即可恢复 Web Profile 中由用户安装的插件。',
     noUserPlugins: 'Web Profile 中没有可管理的用户插件。', dshUnavailable: 'DSH 当前不可用',
     userPluginVersion: '版本', userPluginSpec: '依赖规格', userPluginSource: '来源', userPluginSourceRegistry: '软件包源',
@@ -83,7 +83,7 @@ const COPY = Object.freeze({
     applyUserPluginChanges: '应用并重新启动 DSH', applyUserPluginChangesOffline: '应用修改', userPluginApplying: '正在应用用户插件修改', userPluginApplyComplete: '用户插件修改已应用',
     userPluginApplyFailed: '用户插件恢复失败', userPluginApplyDeferred: '用户插件修改已保存；DSH 仍不可用，将在下次成功启动时生效。', userPluginRevisionConflict: '插件状态已发生变化，已重新载入最新状态，请重新选择修改。',
     userPluginRestartRequired: '需要重新启动 DSH', userPluginRestartRequiredDetail: '用户插件已在终端或其他位置发生变化，重新启动 DSH 后生效。',
-    userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，但仍可修改用户插件和用户技能；相关修改可能使 DSH 恢复。可在运行维护中查看日志。',
+    userPluginMetadataError: '无法读取已安装插件的元数据。', userPluginRecoveryDetail: 'DSH 启动或运行失败，但你仍可修改用户插件。故障日志可前往“运行维护”查看。',
     userPluginPhaseValidated: '正在验证修改', userPluginPhasePaused: '正在暂停 DSH', userPluginPhaseSnapshotted: '已备份 Web Profile',
     userPluginPhaseMutating: '正在修改插件', userPluginPhaseCommitted: '修改已保存', userPluginPhaseRestarting: '正在重新启动 DSH', userPluginPhaseRestoring: '正在恢复 Web Profile',
     terminal: '容器终端', terminalDetail: '使用管理员权限打开交互式容器 Shell；仅重新启动 DSH 时终端会话保持运行。',
@@ -162,15 +162,15 @@ const COPY = Object.freeze({
     logsLive: 'Live', logsConnecting: 'Connecting', logsDisconnected: 'Disconnected', autoScroll: 'Auto-scroll',
     refreshLogs: 'Refresh logs', exportLogs: 'Export logs', clearLogView: 'Clear view', logCount: 'Showing {shown} / {total}', noLogs: 'No logs yet', noMatchingLogs: 'No logs match these filters',
     systemPlugins: 'System plugins', systemPluginsConsoleDetail: 'Manage every bundled System Plugin, including recovery of the Platform Management integration in DSH.',
-    noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.',
+    noSystemPlugins: 'The current Environment provides no System Plugins.', managementIntegration: 'Platform Management integration, recoverable from this standalone page.', systemPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but you can still change System Plugins. Check Maintenance for failure logs.',
     notInstalled: 'Not installed', pluginEnabled: 'Installed and enabled', pluginDisabled: 'Installed but disabled', pluginPendingRestart: 'Restart required',
     installPlugin: 'Install', uninstallPlugin: 'Uninstall', pluginActionWorking: 'Applying plugin settings',
     pluginActionInstall: 'Installing', pluginActionUninstall: 'Uninstalling',
     pluginActionEnable: 'Enabling', pluginActionDisable: 'Disabling', pluginActionComplete: 'Plugin settings saved',
     pluginChangesPending: 'Changes pending', pluginChangesPendingDetail: 'Plugin changes have not been applied. Apply them to restart DSH and make them effective.', pendingSystemPluginChanges: '{count} pending changes',
     systemPluginApplyingItem: '{action} @dsh-docker/{id} ({current}/{total})', systemPluginRestarting: 'Plugin changes applied; restarting DSH',
-    systemSkills: 'System skills', systemSkillsConsoleDetail: 'Manage signed Agent guidance supplied by the current Bootstrap.', noSystemSkills: 'The current Bootstrap provides no System Skills.', skillEnabled: 'Installed and enabled', skillDisabled: 'Installed but disabled', skillActionWorking: 'Applying skill settings', skillActionComplete: 'Skill settings applied',
-    userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSource: 'Source', userSkillEntry: 'Entry', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
+    systemSkills: 'System skills', systemSkillsConsoleDetail: 'Manage signed Agent guidance supplied by the current Bootstrap.', noSystemSkills: 'The current Bootstrap provides no System Skills.', systemSkillRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but you can still change System Skills. Check Maintenance for failure logs.', skillEnabled: 'Installed and enabled', skillDisabled: 'Installed but disabled', skillActionWorking: 'Applying skill settings', skillActionComplete: 'Skill settings applied',
+    userSkills: 'User skills', userSkillsDetail: 'Manage skills in the DSH user roots without restarting DSH.', noUserSkills: 'No user skills were found.', userSkillRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but you can still change User Skills. Check Maintenance for failure logs.', userSkillEnabled: 'Enabled', userSkillDisabled: 'Disabled', userSkillDamaged: 'Damaged metadata', userSkillSource: 'Source', userSkillEntry: 'Entry', userSkillSourceDsh: 'DSH user directory', userSkillSourceAgents: 'Agents user directory', deleteUserSkill: 'Delete', deleteUserSkillTitle: 'Permanently delete user skill', deleteUserSkillDetail: 'Permanently delete “{name}” and its files? This cannot be undone.', userSkillActionWorking: 'Applying User Skill settings', userSkillActionComplete: 'User Skill settings applied', userSkillActionFailed: 'User Skill operation failed',
     userPlugins: 'User plugins', userPluginsDetail: 'Recover user-installed Web Profile plugins without starting DSH.',
     noUserPlugins: 'No managed user plugins were found in the Web Profile.', dshUnavailable: 'DSH is unavailable',
     userPluginVersion: 'Version', userPluginSpec: 'Dependency spec', userPluginSource: 'Source', userPluginSourceRegistry: 'Registry',
@@ -181,7 +181,7 @@ const COPY = Object.freeze({
     applyUserPluginChanges: 'Apply and restart DSH', applyUserPluginChangesOffline: 'Apply changes', userPluginApplying: 'Applying user plugin changes', userPluginApplyComplete: 'User plugin changes applied',
     userPluginApplyFailed: 'User plugin recovery failed', userPluginApplyDeferred: 'User plugin changes were saved. DSH remains unavailable and will use them on its next successful start.', userPluginRevisionConflict: 'Plugin state changed. The latest inventory has been loaded; select your changes again.',
     userPluginRestartRequired: 'Restart DSH required', userPluginRestartRequiredDetail: 'User plugins changed in the terminal or elsewhere and take effect after DSH restarts.',
-    userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but User Plugins and User Skills remain editable; those changes may restore DSH. Review the Maintenance logs for details.',
+    userPluginMetadataError: 'Installed plugin metadata could not be read.', userPluginRecoveryDetail: 'DSH failed to start or stopped unexpectedly, but you can still change User Plugins. Check Maintenance for failure logs.',
     userPluginPhaseValidated: 'Validating changes', userPluginPhasePaused: 'Pausing DSH', userPluginPhaseSnapshotted: 'Web Profile backed up',
     userPluginPhaseMutating: 'Changing plugins', userPluginPhaseCommitted: 'Changes saved', userPluginPhaseRestarting: 'Restarting DSH', userPluginPhaseRestoring: 'Restoring Web Profile',
     terminal: 'Container terminal', terminalDetail: 'Open an interactive container shell with administrator privileges. The session remains running when only DSH restarts.',
@@ -1501,7 +1501,10 @@ function reconcileSystemPluginProgress(next) {
   if (systemPluginProgress?.phase !== 'restarting' || systemPluginProgress.taskId === undefined) return
   const lifecycle = next?.dshLifecycle
   if (lifecycle?.taskId !== systemPluginProgress.taskId) return
-  if (['running', 'failed', 'stopped'].includes(lifecycle.state)) systemPluginProgress = undefined
+  if (!['running', 'failed', 'stopped'].includes(lifecycle.state)) return
+  systemPluginProgress = undefined
+  systemPluginApplyingDraft.clear()
+  window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
 }
 
 function pluginButton(label, plugin, action, busy, className = 'secondary') {
@@ -1873,13 +1876,10 @@ function renderUserPlugins(busy) {
     || ['stopped', 'failed'].includes(status?.dshLifecycle?.state)
   elements['apply-user-plugin-changes'].textContent = t(dshUnavailable
     ? 'applyUserPluginChangesOffline' : 'applyUserPluginChanges')
-  elements['user-plugin-recovery'].hidden = status?.recoveryMode === null || status?.recoveryMode === undefined
-  const recoveryReason = typeof status?.recoveryMode === 'string'
-    ? status.recoveryMode
-    : status?.recoveryMode?.reason ?? status?.recoveryMode?.message
-  elements['user-plugin-recovery-detail'].textContent = recoveryReason === undefined
-    ? t('userPluginRecoveryDetail')
-    : `${t('userPluginRecoveryDetail')} ${localizedError(recoveryReason)}`
+  const dshFailed = status?.recoveryMode !== null && status?.recoveryMode !== undefined
+    || status?.dshLifecycle?.state === 'failed'
+  elements['user-plugin-recovery'].hidden = !dshFailed
+  elements['user-plugin-recovery-detail'].textContent = t('userPluginRecoveryDetail')
   const operationVisible = operationResultVisible(operation, 'running')
   const feedback = operation.status === 'running' ? t(phaseKey ?? 'userPluginApplying')
     : operationVisible && operation.status === 'failed' ? `${t('userPluginApplyFailed')}: ${localizedError(operation.error ?? '')}`
@@ -2049,8 +2049,19 @@ function render(next) {
       : ''
   elements['plugin-operation'].hidden = !pluginOperationVisible || pluginOperation.status !== 'failed'
   elements['plugin-operation'].textContent = pluginOperation.status === 'failed' ? localizedError(pluginOperation.error ?? '') : ''
+  const dshFailed = (next?.recoveryMode !== null && next?.recoveryMode !== undefined)
+    || next?.dshLifecycle?.state === 'failed'
+  const dshUnavailable = dshFailed || next?.dshLifecycle?.state === 'stopped'
+  for (const [prefix, detailKey] of [
+    ['system-plugin', 'systemPluginRecoveryDetail'],
+    ['system-skill', 'systemSkillRecoveryDetail'],
+    ['user-skill', 'userSkillRecoveryDetail'],
+  ]) {
+    elements[`${prefix}-recovery`].hidden = !dshFailed
+    elements[`${prefix}-recovery-detail`].textContent = t(detailKey)
+  }
   const systemPluginRestartRequired = systemPluginDraft.size > 0
-    || plugins.some(plugin => plugin.pendingRestart)
+    || (!dshUnavailable && plugins.some(plugin => plugin.pendingRestart))
     || systemPluginSubmitting
     || systemPluginProgress !== undefined
   elements['plugin-restart-required'].hidden = !systemPluginRestartRequired
@@ -2059,6 +2070,8 @@ function render(next) {
   const pluginBusy = busy || discardingPluginDraft
   elements['cancel-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
   elements['apply-system-plugin-changes'].disabled = pluginBusy || systemPluginSubmitting
+  elements['apply-system-plugin-changes'].textContent = t(dshUnavailable
+    ? 'applyUserPluginChangesOffline' : 'applyUserPluginChanges')
   const skillOperationVisible = operationResultVisible(skillOperation, 'running')
   elements['skill-operation'].hidden = !skillOperationVisible || skillOperation.status !== 'failed'
   elements['skill-operation'].textContent = skillOperation.status === 'failed' ? localizedError(skillOperation.error ?? '') : ''
@@ -2226,6 +2239,7 @@ async function applySystemPluginDraft() {
   clearError()
   if (status !== undefined) render(status)
   let changed = false
+  let strategy = 'restart'
   try {
     const changes = [...systemPluginDraft]
     for (const [index, [id, action]] of changes.entries()) {
@@ -2240,8 +2254,16 @@ async function applySystemPluginDraft() {
       visibleOperationTasks.add(task.taskId)
       const operation = await waitForManagementTask(task.taskId, 'systemPluginOperation')
       if (operation.status !== 'success') throw new Error(operation.error ?? 'System Plugin operation failed')
+      if (operation.strategy === 'next-start') strategy = 'next-start'
     }
     systemPluginDraft.clear()
+    if (strategy === 'next-start') {
+      systemPluginProgress = undefined
+      systemPluginApplyingDraft.clear()
+      window.sessionStorage.removeItem(PLUGIN_DRAFT_KEY)
+      await loadStatus()
+      return
+    }
     const restart = await api('restart-dsh', { method: 'POST' })
     systemPluginProgress = { phase: 'restarting', total: changes.length, taskId: restart.taskId }
     if (status !== undefined) render(status)

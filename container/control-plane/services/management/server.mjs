@@ -378,14 +378,27 @@ export function createManagementServer({
     requireRuntimeIdle()
     if (coordinator.hasActiveTask?.() === true) throw new UpdateConflictError('an update task is already running')
     const taskId = randomUUID()
-    publishPlugin({ status: 'running', taskId, pluginId, action, error: null })
+    publishPlugin({
+      status: 'running', taskId, pluginId, action,
+      strategy: null, activationError: null, error: null,
+    })
     pluginTask = Promise.resolve()
       .then(() => recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.started`, { taskId, pluginId }))
       .then(() => recovery ? recoverBundledPlugin(pluginId, action) : configureBundledPlugin(pluginId, action))
       .then(
         async () => {
-          await recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, { taskId, pluginId })
-          publishPlugin({ status: 'success', taskId, pluginId, action, error: null, restartRequired: true })
+          const currentPlatformStatus = await platformStatus().catch(() => ({}))
+          const unavailable = (currentPlatformStatus?.recoveryMode !== null
+            && currentPlatformStatus?.recoveryMode !== undefined)
+            || ['stopped', 'failed'].includes(currentPlatformStatus?.dshLifecycle?.state)
+          const strategy = unavailable ? 'next-start' : 'restart'
+          await recordAudit(`system-plugin.${recovery ? 'recovery.' : ''}${action}.completed`, {
+            taskId, pluginId, strategy,
+          })
+          publishPlugin({
+            status: 'success', taskId, pluginId, action, strategy,
+            activationError: null, error: null, restartRequired: !unavailable,
+          })
         },
         async error => {
           const message = error instanceof Error ? error.message : 'System Plugin operation failed'
@@ -488,6 +501,9 @@ export function createManagementServer({
           const message = error instanceof Error ? error.message : `DSH ${action} failed`
           await recordAudit(`dsh.${action}.failed`, { error, taskId })
           publishLifecycle({ state: 'failed', action: null, taskId, error: message })
+          if (action === 'restart' && pluginState.restartRequired) {
+            publishPlugin({ strategy: 'next-start', activationError: message, restartRequired: false })
+          }
         },
       )
       .finally(() => { lifecycleTask = undefined })
