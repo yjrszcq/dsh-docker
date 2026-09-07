@@ -85,6 +85,25 @@ test('System Skill state ignores removed entries and defaults newly signed skill
   assert.deepEqual(Object.keys(saved.skills), ['second'])
 })
 
+test('System Skill manager switches to a newly selected Environment catalog', async () => {
+  const paths = await fixture()
+  const manager = new SystemSkillManager(paths)
+  await manager.initialize()
+  const replacementRoot = join(paths.root, 'replacement')
+  const replacement = join(replacementRoot, 'replacement')
+  await mkdir(replacement, { recursive: true })
+  await writeFile(join(replacement, 'SKILL.md'), '---\nname: replacement\ndescription: Replacement.\n---\n')
+  await writeFile(join(replacementRoot, 'catalog.json'), JSON.stringify({
+    schema: 1,
+    skills: [{ id: 'replacement', source: 'replacement', description: { en: 'Replacement.', zh: '替代。' } }],
+  }))
+
+  assert.deepEqual((await manager.useSourceRoot(replacementRoot)).map(skill => skill.id), ['replacement'])
+  await assert.rejects(lstat(join(paths.viewRoot, 'operations')), { code: 'ENOENT' })
+  assert.equal(await readlink(join(paths.viewRoot, 'replacement')), replacement)
+  await assert.rejects(manager.configure('operations', 'enable'), /current Environment/)
+})
+
 test('System Skill catalog rejects source aliases and mismatched frontmatter', async () => {
   const paths = await fixture()
   const document = JSON.parse(await readFile(join(paths.sourceRoot, 'catalog.json'), 'utf8'))

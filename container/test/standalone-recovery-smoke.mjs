@@ -181,9 +181,9 @@ const firstRecovery = await request('POST', `${API}user-plugins/apply`, {
   profile: 'web', revision: inventory.revision,
   actions: [{ name: faultNames[0], action: 'disable' }],
 })
-const firstOutcome = await waitTask('userPluginOperation', firstRecovery.taskId, ['failed'])
-assert.equal(typeof firstOutcome.error, 'string')
-assert.notEqual(firstOutcome.error.trim(), '')
+const firstOutcome = await waitTask('userPluginOperation', firstRecovery.taskId, ['success'])
+assert.equal(firstOutcome.strategy, 'next-start')
+assert.equal(firstOutcome.activationError, null)
 inventory = await request('GET', `${API}user-plugins`)
 assert.equal(inventory.plugins.find(value => value.name === faultNames[0])?.enabled, false)
 assert.equal(inventory.plugins.find(value => value.name === faultNames[1])?.enabled, true)
@@ -192,7 +192,11 @@ const secondRecovery = await request('POST', `${API}user-plugins/apply`, {
   profile: 'web', revision: inventory.revision,
   actions: [{ name: faultNames[1], action: 'disable' }],
 })
-await waitTask('userPluginOperation', secondRecovery.taskId, ['success'])
+const secondOutcome = await waitTask('userPluginOperation', secondRecovery.taskId, ['success'])
+assert.equal(secondOutcome.strategy, 'next-start')
+assert.equal(secondOutcome.activationError, null)
+const recoveredStart = await request('POST', `${API}start-dsh`)
+await waitTask('dshLifecycle', recoveredStart.taskId, ['running'])
 await waitFor(async () => {
   const status = await request('GET', `${API}status`)
   return status.recoveryMode === null ? status : false
@@ -220,7 +224,7 @@ const logEntries = (await request('GET', `${API}logs?limit=5000`)).entries
 for (const message of [
   'terminal.session.created', 'terminal.session.connected', 'terminal.session.disconnected',
   'terminal.session.reconnected', 'terminal.session.closed', 'user-plugin.apply.started',
-  'user-plugin.apply.failed', 'user-plugin.apply.completed',
+  'user-plugin.apply.completed',
 ]) assert.ok(logEntries.some(entry => entry.message === message), `missing platform log ${message}`)
 assert.doesNotMatch(JSON.stringify(logEntries.filter(entry => entry.source === 'terminal')), /terminal-before-restart|terminal-after-restart/)
 

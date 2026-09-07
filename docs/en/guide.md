@@ -195,7 +195,7 @@ Bootstrap Runtime (current / previous)
     └── Environment Resources
         ├── Patches
         ├── System Plugins
-        └── System Skills ──release mapping──▶ Bootstrap Skill view
+        └── System Skills ──verified materialization──▶ Runtime Skill view
 
 Verified Pristine DSH + Complete Patch Set
                     │
@@ -217,7 +217,7 @@ Verified Pristine DSH + Complete Patch Set
 
 Stage-0 is the only writer of trust state and owns Bootstrap A/B selection and rollback together with the root Maintenance Broker, independently of ordinary `node` processes. Bootstrap owns the DSH Lifecycle Broker, component supervision, health checks, and Environment failure recovery. Management is a persistent Control Plane service; its managers are in-process modules, not independently versioned components or listeners. Initial immutable versions run directly from the read-only image seed through validated Image References; only online update outputs are materialized in the platform data volume. Bootstrap supervises the persistent Control Plane separately from the reloadable Environment, so replacing, suspending, or restarting DSH does not stop Gateway, Management, or DSH Management Console.
 
-System Skill sources belong to the Environment, but release packaging maps them into the signed Bootstrap Artifact and Bootstrap publishes `/run/dsh-platform/views/skills`. They are not part of a Deployment Record; Runtime, Environment, and the System Plugin overlay are switched as one complete Deployment.
+System Skill sources belong to the Environment and are packaged as an Artifact in its signed manifest. Bootstrap verifies and materializes the catalog from the selected Environment, then publishes `/run/dsh-platform/views/skills`. Because the Environment directory is part of the Deployment Record, Skill content follows the same atomic activation and rollback boundary without making content-only edits change Bootstrap.
 
 The source tree follows the same boundary:
 
@@ -225,7 +225,7 @@ The source tree follows the same boundary:
 - `container/control-plane/services/`: persistent Gateway and Management processes.
 - `container/control-plane/hooks/`: supervised one-shot recovery work.
 - `container/control-plane/modules/`: updater, logging, patch, System Plugin, and System Skill logic.
-- `container/environment/resources/skills/`: Environment-owned System Skill catalogs and instruction trees, mapped into the signed Bootstrap package for trusted runtime management.
+- `container/environment/resources/skills/`: Environment-owned System Skill catalogs and instruction trees, packaged as a signed Environment Artifact for trusted runtime management.
 - `container/environment/`: the complete Container Environment source, including workloads and `resources/{patches,plugins,skills}`.
 - `scripts/`: repository maintenance commands such as Environment version synchronization; not included in the container runtime.
 
@@ -449,11 +449,11 @@ The optional Settings Document Editor System Plugin replaces DSH's native **Open
 
 ## System Skills
 
-The signed Bootstrap includes `dsh-docker-operations`, an English machine-facing operations guide for the official container environment. Its compact `SKILL.md` routes the Agent to focused references covering identity and permissions, workspaces and development tools, DSH and extensions, lifecycle and logs, updates and recovery, networking and authentication, and ordered diagnostics. The guide instructs the Agent to answer in the user's language and to use `dsh`, `dsh-platform`, their current help, and the Management interfaces before inspecting platform implementation details. It explicitly forbids credential discovery, direct socket calls, manual Trust/Store/Runtime-view mutation, and package-manager environment overrides during ordinary operations.
+The signed Environment includes `dsh-docker-operations`, an English machine-facing operations guide for the official container environment. Its compact `SKILL.md` routes the Agent to focused references covering identity and permissions, workspaces and development tools, DSH and extensions, lifecycle and logs, updates and recovery, networking and authentication, and ordered diagnostics. The guide instructs the Agent to answer in the user's language and to use `dsh`, `dsh-platform`, their current help, and the Management interfaces before inspecting platform implementation details. It explicitly forbids credential discovery, direct socket calls, manual Trust/Store/Runtime-view mutation, and package-manager environment overrides during ordinary operations.
 
-Bootstrap publishes enabled skills from its verified local bundle into `/run/dsh-platform/views/skills`, and DSH discovers that fixed root through `DSH_BUNDLED_SKILL_DIR`. System Skills use `id + SHA-256` identity and have no independent release version. Their selection is stored at `/data/platform/state/deployments/skills.json`; uninstalling removes only the active selection, so the signed Bootstrap copy remains available for offline reinstallation. No management action accepts a URL, path, uploaded body, or client-supplied hash.
+Bootstrap publishes enabled skills from the selected Environment's verified local catalog into `/run/dsh-platform/views/skills`, and DSH discovers that fixed root through `DSH_BUNDLED_SKILL_DIR`. System Skills use `id + SHA-256` identity and have no independent release version. Their selection is stored at `/data/platform/state/deployments/skills.json`; uninstalling removes only the active selection, so the signed Environment copy remains available for offline reinstallation. No management action accepts a URL, path, uploaded body, or client-supplied hash.
 
-The standalone console lists every System Skill supplied by the current Bootstrap and supports install, uninstall, enable, and disable. Platform Management inside DSH can install a missing skill and enable or disable an installed one, but cannot uninstall it. All changes atomically update the stable skill view and are picked up by DSH's native filesystem watcher without restarting DSH. The same state survives container restarts, newly signed skills default to installed and enabled, and skills removed by a newer Bootstrap are pruned. Project and user skills retain DSH's native precedence over bundled skills; disabling a System Skill does not alter either override.
+The standalone console lists every System Skill supplied by the current Environment and supports install, uninstall, enable, and disable. Platform Management inside DSH can install a missing skill and enable or disable an installed one, but cannot uninstall it. All changes atomically update the stable skill view and are picked up by DSH's native filesystem watcher without restarting DSH. The same state survives container restarts, newly signed skills default to installed and enabled, and skills removed by a newer Environment are pruned. Project and user skills retain DSH's native precedence over bundled skills; disabling a System Skill does not alter either override.
 
 `dsh-docker-operations` is model-discoverable and can also be invoked explicitly as `/dsh-docker-operations`. It applies to operating the installed environment, not to developing dsh-docker itself. Only an explicit platform-development or implementation-debugging request permits inspection of `/opt/dsh-platform` and `/run/dsh-platform` internals.
 
@@ -576,7 +576,7 @@ Repository Compose disables unrestricted passwordless root access for DSH and it
 
 The workflow starts the first formal `targetSequence` at 1 and appends each later signed target to the `release-channel` branch. It validates the selected npm tarball and binds its npm integrity into Stable metadata, but does not republish a duplicate DSH tarball; Stage-0 imports the official npm copy. A retry of the same source commit and keyring reuses the already-published target instead of consuming another sequence. The Recovery private key has no workflow input.
 
-GitHub Releases describe only the Container Environment. A new Environment publishes `v<environment-version>` (for example `v1.0.0`) and marks it Latest. A DSH-only update advances the signed channel and rebuilds images without creating a GitHub Release. Changes to packaged Environment or Bootstrap content, or to [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json), require an Environment version increase; the Environment fingerprint check rejects reuse of an existing version for different content. When Bootstrap content changes, also increment [`container/platform/bootstrap/VERSION`](../../container/platform/bootstrap/VERSION); release validation rejects reusing the previous Bootstrap version.
+GitHub Releases describe only the Container Environment. A new Environment publishes `v<environment-version>` (for example `v1.0.0`) and marks it Latest. A DSH-only update advances the signed channel and rebuilds images without creating a GitHub Release. Changes to packaged Environment or Bootstrap content, or to [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json), require an Environment version increase; the Environment fingerprint check rejects reuse of an existing version for different content. System Skill content is an Environment Artifact, so a Skill-only edit does not change the Bootstrap package. When Bootstrap code or other packaged Bootstrap content changes, also increment [`container/platform/bootstrap/VERSION`](../../container/platform/bootstrap/VERSION); release validation rejects reusing the previous Bootstrap version.
 
 When preparing an Environment release, run this from the repository root:
 

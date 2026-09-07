@@ -37,6 +37,7 @@ export class PlatformPaths {
     this.objectsRoot = join(this.storeRoot, 'objects')
     this.bootstrapStoreRoot = join(this.storeRoot, 'bootstrap')
     this.environmentsRoot = join(this.storeRoot, 'environments')
+    this.systemSkillCatalogsRoot = join(this.environmentsRoot, 'versions', '.system-skill-catalogs')
     this.pristineRoot = join(this.storeRoot, 'pristine')
     this.runtimesRoot = join(this.storeRoot, 'runtimes')
     this.systemPluginsRoot = join(this.storeRoot, 'system-plugins')

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile, realpath } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, realpath, rename, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { EnvironmentRunner, loadControlPlane } from './lib/lifecycle.mjs'
 import { BootstrapRuntime } from './lib/runtime.mjs'
@@ -8,7 +9,7 @@ import { createBootstrapControl, listenBootstrapControl } from './lib/control.mj
 import { createDshLifecycleServer, DshLifecycleBroker, listenDshLifecycle } from './lib/dsh-lifecycle.mjs'
 import { JsonlLogManager } from '../../control-plane/modules/log-manager/index.mjs'
 import { PlatformPaths } from '../lib/paths.mjs'
-import { parseImageInventory, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
+import { parseBootstrapRecord, parseImageInventory, parseSlots, recordsFromImageInventory } from '../lib/deployment-contracts.mjs'
 import { DeploymentManager, DeploymentResolutionError } from './lib/deployments.mjs'
 import { LocalApiClient } from '../../control-plane/modules/updater/lib/client.mjs'
 import {
@@ -21,7 +22,10 @@ import {
 } from '../../control-plane/modules/plugin-manager/system.mjs'
 import { replaceSystemPluginView } from '../lib/paths.mjs'
 import { verifyRuntimePatches } from '../../control-plane/modules/patch-manager/index.mjs'
-import { SystemSkillManager } from '../../control-plane/modules/skill-manager/index.mjs'
+import {
+  materializeSystemSkillCatalog,
+  SystemSkillManager,
+} from '../../control-plane/modules/skill-manager/index.mjs'
 import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
 import {
   outboundProxyEnvironment,
@@ -93,8 +97,54 @@ await linkSystemPluginScope({
   viewRoot: join(paths.viewsRoot, 'system-plugins'),
 })
 const systemPluginSelections = new SystemPluginSelectionStore(join(paths.deploymentStateRoot, 'system-plugins.json'))
+await mkdir(paths.systemSkillCatalogsRoot, { recursive: true })
+const legacySystemSkillRoot = async () => {
+  const retained = join(paths.systemSkillCatalogsRoot, 'legacy-bootstrap')
+  const retainedCatalog = await lstat(join(retained, 'catalog.json')).catch(error => (
+    error?.code === 'ENOENT' ? undefined : Promise.reject(error)
+  ))
+  if (retainedCatalog?.isFile() === true && !retainedCatalog.isSymbolicLink()) return retained
+  const slots = parseSlots(
+    await readFile(join(paths.bootstrapStateRoot, 'slots.json')),
+    'bootstrap-record',
+    'Bootstrap slots',
+  )
+  for (const recordId of [slots.previous, slots.current].filter(Boolean)) {
+    const record = parseBootstrapRecord(await readFile(join(paths.bootstrapStateRoot, 'records', `${recordId}.json`)))
+    const bootstrapRoot = record.artifact.storage === 'image'
+      ? join(seedRoot, 'bootstrap', record.artifact.id)
+      : join(paths.bootstrapStoreRoot, record.artifact.id)
+    const skillRoot = join(bootstrapRoot, 'control-plane', 'skills')
+    const catalog = await lstat(join(skillRoot, 'catalog.json')).catch(error => (
+      error?.code === 'ENOENT' ? undefined : Promise.reject(error)
+    ))
+    if (catalog?.isFile() === true && !catalog.isSymbolicLink()) {
+      const staging = `${retained}.${randomUUID()}.tmp`
+      try {
+        await cp(skillRoot, staging, { recursive: true, verbatimSymlinks: true })
+        try {
+          await rename(staging, retained)
+        } catch (error) {
+          if (error?.code !== 'EEXIST' && error?.code !== 'ENOTEMPTY') throw error
+        }
+      } finally {
+        await rm(staging, { recursive: true, force: true })
+      }
+      return retained
+    }
+  }
+  throw new Error('current Environment has no System Skill catalog and no legacy Bootstrap catalog is retained')
+}
+const selectedSystemSkillRoot = async () => {
+  const selected = await deployments.selected()
+  if (selected === null) throw new Error('no Deployment is selected')
+  return await materializeSystemSkillCatalog({
+    environmentRoot: selected.paths.environment,
+    outputRoot: paths.systemSkillCatalogsRoot,
+  }) ?? await legacySystemSkillRoot()
+}
 const systemSkillManager = new SystemSkillManager({
-  sourceRoot: join(import.meta.dirname, '..', '..', 'control-plane', 'skills'),
+  sourceRoot: await selectedSystemSkillRoot(),
   viewRoot: paths.systemSkillsView,
   statePath: paths.systemSkillStatePath,
 })
@@ -118,6 +168,11 @@ const applySystemPluginSelection = async () => {
     pluginCount: materialized.plugins.length,
   })
   return materialized.plugins
+}
+const applyDeploymentResources = async () => {
+  await applySystemPluginSelection()
+  const skills = await systemSkillManager.useSourceRoot(await selectedSystemSkillRoot())
+  await logs.diagnostic('bootstrap', 'system-skill.view.applied', { skillCount: skills.length })
 }
 const prepareSystemPluginSelection = async () => {
   const previous = await realpath(join(paths.systemPluginViewsRoot, 'current'))
@@ -239,7 +294,7 @@ runtime = new BootstrapRuntime({
       environmentRoot: join(paths.viewsRoot, 'environment'),
     })
   },
-  prepareDeployment: applySystemPluginSelection,
+  prepareDeployment: applyDeploymentResources,
   beforeEnvironmentStart: async () => {
     await access.request('POST', '/v1/classify', { token: accessLaunchToken, evidence: accessEvidence })
     await logs.diagnostic('bootstrap', 'access.classification.submitted')

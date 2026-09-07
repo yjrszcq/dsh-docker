@@ -892,6 +892,8 @@ test('collects only Store assets and records outside slots, transactions, Holds,
     from: { runtime: current.id }, to: { runtime: current.id }, snapshotId: 'snapshot-kept',
   }))
   await writeFile(join(context.paths.downloadsRoot, 'disposable'), 'cache')
+  await mkdir(context.paths.systemSkillCatalogsRoot, { recursive: true })
+  await writeFile(join(context.paths.systemSkillCatalogsRoot, 'catalog-marker'), 'retained')
 
   const removedSnapshots = []
   const result = await new PlatformGarbageCollector({
@@ -915,6 +917,7 @@ test('collects only Store assets and records outside slots, transactions, Holds,
   assert.deepEqual(removedSnapshots, ['snapshot-orphan'])
   await assert.rejects(lstat(join(context.paths.snapshotsRoot, 'versions', 'snapshot-orphan')), { code: 'ENOENT' })
   await assert.rejects(lstat(join(context.paths.downloadsRoot, 'disposable')), { code: 'ENOENT' })
+  assert.equal(await readFile(join(context.paths.systemSkillCatalogsRoot, 'catalog-marker'), 'utf8'), 'retained')
 })
 
 test('explicit recovery replaces an invalid Managed current with the exact Image Baseline', async () => {

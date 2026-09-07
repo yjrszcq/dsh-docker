@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { parseComponentManifest, parseEnvironmentManifest } from '../lib/contracts.mjs'
+import { materializeSystemSkillCatalog, readSystemSkillCatalog } from '../../control-plane/modules/skill-manager/index.mjs'
 
 const platformRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const containerRoot = dirname(platformRoot)
@@ -38,6 +39,13 @@ test('packages the initial Environment deterministically from real resources', a
     assert.deepEqual(Object.keys(reference).sort(), ['id', 'sha256'])
   }
   assert.deepEqual(await readdir(join(first, 'artifacts')), await readdir(join(second, 'artifacts')))
+  const skillArtifact = manifest.artifacts.find(artifact => artifact.id === 'system-skill-catalog')
+  assert.equal(skillArtifact?.mediaType, 'application/vnd.dsh-platform.system-skill-catalog.v1+tar+gzip')
+  const skillArchive = join(first, 'artifacts', 'system-skill-catalog')
+  const skillListing = spawnSync('tar', ['-tzf', skillArchive], { encoding: 'utf8' })
+  assert.equal(skillListing.status, 0, skillListing.stderr)
+  assert.match(skillListing.stdout, /^skills\/catalog\.json$/m)
+  assert.match(skillListing.stdout, /^skills\/dsh-docker-operations\/SKILL\.md$/m)
   const navigationArchive = join(first, 'artifacts', 'system-plugin-settings-navigation')
   const listing = spawnSync('tar', ['-tzf', navigationArchive], { encoding: 'utf8' })
   assert.equal(listing.status, 0, listing.stderr)
@@ -55,6 +63,20 @@ test('can emit flat Artifact URLs for GitHub Release assets', async () => {
   const manifest = parseEnvironmentManifest(await readFile(join(output, 'environment.manifest.json')))
   assert.equal(manifest.artifacts.every(artifact => artifact.url.startsWith('https://release.example/platform-1/')), true)
   assert.equal(manifest.artifacts.every(artifact => !artifact.url.includes('/artifacts/')), true)
+})
+
+test('materializes the verified System Skill catalog from an Environment Artifact', async () => {
+  const environmentRoot = await build()
+  const outputRoot = await mkdtemp(join(tmpdir(), 'dsh-system-skill-catalogs-'))
+  const materialized = await materializeSystemSkillCatalog({ environmentRoot, outputRoot })
+  const catalog = await readSystemSkillCatalog(materialized)
+  assert.deepEqual(catalog.map(skill => skill.id), ['dsh-docker-operations'])
+
+  await writeFile(join(environmentRoot, 'artifacts', 'system-skill-catalog'), 'tampered')
+  await assert.rejects(
+    materializeSystemSkillCatalog({ environmentRoot, outputRoot }),
+    /differs from its Environment manifest/,
+  )
 })
 
 test('checked-in Component manifests satisfy the public contract', async () => {

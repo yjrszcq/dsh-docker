@@ -265,10 +265,12 @@ test('prepares one flat Recovery-rooted release from the reviewed Supported Targ
     'control-plane/modules/file-manager/tasks.mjs',
     'control-plane/modules/file-manager/archives.mjs',
     'control-plane/modules/skill-manager/index.mjs',
-    'control-plane/skills/catalog.json',
-    'control-plane/skills/dsh-docker-operations/SKILL.md',
-    'control-plane/skills/dsh-docker-operations/references/diagnostics-and-boundaries.md',
   ]) assert.ok(bootstrapEntries.includes(name), `${name} is missing from bootstrap.tgz`)
+  assert.equal(bootstrapEntries.some(name => name.startsWith('control-plane/skills/')), false)
+  const skillArchive = spawnSync('tar', ['-tzf', join(output, 'system-skill-catalog')], { encoding: 'utf8' })
+  assert.equal(skillArchive.status, 0, skillArchive.stderr)
+  assert.match(skillArchive.stdout, /^skills\/catalog\.json$/m)
+  assert.match(skillArchive.stdout, /^skills\/dsh-docker-operations\/SKILL\.md$/m)
   assert.equal(bootstrapEntries.some(name => name.endsWith('.node')), false)
 
   const stableBytes = await readFile(join(output, 'stable.json'))

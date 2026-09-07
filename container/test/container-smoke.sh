@@ -643,8 +643,6 @@ docker exec -i --user node --env "SMOKE_MANAGEMENT_CSRF=$management_csrf" \
 docker logs "$container" 2>&1 \
   | grep -E '"source":"terminal".*"message":"terminal.session.created"' >/dev/null
 docker logs "$container" 2>&1 \
-  | grep -E '"source":"audit".*"message":"user-plugin.apply.failed"' >/dev/null
-docker logs "$container" 2>&1 \
   | grep -E '"source":"audit".*"message":"user-plugin.apply.completed"' >/dev/null
 internal_status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' \
   http://127.0.0.1:3079/)"

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { lstat, mkdtemp, mkdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -140,7 +140,13 @@ test('builds a self-contained Bootstrap seed and preserves npm bin links', async
   assert.equal((await lstat(join(bootstrapRoot, 'control-plane/services/management/node_modules/@xterm/xterm/css/xterm.css'))).isFile(), true)
   assert.equal((await lstat(join(bootstrapRoot, 'control-plane/services/outbound-proxy/index.mjs'))).isFile(), true)
   assert.equal((await lstat(join(bootstrapRoot, 'control-plane/services/access-manager/index.mjs'))).isFile(), true)
-  assert.equal((await lstat(join(bootstrapRoot, 'control-plane/skills/dsh-docker-operations/SKILL.md'))).isFile(), true)
+  await assert.rejects(lstat(join(bootstrapRoot, 'control-plane/skills')), { code: 'ENOENT' })
+  const skillArchive = join(
+    output, 'environments', inventory.deployment.environment.id, 'artifacts', 'system-skill-catalog',
+  )
+  const skillListing = spawnSync('tar', ['-tzf', skillArchive], { encoding: 'utf8' })
+  assert.equal(skillListing.status, 0, skillListing.stderr)
+  assert.match(skillListing.stdout, /^skills\/dsh-docker-operations\/SKILL\.md$/m)
   assert.equal(await readlink(join(output, 'pristine/0.1.0-rc.fixture/node_modules/.bin/tool')), '../tool/bin.js')
   assert.equal(await readlink(join(output, 'runtime/0.1.0-rc.fixture/package/node_modules/.bin/tool')), '../tool/bin.js')
   assert.deepEqual(await verifyRuntimePatches({

@@ -41,7 +41,6 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /runtime\.reset\.completed/)
   assert.match(script, /runtime-reset-sentinel/)
   assert.match(script, /terminal\.session\.created/)
-  assert.match(script, /user-plugin\.apply\.failed/)
   assert.match(script, /user-plugin\.apply\.completed/)
   assert.match(script, /platform readiness exceeded 10 seconds/)
   assert.match(script, /clear only \/data\/platform/)

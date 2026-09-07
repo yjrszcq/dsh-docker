@@ -1,11 +1,70 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { canonicalJson } from '../../../platform/lib/canonical-json.mjs'
+import { parseEnvironmentManifest } from '../../../platform/lib/contracts.mjs'
 import { hashTree } from '../../../platform/lib/tree-hash.mjs'
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const STATE_SCHEMA = 1
+export const SYSTEM_SKILL_CATALOG_ARTIFACT_ID = 'system-skill-catalog'
+export const SYSTEM_SKILL_CATALOG_MEDIA_TYPE = 'application/vnd.dsh-platform.system-skill-catalog.v1+tar+gzip'
+
+function runTar(args, { capture = false } = {}) {
+  return new Promise((resolveTar, reject) => {
+    const child = spawn('tar', args, { stdio: ['ignore', capture ? 'pipe' : 'ignore', 'pipe'] })
+    const stdout = []
+    const stderr = []
+    child.stdout?.on('data', chunk => stdout.push(chunk))
+    child.stderr.on('data', chunk => stderr.push(chunk))
+    child.once('error', reject)
+    child.once('exit', code => code === 0
+      ? resolveTar(Buffer.concat(stdout).toString('utf8'))
+      : reject(new Error(`System Skill archive failed: ${Buffer.concat(stderr).toString('utf8')}`)))
+  })
+}
+
+async function exists(path) {
+  return lstat(path).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))
+}
+
+export async function materializeSystemSkillCatalog({ environmentRoot, outputRoot }) {
+  const root = resolve(environmentRoot)
+  const manifest = parseEnvironmentManifest(await readFile(join(root, 'environment.manifest.json')))
+  const artifact = manifest.artifacts.find(entry => entry.id === SYSTEM_SKILL_CATALOG_ARTIFACT_ID)
+  if (artifact === undefined) return undefined
+  if (artifact.mediaType !== SYSTEM_SKILL_CATALOG_MEDIA_TYPE) {
+    throw new Error('System Skill catalog Artifact media type is invalid')
+  }
+  const archive = join(root, 'artifacts', artifact.id)
+  const bytes = await readFile(archive)
+  if (bytes.byteLength !== artifact.size || createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) {
+    throw new Error('System Skill catalog Artifact differs from its Environment manifest')
+  }
+  const destination = join(resolve(outputRoot), artifact.sha256)
+  if (!await exists(destination)) {
+    const staging = `${destination}.${randomUUID()}.tmp`
+    await mkdir(staging, { recursive: true })
+    try {
+      const entries = (await runTar(['-tzf', archive], { capture: true })).split('\n').filter(Boolean)
+      if (entries.length === 0 || entries.some(entry => (
+        entry.startsWith('/') || !entry.startsWith('skills/') || entry.split('/').includes('..')
+      ))) throw new Error('System Skill catalog archive contains an unsafe path')
+      await runTar(['-xzf', archive, '--no-same-owner', '--no-same-permissions', '--strip-components=1', '-C', staging])
+      await readSystemSkillCatalog(staging)
+      try {
+        await rename(staging, destination)
+      } catch (error) {
+        if (error?.code !== 'EEXIST' && error?.code !== 'ENOTEMPTY') throw error
+      }
+    } finally {
+      await rm(staging, { recursive: true, force: true })
+    }
+  }
+  await readSystemSkillCatalog(destination)
+  return destination
+}
 
 function exactKeys(value, keys, label) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)
@@ -159,6 +218,16 @@ export class SystemSkillManager {
     return this.listFrom(catalog, selection)
   }
 
+  async useSourceRoot(sourceRoot) {
+    const nextRoot = resolve(sourceRoot)
+    const catalog = await readSystemSkillCatalog(nextRoot)
+    const selection = await this.store.read(catalog)
+    await this.store.write(catalog, selection)
+    await synchronizeSystemSkillView({ catalog, selection, viewRoot: this.viewRoot })
+    this.sourceRoot = nextRoot
+    return this.listFrom(catalog, selection)
+  }
+
   listFrom(catalog, selection) {
     return Object.freeze(catalog.map(skill => Object.freeze({
       id: skill.id,
@@ -178,7 +247,7 @@ export class SystemSkillManager {
     const id = skillId(idValue)
     if (!['install', 'uninstall', 'enable', 'disable'].includes(action)) throw new Error('System Skill action is invalid')
     const catalog = await readSystemSkillCatalog(this.sourceRoot)
-    if (!catalog.some(skill => skill.id === id)) throw new Error(`System Skill ${id} is not provided by the current Bootstrap`)
+    if (!catalog.some(skill => skill.id === id)) throw new Error(`System Skill ${id} is not provided by the current Environment`)
     const before = await this.store.read(catalog)
     const next = structuredClone(before)
     const current = next[id]

@@ -30,6 +30,8 @@ test('creates state, store, cache, and logs without persistent runtime views', a
     paths.runtimesRoot, paths.systemPluginsRoot, paths.snapshotsRoot, paths.userPluginSnapshotsRoot,
     paths.downloadsRoot, paths.npmCacheRoot, paths.logsRoot,
   ]) assert.equal((await lstat(path)).isDirectory(), true)
+  assert.equal(paths.systemSkillCatalogsRoot, join(paths.environmentsRoot, 'versions', '.system-skill-catalogs'))
+  await assert.rejects(lstat(paths.systemSkillCatalogsRoot), { code: 'ENOENT' })
   await assert.rejects(lstat(paths.runRoot), { code: 'ENOENT' })
 })
 

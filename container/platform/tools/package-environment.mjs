@@ -36,6 +36,9 @@ if (definition.bootstrapApi !== 1) throw new Error('definition bootstrapApi must
 if (!Array.isArray(definition.components) || !Array.isArray(definition.patches) || !Array.isArray(definition.systemPlugins)) {
   throw new Error('definition resource lists must be arrays')
 }
+if (definition.systemSkillCatalog === null || typeof definition.systemSkillCatalog !== 'object' || Array.isArray(definition.systemSkillCatalog)) {
+  throw new Error('definition systemSkillCatalog must be an object')
+}
 
 const groups = ['components', 'patches', 'systemPlugins']
 const artifacts = []
@@ -54,6 +57,19 @@ for (const group of groups) {
     artifactIds.add(item.artifactId)
   }
 }
+const systemSkillCatalog = definition.systemSkillCatalog
+if (Object.keys(systemSkillCatalog).sort().join(',') !== 'artifactId,mediaType,source'
+  || systemSkillCatalog.artifactId !== 'system-skill-catalog'
+  || systemSkillCatalog.mediaType !== 'application/vnd.dsh-platform.system-skill-catalog.v1+tar+gzip'
+  || typeof systemSkillCatalog.source !== 'string') {
+  throw new Error('definition systemSkillCatalog is invalid')
+}
+const skillSource = resolve(definitionRoot, systemSkillCatalog.source)
+if (skillSource !== allowedSourceRoot && !skillSource.startsWith(`${allowedSourceRoot}/`)) {
+  throw new Error('System Skill catalog source escapes the container source root')
+}
+if (artifactIds.has(systemSkillCatalog.artifactId)) throw new Error(`duplicate Artifact ID ${systemSkillCatalog.artifactId}`)
+artifactIds.add(systemSkillCatalog.artifactId)
 await mkdir(join(staging, 'artifacts'), { recursive: true })
 try {
 for (const group of groups) {
@@ -94,6 +110,26 @@ for (const group of groups) {
     references[group].push({ id: item.id, sha256 })
   }
 }
+
+const skillDestination = join(staging, 'artifacts', systemSkillCatalog.artifactId)
+await new Promise((resolveArchive, reject) => {
+  const child = spawn('tar', [
+    '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
+    '-czf', skillDestination, '-C', dirname(skillSource), basename(skillSource),
+  ])
+  child.once('error', reject)
+  child.once('exit', code => code === 0 ? resolveArchive() : reject(new Error(`tar exited with ${String(code)}`)))
+})
+const skillBytes = await readFile(skillDestination)
+artifacts.push({
+  id: systemSkillCatalog.artifactId,
+  mediaType: systemSkillCatalog.mediaType,
+  sha256: createHash('sha256').update(skillBytes).digest('hex'),
+  size: skillBytes.byteLength,
+  url: new URL(layoutArg === 'flat'
+    ? systemSkillCatalog.artifactId
+    : `artifacts/${systemSkillCatalog.artifactId}`, baseUrl).href,
+})
 
 const manifest = {
   schema: 1,

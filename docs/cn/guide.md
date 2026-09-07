@@ -195,7 +195,7 @@ Bootstrap Runtime（current / previous）
     └── Environment Resources
         ├── Patches
         ├── System Plugins
-        └── System Skills ──发布映射──▶ Bootstrap Skill view
+        └── System Skills ──验证并实体化──▶ Runtime Skill view
 
 已验证的 Pristine DSH + 完整 Patch Set
                    │
@@ -217,7 +217,7 @@ Environment view + System Plugin overlay
 
 Stage-0 是唯一的信任状态写入者，也持有 Bootstrap A/B 选择与回滚，以及独立于普通 `node` 进程的 root Maintenance Broker。Bootstrap 负责 DSH Lifecycle Broker、组件监督、健康检查和 Environment 失败恢复；Management 只是常驻 Control Plane 服务，各类 manager 是其进程内模块，不是拥有独立版本或监听端口的组件。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment，因此替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
 
-System Skills 的源码属于 Environment，但发布时会被映射进已签名 Bootstrap Artifact，并由 Bootstrap 生成 `/run/dsh-platform/views/skills`。它们不属于 Deployment Record；Runtime、Environment 和 System Plugin overlay 才作为完整 Deployment 原子切换。
+System Skill 源码属于 Environment，并作为 Artifact 写入其签名 Manifest。Bootstrap 从当前选中的 Environment 验证并实体化清单，再生成 `/run/dsh-platform/views/skills`。Environment 目录属于 Deployment Record，因此 Skill 内容沿用相同的原子激活与回滚边界，纯内容修改不再改变 Bootstrap。
 
 源码目录使用同一边界：
 
@@ -225,7 +225,7 @@ System Skills 的源码属于 Environment，但发布时会被映射进已签名
 - `container/control-plane/services/`：常驻 Gateway 和 Management 进程。
 - `container/control-plane/hooks/`：受监督的一次性恢复任务。
 - `container/control-plane/modules/`：更新、日志、补丁、System Plugin 和 System Skill 逻辑。
-- `container/environment/resources/skills/`：由 Environment 归属的 System Skill 清单与指引树，发布时映射进已签名 Bootstrap 包，由其执行可信运行管理。
+- `container/environment/resources/skills/`：由 Environment 归属的 System Skill 清单与指引树，打包成已签名 Environment Artifact，供可信运行管理使用。
 - `container/environment/`：完整 Container Environment 源码，包括工作负载和 `resources/{patches,plugins,skills}`。
 - `scripts/`：仓库维护命令，例如 Environment 版本同步；不进入容器运行时。
 
@@ -451,11 +451,11 @@ Container Environment 当前包含：
 
 ## 系统技能
 
-已签名 Bootstrap 内置 `dsh-docker-operations`，这是面向 Agent 的英文 DSH Docker 完整操作手册。精简的 `SKILL.md` 只负责触发和路由，并按任务读取身份与权限、工作区与开发工具、DSH 与扩展、生命周期与日志、更新与恢复、网络与认证、有序诊断等引用文件。手册要求 Agent 继续使用用户的语言回答，并优先使用 `dsh`、`dsh-platform`、它们当前的帮助以及管理界面，而不是从平台内部反推公共操作。日常操作中明确禁止搜索凭据、直接调用 socket、手工修改 Trust/Store/Runtime view，以及覆盖包管理器环境。
+已签名 Environment 内置 `dsh-docker-operations`，这是面向 Agent 的英文 DSH Docker 完整操作手册。精简的 `SKILL.md` 只负责触发和路由，并按任务读取身份与权限、工作区与开发工具、DSH 与扩展、生命周期与日志、更新与恢复、网络与认证、有序诊断等引用文件。手册要求 Agent 继续使用用户的语言回答，并优先使用 `dsh`、`dsh-platform`、它们当前的帮助以及管理界面，而不是从平台内部反推公共操作。日常操作中明确禁止搜索凭据、直接调用 socket、手工修改 Trust/Store/Runtime view，以及覆盖包管理器环境。
 
-Bootstrap 只从当前已验证的本地包中发布已启用 Skill 到 `/run/dsh-platform/views/skills`，DSH 通过 `DSH_BUNDLED_SKILL_DIR` 发现这个固定根目录。System Skill 只使用 `id + SHA-256` 标识，没有独立发布版本。选择状态保存于 `/data/platform/state/deployments/skills.json`；“卸载”只移除运行选择，不删除已签名 Bootstrap 中的不变副本，因此可离线重新安装。管理接口不接受 URL、任意路径、上传内容或客户端 Hash。
+Bootstrap 只从当前 Environment 已验证的本地清单中发布已启用 Skill 到 `/run/dsh-platform/views/skills`，DSH 通过 `DSH_BUNDLED_SKILL_DIR` 发现这个固定根目录。System Skill 只使用 `id + SHA-256` 标识，没有独立发布版本。选择状态保存于 `/data/platform/state/deployments/skills.json`；“卸载”只移除运行选择，不删除已签名 Environment 中的不变副本，因此可离线重新安装。管理接口不接受 URL、任意路径、上传内容或客户端 Hash。
 
-独立管理中心始终列出当前 Bootstrap 提供的全部 System Skill，并支持安装、卸载、启用和禁用。DSH 内的“平台管理”可安装缺失技能，已安装时只允许启用或禁用，不提供卸载。所有变更都会原子更新稳定 Skill view，并由 DSH 原生文件系统 watcher 热加载，无需重启 DSH。容器重启后保留选择；新签名 Skill 默认安装并启用，新 Bootstrap 已移除的 Skill 会从状态中清理。项目或用户的同名 Skill 仍按 DSH 原生优先级覆盖内置副本；禁用 System Skill 不会修改这些覆盖。
+独立管理中心始终列出当前 Environment 提供的全部 System Skill，并支持安装、卸载、启用和禁用。DSH 内的“平台管理”可安装缺失技能，已安装时只允许启用或禁用，不提供卸载。所有变更都会原子更新稳定 Skill view，并由 DSH 原生文件系统 watcher 热加载，无需重启 DSH。容器重启后保留选择；新签名 Skill 默认安装并启用，新 Environment 已移除的 Skill 会从状态中清理。项目或用户的同名 Skill 仍按 DSH 原生优先级覆盖内置副本；禁用 System Skill 不会修改这些覆盖。
 
 `dsh-docker-operations` 可被模型自动发现，也可显式调用 `/dsh-docker-operations`。它用于操作已安装的容器环境，不用于开发 dsh-docker 平台本身。只有用户明确要求平台开发或实现调试时，才允许检查 `/opt/dsh-platform` 和 `/run/dsh-platform` 内部。
 
@@ -578,7 +578,7 @@ ssh -L 3080:127.0.0.1:3080 user@server
 
 工作流从首个正式 `targetSequence: 1` 开始，将后续签名目标依次追加到 `release-channel` 分支。它会验证所选 npm tarball 并将 npm integrity 绑定到 Stable 元数据，但不会重新发布一份 DSH tarball；Stage-0 从官方 npm 导入。同一源码提交和 keyring 的失败任务重试会复用已经发布的目标，不会额外消耗序列。Recovery 私钥没有任何工作流输入。
 
-GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。Bootstrap 内容发生变化时，还必须递增 [`container/platform/bootstrap/VERSION`](../../container/platform/bootstrap/VERSION)；发布检查会拒绝复用旧 Bootstrap 版本。
+GitHub Release 只表示 Container Environment。新 Environment 发布 `v<environment-version>`（例如 `v1.0.0`）并标记为 Latest；仅 DSH 更新时只推进签名通道和重建镜像，不创建 GitHub Release。打包后的 Environment、Bootstrap 或 [`release/official-dsh-policy.json`](../../release/official-dsh-policy.json) 发生变化时必须提升 Environment 版本；Environment 内容指纹会拒绝让同一版本绑定不同内容。System Skill 内容属于 Environment Artifact，因此只修改 Skill 不会改变 Bootstrap 包。Bootstrap 代码或其他打包内容发生变化时，才需要递增 [`container/platform/bootstrap/VERSION`](../../container/platform/bootstrap/VERSION)；发布检查会拒绝复用旧 Bootstrap 版本。
 
 准备 Environment 发布时，在仓库根目录运行：
 

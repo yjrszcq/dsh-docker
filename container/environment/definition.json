@@ -1,6 +1,11 @@
 {
   "version": "1.0.9",
   "bootstrapApi": 1,
+  "systemSkillCatalog": {
+    "artifactId": "system-skill-catalog",
+    "source": "resources/skills",
+    "mediaType": "application/vnd.dsh-platform.system-skill-catalog.v1+tar+gzip"
+  },
   "components": [
     {
       "id": "dsh-runtime",
