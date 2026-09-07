@@ -29,8 +29,8 @@ export class BrowserSessionStore {
     random = randomBytes,
     dshAbsoluteMs = 30 * 24 * 60 * 60_000,
     dshIdleMs = 7 * 24 * 60 * 60_000,
-    managementAbsoluteMs = 8 * 60 * 60_000,
-    managementIdleMs = 30 * 60_000,
+    managementAbsoluteMs = 24 * 60 * 60_000,
+    managementIdleMs = 2 * 60 * 60_000,
     activityReportMs = 5 * 60_000,
     onEvent = () => {},
   } = {}) {

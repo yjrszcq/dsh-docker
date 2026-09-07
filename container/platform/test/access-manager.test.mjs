@@ -1010,7 +1010,7 @@ test('management password failures use the shared backend retry state', async ()
 test('stores only digests for origin-bound DSH sessions with absolute and idle expiry', async () => {
   assert.deepEqual(new BrowserSessionStore().policy, {
     dsh: { absoluteMs: 30 * 24 * 60 * 60_000, idleMs: 7 * 24 * 60 * 60_000 },
-    management: { absoluteMs: 8 * 60 * 60_000, idleMs: 30 * 60_000 },
+    management: { absoluteMs: 24 * 60 * 60_000, idleMs: 2 * 60 * 60_000 },
   })
   let now = 1_000
   const sessions = new BrowserSessionStore({
