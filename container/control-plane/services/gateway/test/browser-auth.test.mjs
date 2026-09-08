@@ -345,10 +345,17 @@ test('renders state-driven initialization and recovery pages without exposing ac
         if (state === 'never-initialized' || state === 'migration-required') {
           assert.match(response.body, /class="field-error" data-field-error="username"[^>]*hidden/)
           assert.match(response.body, /class="field-error" data-field-error="password"[^>]*hidden/)
+          assert.match(response.body, /name="confirmPassword" type="password" autocomplete="new-password" required/)
+          assert.match(response.body, /class="field-error" data-field-error="confirmPassword"[^>]*hidden/)
+          assert.match(response.body, /The new password confirmation does not match\./)
+          assert.match(response.body, /\.field-error\{color:#ff7777;font-size:12px;font-weight:400;line-height:1\.5\}/)
           assert.match(response.body, /form\.elements\.password\.addEventListener\('input'/)
+          assert.match(response.body, /form\.elements\.confirmPassword\.addEventListener\('input'/)
+          assert.match(response.body, /if\(!validatePasswordConfirmation\(true\)\)return/)
         } else {
           assert.doesNotMatch(response.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
           assert.doesNotMatch(response.body, /minlength="8"|pattern="/)
+          assert.doesNotMatch(response.body, /name="confirmPassword"|passwordMismatch|validatePasswordConfirmation/)
         }
         if (state === 'never-initialized') {
           assert.doesNotMatch(response.body, /name="setupKey"/)
@@ -773,6 +780,7 @@ test('legacy migration exchanges a root-issued authentication reset key for a DS
     assert.match(page.body, /The authentication reset key is invalid, expired, or already used\./)
     assert.match(page.body, /name="username"[^>]+pattern="\[\^\\p\{Cc\}/)
     assert.match(page.body, /name="password"[^>]+minlength="8"[^>]+pattern="\[\^\\p\{Cc\}/)
+    assert.match(page.body, /name="confirmPassword" type="password" autocomplete="new-password" required/)
     assert.match(page.body, /html\{height:100%;color-scheme:light dark}/)
     assert.match(page.body, /body\{min-height:100%;margin:0;display:grid;place-items:center;/)
     assert.doesNotMatch(page.body, /100dvh/)
@@ -874,6 +882,7 @@ test('damaged authentication requires an explicit reset page and never places cr
     })
     assert.equal(page.status, 200)
     assert.match(page.body, /<form method="post" action="\/_dsh_platform\/auth\/reset" novalidate>/)
+    assert.match(page.body, /name="confirmPassword" type="password" autocomplete="new-password" required/)
     assert.doesNotMatch(page.body, /dshak_valid|username=|password=/)
     const csrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const csrf = csrfCookie.split('=')[1]
@@ -945,7 +954,8 @@ test('direct Management access requires a DSH login before exchanging a Manageme
         host: `127.0.0.1:${port}`, cookie: staleCookies,
       },
     })
-    assert.doesNotMatch(page.body, /field-error|invalidUsername|invalidPassword|validateField/)
+    assert.doesNotMatch(page.body, /class="field-error"|invalidUsername|invalidPassword|validateField/)
+    assert.doesNotMatch(page.body, /name="confirmPassword"|validatePasswordConfirmation/)
     assert.doesNotMatch(page.body, /minlength="8"|pattern="/)
     const loginCsrfCookie = page.headers['set-cookie'][0].split(';')[0]
     const loginCsrf = loginCsrfCookie.split('=')[1]
