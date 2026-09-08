@@ -337,6 +337,8 @@ test('renders state-driven initialization and recovery pages without exposing ac
       assert.doesNotMatch(response.body, /https:\/\/evil\.example/)
       if (state === 'classification-pending') {
         assert.match(response.body, /setTimeout\(\(\)=>location\.reload\(\),1000\)/)
+        assert.match(response.body, /<section class="waiting"><h1>Preparing authentication<\/h1>/)
+        assert.match(response.body, /\.waiting\{text-align:center\}/)
         assert.doesNotMatch(response.body, /<form/)
       } else if (state !== 'recovery-required') {
         assertInlineScriptsCompile(response.body)
