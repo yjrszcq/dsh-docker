@@ -16,18 +16,18 @@ function rpcValue(value, method) {
   if (!object(value) || value.type !== 'server-response' || !object(value.result)) {
     throw new Error(`DSH ${method} response is invalid`)
   }
-  if (value.result.ok !== true || !object(value.result.value)) {
+  if (value.result.ok !== true || !Object.hasOwn(value.result, 'value')) {
     throw new Error(`DSH ${method} request failed`)
   }
   return value.result.value
 }
 
-async function rpc(fetchImpl, endpoint, method, signal) {
+async function rpc(fetchImpl, endpoint, method, signal, headers) {
   const rpcId = `dsh-proxy-${method}`
   const response = await fetchImpl(`${endpoint}/api/${method}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'client-request', rpcId, method, payload: {} }),
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: {} } }),
     signal,
   })
   if (!response.ok) throw new Error(`DSH ${method} returned HTTP ${String(response.status)}`)
@@ -143,32 +143,44 @@ export class ProviderInventory {
     cachePath,
     endpoint = DEFAULT_ENDPOINT,
     fetchImpl = fetch,
+    authentication = Object.freeze({ cookie: async () => null }),
     timeoutMs = RPC_TIMEOUT_MS,
     now = () => new Date(),
   }) {
     if (typeof cachePath !== 'string' || cachePath === '') throw new TypeError('Provider inventory cache path is required')
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new TypeError('Provider inventory timeout is invalid')
+    if (!object(authentication) || typeof authentication.cookie !== 'function') {
+      throw new TypeError('Provider inventory authentication is invalid')
+    }
     this.cachePath = cachePath
     this.endpoint = endpoint.replace(/\/$/, '')
     this.fetchImpl = fetchImpl
+    this.authentication = authentication
     this.timeoutMs = timeoutMs
     this.now = now
   }
 
   async refresh() {
     const signal = AbortSignal.timeout(this.timeoutMs)
-    const [providerValue, settingsValue] = await Promise.all([
-      rpc(this.fetchImpl, this.endpoint, 'llm.providers', signal),
-      rpc(this.fetchImpl, this.endpoint, 'settings.describe', signal),
+    const cookie = await this.authentication.cookie()
+    if (!(cookie === null || typeof cookie === 'string')) throw new Error('DSH authentication cookie is invalid')
+    const headers = cookie === null ? {} : { cookie }
+    const [registeredValue, directoryValue, settingsValue] = await Promise.all([
+      rpc(this.fetchImpl, this.endpoint, 'llm/listProviders', signal, headers),
+      rpc(this.fetchImpl, this.endpoint, 'llm/listConfigurableProviders', signal, headers),
+      rpc(this.fetchImpl, this.endpoint, 'settings/describe', signal, headers),
     ])
-    if (!Array.isArray(providerValue.providers) || !Array.isArray(settingsValue.namespaces)) {
+    if (!Array.isArray(registeredValue) || !Array.isArray(directoryValue) || !Array.isArray(settingsValue.namespaces)) {
       throw new Error('DSH Provider inventory response is invalid')
     }
     const namespaces = new Map(settingsValue.namespaces
       .filter(namespace => object(namespace) && typeof namespace.ns === 'string')
       .map(namespace => [namespace.ns, namespace]))
-    const providers = providerValue.providers
-      .map(provider => sanitizeProvider(provider, namespaces))
+    const active = new Set(registeredValue
+      .filter(provider => object(provider) && validProviderId(provider.id))
+      .map(provider => provider.id))
+    const providers = directoryValue
+      .map(provider => sanitizeProvider({ ...provider, active: active.has(provider?.provider) }, namespaces))
       .filter(provider => provider !== undefined)
       .sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id))
     const cache = Object.freeze({

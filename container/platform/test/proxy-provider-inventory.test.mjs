@@ -38,18 +38,27 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
   const inventory = new ProviderInventory({
     cachePath: join(root, 'providers.json'),
     now: () => new Date('2026-08-25T00:00:00.000Z'),
+    authentication: { cookie: async () => 'dsh-auth-fixture=signed' },
     fetchImpl: async (url, init) => {
       const body = JSON.parse(init.body)
-      calls.push({ url, method: body.method })
-      if (body.method === 'llm.providers') return response({ providers: [
-        { provider: 'dormant', displayName: 'Dormant', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'dormant'], active: false },
-        { provider: 'shared', displayName: 'Shared', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared'], active: true },
-        { provider: 'shared-explicit', displayName: 'Shared explicit', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared-explicit'], active: true, supportsIndependentRouting: false },
-        { provider: 'custom', displayName: 'Custom route', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'custom'], active: true, declared: true },
-        { provider: 'adapted', displayName: 'Adapted', settingsNs: 'adapted', settingsPath: [], active: true },
-        { provider: 'local', displayName: 'Local', settingsNs: 'local', settingsPath: [], active: true },
-        { provider: '../invalid', displayName: 'Invalid', settingsNs: 'invalid', settingsPath: [], active: true },
-      ] })
+      calls.push({ url, method: body.method, payload: body.payload, cookie: init.headers.cookie })
+      if (body.method === 'llm/listProviders') return response([
+        { id: 'shared', name: 'Shared' },
+        { id: 'shared-explicit', name: 'Shared explicit' },
+        { id: 'custom', name: 'Custom route' },
+        { id: 'adapted', name: 'Adapted' },
+        { id: 'local', name: 'Local' },
+      ])
+      if (body.method === 'llm/listConfigurableProviders') return response([
+        { provider: 'dormant', displayName: 'Dormant', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'dormant'] },
+        { provider: 'shared', displayName: 'Shared', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared'] },
+        { provider: 'shared-explicit', displayName: 'Shared explicit', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'shared-explicit'], supportsIndependentRouting: false },
+        { provider: 'custom', displayName: 'Custom route', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'custom'], declared: true },
+        { provider: 'adapted', displayName: 'Adapted', settingsNs: 'adapted', settingsPath: [] },
+        { provider: 'local', displayName: 'Local', settingsNs: 'local', settingsPath: [] },
+        { provider: '../invalid', displayName: 'Invalid', settingsNs: 'invalid', settingsPath: [] },
+      ])
+      assert.equal(body.method, 'settings/describe')
       return response({ namespaces: [
         { ns: 'llm-pi-ai', value: { providers: { shared: { baseURL: 'https://api.example.test' }, 'shared-explicit': { baseURL: 'https://shared.example.test' }, custom: { baseURL: 'https://custom.example.test' } } }, base: {} },
         { ns: 'adapted', value: {}, base: {} },
@@ -74,7 +83,12 @@ test('builds a sanitized Provider capability inventory from controlled DSH RPCs'
     { id: 'shared', capability: 'provider', requested: { proxyEnabled: true }, effective: 'proxy', reason: null },
     { id: 'shared-explicit', capability: 'shared-dsh', requested: { proxyEnabled: true }, effective: 'shared-dsh', reason: 'client-uses-shared-dsh-route' },
   ])
-  assert.deepEqual(calls.map(call => call.method).sort(), ['llm.providers', 'settings.describe'])
+  assert.deepEqual(calls.map(call => call.method).sort(), [
+    'llm/listConfigurableProviders', 'llm/listProviders', 'settings/describe',
+  ])
+  assert.equal(calls.every(call => call.url.endsWith(`/api/${call.method}`)), true)
+  assert.equal(calls.every(call => call.cookie === 'dsh-auth-fixture=signed'), true)
+  assert.equal(calls.every(call => JSON.stringify(call.payload) === JSON.stringify({ args: {} })), true)
   assert.equal(result.providers.some(provider => provider.id === 'dormant'), false)
   const cache = JSON.parse(await readFile(join(root, 'providers.json'), 'utf8'))
   assert.doesNotMatch(JSON.stringify(cache), /api\.example|127\.0\.0\.1|baseURL|secret/i)
@@ -89,9 +103,11 @@ test('keeps the last sanitized Provider inventory when DSH is unavailable', asyn
     fetchImpl: async (_url, init) => {
       if (!online) throw new Error('DSH is stopped')
       const method = JSON.parse(init.body).method
-      return method === 'llm.providers'
-        ? response({ providers: [{ provider: 'deepseek', displayName: 'DeepSeek', settingsNs: 'deepseek', settingsPath: [], active: true }] })
-        : response({ namespaces: [{ ns: 'deepseek', value: {}, base: {} }] })
+      if (method === 'llm/listProviders') return response([{ id: 'deepseek', name: 'DeepSeek' }])
+      if (method === 'llm/listConfigurableProviders') {
+        return response([{ provider: 'deepseek', displayName: 'DeepSeek', settingsNs: 'deepseek', settingsPath: [] }])
+      }
+      return response({ namespaces: [{ ns: 'deepseek', value: {}, base: {} }] })
     },
   })
   assert.equal((await inventory.list(proxySnapshot())).source, 'live')
@@ -109,4 +125,33 @@ test('keeps the last sanitized Provider inventory when DSH is unavailable', asyn
   assert.equal(unavailable.source, 'unavailable')
   assert.deepEqual(unavailable.providers, [])
   assert.equal(unavailable.error, 'DSH is stopped')
+})
+
+test('replaces deleted Providers with newly configured Providers on refresh', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-refresh-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  let current = { id: 'removed', displayName: 'Removed' }
+  const inventory = new ProviderInventory({
+    cachePath: join(root, 'providers.json'),
+    fetchImpl: async (_url, init) => {
+      const method = JSON.parse(init.body).method
+      if (method === 'llm/listProviders') return response([{ id: current.id, name: current.displayName }])
+      if (method === 'llm/listConfigurableProviders') return response([{
+        provider: current.id,
+        displayName: current.displayName,
+        settingsNs: 'llm-pi-ai',
+        settingsPath: ['providers', current.id],
+        declared: true,
+      }])
+      return response({ namespaces: [{
+        ns: 'llm-pi-ai',
+        value: { providers: { [current.id]: { baseURL: 'https://provider.example.test' } } },
+        base: {},
+      }] })
+    },
+  })
+  assert.deepEqual((await inventory.list(proxySnapshot())).providers.map(provider => provider.id), ['removed'])
+  current = { id: 'created', displayName: 'Created' }
+  assert.deepEqual((await inventory.list(proxySnapshot())).providers.map(provider => provider.id), ['created'])
+  assert.deepEqual(JSON.parse(await readFile(join(root, 'providers.json'), 'utf8')).providers.map(provider => provider.id), ['created'])
 })

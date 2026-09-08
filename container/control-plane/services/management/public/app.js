@@ -4165,6 +4165,10 @@ async function refreshProxyProviders() {
   return proxyProviderLoading
 }
 
+function refreshVisibleProxyProviders() {
+  if (proxyLoaded && !elements['panel-proxy'].hidden) void refreshProxyProviders()
+}
+
 async function saveProxyConfiguration() {
   elements['proxy-save'].disabled = true
   try {
@@ -4299,7 +4303,10 @@ async function selectTab(tab) {
   if (inventoryKey !== undefined) void loadInventory(inventoryKey)
   if (tab === 'files' && !filesLoaded) void initializeFiles()
   else if (tab === 'files') scheduleFileTaskRefresh()
-  if (tab === 'proxy') void loadProxy()
+  if (tab === 'proxy') {
+    if (proxyLoaded) void refreshProxyProviders()
+    else void loadProxy()
+  }
   if (tab === 'auth-settings') void loadAuthenticationSettings()
   return true
 }
@@ -5672,6 +5679,10 @@ window.addEventListener('beforeunload', () => {
   window.clearInterval(logWatchdogTimer)
 })
 window.addEventListener('pagehide', discardTotpChangeOnPageLeave)
+window.addEventListener('focus', refreshVisibleProxyProviders)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshVisibleProxyProviders()
+})
 applyTheme(themePreference)
 applyTranslations()
 void selectTab(window.location.hash === '#auth-settings' ? 'auth-settings' : 'maintenance')

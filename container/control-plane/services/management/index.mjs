@@ -32,6 +32,7 @@ import { UserSkillManager } from './user-skills.mjs'
 import { createScopedFetch } from './scoped-fetch.mjs'
 import { OutboundProxyControlClient } from './outbound-proxy-client.mjs'
 import { ProviderInventory } from './provider-inventory.mjs'
+import { DshUpstreamAuthentication } from '../gateway/lib/dsh-upstream-auth.mjs'
 import { PROXY_SCOPE_CATALOG } from '../outbound-proxy/lib/scope-catalog.mjs'
 import { defaultProxyConfiguration } from '../outbound-proxy/lib/contracts.mjs'
 import { requestOrigin } from '../gateway/lib/browser-auth.mjs'
@@ -57,8 +58,10 @@ const logs = new JsonlLogManager({
   output: { stdout: process.stdout, stderr: process.stderr },
 })
 const updateFetch = createScopedFetch('updates')
+const dshUpstreamAuthentication = new DshUpstreamAuthentication({ socketPath: paths.dshLifecycleSocket })
 const providerInventory = new ProviderInventory({
   cachePath: paths.proxyProviderInventoryPath,
+  authentication: dshUpstreamAuthentication,
 })
 
 function qrCodeDataUri(value) {
