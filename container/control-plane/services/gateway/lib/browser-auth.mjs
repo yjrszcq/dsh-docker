@@ -12,6 +12,9 @@ export const MANAGEMENT_SESSION_COOKIE = 'dsh_management_compat_session'
 export const MANAGEMENT_CSRF_COOKIE = 'dsh_management_csrf'
 export const MANAGEMENT_PENDING_COOKIE = 'dsh_management_pending'
 
+const DSH_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+const MANAGEMENT_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60
+
 const RESERVED_COOKIES = new Set([
   DSH_SESSION_COOKIE,
   DSH_CSRF_COOKIE,
@@ -112,8 +115,8 @@ function secureCookie(origin) { return origin.startsWith('https://') ? '; Secure
 
 function sessionCookies(session, origin) {
   return [
-    `${DSH_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Lax; Path=/${secureCookie(origin)}`,
-    `${DSH_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=/${secureCookie(origin)}`,
+    `${DSH_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DSH_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
+    `${DSH_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=/; Max-Age=${DSH_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
     `${TOTP_LOGIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }
@@ -138,8 +141,8 @@ function clearInvalidBrowserSessionCookies(origin, managementPath = '/_dsh_platf
 
 function managementCookies(session, origin, path = '/_dsh_platform/') {
   return [
-    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
-    `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=${path}${secureCookie(origin)}`,
+    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=${MANAGEMENT_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
+    `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=${path}; Max-Age=${MANAGEMENT_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
 }

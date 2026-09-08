@@ -391,6 +391,8 @@ test('a DSH session exchanges once for a separate Management session', async () 
     assert.equal(exchanged.status, 200)
     assert.match(exchanged.body, /location\.replace\("\/_dsh_platform\/console\/"\)/)
     assert.match(exchanged.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_exchanged`))
+    assert.match(exchanged.headers['set-cookie'][0], /Max-Age=86400/)
+    assert.match(exchanged.headers['set-cookie'][1], /Max-Age=86400/)
     const replay = await request(port, {
       path: response.headers.location,
       headers: { host: `127.0.0.1:${port}`, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
@@ -461,6 +463,8 @@ test('initialization requires same-origin JSON and a matching login CSRF token',
     assert.equal(initialized.status, 201)
     assert.equal(current.state(), 'initialized')
     assert.match(initialized.headers['set-cookie'][0], new RegExp(`^${DSH_SESSION_COOKIE}=dshs_created`))
+    assert.match(initialized.headers['set-cookie'][0], /Max-Age=2592000/)
+    assert.match(initialized.headers['set-cookie'][1], /Max-Age=2592000/)
     const initialization = current.calls.find(call => call.path === '/v1/dsh/initialize')
     assert.equal(initialization.body.client.userAgent, 'Session Test Browser')
     assert.equal(initialization.body.client.ip, '127.0.0.1')
