@@ -107,18 +107,23 @@ test('rejects missing Web rows and management Remote methods', async t => {
   )
 })
 
-test('rejects a missing static module required by a bundled System Plugin', async t => {
-  const packageRoot = await fixture()
-  const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
-  removeAfter(t, packageRoot, home)
-  await writeFile(
-    packageFile(packageRoot, '@deepseek-ai/dsh-web-frontend', 'dist/assets/index.js'),
-    'no platform modules\n',
-  )
-  await assert.rejects(
-    verifyDshCompatibility({ packageRoot, expectedVersion: VERSION, home }),
-    /Web static module table is missing/,
-  )
+test('rejects each missing static module required by a bundled System Plugin', async t => {
+  for (const missing of DSH_STATIC_CLIENT_MODULES) {
+    await t.test(missing, async t => {
+      const packageRoot = await fixture()
+      const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
+      removeAfter(t, packageRoot, home)
+      const present = DSH_STATIC_CLIENT_MODULES.filter(name => name !== missing)
+      await writeFile(
+        packageFile(packageRoot, '@deepseek-ai/dsh-web-frontend', 'dist/assets/index.js'),
+        `{${present.map(name => `${JSON.stringify(name)}:fixture`).join(',')}}\n`,
+      )
+      await assert.rejects(
+        verifyDshCompatibility({ packageRoot, expectedVersion: VERSION, home }),
+        new RegExp(`Web static module table is missing ${JSON.stringify(missing).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+      )
+    })
+  }
 })
 
 test('requires every static browser module consumed directly by bundled System Plugins', () => {

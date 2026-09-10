@@ -84,6 +84,25 @@ test('DSH web readiness verifies 0.1.5 initial combo batches', async () => {
   }
 })
 
+test('DSH web readiness rejects a malformed combo batch contract', async () => {
+  const manifest = JSON.stringify({
+    rev: 'graph-one',
+    entries: [{ id: 'one', url: '/plugins/one/client.js?rev=one', rev: 'one' }],
+    batches: { phase: 'application', url: '/plugins/??one/client.js&rev=one' },
+  })
+  const context = await fixture(new Map([
+    ['/', { status: 200, type: 'text/html', body: `<script>window.__DSH_BOOT__ = ${manifest}</script>` }],
+  ]))
+  try {
+    await assert.rejects(
+      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) }),
+      /boot manifest batches are invalid/,
+    )
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
 test('DSH web readiness exchanges the private launch token for an authenticated cookie', async () => {
   const manifest = JSON.stringify({ rev: 'one', entries: [
     { id: 'one', url: '/plugins/one/client.js?rev=one', rev: 'one' },
