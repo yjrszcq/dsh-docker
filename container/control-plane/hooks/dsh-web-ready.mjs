@@ -105,11 +105,18 @@ async function verifyBootManifest(host, port, headers) {
   if (match === null) throw new Error('DSH boot manifest is unavailable')
   const manifest = JSON.parse(match[1])
   if (!Array.isArray(manifest.entries)) throw new Error('DSH boot manifest entries are invalid')
-  await Promise.all(manifest.entries.map(async entry => {
-    if (typeof entry?.url !== 'string' || !entry.url.startsWith('/plugins/')) {
+  if (manifest.batches !== undefined && !Array.isArray(manifest.batches)) {
+    throw new Error('DSH boot manifest batches are invalid')
+  }
+  const resources = [
+    ...manifest.entries.map(entry => entry?.url),
+    ...(manifest.batches ?? []).map(batch => batch?.url),
+  ]
+  await Promise.all([...new Set(resources)].map(async url => {
+    if (typeof url !== 'string' || !url.startsWith('/plugins/')) {
       throw new Error('DSH boot manifest contains an invalid Plugin URL')
     }
-    await fetch(host, port, entry.url, { headers })
+    await fetch(host, port, url, { headers })
   }))
 }
 

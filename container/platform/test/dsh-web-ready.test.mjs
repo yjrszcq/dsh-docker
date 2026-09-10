@@ -51,6 +51,39 @@ test('DSH web readiness requires every boot manifest Plugin bundle', async () =>
   }
 })
 
+test('DSH web readiness verifies 0.1.5 initial combo batches', async () => {
+  const entryUrl = '/plugins/??one/client.js&rev=entry-one'
+  const batchUrl = '/plugins/??one/client.js,two/client.js&rev=batch-one'
+  const manifest = JSON.stringify({
+    rev: 'graph-one',
+    entries: [{ id: 'one', url: entryUrl, rev: 'entry-one' }],
+    batches: [{ phase: 'application', url: batchUrl, rev: 'batch-one', entries: ['one', 'two'] }],
+  })
+  const routes = new Map([
+    ['/', { status: 200, type: 'text/html', body: `<script>window.__DSH_BOOT__ = ${manifest}</script>` }],
+    [entryUrl, { status: 200, type: 'text/javascript', body: 'one' }],
+    [batchUrl, { status: 404 }],
+    ['POST /api/pluginInventory/list', { status: 200, type: 'application/json', body: JSON.stringify({
+      type: 'server-response',
+      rpcId: 'dsh-platform-readiness',
+      result: { ok: true, value: { entries: [{ moduleName: 'ready', enabled: true, fiberPhase: 'active' }] } },
+    }) }],
+  ])
+  const context = await fixture(routes)
+  try {
+    await assert.rejects(
+      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) }),
+      /returned HTTP 404/,
+    )
+    routes.set(batchUrl, { status: 200, type: 'text/javascript', body: 'one and two' })
+    await verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) })
+    assert.equal(context.requests.get(entryUrl), 3)
+    assert.equal(context.requests.get(batchUrl), 3)
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
 test('DSH web readiness exchanges the private launch token for an authenticated cookie', async () => {
   const manifest = JSON.stringify({ rev: 'one', entries: [
     { id: 'one', url: '/plugins/one/client.js?rev=one', rev: 'one' },

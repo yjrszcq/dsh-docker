@@ -202,6 +202,15 @@ test('trusted HTTP requests reach upstream with loopback headers', async () => {
   })
 })
 
+test('proxies DSH 0.1.5 combo Plugin resources without rewriting the URL', async () => {
+  const path = '/plugins/??@deepseek-ai/dsh-client-modules/client.js,@deepseek-ai/dsh-client-ui/client.js&rev=0123456789ab'
+  await withServers(async ({ gatewayPort }) => {
+    const response = await request(gatewayPort, path, { host: 'dsh.example' })
+    assert.equal(response.status, 200)
+    assert.equal(JSON.parse(response.body).url, path)
+  })
+})
+
 test('upstream headers remove connection tokens and gateway authorization', () => {
   const headers = upstreamRequestHeaders({
     authorization: 'Basic c2VjcmV0',
