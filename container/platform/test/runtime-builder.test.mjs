@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, readdir, readlink, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -213,9 +213,10 @@ test('prunes only Runtime versions outside current and previous slots', async ()
 
 test('builds and verifies the real DSH 0.1.5 Runtime when its npm tree is provided', {
   skip: process.env.DSH_COMPAT_PACKAGE_ROOT === undefined,
-}, async () => {
+}, async t => {
   const source = resolve(process.env.DSH_COMPAT_PACKAGE_ROOT)
   const root = await mkdtemp(join(tmpdir(), 'dsh-real-runtime-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
   const patches = [
     join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
     join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),

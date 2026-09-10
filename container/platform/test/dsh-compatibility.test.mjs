@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -55,9 +55,14 @@ function packageFile(root, packageName, file) {
   return join(root, 'node_modules', ...packageName.split('/'), file)
 }
 
-test('accepts the complete DSH package, Web profile, and Remote contract', async () => {
+function removeAfter(t, ...paths) {
+  t.after(() => Promise.all(paths.map(path => rm(path, { recursive: true, force: true }))))
+}
+
+test('accepts the complete DSH package, Web profile, and Remote contract', async t => {
   const packageRoot = await fixture()
   const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
+  removeAfter(t, packageRoot, home)
   assert.deepEqual(await verifyDshCompatibility({ packageRoot, expectedVersion: VERSION, home }), {
     name: '@deepseek-ai/dsh',
     version: VERSION,
@@ -67,9 +72,10 @@ test('accepts the complete DSH package, Web profile, and Remote contract', async
   })
 })
 
-test('rejects a stale installed package in the DSH dependency closure', async () => {
+test('rejects a stale installed package in the DSH dependency closure', async t => {
   const packageRoot = await fixture()
   const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
+  removeAfter(t, packageRoot, home)
   const manifestPath = packageFile(packageRoot, '@deepseek-ai/dsh-client-connection', 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
   await writeJson(manifestPath, { ...manifest, version: '0.1.2-rc.1' })
@@ -79,9 +85,10 @@ test('rejects a stale installed package in the DSH dependency closure', async ()
   )
 })
 
-test('rejects missing Web rows and management Remote methods', async () => {
+test('rejects missing Web rows and management Remote methods', async t => {
   const packageRoot = await fixture()
   const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
+  removeAfter(t, packageRoot, home)
   await writeFile(join(packageRoot, 'lib/bin.js'), 'console.log("- id: connection\\n  name: missing")\n')
   await assert.rejects(
     verifyDshCompatibility({ packageRoot, expectedVersion: VERSION, home }),
@@ -98,9 +105,10 @@ test('rejects missing Web rows and management Remote methods', async () => {
   )
 })
 
-test('rejects a missing static module required by a bundled System Plugin', async () => {
+test('rejects a missing static module required by a bundled System Plugin', async t => {
   const packageRoot = await fixture()
   const home = await mkdtemp(join(tmpdir(), 'dsh-compatibility-home-'))
+  removeAfter(t, packageRoot, home)
   await writeFile(
     packageFile(packageRoot, '@deepseek-ai/dsh-web-frontend', 'dist/assets/index.js'),
     'no platform modules\n',
