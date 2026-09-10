@@ -2,15 +2,17 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import {
   buildRuntime,
   RuntimeSlots,
   verifyNpmIntegrity,
+  verifyPatchSet,
   verifyRuntimePatches,
 } from '../../control-plane/modules/patch-manager/index.mjs'
+import { verifyDshCompatibility } from '../lib/dsh-compatibility.mjs'
 
 const containerRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
@@ -207,4 +209,36 @@ test('prunes only Runtime versions outside current and previous slots', async ()
   assert.deepEqual(await slots.prune(), ['image-old', 'old'])
   assert.deepEqual((await readdir(join(root, 'versions'))).sort(), ['one', 'two'])
   assert.equal(await readFile(join(imageSeed, 'sentinel'), 'utf8'), 'keep')
+})
+
+test('builds and verifies the real DSH 0.1.5 Runtime when its npm tree is provided', {
+  skip: process.env.DSH_COMPAT_PACKAGE_ROOT === undefined,
+}, async () => {
+  const source = resolve(process.env.DSH_COMPAT_PACKAGE_ROOT)
+  const root = await mkdtemp(join(tmpdir(), 'dsh-real-runtime-'))
+  const patches = [
+    join(containerRoot, 'environment/resources/patches/directory-picker.mjs'),
+    join(containerRoot, 'environment/resources/patches/browser-loopback.mjs'),
+    join(containerRoot, 'environment/resources/patches/managed-lifecycle.mjs'),
+    join(containerRoot, 'environment/resources/patches/native-corners.mjs'),
+  ]
+  const runtime = await buildRuntime({
+    pristineRoot: source,
+    versionsRoot: join(root, 'versions'),
+    runtimeId: 'dsh-0.1.5-rc.1',
+    patchPaths: patches,
+  })
+  const packageRoot = join(runtime, 'package')
+  await verifyPatchSet(packageRoot, patches)
+  assert.deepEqual(await verifyDshCompatibility({
+    packageRoot,
+    expectedVersion: '0.1.5-rc.1',
+    home: join(root, 'home'),
+  }), {
+    name: '@deepseek-ai/dsh',
+    version: '0.1.5-rc.1',
+    packages: 10,
+    remoteMethods: 3,
+    webRows: 5,
+  })
 })
