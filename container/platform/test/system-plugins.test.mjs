@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, lstat, mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -100,14 +100,31 @@ test('rejects a System Plugin which patches an existing DSH row', async () => {
   }), /only a non-empty insert list/)
 })
 
-test('links only the reserved System Plugin package scope into DSH profiles', async () => {
+test('retargets only the reserved System Plugin scope without changing persistent Profile data', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-system-plugin-scope-'))
   const dshHome = join(root, 'dsh')
-  const viewRoot = join(root, 'run', 'system-plugins')
-  await mkdir(join(viewRoot, 'packages'), { recursive: true })
-  const link = await linkSystemPluginScope({ dshHome, viewRoot })
-  assert.equal(await readlink(link), join(viewRoot, 'packages'))
-  assert.equal(await linkSystemPluginScope({ dshHome, viewRoot }), link)
+  const profileRoot = join(dshHome, 'profiles', 'web')
+  const modulesRoot = join(dshHome, 'profiles', 'node_modules')
+  const userPackageRoot = join(modulesRoot, '@example', 'persistent-plugin')
+  const firstView = join(root, 'run', 'system-plugins-v1')
+  const secondView = join(root, 'run', 'system-plugins-v2')
+  await mkdir(join(profileRoot, 'node_modules'), { recursive: true })
+  await mkdir(userPackageRoot, { recursive: true })
+  await mkdir(join(firstView, 'packages'), { recursive: true })
+  await mkdir(join(secondView, 'packages'), { recursive: true })
+  await writeFile(join(profileRoot, 'package.json'), '{"dependencies":{"persistent-plugin":"1.0.0"}}\n')
+  await writeFile(join(profileRoot, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+  await writeFile(join(userPackageRoot, 'package.json'), '{"name":"@example/persistent-plugin"}\n')
+  await symlink(userPackageRoot, join(profileRoot, 'node_modules', 'persistent-plugin'), 'dir')
+  const profileBefore = await hashTree(profileRoot)
+
+  const link = await linkSystemPluginScope({ dshHome, viewRoot: firstView })
+  assert.equal(await readlink(link), join(firstView, 'packages'))
+  assert.equal(await linkSystemPluginScope({ dshHome, viewRoot: firstView }), link)
+  assert.equal(await linkSystemPluginScope({ dshHome, viewRoot: secondView }), link)
+  assert.equal(await readlink(link), join(secondView, 'packages'))
+  assert.equal(await hashTree(profileRoot), profileBefore)
+  assert.equal(await readFile(join(userPackageRoot, 'package.json'), 'utf8'), '{"name":"@example/persistent-plugin"}\n')
 })
 
 test('rebuilds a bundled System Plugin view only from the current Environment artifacts', async () => {
