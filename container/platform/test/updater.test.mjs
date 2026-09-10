@@ -1664,9 +1664,16 @@ test('records candidate and combination Holds without holding snapshot failures'
   const candidate = experimentalSystem(candidateRoot, {
     channelState: candidateState,
   })
-  candidate.coordinator.preparer.prepareExperimental = async () => { throw new Error('static validation failed') }
-  await assert.rejects(candidate.coordinator.startExperimental().completion, /static validation/)
-  assert.equal((await candidateState.read()).holds[0].type, 'version')
+  const npmFailure = [
+    'npm warn ERESOLVE overriding peer dependency',
+    'x'.repeat(600),
+    'npm error notarget No matching version found for @deepseek-ai/dsh-acp-app@^0.1.5-rc.1.',
+  ].join('\n')
+  candidate.coordinator.preparer.prepareExperimental = async () => { throw new Error(npmFailure) }
+  await assert.rejects(candidate.coordinator.startExperimental().completion, /ERESOLVE/)
+  const candidateHold = (await candidateState.read()).holds[0]
+  assert.equal(candidateHold.type, 'version')
+  assert.equal(candidateHold.reason, 'No matching version found for @deepseek-ai/dsh-acp-app@^0.1.5-rc.1.')
 
   const combinationRoot = await mkdtemp(join(tmpdir(), 'dsh-experimental-combination-hold-'))
   const combinationState = new ChannelStateStore(join(combinationRoot, 'state', 'channel.json'))

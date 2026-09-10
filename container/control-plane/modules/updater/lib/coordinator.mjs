@@ -30,6 +30,14 @@ function metricPercentage(processed, total) {
     : null
 }
 
+function holdReason(message) {
+  const lines = message.split(/\r?\n/u).map(line => line.trim()).filter(Boolean)
+  const npmNotarget = lines.find(line => /^npm error notarget\b/u.test(line))
+  const selected = npmNotarget?.replace(/^npm error notarget\s*/u, '') ?? lines[0] ?? 'Experimental update failed'
+  const normalized = selected.replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(/\s+/gu, ' ').trim()
+  return (normalized || 'Experimental update failed').slice(0, 512)
+}
+
 export class UpdateCoordinator extends EventEmitter {
   constructor({
     metadata, preparer, activator, state, npm, journal, snapshots, channelState, completeRecovery, automaticChecks,
@@ -750,6 +758,7 @@ export class UpdateCoordinator extends EventEmitter {
       })
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Experimental update failed'
+      const reason = holdReason(message)
       const failureState = await this.state.read()
       const failurePhase = failureState.phase ?? failureState.status
       let recoveryCompleted = false
@@ -757,15 +766,15 @@ export class UpdateCoordinator extends EventEmitter {
       if (candidate !== undefined && this.channelState !== undefined) {
         if (failureClass === 'candidate') {
           await this.bestEffort('update.hold.persist.failed', () => this.channelState.addHold({
-            type: 'version', dshVersion: candidate.version, reason: message,
+            type: 'version', dshVersion: candidate.version, reason,
           }), undefined, { dshVersion: candidate.version, holdType: 'version', taskId })
         } else if (failureClass === 'combination') {
           const environmentVersion = transaction?.to.environment
           if (environmentVersion !== undefined) {
             const persist = blockCombination
-              ? () => this.channelState.block({ dshVersion: candidate.version, environmentVersion, reason: message })
+              ? () => this.channelState.block({ dshVersion: candidate.version, environmentVersion, reason })
               : () => this.channelState.addHold({
-                type: 'combination', dshVersion: candidate.version, environmentVersion, reason: message,
+                type: 'combination', dshVersion: candidate.version, environmentVersion, reason,
               })
             await this.bestEffort(
               blockCombination ? 'update.experimental-block.persist.failed' : 'update.hold.persist.failed',

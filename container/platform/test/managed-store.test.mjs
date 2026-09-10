@@ -142,3 +142,67 @@ test('builds a complete content-addressed Managed Deployment from verified input
   assert.notEqual(experimental.record.runtime.id, first.record.runtime.id)
   assert.deepEqual(experimental.record.receiptTokens, ['stable-receipt', 'experimental-receipt'])
 })
+
+test('retries a partially published npm dependency graph in fresh install roots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-managed-store-retry-'))
+  const paths = new PlatformPaths(join(root, 'data'), join(root, 'run'))
+  await preparePersistentLayout(paths)
+
+  const packageRoot = join(root, 'source', 'package')
+  await mkdir(packageRoot, { recursive: true })
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+    name: '@deepseek-ai/dsh', version: '0.1.5-rc.1',
+  }))
+  const archive = join(root, 'dsh.tgz')
+  const packed = spawnSync('tar', ['-czf', archive, '-C', join(root, 'source'), 'package'], { encoding: 'utf8' })
+  assert.equal(packed.status, 0, packed.stderr)
+
+  const attempts = []
+  const delays = []
+  const builder = new ManagedDeploymentBuilder({
+    paths,
+    sleep: async milliseconds => delays.push(milliseconds),
+    npmInstall: async (installRoot, _archivePath, options) => {
+      attempts.push({ installRoot, options })
+      if (attempts.length === 1) {
+        throw new Error('npm error code E404\nnpm error 404 A dependency package is not published yet.')
+      }
+      if (attempts.length === 2) {
+        throw new Error('npm error code ETARGET\nnpm error notarget No matching version found for a dependency.')
+      }
+      if (attempts.length === 3) {
+        throw new Error('npm error code ENOVERSIONS\nnpm error No versions available for a dependency.')
+      }
+      const installed = join(installRoot, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+      await mkdir(installed, { recursive: true })
+      await writeFile(join(installed, 'package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh', version: '0.1.5-rc.1',
+      }))
+    },
+  })
+  const pristine = await builder.pristine('0.1.5-rc.1', {
+    path: archive,
+    objectSha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
+  })
+
+  assert.equal(attempts.length, 4)
+  assert.equal(new Set(attempts.map(attempt => attempt.installRoot)).size, 4)
+  assert.deepEqual(attempts.map(attempt => attempt.options.preferOnline), [false, true, true, true])
+  assert.deepEqual(delays, [5_000, 10_000, 20_000])
+  assert.equal(JSON.parse(await readFile(join(pristine.path, 'package.json'))).version, '0.1.5-rc.1')
+
+  let permanentAttempts = 0
+  const permanent = new ManagedDeploymentBuilder({
+    paths,
+    sleep: async () => assert.fail('a permanent npm failure must not wait for a retry'),
+    npmInstall: async () => {
+      permanentAttempts += 1
+      throw new Error('npm error code EACCES\nnpm error permission denied')
+    },
+  })
+  await assert.rejects(permanent.pristine('0.1.5-rc.1', {
+    path: archive,
+    objectSha256: 'permanent-error-fixture',
+  }), /EACCES/)
+  assert.equal(permanentAttempts, 1)
+})

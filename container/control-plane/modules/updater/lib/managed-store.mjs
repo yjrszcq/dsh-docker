@@ -26,6 +26,15 @@ function run(command, args) {
   })
 }
 
+const NPM_INSTALL_ATTEMPTS = 7
+const NPM_INSTALL_RETRY_MS = 5_000
+
+function retryableNpmInstall(error) {
+  return /(?:^|\n)npm error (?:code (?:ETARGET|E404|ENOVERSIONS)|notarget\b)/u.test(
+    error instanceof Error ? error.message : '',
+  )
+}
+
 async function verifyDirectory(path, expectedHash) {
   const details = await lstat(path)
   if (!details.isDirectory() || details.isSymbolicLink()) throw new Error(`Managed Store asset is not an immutable directory: ${path}`)
@@ -51,8 +60,18 @@ function storeReference(kind, asset) {
 }
 
 export class ManagedDeploymentBuilder {
-  constructor({ paths }) {
+  constructor({
+    paths,
+    npmInstall = (installRoot, archivePath, { preferOnline }) => run('npm', [
+      'install', '--global', '--prefix', installRoot, '--omit=dev', '--ignore-scripts',
+      '--no-audit', '--no-fund', preferOnline ? '--prefer-online' : '--prefer-offline',
+      '--cache', paths.npmCacheRoot, archivePath,
+    ]),
+    sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  }) {
     this.paths = paths
+    this.npmInstall = npmInstall
+    this.sleep = sleep
   }
 
   async pristine(version, receipt) {
@@ -70,14 +89,23 @@ export class ManagedDeploymentBuilder {
       if (!entries.includes('package/package.json') || entries.some(entry => (
         entry.startsWith('/') || !entry.startsWith('package/') || entry.split('/').includes('..')
       ))) throw new Error('official DSH archive contains an unsafe path')
-      const archivePath = join(installRoot, 'official-dsh.tgz')
-      await symlink(receipt.path, archivePath, 'file')
-      await run('npm', [
-        'install', '--global', '--prefix', installRoot, '--omit=dev', '--ignore-scripts',
-        '--no-audit', '--no-fund', '--prefer-offline', '--cache', this.paths.npmCacheRoot, archivePath,
-      ])
-      const installed = join(installRoot, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
-      await rename(installed, staging)
+      for (let attempt = 1; attempt <= NPM_INSTALL_ATTEMPTS; attempt += 1) {
+        const attemptRoot = join(installRoot, `attempt-${String(attempt)}`)
+        await mkdir(attemptRoot, { recursive: false })
+        try {
+          const archivePath = join(attemptRoot, 'official-dsh.tgz')
+          await symlink(receipt.path, archivePath, 'file')
+          await this.npmInstall(attemptRoot, archivePath, { preferOnline: attempt > 1 })
+          const installed = join(attemptRoot, 'lib', 'node_modules', '@deepseek-ai', 'dsh')
+          await rename(installed, staging)
+          break
+        } catch (error) {
+          if (attempt === NPM_INSTALL_ATTEMPTS || !retryableNpmInstall(error)) throw error
+          await this.sleep(Math.min(30_000, NPM_INSTALL_RETRY_MS * (2 ** (attempt - 1))))
+        } finally {
+          await rm(attemptRoot, { recursive: true, force: true })
+        }
+      }
       const metadata = JSON.parse(await readFile(join(staging, 'package.json'), 'utf8'))
       if (metadata.name !== '@deepseek-ai/dsh' || metadata.version !== version) {
         throw new Error('official DSH package metadata differs from its requested version')
