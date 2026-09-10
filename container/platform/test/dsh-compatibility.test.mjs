@@ -47,7 +47,9 @@ async function fixture() {
   )
   const frontendAssets = packageFile(root, '@deepseek-ai/dsh-web-frontend', 'dist/assets')
   await mkdir(frontendAssets, { recursive: true })
-  await writeFile(join(frontendAssets, 'index.js'), DSH_STATIC_CLIENT_MODULES.join('\n'))
+  await writeFile(join(frontendAssets, 'index.js'), `{${DSH_STATIC_CLIENT_MODULES
+    .map(name => `${JSON.stringify(name)}:fixture`)
+    .join(',')}}\n`)
   return root
 }
 
@@ -117,4 +119,12 @@ test('rejects a missing static module required by a bundled System Plugin', asyn
     verifyDshCompatibility({ packageRoot, expectedVersion: VERSION, home }),
     /Web static module table is missing/,
   )
+})
+
+test('requires every static browser module consumed directly by bundled System Plugins', () => {
+  assert.deepEqual(DSH_STATIC_CLIENT_MODULES, [
+    '@deepseek-ai/dsh-client-ui-primitives',
+    'react',
+    'react-dom',
+  ])
 })

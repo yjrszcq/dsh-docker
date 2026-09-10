@@ -39,6 +39,8 @@ export const DSH_REMOTE_METHODS = Object.freeze([
 
 export const DSH_STATIC_CLIENT_MODULES = Object.freeze([
   '@deepseek-ai/dsh-client-ui-primitives',
+  'react',
+  'react-dom',
 ])
 
 function packagePath(root, packageName, file = 'package.json') {
@@ -58,6 +60,14 @@ function requireObject(value, description) {
 
 function requireText(source, expected, description) {
   if (!source.includes(expected)) throw new Error(`${description} is missing ${JSON.stringify(expected)}`)
+}
+
+function requireStaticModule(source, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = name === 'react'
+    ? /(?:^|[{,])["']?react["']?:/
+    : new RegExp(`["']${escaped}["']:`)
+  if (!pattern.test(source)) throw new Error(`DSH Web static module table is missing ${JSON.stringify(name)}`)
 }
 
 function exported(manifest, subpath) {
@@ -104,7 +114,7 @@ export async function verifyDshCompatibility({ packageRoot, expectedVersion, hom
     .filter(name => name.endsWith('.js'))
     .map(name => readFile(join(frontendRoot, name), 'utf8')))).join('\n')
   for (const moduleName of DSH_STATIC_CLIENT_MODULES) {
-    requireText(frontend, moduleName, 'DSH Web static module table')
+    requireStaticModule(frontend, moduleName)
   }
 
   const { stdout, stderr } = await execFileAsync(
