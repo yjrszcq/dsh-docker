@@ -22,6 +22,8 @@ Use `dsh-platform channel` to inspect the current channel and `dsh-platform chan
 
 Stable targets update the signed supported DSH and Environment. Before activating a newer upstream DSH, Experimental mode first converges the complete Deployment to the signed Stable target sequence, even if the displayed DSH and Environment versions already match. Do not download npm/GitHub artifacts yourself, submit an expected hash, or call the Trust API; Stage-0 alone authorizes and imports release objects.
 
+If npm exposes a selected DSH version before every dependency version is available, Runtime materialization automatically retries transient `E404`, `ETARGET`, and `ENOVERSIONS` failures in fresh install roots with bounded backoff. Do not repeatedly restart the update while these retries are active. If the bounded attempts still end in a version Hold, report its sanitized reason, wait until the Registry dependency graph is complete, and use `dsh-platform retry` only with the user's authorization.
+
 ## Rollback and return to stable
 
 Use `dsh-platform rollback` only when a complete previous state is available and the user explicitly confirms the target and service interruption. Explain any reported snapshot or data boundary before proceeding, then verify status and health after rollback. Experimental return-to-stable can restore an older data snapshot and discard newer DSH data; use the interactive `dsh-platform return-stable` flow and present the data-loss boundary before proceeding.
