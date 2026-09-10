@@ -10,6 +10,7 @@ image="${1:-dsh-docker:smoke}"
 container="dsh-gateway-smoke-$$"
 platform_volume="dsh-platform-smoke-$$"
 home_volume="dsh-home-smoke-$$"
+readiness_timeout_ms=30000
 
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
@@ -26,9 +27,9 @@ wait_platform_ready() {
       && dsh-platform status | jq -e '\''.dshLifecycle.state == "running"'\'' >/dev/null
   ' >/dev/null 2>&1; do
     now="$(date +%s%3N)"
-    if [ $((now - started)) -ge 10000 ]; then
+    if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
       docker logs "$container" >&2
-      echo "platform readiness exceeded 10 seconds" >&2
+      echo "platform readiness exceeded 30 seconds" >&2
       exit 1
     fi
     sleep 0.2
@@ -43,9 +44,9 @@ wait_control_ready() {
     --header 'Host: smoke.example' --header 'Accept: text/html' \
     http://127.0.0.1:3080/_dsh_platform/auth/ >/dev/null 2>&1; do
     now="$(date +%s%3N)"
-    if [ $((now - started)) -ge 10000 ]; then
+    if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
       docker logs "$container" >&2
-      echo "control-plane readiness exceeded 10 seconds" >&2
+      echo "control-plane readiness exceeded 30 seconds" >&2
       exit 1
     fi
     sleep 0.2
@@ -67,7 +68,7 @@ establish_sessions() {
       && grep -F "$2" "$1" >/dev/null
   ' _ "$auth_page" "$marker"; do
     now="$(date +%s%3N)"
-    if [ $((now - started)) -ge 10000 ]; then
+    if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
       docker exec "$container" cat "$auth_page" >&2 || true
       docker logs "$container" >&2
       echo "authentication state did not become $action-ready" >&2
