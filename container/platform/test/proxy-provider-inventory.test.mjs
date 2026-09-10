@@ -155,3 +155,41 @@ test('replaces deleted Providers with newly configured Providers on refresh', as
   assert.deepEqual((await inventory.list(proxySnapshot())).providers.map(provider => provider.id), ['created'])
   assert.deepEqual(JSON.parse(await readFile(join(root, 'providers.json'), 'utf8')).providers.map(provider => provider.id), ['created'])
 })
+
+test('keeps configured DSH 0.1.5 Providers with catalog diagnostics manageable', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-provider-diagnostic-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const inventory = new ProviderInventory({
+    cachePath: join(root, 'providers.json'),
+    fetchImpl: async (_url, init) => {
+      const method = JSON.parse(init.body).method
+      if (method === 'llm/listProviders') return response([])
+      if (method === 'llm/listConfigurableProviders') return response([{
+        provider: 'repairable',
+        displayName: 'Repairable Provider',
+        settingsNs: 'llm-pi-ai',
+        settingsPath: ['providers', 'repairable'],
+        declared: false,
+        error: 'configured model needs an api',
+      }])
+      return response({ namespaces: [{
+        ns: 'llm-pi-ai',
+        value: { providers: { repairable: { baseURL: 'https://repairable.example.test/v1' } } },
+        base: {},
+      }] })
+    },
+  })
+  const listed = await inventory.list(proxySnapshot())
+  assert.equal(listed.source, 'live')
+  assert.deepEqual(listed.providers.map(provider => ({
+    id: provider.id,
+    displayName: provider.displayName,
+    active: provider.active,
+    declared: provider.declared,
+  })), [{
+    id: 'repairable',
+    displayName: 'Repairable Provider',
+    active: false,
+    declared: false,
+  }])
+})
