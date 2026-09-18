@@ -516,15 +516,19 @@ restart_task="$(docker exec "$container" curl --fail --silent --cookie "$session
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' --request POST \
   http://127.0.0.1:3080/_dsh_platform/api/v1/restart-dsh | jq -r .taskId)"
-attempt=0
+started="$(date +%s%3N)"
 until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" \
     '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"
       and .systemPluginOperation.restartRequired == false' >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 100 ] || exit 1
+  now="$(date +%s%3N)"
+  if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
+    docker logs "$container" >&2
+    echo "DSH plugin-change restart did not complete within the readiness timeout" >&2
+    exit 1
+  fi
   sleep 0.2
 done
 dsh_pid_after="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
@@ -545,14 +549,18 @@ docker exec "$container" sh -c "
 bootstrap_pid="$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')"
 dsh_pid="$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')"
 docker exec "$container" kill -9 "$dsh_pid"
-attempt=0
+started="$(date +%s%3N)"
 until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e '.dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null \
   && [ "$(docker exec "$container" pgrep -f '^node /run/dsh-platform/views/runtime/bin/dsh web')" != "$dsh_pid" ]; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 100 ] || exit 1
+  now="$(date +%s%3N)"
+  if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
+    docker logs "$container" >&2
+    echo "DSH automatic recovery did not complete within the readiness timeout" >&2
+    exit 1
+  fi
   sleep 0.1
 done
 [ "$(docker exec "$container" pgrep -f '/platform/bootstrap/index.mjs')" = "$bootstrap_pid" ]
@@ -613,14 +621,18 @@ managed_start_output="$(docker exec --user node "$container" dsh web --no-open)"
 printf '%s\n' "$managed_start_output" | grep -F 'requested managed DSH start' >/dev/null
 start_task="$(printf '%s\n' "$managed_start_output" | sed -n 's/.*(task \([^)]*\)).*/\1/p')"
 [ -n "$start_task" ]
-attempt=0
+started="$(date +%s%3N)"
 until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$start_task" \
     '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running" and .recoveryMode == null' >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 100 ] || exit 1
+  now="$(date +%s%3N)"
+  if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
+    docker logs "$container" >&2
+    echo "managed DSH start did not complete within the readiness timeout" >&2
+    exit 1
+  fi
   sleep 0.1
 done
 internal_status="$(docker exec "$container" curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -719,15 +731,15 @@ docker exec --user node "$container" node -e '
   fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n")
 '
 restart_task="$(docker exec "$container" dsh-platform restart | jq -r .taskId)"
-attempt=0
+started="$(date +%s%3N)"
 until docker exec "$container" curl --fail --silent --cookie "$session_cookie" \
   --header 'Origin: http://smoke.example' --header "X-DSH-CSRF: $management_csrf" \
   --header 'Host: smoke.example' http://127.0.0.1:3080/_dsh_platform/api/v1/status \
   | jq -e --arg task "$restart_task" '.dshLifecycle.taskId == $task and .dshLifecycle.state == "running"' >/dev/null; do
-  attempt=$((attempt + 1))
-  if [ "$attempt" -ge 60 ]; then
+  now="$(date +%s%3N)"
+  if [ $((now - started)) -ge "$readiness_timeout_ms" ]; then
     docker logs "$container" >&2
-    echo "DSH restart did not complete" >&2
+    echo "DSH orphaned-bundle restart did not complete within the readiness timeout" >&2
     exit 1
   fi
   sleep 0.2

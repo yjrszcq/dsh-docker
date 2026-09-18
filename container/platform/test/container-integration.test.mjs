@@ -44,6 +44,8 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /user-plugin\.apply\.completed/)
   assert.match(script, /readiness_timeout_ms=30000/)
   assert.match(script, /platform readiness exceeded 30 seconds/)
+  assert.match(script, /DSH orphaned-bundle restart did not complete within the readiness timeout/)
+  assert.doesNotMatch(script, /echo "DSH restart did not complete"/)
   assert.match(script, /clear only \/data\/platform/)
   assert.match(script, /Do not delete \/data\/dsh/)
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
