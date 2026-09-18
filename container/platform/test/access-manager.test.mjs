@@ -1331,9 +1331,13 @@ test('verifies a loopback candidate without persisting it for local-only Managem
   assert.deepEqual(changed.account.managementAccess.isolatedEntry, {
     kind: 'local-only', managementLocalOrigin: 'http://127.20.30.40:45678',
   })
-  assert.equal(changed.targetOrigin, null)
-  assert.equal(changed.continuation, null)
+  assert.equal(changed.targetOrigin, 'http://127.20.30.40:45678')
+  assert.equal(typeof changed.continuation?.token, 'string')
   assert.equal(changed.loginOrigin, 'http://127.20.30.40:45678')
+  const continued = await service.consumeManagementContinuation({
+    token: changed.continuation.token, origin: 'http://127.20.30.40:45678',
+  })
+  assert.match(continued.session.token, /^dshms_/)
 })
 
 test('commits a Management transition without fresh authentication and rejects replay', async () => {

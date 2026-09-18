@@ -935,9 +935,11 @@ export function createGatewayServer({
       const access = surface === 'management'
         ? await options.browserAuthentication.status()
         : null
+      const isolatedRootNavigation = topLevelNavigation && pathname === '/'
+        && (surface === 'compat' || access?.account?.managementAccess?.mode === 'isolated')
       const trust = inspectExternalRequest(request.headers,
         surface === 'management' ? managementTrustedHosts(access) : options.trustedHosts, {
-        allowCrossOrigin: transitionProbe || transitionContinuation || isolatedAuthenticationEntry || dshAuthenticationEntry,
+        allowCrossOrigin: transitionProbe || transitionContinuation || isolatedAuthenticationEntry || dshAuthenticationEntry || isolatedRootNavigation,
         allowUntrustedAuthority: transitionProbe,
       })
       if (!trust.accepted) {
@@ -1016,7 +1018,12 @@ export function createGatewayServer({
             requireCsrf: mutation,
           })
           : { authorized: (await options.browserAuthentication.validateManagement(request)).authenticated === true }
-        if (authorization.authorized) return authorization.capability?.token ?? null
+        if (authorization.authorized) {
+          if (Array.isArray(authorization.headers?.['set-cookie'])) {
+            response.setHeader('set-cookie', authorization.headers['set-cookie'])
+          }
+          return authorization.capability?.token ?? null
+        }
         if (isPageNavigation(request)) await options.browserAuthentication.enterManagement(request, response)
         else sendJson(response, 401, { error: 'management authentication required', code: 'MANAGEMENT_AUTHENTICATION_REQUIRED' })
         return undefined

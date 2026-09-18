@@ -1019,6 +1019,12 @@ export class AccessService {
       if (sourceDshSession?.kind !== 'dsh' || sourceDshSession.origin !== transition.sourceDshOrigin) {
         throw new AccessError('SESSION_INVALID', 'source DSH session is invalid', 401)
       }
+      const targetOrigin = transition.mode === 'isolated'
+        ? transition.candidateOrigin
+        : transition.sourceDshOrigin
+      if (typeof targetOrigin !== 'string' || targetOrigin.length === 0) {
+        throw new AccessError('TRANSITION_TARGET_UNAVAILABLE', 'Management transition target is unavailable', 409)
+      }
       const account = {
         ...current.account,
         revision: identifier(),
@@ -1033,15 +1039,13 @@ export class AccessService {
       }
       const next = await this.store.replaceAccount(account, current.account.revision)
       this.sessions.refreshDshSession(transition.sourceDshSessionId, next)
-      const targetOrigin = transition.mode === 'isolated'
-        ? (transition.isolatedEntry.kind === 'public' ? transition.candidateOrigin : null)
-        : transition.sourceDshOrigin
       const continuation = this.transitions.createContinuation({
         account: next,
         targetOrigin,
         sourceDshOrigin: transition.sourceDshOrigin,
         sourceDshSessionId: transition.sourceDshSessionId,
       })
+      if (continuation === null) throw new AccessError('TRANSITION_TARGET_UNAVAILABLE', 'Management transition continuation is unavailable', 409)
       this.sessions.revokeKind('management')
       this.exchanges.clear?.()
       await this.report('access.management-origin.changed', { mode: transition.mode })

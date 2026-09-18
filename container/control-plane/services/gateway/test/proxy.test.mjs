@@ -1009,7 +1009,7 @@ test('isolated listener exposes only the instance-bound transition probe before 
   }
 })
 
-test('isolated listener admits only the dedicated cross-site continuation navigation', async () => {
+test('isolated listener admits cross-site continuation and root navigation', async () => {
   const upstream = createServer((_request, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
   const handled = []
@@ -1036,7 +1036,7 @@ test('isolated listener admits only the dedicated cross-site continuation naviga
     }
     assert.equal((await request(port, '/transition/continue?token=one', navigationHeaders)).status, 204)
     assert.deepEqual(handled, ['/transition/continue'])
-    assert.equal((await request(port, '/', navigationHeaders)).status, 403)
+    assert.equal((await request(port, '/', navigationHeaders)).status, 502)
   } finally {
     await Promise.all([closeGatewayServer(management), close(upstream)])
   }
@@ -1075,7 +1075,7 @@ test('isolated listener admits cross-site top-level authentication entry routes 
   }
 })
 
-test('compatibility listener admits only the exact cross-site DSH authentication page', async () => {
+test('compatibility listener admits the DSH authentication page and root navigation cross-site', async () => {
   const upstream = createServer((_request, response) => response.end('dsh'))
   const upstreamPort = await listen(upstream)
   const handled = []
@@ -1100,8 +1100,9 @@ test('compatibility listener admits only the exact cross-site DSH authentication
   }
   try {
     assert.equal((await request(port, '/_dsh_platform/auth/', headers)).status, 204)
+    assert.equal((await request(port, '/', headers)).status, 204)
     assert.equal((await request(port, '/_dsh_platform/auth/reset', headers)).status, 403)
-    assert.deepEqual(handled, ['/_dsh_platform/auth/'])
+    assert.deepEqual(handled, ['/_dsh_platform/auth/', '/'])
   } finally {
     await Promise.all([closeGatewayServer(compat), close(upstream)])
   }

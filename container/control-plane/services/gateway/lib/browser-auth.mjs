@@ -141,7 +141,10 @@ function clearInvalidBrowserSessionCookies(origin, managementPath = '/_dsh_platf
 
 function managementCookies(session, origin, path = '/_dsh_platform/') {
   return [
-    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=${MANAGEMENT_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
+    // Top-level navigation between the isolated DSH and Management origins
+    // must carry an existing Management session. Keep mutations protected by
+    // the Strict CSRF cookie below; Lax only permits safe document navigations.
+    `${MANAGEMENT_SESSION_COOKIE}=${session.token}; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=${MANAGEMENT_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
     `${MANAGEMENT_CSRF_COOKIE}=${session.csrfToken}; SameSite=Strict; Path=${path}; Max-Age=${MANAGEMENT_SESSION_MAX_AGE_SECONDS}${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
@@ -149,7 +152,7 @@ function managementCookies(session, origin, path = '/_dsh_platform/') {
 
 function clearManagementCookies(origin, path = '/_dsh_platform/') {
   return [
-    `${MANAGEMENT_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=${path}; Max-Age=0${secureCookie(origin)}`,
+    `${MANAGEMENT_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=0${secureCookie(origin)}`,
     `${MANAGEMENT_CSRF_COOKIE}=; SameSite=Strict; Path=${path}; Max-Age=0${secureCookie(origin)}`,
     `${MANAGEMENT_PENDING_COOKIE}=; HttpOnly; SameSite=Strict; Path=${AUTH_PREFIX}; Max-Age=0${secureCookie(origin)}`,
   ]
@@ -505,7 +508,21 @@ export function createBrowserAuthentication({
         method,
         target,
       })
-      return { authorized: true, capability: result.capability }
+      return {
+        authorized: true,
+        capability: result.capability,
+        headers: cookieValue(request.headers.cookie, MANAGEMENT_CSRF_COOKIE) === undefined
+          ? {}
+          : {
+            // Refresh legacy Strict cookies while the browser is still on the
+            // Management origin so the next cross-origin root navigation keeps
+            // the existing session instead of starting a handoff.
+            'set-cookie': managementCookies({
+              token: managementToken,
+              csrfToken: cookieValue(request.headers.cookie, MANAGEMENT_CSRF_COOKIE),
+            }, origin, managementCookiePath),
+          },
+      }
     } catch (error) {
       if (isAuthenticationDenial(error)) return { authorized: false }
       throw error
@@ -556,6 +573,10 @@ export function createBrowserAuthentication({
   async function enterManagement(request, response, searchParams) {
     const origin = requestOrigin(request)
     if (origin === undefined) { sendJson(response, 400, { error: 'request origin is invalid' }); return }
+    if ((await validateManagement(request)).authenticated) {
+      sendSameOriginNavigation(response, managementConsoleDestination(searchParams, consolePath))
+      return
+    }
     const current = await status()
     const valid = await validateDsh(request)
     if (!valid.authenticated) {
@@ -605,6 +626,35 @@ export function createBrowserAuthentication({
       location: current.account?.managementAccess?.mode === 'isolated'
         ? `${targetOrigin}/auth/management/handoff?token=${encodeURIComponent(created.handoff.token)}${managementTabSuffix(searchParams).replace('?', '&')}`
         : `${AUTH_PREFIX}management/handoff?token=${encodeURIComponent(created.handoff.token)}${managementTabSuffix(searchParams).replace('?', '&')}`,
+      'referrer-policy': 'no-referrer',
+    })
+    response.end()
+  }
+
+  async function returnToDsh(request, response) {
+    const topLevel = request.headers['sec-fetch-mode'] === undefined
+      || (request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document')
+    const origin = requestTargetOrigin(request)
+    if (!topLevel || origin === undefined) {
+      sendJson(response, 403, { error: 'DSH return navigation is forbidden', code: 'REQUEST_FORBIDDEN' })
+      return
+    }
+    const valid = await validateManagement(request)
+    if (!valid.authenticated) {
+      sendJson(response, 401, { error: 'authentication required', code: 'AUTHENTICATION_REQUIRED' })
+      return
+    }
+    const current = await authenticationStatus()
+    const dshOrigin = current.account?.managementAccess?.mode === 'isolated'
+      ? current.account.managementAccess.dshPublicOrigin
+      : origin
+    if (typeof dshOrigin !== 'string' || canonicalOrigin(dshOrigin) === undefined) {
+      sendJson(response, 409, { error: 'DSH return address is unavailable', code: 'DSH_RETURN_UNAVAILABLE' })
+      return
+    }
+    response.writeHead(303, {
+      'cache-control': 'no-store',
+      location: `${dshOrigin}/`,
       'referrer-policy': 'no-referrer',
     })
     response.end()
@@ -885,7 +935,13 @@ export function createBrowserAuthentication({
         sendJson(response, 401, { error: 'authentication required', code: 'AUTHENTICATION_REQUIRED' })
         return true
       }
-      sendJson(response, 200, { authenticated: true })
+      const origin = requestOrigin(request)
+      const managementToken = cookieValue(request.headers.cookie, MANAGEMENT_SESSION_COOKIE)
+      const csrfToken = cookieValue(request.headers.cookie, MANAGEMENT_CSRF_COOKIE)
+      const headers = origin !== undefined && managementToken !== undefined && csrfToken !== undefined
+        ? { 'set-cookie': managementCookies({ token: managementToken, csrfToken }, origin, managementCookiePath) }
+        : {}
+      sendJson(response, 200, { authenticated: true }, headers)
       return true
     }
     if (pathname === authPrefix + 'browser-logout' && request.method === 'POST') {
@@ -935,6 +991,10 @@ export function createBrowserAuthentication({
     }
     if (pathname === authPrefix + 'management/start' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
       await enterManagement(request, response, searchParams)
+      return true
+    }
+    if (pathname === authPrefix + 'return-dsh' && ['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+      await returnToDsh(request, response)
       return true
     }
     if (pathname === authPrefix + 'management/handoff' && request.method === 'GET') {

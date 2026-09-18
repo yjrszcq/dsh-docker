@@ -7,6 +7,7 @@ const LOG_DISPLAY_LIMITS = Object.freeze([100, 250, 500, 1_000])
 const DEFAULT_LOG_DISPLAY_LIMIT = 500
 const LOG_STREAM_LIMIT = 5_000
 const TERMINAL_SESSION_KEY = 'dsh-platform:terminal-session'
+const MANAGEMENT_TRANSITION_TARGET_KEY = 'dsh-platform:management-transition-target'
 const LANGUAGE_KEY = 'dsh-platform:console-language'
 const THEME_KEY = 'dsh-platform:console-theme'
 const COPY = Object.freeze({
@@ -1189,7 +1190,18 @@ function startManagementSessionGuard() {
       const response = await fetch(`${managementLoginPath()}/session-context`, {
         cache: 'no-store', credentials: 'same-origin',
       })
-      if (response.status === 401) window.location.reload()
+      if (response.ok) {
+        try { window.sessionStorage.removeItem(MANAGEMENT_TRANSITION_TARGET_KEY) } catch {}
+      } else if (response.status === 401 || response.status === 404) {
+        let pendingTarget
+        try { pendingTarget = window.sessionStorage.getItem(MANAGEMENT_TRANSITION_TARGET_KEY) } catch {}
+        if (pendingTarget !== null && pendingTarget !== undefined && pendingTarget !== '') {
+          try { window.sessionStorage.removeItem(MANAGEMENT_TRANSITION_TARGET_KEY) } catch {}
+          window.location.replace(pendingTarget)
+          return
+        }
+        if (response.status === 401) window.location.reload()
+      }
     } catch {}
     finally { checking = false }
   }
@@ -4517,6 +4529,12 @@ function managementLoginPath() {
     : '/auth/management'
 }
 
+function managementReturnDshPath() {
+  return window.location.pathname.startsWith('/_dsh_platform/')
+    ? '/_dsh_platform/auth/return-dsh'
+    : '/auth/return-dsh'
+}
+
 function selectedManagementAccess() {
   const selected = elements['auth-mode'].value
   if (selected === 'compat') return { mode: 'compat', isolatedEntry: null, candidateOrigin: null }
@@ -4711,35 +4729,47 @@ async function probeManagementOrigin(created) {
   const target = new URL('/transition/probe', created.transition.candidateOrigin)
   target.searchParams.set('transitionId', created.transition.transitionId)
   target.searchParams.set('nonce', created.transition.nonce)
-  let response
-  try {
-    response = await fetch(target, {
-      credentials: 'omit',
-      headers: { accept: 'application/json' },
-      mode: 'cors',
-    })
-  } catch {
-    throw Object.assign(new Error(t('authTransitionFailed')), { userFacing: true })
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    let response
+    try {
+      response = await fetch(target, {
+        credentials: 'omit',
+        headers: { accept: 'application/json' },
+        mode: 'cors',
+      })
+    } catch {
+      response = undefined
+    }
+    const result = await response?.json().catch(() => ({})) ?? {}
+    if (response?.ok && typeof result.proof === 'string') return result.proof
+    if (attempt < 11) await new Promise(resolve => window.setTimeout(resolve, 500))
   }
-  const result = await response.json().catch(() => ({}))
-  if (!response.ok || typeof result.proof !== 'string') {
-    throw Object.assign(new Error(t('authTransitionFailed')), { userFacing: true })
-  }
-  return result.proof
+  throw Object.assign(new Error(t('authTransitionFailed')), { userFacing: true })
 }
 
 function continueManagementTransition(result) {
-  if (result.continuation?.token !== undefined && typeof result.targetOrigin === 'string') {
+  const isolatedEntry = result.account?.managementAccess?.isolatedEntry
+  const continuationOrigin = typeof result.targetOrigin === 'string'
+    ? result.targetOrigin
+    : result.account?.managementAccess?.mode === 'isolated'
+      ? isolatedEntry?.kind === 'public'
+        ? isolatedEntry.managementPublicOrigin
+        : isolatedEntry?.managementLocalOrigin
+      : result.loginOrigin
+  if (result.continuation?.token !== undefined && typeof continuationOrigin === 'string') {
     const prefix = result.account?.managementAccess?.mode === 'isolated'
       ? '/transition/continue'
       : '/_dsh_platform/transition/continue'
-    const target = new URL(prefix, result.targetOrigin)
+    const target = new URL(prefix, continuationOrigin)
     target.searchParams.set('token', result.continuation.token)
-    window.location.assign(target)
+    try { window.sessionStorage.setItem(MANAGEMENT_TRANSITION_TARGET_KEY, target.href) } catch {}
+    window.location.replace(target)
     return
   }
   if (typeof result.loginOrigin === 'string') {
-    window.location.assign(new URL('/auth/management', result.loginOrigin))
+    // Let the destination Gateway and Access Manager decide whether this
+    // browser needs authentication; navigation must not choose the login UI.
+    window.location.assign(new URL('/', result.loginOrigin))
     return
   }
       showAuthenticationStatus(t('authTransitionCompatLogin'))
@@ -4825,7 +4855,7 @@ function finishAccountSettings(result) {
       : 'authSavedManagementSessionsRevoked'))
     window.setTimeout(() => {
       const returnPath = `${window.location.pathname}${window.location.search}`
-      window.location.replace(`${managementLoginPath()}/start?return=${encodeURIComponent(returnPath)}`)
+      window.location.replace(returnPath)
     }, 900)
   } else {
     authenticationSettings.account = result.account
@@ -5683,19 +5713,8 @@ window.addEventListener('focus', refreshVisibleProxyProviders)
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') refreshVisibleProxyProviders()
 })
-elements['return-dsh'].addEventListener('click', async () => {
-  const button = elements['return-dsh']
-  button.disabled = true
-  try {
-    const settings = await api('auth-settings')
-    const dshOrigin = settings.account?.managementAccess?.dshPublicOrigin
-    const target = typeof dshOrigin === 'string'
-      ? new URL('/', dshOrigin)
-      : new URL('/', window.location.origin)
-    window.location.assign(target.href)
-  } catch {
-    window.location.assign('/')
-  }
+elements['return-dsh'].addEventListener('click', () => {
+  window.location.assign(managementReturnDshPath())
 })
 applyTheme(themePreference)
 applyTranslations()

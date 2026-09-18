@@ -277,6 +277,7 @@ test('Management continuation requires a top-level navigation and creates one se
     assert.match(consumed.body, /location\.replace\("\/_dsh_platform\/console\/"\)/)
     assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
     assert.match(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
+    assert.match(consumed.headers['set-cookie'][0], /SameSite=Lax/)
 
     const replay = await request(port, {
       path,
@@ -309,6 +310,7 @@ test('isolated Management continuation creates root-path cookies and enters from
     assert.match(consumed.body, /location\.replace\("\/"\)/)
     assert.match(consumed.headers['set-cookie'][0], new RegExp(`^${MANAGEMENT_SESSION_COOKIE}=dshms_continued`))
     assert.match(consumed.headers['set-cookie'][0], /Path=\//)
+    assert.match(consumed.headers['set-cookie'][0], /SameSite=Lax/)
     assert.doesNotMatch(consumed.headers['set-cookie'][0], /Path=\/_dsh_platform\//)
   } finally { await close(server) }
 })
@@ -1015,6 +1017,143 @@ test('isolated Management sends the first login layer to the verified DSH Origin
   assert.equal(entry.origin, 'https://dsh.example')
   assert.equal(entry.pathname, '/_dsh_platform/auth/')
   assert.equal(entry.searchParams.get('return'), '/_dsh_platform/auth/management/start')
+})
+
+test('Management entry reuses an existing Management session instead of re-handing off', async () => {
+  const current = fixture('initialized', {
+    managementAccess: {
+      mode: 'isolated',
+      dshPublicOrigin: 'https://dsh.example',
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    },
+  })
+  const isolated = createBrowserAuthentication({
+    access: current.access,
+    safeReturnPath,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
+  })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void isolated.handle(incoming, response, url.pathname, url.searchParams).then(handled => {
+      if (!handled) { response.writeHead(404); response.end() }
+    })
+  })
+  const port = await listen(server)
+  try {
+    const origin = `http://127.0.0.1:${port}`
+    current.sessions.set('dshs_existing', origin)
+    current.managementSessions.set('dshms_existing', origin)
+    current.managementSources.set('dshms_existing', 'dshs_existing')
+    const response = await request(port, {
+      path: '/auth/management',
+      headers: { host: `127.0.0.1:${port}`, cookie: `${MANAGEMENT_SESSION_COOKIE}=dshms_existing` },
+    })
+    assert.equal(response.status, 200)
+    assert.match(response.body, /location\.replace\("\/"\)/)
+    assert.equal(current.calls.some(call => call.path === '/v1/management/handoffs'), false)
+  } finally { await close(server) }
+})
+
+test('Management return-to-DSH navigation uses the current compatibility origin', async () => {
+  const current = fixture('initialized')
+  const port = await listen(current.server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    current.sessions.set('dshs_existing', origin)
+    current.managementSessions.set('dshms_existing', origin)
+    current.managementSources.set('dshms_existing', 'dshs_existing')
+    const response = await request(port, {
+      path: '/_dsh_platform/auth/return-dsh',
+      headers: {
+        host,
+        cookie: `${MANAGEMENT_SESSION_COOKIE}=dshms_existing`,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      },
+    })
+    assert.equal(response.status, 303)
+    assert.equal(response.headers.location, `${origin}/`)
+  } finally { await close(current.server) }
+})
+
+test('isolated Management return-to-DSH navigation uses the stored DSH Origin', async () => {
+  const current = fixture('initialized', {
+    managementAccess: {
+      mode: 'isolated',
+      dshPublicOrigin: 'https://dsh.example',
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    },
+  })
+  const isolated = createBrowserAuthentication({
+    access: current.access,
+    safeReturnPath,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
+  })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void isolated.handle(incoming, response, url.pathname, url.searchParams).then(handled => {
+      if (!handled) { response.writeHead(404); response.end() }
+    })
+  })
+  const port = await listen(server)
+  try {
+    current.sessions.set('dshs_existing', 'http://manage.example')
+    current.managementSessions.set('dshms_existing', 'http://manage.example')
+    current.managementSources.set('dshms_existing', 'dshs_existing')
+    const response = await request(port, {
+      path: '/auth/return-dsh',
+      headers: {
+        host: 'manage.example',
+        cookie: `${MANAGEMENT_SESSION_COOKIE}=dshms_existing`,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      },
+    })
+    assert.equal(response.status, 303)
+    assert.equal(response.headers.location, 'https://dsh.example/')
+  } finally { await close(server) }
+})
+
+test('Management return-to-DSH navigation refuses missing targets and unauthenticated requests', async () => {
+  const current = fixture('initialized', {
+    managementAccess: {
+      mode: 'isolated',
+      dshPublicOrigin: null,
+      isolatedEntry: { kind: 'public', managementPublicOrigin: 'https://manage.example' },
+    },
+  })
+  const isolated = createBrowserAuthentication({
+    access: current.access,
+    safeReturnPath,
+    paths: { authPrefix: '/auth/', accessPrefix: '/access/', transitionPrefix: '/transition/', consolePath: '/' },
+  })
+  const server = createServer((incoming, response) => {
+    const url = new URL(incoming.url, 'http://gateway.internal')
+    void isolated.handle(incoming, response, url.pathname, url.searchParams).then(handled => {
+      if (!handled) { response.writeHead(404); response.end() }
+    })
+  })
+  const port = await listen(server)
+  try {
+    const host = `127.0.0.1:${port}`
+    const origin = `http://${host}`
+    current.sessions.set('dshs_existing', origin)
+    current.managementSessions.set('dshms_existing', origin)
+    current.managementSources.set('dshms_existing', 'dshs_existing')
+    const missing = await request(port, {
+      path: '/auth/return-dsh',
+      headers: { host, cookie: `${MANAGEMENT_SESSION_COOKIE}=dshms_existing` },
+    })
+    assert.equal(missing.status, 409)
+    assert.match(missing.body, /DSH_RETURN_UNAVAILABLE/)
+    const unauthenticated = await request(port, {
+      path: '/auth/return-dsh',
+      headers: { host },
+    })
+    assert.equal(unauthenticated.status, 401)
+    assert.match(unauthenticated.body, /AUTHENTICATION_REQUIRED/)
+  } finally { await close(server) }
 })
 
 test('DSH browser logout exposes only additional-password state and revokes the requested sessions', async () => {
