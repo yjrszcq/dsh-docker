@@ -232,6 +232,11 @@ const controlPlane = new EnvironmentRunner({
   },
   recoverableComponents: ['access-manager', 'outbound-proxy'],
   report: reportLifecycle,
+  startupGroups: [
+    ['gateway', 'access-manager', 'outbound-proxy'],
+    ['platform-recovery'],
+    ['platform-management'],
+  ],
 })
 const environment = new EnvironmentRunner({
   environmentRoot: join(paths.viewsRoot, 'environment'),

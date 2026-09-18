@@ -156,6 +156,7 @@ export class EnvironmentRunner {
     recoverableComponents = [],
     recoveryDelaysMs = [0, 2_000, 5_000],
     report = () => {},
+    startupGroups = null,
   }) {
     if (!Array.isArray(recoverableComponents)
       || recoverableComponents.some(value => typeof value !== 'string' || value.length === 0)) {
@@ -165,6 +166,11 @@ export class EnvironmentRunner {
       || recoveryDelaysMs.some(value => !Number.isFinite(value) || value < 0)) {
       throw new Error('Component recovery delays must be non-negative durations')
     }
+    if (startupGroups !== null && (!Array.isArray(startupGroups) || startupGroups.length === 0
+      || startupGroups.some(group => !Array.isArray(group) || group.length === 0
+        || group.some(value => typeof value !== 'string' || value.length === 0)))) {
+      throw new Error('Startup groups must contain non-empty component ID lists')
+    }
     this.environmentRoot = environmentRoot
     this.spawnImpl = spawnImpl
     this.capture = capture
@@ -173,6 +179,9 @@ export class EnvironmentRunner {
     this.recoverableComponents = new Set(recoverableComponents)
     this.recoveryDelaysMs = Object.freeze([...recoveryDelaysMs])
     this.report = report
+    this.startupGroups = startupGroups === null ? null : Object.freeze(
+      startupGroups.map(group => Object.freeze([...group])),
+    )
     this.running = []
     this.environment = undefined
     this.operation = Promise.resolve()
@@ -274,6 +283,24 @@ export class EnvironmentRunner {
     if (spec !== null) await runCommand(spec, this.commandOptions(component))
   }
 
+  startupSequence() {
+    if (this.startupGroups === null) return this.environment.components.map(component => [component])
+    const components = new Map(this.environment.components.map(component => [component.id, component]))
+    const seen = new Set()
+    const groups = this.startupGroups.map(group => group.map(componentId => {
+      const component = components.get(componentId)
+      if (component === undefined) throw new Error(`Startup group component ${componentId} does not exist`)
+      if (seen.has(componentId)) throw new Error(`Startup group component ${componentId} is duplicated`)
+      seen.add(componentId)
+      return component
+    }))
+    const missing = this.environment.components.filter(component => !seen.has(component.id))
+    if (missing.length > 0) {
+      throw new Error(`Startup groups omit components: ${missing.map(component => component.id).join(', ')}`)
+    }
+    return groups
+  }
+
   start() {
     return this.serialized(() => this.startUnlocked())
   }
@@ -282,20 +309,30 @@ export class EnvironmentRunner {
     if (this.running.length > 0) throw new Error('Environment is already running')
     this.environment = await this.loader(this.environmentRoot)
     try {
+      const startupGroups = this.startupSequence()
+      const recoveries = []
       for (const component of this.environment.components) await this.phase(component, 'prepare')
-      for (const component of this.environment.components) {
-        try {
-          await this.startComponentUnlocked(component)
-        } catch (error) {
-          if (!this.recoverable(component)) throw error
+      for (const group of startupGroups) {
+        const results = await Promise.allSettled(group.map(component => this.startComponentUnlocked(component)))
+        const failures = []
+        for (const [index, result] of results.entries()) {
+          if (result.status === 'fulfilled') continue
+          const component = group[index]
+          if (!this.recoverable(component)) {
+            failures.push(result.reason)
+            continue
+          }
           this.emitLifecycle('component.isolated', {
             componentId: component.id,
-            error: error instanceof Error ? error.message : String(error),
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
             level: 'error',
           })
-          this.scheduleRecovery(component, error)
+          recoveries.push({ component, error: result.reason })
         }
+        if (failures.length === 1) throw failures[0]
+        if (failures.length > 1) throw new AggregateError(failures, 'Startup group failed')
       }
+      for (const recovery of recoveries) this.scheduleRecovery(recovery.component, recovery.error)
       return this.status()
     } catch (error) {
       try {

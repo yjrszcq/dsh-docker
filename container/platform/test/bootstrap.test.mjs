@@ -127,6 +127,107 @@ test('runs components in manifest order and stop phases in reverse order', async
   assert.equal(reports.find(report => report.message === 'component.ready').fields.elapsedMs >= 0, true)
 })
 
+test('starts explicit component groups concurrently and waits before the next group', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-groups-'))
+  const barrier = join(temp, 'barrier.mjs')
+  const after = join(temp, 'after.mjs')
+  const firstStarted = join(temp, 'first.started')
+  const secondStarted = join(temp, 'second.started')
+  const firstDone = join(temp, 'first.done')
+  const secondDone = join(temp, 'second.done')
+  await writeFile(barrier, `
+    import { existsSync, writeFileSync } from 'node:fs'
+    writeFileSync(process.argv[2], '')
+    while (!existsSync(process.argv[3])) await new Promise(resolve => setTimeout(resolve, 10))
+    writeFileSync(process.argv[4], '')
+  `)
+  await writeFile(after, `
+    import { existsSync } from 'node:fs'
+    process.exit(existsSync(process.argv[2]) && existsSync(process.argv[3]) ? 0 : 9)
+  `)
+  const first = component('first', barrier)
+  first.command = command(barrier, [firstStarted, secondStarted, firstDone])
+  const second = component('second', barrier)
+  second.command = command(barrier, [secondStarted, firstStarted, secondDone])
+  const final = component('final', after)
+  final.command = command(after, [firstDone, secondDone])
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([first, second, final]),
+    capture: () => {},
+    startupGroups: [['first', 'second'], ['final']],
+  })
+  await runner.start()
+  assert.deepEqual(runner.status().components.map(value => value.id), ['first', 'second', 'final'])
+  await runner.stop()
+})
+
+test('waits for a failed startup group before rolling back every started service', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-group-failure-'))
+  const service = join(temp, 'service.mjs')
+  const failure = join(temp, 'failure.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  await writeFile(failure, 'process.exit(9)')
+  const reports = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([
+      component('service', service, 'service'),
+      component('failure', failure),
+    ]),
+    capture: () => {},
+    report: (message, fields) => { reports.push({ message, fields }) },
+    startupGroups: [['service', 'failure']],
+  })
+  await assert.rejects(runner.start(), /failure command failed/)
+  assert.deepEqual(runner.status().components, [])
+  assert.equal(reports.some(report => report.message === 'component.stopped'
+    && report.fields.componentId === 'service'), true)
+})
+
+test('does not recover an isolated startup failure after its group fatally fails', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-group-recovery-'))
+  const service = join(temp, 'service.mjs')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  const reports = []
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([
+      component('gateway', service, 'service'),
+      component('outbound-proxy', service, 'service'),
+    ]),
+    capture: () => {},
+    recoverableComponents: ['outbound-proxy'],
+    recoveryDelaysMs: [0],
+    report: (message, fields) => { reports.push({ message, fields }) },
+    startupGroups: [['gateway', 'outbound-proxy']],
+  })
+  runner.startComponentUnlocked = candidate => Promise.reject(new Error(`${candidate.id} unavailable`))
+  await assert.rejects(runner.start(), /gateway unavailable/)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(reports.some(report => report.message === 'component.recovery.started'), false)
+})
+
+test('rejects incomplete or duplicated startup groups before component preparation', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-lifecycle-invalid-groups-'))
+  const marker = join(temp, 'prepared')
+  const append = join(temp, 'append.mjs')
+  await writeFile(append, `import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], '')`)
+  const first = component('first', append)
+  first.lifecycle = { ...emptyLifecycle, prepare: command(append, [marker]) }
+  const root = await environment([first, component('second', append)])
+  const omitted = new EnvironmentRunner({
+    environmentRoot: root,
+    capture: () => {},
+    startupGroups: [['first']],
+  })
+  await assert.rejects(omitted.start(), /omit components: second/)
+  await assert.rejects(readFile(marker), error => error?.code === 'ENOENT')
+  const duplicated = new EnvironmentRunner({
+    environmentRoot: root,
+    capture: () => {},
+    startupGroups: [['first'], ['first', 'second']],
+  })
+  await assert.rejects(duplicated.start(), /component first is duplicated/)
+})
+
 test('exec health probes use only their exit status and do not emit component logs', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-health-output-'))
   const service = join(temp, 'service.mjs')
