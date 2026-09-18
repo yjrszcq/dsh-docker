@@ -57,6 +57,7 @@ function lifecycleReadiness() {
         try {
           const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
           resolve({
+            generation: typeof value?.generation === 'string' ? value.generation : null,
             ready: value?.ready === true,
             readyUrl: typeof value?.readyUrl === 'string' ? value.readyUrl : null,
           })
@@ -118,6 +119,11 @@ async function verifyBootManifest(host, port, headers) {
     }
     await fetch(host, port, url, { headers })
   }))
+  return JSON.stringify({
+    batches: manifest.batches ?? [],
+    entries: manifest.entries,
+    rev: manifest.rev ?? null,
+  })
 }
 
 async function verifyPluginInventory(host, port, headers) {
@@ -147,21 +153,43 @@ async function verifyPluginInventory(host, port, headers) {
     const detail = unhealthy.map(entry => `${String(entry?.moduleName ?? entry?.entryId ?? 'unknown')} (${String(entry?.fiberPhase)})`).join(', ')
     throw new Error(`DSH Plugins are not active: ${detail}`)
   }
+  return JSON.stringify(entries.map(entry => ({
+    enabled: entry?.enabled === true,
+    entryId: entry?.entryId ?? null,
+    fiberPhase: entry?.fiberPhase ?? null,
+    moduleName: entry?.moduleName ?? null,
+  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))))
+}
+
+function sameLifecycle(left, right) {
+  return left?.generation === right?.generation && left?.readyUrl === right?.readyUrl
 }
 
 export async function verifyDshWebReady({
   host = '127.0.0.1',
   port = 3079,
-  stabilityMs = 1_000,
   managedReady = waitForManagedReady,
 } = {}) {
-  const readiness = await managedReady()
-  const headers = await authenticationHeaders(host, port, readiness?.readyUrl ?? null)
-  await verifyBootManifest(host, port, headers)
-  await verifyPluginInventory(host, port, headers)
-  if (stabilityMs > 0) await delay(stabilityMs)
-  await verifyBootManifest(host, port, headers)
-  await verifyPluginInventory(host, port, headers)
+  const firstReadiness = await managedReady()
+  const headers = await authenticationHeaders(host, port, firstReadiness?.readyUrl ?? null)
+  const firstManifest = await verifyBootManifest(host, port, headers)
+  const firstInventory = await verifyPluginInventory(host, port, headers)
+  const middleReadiness = await managedReady()
+  if (!sameLifecycle(firstReadiness, middleReadiness)) {
+    throw new Error('DSH lifecycle changed during Web readiness verification')
+  }
+  const secondManifest = await verifyBootManifest(host, port, headers)
+  const secondInventory = await verifyPluginInventory(host, port, headers)
+  const finalReadiness = await managedReady()
+  if (!sameLifecycle(firstReadiness, finalReadiness)) {
+    throw new Error('DSH lifecycle changed during Web readiness verification')
+  }
+  if (firstManifest !== secondManifest) {
+    throw new Error('DSH boot manifest changed during Web readiness verification')
+  }
+  if (firstInventory !== secondInventory) {
+    throw new Error('DSH Plugin inventory changed during Web readiness verification')
+  }
 }
 
 if (process.argv[1] !== undefined

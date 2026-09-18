@@ -110,7 +110,11 @@ export class DshLifecycleBroker {
 
   readiness() {
     const ready = this.session?.ready === true
-    return Object.freeze({ ready, readyUrl: ready ? this.session.readyUrl ?? null : null })
+    return Object.freeze({
+      generation: this.session?.id ?? null,
+      ready,
+      readyUrl: ready ? this.session.readyUrl ?? null : null,
+    })
   }
 
   async signal(sessionId, signal) {

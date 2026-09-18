@@ -11,7 +11,8 @@ async function fixture(routes) {
   const requests = new Map()
   const server = createServer((request, response) => {
     requests.set(request.url, (requests.get(request.url) ?? 0) + 1)
-    const route = routes.get(`${request.method} ${request.url}`) ?? routes.get(request.url)
+    const configured = routes.get(`${request.method} ${request.url}`) ?? routes.get(request.url)
+    const route = typeof configured === 'function' ? configured(requests.get(request.url)) : configured
     response.writeHead(route?.status ?? 404, {
       'content-type': route?.type ?? 'text/plain',
       ...route?.headers,
@@ -39,9 +40,9 @@ test('DSH web readiness requires every boot manifest Plugin bundle', async () =>
   ])
   const context = await fixture(routes)
   try {
-    await assert.rejects(verifyDshWebReady({ port: context.port, stabilityMs: 1, managedReady: async () => {} }), /returned HTTP 404/)
+    await assert.rejects(verifyDshWebReady({ port: context.port, managedReady: async () => {} }), /returned HTTP 404/)
     routes.set('/plugins/two/client.js?rev=two', { status: 200, type: 'text/javascript', body: 'two' })
-    await verifyDshWebReady({ port: context.port, stabilityMs: 1, managedReady: async () => {} })
+    await verifyDshWebReady({ port: context.port, managedReady: async () => {} })
     assert.equal(context.requests.get('/'), 3)
     assert.equal(context.requests.get('/plugins/one/client.js?rev=one'), 3)
     assert.equal(context.requests.get('/plugins/two/client.js?rev=two'), 3)
@@ -72,11 +73,11 @@ test('DSH web readiness verifies 0.1.5 initial combo batches', async () => {
   const context = await fixture(routes)
   try {
     await assert.rejects(
-      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) }),
+      verifyDshWebReady({ port: context.port, managedReady: async () => ({}) }),
       /returned HTTP 404/,
     )
     routes.set(batchUrl, { status: 200, type: 'text/javascript', body: 'one and two' })
-    await verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) })
+    await verifyDshWebReady({ port: context.port, managedReady: async () => ({}) })
     assert.equal(context.requests.get(entryUrl), 3)
     assert.equal(context.requests.get(batchUrl), 3)
   } finally {
@@ -95,7 +96,7 @@ test('DSH web readiness rejects a malformed combo batch contract', async () => {
   ]))
   try {
     await assert.rejects(
-      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => ({}) }),
+      verifyDshWebReady({ port: context.port, managedReady: async () => ({}) }),
       /boot manifest batches are invalid/,
     )
   } finally {
@@ -153,7 +154,6 @@ test('DSH web readiness exchanges the private launch token for an authenticated 
   try {
     await verifyDshWebReady({
       port: context.port,
-      stabilityMs: 0,
       managedReady: async () => ({ ready: true, readyUrl: `http://127.0.0.1:${String(context.port)}/?token=fixture-token` }),
     })
     assert.equal(expectedCookie, 'dsh-auth-fixture=session')
@@ -180,7 +180,7 @@ test('DSH web readiness rejects enabled Plugins that are not active', async () =
   const context = await fixture(routes)
   try {
     await assert.rejects(
-      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => {} }),
+      verifyDshWebReady({ port: context.port, managedReady: async () => {} }),
       /DSH Plugins are not active: broken \(failed\)/,
     )
   } finally {
@@ -201,8 +201,83 @@ test('DSH web readiness rejects Plugin inventory RPC failures', async () => {
   const context = await fixture(routes)
   try {
     await assert.rejects(
-      verifyDshWebReady({ port: context.port, stabilityMs: 0, managedReady: async () => {} }),
+      verifyDshWebReady({ port: context.port, managedReady: async () => {} }),
       /DSH Plugin inventory is unavailable: loader unavailable/,
+    )
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
+test('DSH web readiness rejects a lifecycle generation change during verification', async () => {
+  const manifest = JSON.stringify({ rev: 'one', entries: [] })
+  const routes = new Map([
+    ['/', { status: 200, type: 'text/html', body: `<script>window.__DSH_BOOT__ = ${manifest}</script>` }],
+    ['POST /api/pluginInventory/list', { status: 200, type: 'application/json', body: JSON.stringify({
+      type: 'server-response',
+      rpcId: 'dsh-platform-readiness',
+      result: { ok: true, value: { entries: [] } },
+    }) }],
+  ])
+  const context = await fixture(routes)
+  let observation = 0
+  try {
+    await assert.rejects(verifyDshWebReady({
+      port: context.port,
+      managedReady: async () => ({ generation: ++observation === 1 ? 'one' : 'two', ready: true, readyUrl: null }),
+    }), /lifecycle changed during Web readiness verification/)
+    assert.equal(context.requests.get('/'), 1)
+    assert.equal(context.requests.get('/api/pluginInventory/list'), 1)
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
+test('DSH web readiness rejects a boot manifest mutation between observations', async () => {
+  const manifest = rev => JSON.stringify({ rev, entries: [] })
+  const routes = new Map([
+    ['/', observation => ({
+      status: 200,
+      type: 'text/html',
+      body: `<script>window.__DSH_BOOT__ = ${manifest(observation === 1 ? 'one' : 'two')}</script>`,
+    })],
+    ['POST /api/pluginInventory/list', { status: 200, type: 'application/json', body: JSON.stringify({
+      type: 'server-response',
+      rpcId: 'dsh-platform-readiness',
+      result: { ok: true, value: { entries: [] } },
+    }) }],
+  ])
+  const context = await fixture(routes)
+  try {
+    await assert.rejects(
+      verifyDshWebReady({ port: context.port, managedReady: async () => ({ generation: 'one' }) }),
+      /boot manifest changed during Web readiness verification/,
+    )
+  } finally {
+    await new Promise(resolve => context.server.close(resolve))
+  }
+})
+
+test('DSH web readiness rejects a Plugin inventory mutation between observations', async () => {
+  const manifest = JSON.stringify({ rev: 'one', entries: [] })
+  const inventory = moduleName => JSON.stringify({
+    type: 'server-response',
+    rpcId: 'dsh-platform-readiness',
+    result: { ok: true, value: { entries: [{ moduleName, enabled: true, fiberPhase: 'active' }] } },
+  })
+  const routes = new Map([
+    ['/', { status: 200, type: 'text/html', body: `<script>window.__DSH_BOOT__ = ${manifest}</script>` }],
+    ['POST /api/pluginInventory/list', observation => ({
+      status: 200,
+      type: 'application/json',
+      body: inventory(observation === 1 ? 'one' : 'two'),
+    })],
+  ])
+  const context = await fixture(routes)
+  try {
+    await assert.rejects(
+      verifyDshWebReady({ port: context.port, managedReady: async () => ({ generation: 'one' }) }),
+      /Plugin inventory changed during Web readiness verification/,
     )
   } finally {
     await new Promise(resolve => context.server.close(resolve))
