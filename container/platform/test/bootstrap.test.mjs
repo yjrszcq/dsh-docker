@@ -151,6 +151,31 @@ test('exec health probes use only their exit status and do not emit component lo
   await runner.stop()
 })
 
+test('startup health retries do not inherit the steady one-second interval', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'dsh-health-retry-'))
+  const service = join(temp, 'service.mjs')
+  const health = join(temp, 'health.mjs')
+  const attempts = join(temp, 'attempts')
+  await writeFile(service, 'setInterval(() => {}, 1000)')
+  await writeFile(health, `import { existsSync, writeFileSync } from 'node:fs'; if (!existsSync(process.argv[2])) { writeFileSync(process.argv[2], 'first'); process.exit(1) }`)
+  const candidate = component('service', service, 'service')
+  candidate.health = {
+    type: 'exec',
+    command: command(health, [attempts]),
+    intervalSeconds: 2,
+    timeoutSeconds: 5,
+  }
+  const runner = new EnvironmentRunner({
+    environmentRoot: await environment([candidate]),
+    capture: () => {},
+  })
+  const started = Date.now()
+  await runner.start()
+  const elapsedMs = Date.now() - started
+  assert.ok(elapsedMs < 1_000, `startup health retry took ${String(elapsedMs)} ms`)
+  await runner.stop()
+})
+
 test('component environment replaces an inherited root user environment', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'dsh-component-environment-'))
   const output = join(temp, 'environment.json')

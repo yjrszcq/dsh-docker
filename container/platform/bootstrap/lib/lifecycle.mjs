@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path'
 import { artifactForReference, parseComponentManifest, parseEnvironmentManifest } from '../../lib/contracts.mjs'
 import { exactKeys, parseJsonDocument, plainObject, TrustError } from '../../lib/validation.mjs'
 
+const STARTUP_HEALTH_RETRY_MS = 100
+
 function delay(milliseconds) {
   return new Promise(resolveDelay => {
     const timer = setTimeout(resolveDelay, milliseconds)
@@ -69,7 +71,7 @@ async function waitForHealth(component, running, options) {
       ? await probeHttp(component.health)
       : await runCommand(component.health.command, options, false).then(() => true, () => false)
     if (healthy) return
-    await delay(component.health.intervalSeconds * 1000)
+    await delay(Math.min(component.health.intervalSeconds * 1000, STARTUP_HEALTH_RETRY_MS))
   }
   if (running?.child !== undefined && running.child.exitCode !== null) {
     throw new Error(`${component.id} exited before health check passed`)
