@@ -217,6 +217,8 @@ Environment view + System Plugin overlay
 
 Stage-0 是唯一的信任状态写入者，也持有 Bootstrap A/B 选择与回滚，以及独立于普通 `node` 进程的 root Maintenance Broker。Bootstrap 负责 DSH Lifecycle Broker、组件监督、健康检查和 Environment 失败恢复；Management 只是常驻 Control Plane 服务，各类 manager 是其进程内模块，不是拥有独立版本或监听端口的组件。初始不可变版本通过经过校验的 Image Reference 直接使用镜像内的只读 Seed；只有在线更新产物才会实体化到平台数据卷。Bootstrap 分别监督常驻 Control Plane 与可重载 Environment，因此替换、暂停或重启 DSH 不会停止 Gateway、Management 或 DSH 管理中心。
 
+正常冷启动时，Bootstrap 会先完成更新事务与用户插件恢复预检，再并行启动受监督的 DSH Runtime 和相互独立的 Control Plane 启动组。Gateway 可以在 DSH 可用前先提供带认证的等待页和恢复入口。DSH 开始监听并不等于已经可以公开访问：只有 DSH 资源与 Plugin inventory 验证通过，且完整 Control Plane、访问分类、Management 和恢复状态都已就绪后，Bootstrap 才会发布当前生命周期 generation。Gateway 仅放行这个已发布 generation 的 DSH HTTP 和 WebSocket 流量，因此无论 Gateway 先启动还是 DSH 先启动，都不会暴露半就绪 Runtime，也不能绕过 Gateway。
+
 System Skill 源码属于 Environment，并作为 Artifact 写入其签名 Manifest。Bootstrap 从当前选中的 Environment 验证并实体化清单，再生成 `/run/dsh-platform/views/skills`。Environment 目录属于 Deployment Record，因此 Skill 内容沿用相同的原子激活与回滚边界，纯内容修改不再改变 Bootstrap。
 
 源码目录使用同一边界：
@@ -423,7 +425,7 @@ Bootstrap 在每次启动 Web Profile 前签发一次性令牌，并通过仅存
 
 当前受监督 DSH 收到平台未登记的第一次 `SIGTERM` 时，会先向 Broker 查询处置，再通过 Management 提交正式异步重启。浏览器因此进入“正在重新启动 DSH”页面，第三方提前创建的 detached 替代进程也无法绕过单实例门禁。Bootstrap 主动停止、重启、切换或关闭容器时，Broker 会要求 DSH 直接优雅退出，避免重复登记任务。第二次 `SIGTERM`、请求超时或 Control Plane 不可用时也会执行原有退出，由 Bootstrap 的有限恢复兜底；`process.exit()`、未捕获异常和 `SIGKILL` 仍按意外退出处理，不伪装成正常重启。
 
-已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。Gateway readiness 同时要求 DSH HTTP 上游可以响应，并且平台生命周期已经离开启动、重启、恢复和切换状态；因此，即使 DSH 已开始监听，只要 Bootstrap 仍在完成插件健康检查，浏览器就不会提前返回。短暂连接中断会先通过这项组合 readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，这些已分类的生命周期响应不会记录成上游故障或故障恢复。未分类代理故障仍返回 `502` 并保留错误日志。
+已登记操作在断开 DSH 前会让已打开的浏览器进入本地化等待页。页面区分启动中、停止中、已停止、重启中、意外退出恢复、Runtime 切换/恢复和启动失败，Ready 后返回原来的同源路径。Gateway readiness 要求 Bootstrap 在 DSH HTTP 上游可响应、完整平台生命周期已经离开启动、重启、恢复和切换状态后，发布当前生命周期 generation；因此，即使 DSH 已开始监听，只要 Bootstrap 仍在完成资源、Plugin inventory、Control Plane 或恢复检查，浏览器就不会提前返回。短暂连接中断会先通过这项组合 readiness 确认，不会直接跳页；API 和 WebSocket 继续返回 `503`，这些已分类的生命周期响应不会记录成上游故障或故障恢复。未分类代理故障仍返回 `502` 并保留错误日志。
 
 如果浏览器恰好在已登记的生命周期切换期间请求插件 Bundle，Gateway 会等待 DSH Ready。该保护覆盖 DSH 加载的所有客户端 Bundle，包括 DSH 官方插件、内置系统插件和用户插件。Bundle 请求仍返回 `502` 或 `503`、网络失败进入动态导入器，或导入器抛出结构化模块加载错误时，守卫会先确认平台 Ready 状态；同一运行中 Deployment 最多可两次自动转入等待页。第三次结构化失败会打开 Gateway 提供的“DeepSeek Harness 插件持续加载失败”终态页，并提供独立管理中心入口，不会形成无限刷新。检测依据是失败的插件请求或模块错误 URL，绝不匹配页面可见文字。失败、恢复开始、恢复完成和最终失败分别记录为 `browser.plugin-load.failed`、`browser.plugin-load.recovery.started`、`browser.plugin-load.recovery.completed` 和 `browser.plugin-load.recovery.failed`，可在平台日志中展开查看插件、revision、生命周期任务、恢复次数和失败原因。
 
