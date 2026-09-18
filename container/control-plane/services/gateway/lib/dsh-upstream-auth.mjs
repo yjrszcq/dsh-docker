@@ -76,12 +76,20 @@ export class DshUpstreamAuthentication {
     this.now = now
     this.legacyProbeIntervalMs = legacyProbeIntervalMs
     this.cachedCookie = undefined
+    this.cachedGeneration = null
     this.nextProbeAt = 0
     this.pending = null
   }
 
+  async publicReady() {
+    const readiness = await lifecycleReadiness(this.socketPath)
+    const ready = readiness?.publicReady === true
+      || (readiness?.publicReady === undefined && readiness?.ready === true)
+    if (ready) this.nextProbeAt = 0
+    return ready
+  }
+
   async cookie() {
-    if (this.cachedCookie !== undefined) return this.cachedCookie
     if (this.pending !== null) return this.pending
     if (this.now() < this.nextProbeAt) return null
     this.pending = this.refresh().finally(() => { this.pending = null })
@@ -90,12 +98,22 @@ export class DshUpstreamAuthentication {
 
   async refresh() {
     const readiness = await lifecycleReadiness(this.socketPath)
-    if (readiness?.ready !== true || typeof readiness.readyUrl !== 'string') {
+    const publicReady = readiness?.publicReady === true
+      || (readiness?.publicReady === undefined && readiness?.ready === true)
+    if (!publicReady || readiness?.ready !== true || typeof readiness.readyUrl !== 'string') {
+      if (!publicReady) {
+        this.cachedCookie = undefined
+        this.cachedGeneration = null
+      }
       this.nextProbeAt = this.now() + this.legacyProbeIntervalMs
       return null
     }
+    if (this.cachedCookie !== undefined && this.cachedGeneration === (readiness.generation ?? null)) {
+      return this.cachedCookie
+    }
     const cookie = await exchange(this.host, this.port, readiness.readyUrl)
     this.cachedCookie = cookie
+    this.cachedGeneration = readiness.generation ?? null
     return cookie
   }
 }

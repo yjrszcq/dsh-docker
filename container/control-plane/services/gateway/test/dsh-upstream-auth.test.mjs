@@ -28,9 +28,12 @@ test('exchanges and caches the private DSH launch URL', async t => {
   })
   await listen(dsh, 0, '127.0.0.1')
   const port = dsh.address().port
+  let publicReady = false
   const lifecycle = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end(JSON.stringify({
+      generation: 'generation-one',
+      publicReady,
       ready: true,
       readyUrl: `http://127.0.0.1:${String(port)}/?token=fixture-token`,
     }))
@@ -39,6 +42,11 @@ test('exchanges and caches the private DSH launch URL', async t => {
   await chmod(socketPath, 0o600)
   t.after(() => { dsh.close(); lifecycle.close() })
   const authentication = new DshUpstreamAuthentication({ socketPath, port })
+  assert.equal(await authentication.publicReady(), false)
+  assert.equal(await authentication.cookie(), null)
+  assert.equal(exchanges, 0)
+  publicReady = true
+  assert.equal(await authentication.publicReady(), true)
   assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
   assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
   assert.equal(exchanges, 1)

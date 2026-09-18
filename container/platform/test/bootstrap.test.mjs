@@ -761,7 +761,12 @@ test('keeps the Control Plane running while Environment operations replace DSH',
     environmentVersion: '1.0.0',
     components: [{ id: 'dsh-runtime' }],
   })
-  const runtime = new BootstrapRuntime({ controlPlane, environment: environmentRunner })
+  const runtime = new BootstrapRuntime({
+    controlPlane,
+    environment: environmentRunner,
+    onEnvironmentVerified: async () => { calls.push('environment:verified') },
+    onDshAvailable: async () => { calls.push('dsh:available') },
+  })
 
   await runtime.start()
   await runtime.suspend('dsh-runtime')
@@ -780,12 +785,21 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   assert.deepEqual(calls, [
     'control:start',
     'environment:start',
+    'environment:verified',
     'environment:suspend:dsh-runtime',
     'environment:reload',
+    'environment:verified',
+    'dsh:available',
     'environment:pause:dsh-runtime',
     'environment:resume:dsh-runtime',
+    'environment:verified',
+    'dsh:available',
     'environment:restart:dsh-runtime',
+    'environment:verified',
+    'dsh:available',
     'environment:reload',
+    'environment:verified',
+    'dsh:available',
     'environment:stop',
     'control:stop',
   ])

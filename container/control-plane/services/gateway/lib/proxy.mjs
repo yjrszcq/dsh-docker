@@ -498,6 +498,19 @@ async function unavailableState(options) {
   return options.availability.classify(platform)
 }
 
+async function publicationReady(options) {
+  try {
+    const ready = await options.dshUpstreamAuthentication.publicReady()
+    if (ready) options.reportRecovered('dsh-publication', 'gateway.dsh-publication.recovered', { upstream: 'bootstrap' })
+    return ready
+  } catch (error) {
+    options.reportFailure('dsh-publication', 'gateway.dsh-publication.failed', {
+      error, level: 'warning', upstream: 'bootstrap',
+    })
+    return false
+  }
+}
+
 function registeredAvailabilityState(platform, availability) {
   if (!REGISTERED_OPERATIONS.has(platform.operation)
     && !REGISTERED_UPDATE_STATES.has(platform.update?.status)
@@ -506,14 +519,15 @@ function registeredAvailabilityState(platform, availability) {
   return availability.classify(platform)
 }
 
-async function readiness(options) {
+async function readiness(options, published = undefined) {
+  const publicReady = published ?? await publicationReady(options)
   const upstreamReady = await options.probe()
   options.availability.observe(upstreamReady)
   const platform = await boundedPlatformStatus(options.platformStatus, options)
   const registeredState = registeredAvailabilityState(platform, options.availability)
   return {
-    ready: upstreamReady && registeredState === null,
-    state: registeredState ?? options.availability.classify(platform),
+    ready: publicReady && upstreamReady && registeredState === null,
+    state: registeredState ?? (publicReady ? options.availability.classify(platform) : 'starting'),
     platform,
     pluginRecoveryEligible: options.pluginRecoveryAvailable?.(platform) === true,
   }
@@ -838,7 +852,7 @@ export function createGatewayServer({
     enterManagement: async (request, response) => rejectDshAuthentication(request, response, safeReturnPath),
     handle: async () => false,
   }),
-  dshUpstreamAuthentication = Object.freeze({ cookie: async () => null }),
+  dshUpstreamAuthentication = Object.freeze({ cookie: async () => null, publicReady: async () => true }),
   report = async () => {},
   now = () => Date.now(),
   failureLogIntervalMs = 30_000,
@@ -964,6 +978,18 @@ export function createGatewayServer({
         return
       }
       const requireDsh = async () => {
+        const published = await publicationReady(options)
+        if (!published) {
+          const result = await readiness(options, false)
+          if (isPageNavigation(request)) {
+            sendAvailabilityPage(request, response, result.state, {
+              lifecycle: result.platform.dshLifecycle,
+              returnPath: safeReturnPath(url.searchParams.get('return')),
+              managementHref: managementAvailabilityHref(currentAccess),
+            })
+          } else rejectHttp(response, 503, stateMessage(result.state, request.headers, result.platform.dshLifecycle))
+          return false
+        }
         const session = await options.browserAuthentication.validateDsh(request)
         if (session.authenticated) return true
         const result = await readiness(options)
@@ -1109,6 +1135,25 @@ export function createGatewayServer({
         }
         return
       }
+      if (pathname === WAIT_PATH) {
+        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
+          rejectHttp(response, 405, 'method not allowed')
+          return
+        }
+        const returnPath = safeReturnPath(url.searchParams.get('return'))
+        const result = await readiness(options)
+        if (result.ready) {
+          response.writeHead(302, { 'cache-control': 'no-store', location: returnPath })
+          response.end()
+          return
+        }
+        sendAvailabilityPage(request, response, result.state === 'unknown' ? 'unavailable' : result.state, {
+          lifecycle: result.platform.dshLifecycle,
+          returnPath,
+          managementHref: managementAvailabilityHref(currentAccess),
+        })
+        return
+      }
       if (!await requireDsh()) return
       if (await serveSystemPluginBundle(request, response, options.systemPluginRoot, pathname, url.searchParams)) return
       if (await holdPluginBundleDuringTransition(request, response, options, pathname)) return
@@ -1132,25 +1177,6 @@ export function createGatewayServer({
         })
         response.writeHead(204, { 'cache-control': 'no-store' })
         response.end()
-        return
-      }
-      if (pathname === WAIT_PATH) {
-        if (!['GET', 'HEAD'].includes(request.method ?? 'GET')) {
-          rejectHttp(response, 405, 'method not allowed')
-          return
-        }
-        const returnPath = safeReturnPath(url.searchParams.get('return'))
-        const result = await readiness(options)
-        if (result.ready) {
-          response.writeHead(302, { 'cache-control': 'no-store', location: returnPath })
-          response.end()
-          return
-        }
-        sendAvailabilityPage(request, response, result.state === 'unknown' ? 'unavailable' : result.state, {
-          lifecycle: result.platform.dshLifecycle,
-          returnPath,
-          managementHref: managementAvailabilityHref(currentAccess),
-        })
         return
       }
       await proxyHttp(request, response, { ...options, trackDsh: true })
@@ -1222,6 +1248,10 @@ export function createGatewayServer({
         const dshSession = await options.browserAuthentication.validateDsh(request)
         if (!dshSession.authenticated) {
           rejectUpgrade(socket, 401, 'Unauthorized')
+          return
+        }
+        if (!await publicationReady(options)) {
+          rejectUpgrade(socket, 503, 'Service Unavailable')
           return
         }
         upgradedSockets.add(socket)

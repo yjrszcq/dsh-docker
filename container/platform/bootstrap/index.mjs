@@ -275,6 +275,8 @@ runtime = new BootstrapRuntime({
     await access.request('POST', '/v1/classify', { token: accessLaunchToken, evidence: accessEvidence })
     await logs.diagnostic('bootstrap', 'access.classification.submitted')
   },
+  onEnvironmentVerified: async () => dshLifecycleBroker.verify(),
+  onDshAvailable: async () => dshLifecycleBroker.publish(),
   ownsDshLifecycle: async () => await deployments.activation() !== undefined,
   onDshRecovered: async () => {
     await deployments.publishStatus({ recoveryMode: null })
@@ -407,6 +409,7 @@ const recoveryMode = recoveryReason === null ? null : {
 }
 await deployments.publishStatus({ plan: imagePlan, recoveryMode })
 runtime.markStartupComplete()
+if (recoveryMode === null) await dshLifecycleBroker.publish()
 await logs.diagnostic('bootstrap', 'platform.ready', { recoveryMode: recoveryMode !== null })
 process.send?.({ type: 'ready', bootstrapApi: 1 })
 const onRecoveryMessage = message => {

@@ -47,6 +47,7 @@ export class DshLifecycleBroker {
     this.report = report
     this.launch = null
     this.session = null
+    this.published = false
     this.shuttingDown = false
   }
 
@@ -59,6 +60,7 @@ export class DshLifecycleBroker {
     const launch = Object.freeze({ id: randomUUID(), token: randomBytes(32).toString('base64url') })
     this.launch = launch
     this.session = null
+    this.published = false
     void this.record('dsh.launch.authorized')
     return Object.freeze({
       environment: Object.freeze({ DSH_PLATFORM_LAUNCH_TOKEN: launch.token }),
@@ -78,7 +80,7 @@ export class DshLifecycleBroker {
       throw Object.assign(new Error('DSH launch token is invalid or already consumed'), { statusCode: 409 })
     }
     const sessionId = randomUUID()
-    this.session = Object.freeze({ id: sessionId, launchId: this.launch.id, ready: false })
+    this.session = Object.freeze({ id: sessionId, launchId: this.launch.id, ready: false, verified: false })
     this.launch = Object.freeze({ ...this.launch, token: null })
     void this.record('dsh.launch.claimed')
     return Object.freeze({ sessionId })
@@ -108,12 +110,31 @@ export class DshLifecycleBroker {
     return Object.freeze({ ready: true })
   }
 
+  verify() {
+    if (this.session?.ready !== true) throw new Error('DSH lifecycle is not ready for verification')
+    if (!this.session.verified) {
+      this.session = Object.freeze({ ...this.session, verified: true })
+      return this.record('dsh.launch.verified')
+    }
+  }
+
+  publish() {
+    if (this.session?.verified !== true) throw new Error('DSH lifecycle is not verified for publication')
+    if (!this.published) {
+      this.published = true
+      return this.record('platform.public-ready')
+    }
+  }
+
   readiness() {
     const ready = this.session?.ready === true
+    const verified = this.session?.verified === true
     return Object.freeze({
       generation: this.session?.id ?? null,
+      publicReady: ready && verified && this.published,
       ready,
       readyUrl: ready ? this.session.readyUrl ?? null : null,
+      verified,
     })
   }
 
@@ -130,6 +151,7 @@ export class DshLifecycleBroker {
   }
 
   beginShutdown() {
+    this.published = false
     this.shuttingDown = true
   }
 }

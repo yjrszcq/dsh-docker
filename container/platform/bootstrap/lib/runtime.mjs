@@ -5,6 +5,8 @@ export class BootstrapRuntime {
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
     beforeReady = async () => {},
+    onEnvironmentVerified = async () => {},
+    onDshAvailable = async () => {},
     onEnvironmentFatal = async () => {},
     onDshRecovered = async () => {},
     ownsDshLifecycle = async () => false,
@@ -35,6 +37,8 @@ export class BootstrapRuntime {
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
     this.beforeReady = beforeReady
+    this.onEnvironmentVerified = onEnvironmentVerified
+    this.onDshAvailable = onDshAvailable
     this.onEnvironmentFatal = onEnvironmentFatal
     this.onDshRecovered = onDshRecovered
     this.ownsDshLifecycle = ownsDshLifecycle
@@ -87,6 +91,7 @@ export class BootstrapRuntime {
         await this.validateDeployment()
         await this.prepareDeployment()
         await this.environment.restart('dsh-runtime')
+        await this.onEnvironmentVerified()
         this.recoveryMode = null
         this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
         try {
@@ -94,6 +99,7 @@ export class BootstrapRuntime {
         } catch (statusError) {
           await this.record('dsh.recovery-status.failed', { error: statusError, level: 'warning' })
         }
+        await this.onDshAvailable()
         await this.record('dsh.recovery.completed', { attempt, maxAttempts: this.recoveryDelaysMs.length })
         return
       } catch (recoveryError) {
@@ -169,6 +175,7 @@ export class BootstrapRuntime {
       await this.validateDeployment()
       await this.prepareDeployment()
       await this.environment.start()
+      await this.onEnvironmentVerified()
     } catch (error) {
       let retry
       try {
@@ -186,6 +193,7 @@ export class BootstrapRuntime {
           await this.validateDeployment()
           await this.prepareDeployment()
           await this.environment.start()
+          await this.onEnvironmentVerified()
         } catch (fallbackError) {
           const failure = new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
           if (allowRecovery) this.recoveryMode = failure.message
@@ -230,9 +238,11 @@ export class BootstrapRuntime {
     await this.validateDeployment()
     await this.prepareDeployment()
     const status = await this.environment.reload()
+    await this.onEnvironmentVerified()
     this.recoveryMode = null
     if (this.environment.status().components.some(value => value.id === 'dsh-runtime')) {
       this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+      await this.onDshAvailable()
     }
     return status
   }
@@ -275,8 +285,10 @@ export class BootstrapRuntime {
       }
       const status = await this.environment.resume(componentId)
       if (componentId === 'dsh-runtime') {
+        await this.onEnvironmentVerified()
         this.recoveryMode = null
         this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+        await this.onDshAvailable()
       }
       return status
     } catch (error) {
@@ -293,8 +305,10 @@ export class BootstrapRuntime {
       }
       const status = await this.environment.restart(componentId, options)
       if (componentId === 'dsh-runtime') {
+        await this.onEnvironmentVerified()
         this.recoveryMode = null
         this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+        await this.onDshAvailable()
       }
       return status
     } catch (error) {

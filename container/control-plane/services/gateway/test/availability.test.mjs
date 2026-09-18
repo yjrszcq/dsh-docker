@@ -83,6 +83,61 @@ async function unavailableGateway({ platform = {}, availability = new DshAvailab
   return { gateway, port: await listen(gateway) }
 }
 
+test('authenticated DSH traffic waits for authoritative Bootstrap publication', async t => {
+  let upstreamRequests = 0
+  const upstream = createServer((_request, response) => {
+    upstreamRequests += 1
+    response.writeHead(200, { 'content-type': 'text/plain' })
+    response.end('published')
+  })
+  const upstreamPort = await listen(upstream)
+  t.after(() => upstream.close())
+  let published = false
+  const gateway = createGatewayServer({
+    trustedHosts: parseTrustedHosts({ DSH_TRUSTED_HOSTS: 'dsh.example' }),
+    upstreamPort,
+    platformStatus: async () => ({ dshLifecycle: { state: 'running' } }),
+    probe: async () => true,
+    dshUpstreamAuthentication: {
+      cookie: async () => null,
+      publicReady: async () => published,
+    },
+    probeIntervalMs: 60_000,
+  })
+  const port = await listen(gateway)
+  try {
+    const socket = netConnect(port, '127.0.0.1')
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve)
+      socket.once('error', reject)
+    })
+    socket.write('GET /events HTTP/1.1\r\nHost: dsh.example\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')
+    const upgrade = await new Promise((resolve, reject) => {
+      socket.once('data', data => resolve(data.toString('utf8')))
+      socket.once('error', reject)
+    })
+    assert.match(upgrade, /^HTTP\/1\.1 503 Service Unavailable/)
+    socket.destroy()
+    const waiting = await request(port)
+    assert.equal(waiting.status, 200)
+    assert.match(waiting.body, /DeepSeek Harness is starting/)
+    assert.equal(upstreamRequests, 0)
+    assert.deepEqual(JSON.parse((await request(port, READINESS_PATH, { accept: 'application/json' })).body).ready, false)
+    const dedicatedWaiting = await request(port, `${WAIT_PATH}?return=%2Fsessions%2Fcurrent`)
+    assert.equal(dedicatedWaiting.status, 200)
+    assert.match(dedicatedWaiting.body, /DeepSeek Harness is starting/)
+    assert.match(dedicatedWaiting.body, /\/sessions\/current/)
+    published = true
+    const ready = await request(port)
+    assert.equal(ready.status, 200)
+    assert.equal(ready.body, 'published')
+    assert.equal(upstreamRequests, 1)
+    assert.equal(JSON.parse((await request(port, READINESS_PATH, { accept: 'application/json' })).body).ready, true)
+  } finally {
+    await closeGatewayServer(gateway)
+  }
+})
+
 test('an intentional stopped state does not report an upstream proxy failure', async () => {
   const reports = []
   const context = await unavailableGateway({
