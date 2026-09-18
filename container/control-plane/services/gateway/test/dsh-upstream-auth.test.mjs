@@ -28,11 +28,12 @@ test('exchanges and caches the private DSH launch URL', async t => {
   })
   await listen(dsh, 0, '127.0.0.1')
   const port = dsh.address().port
+  let generation = 'generation-one'
   let publicReady = false
   const lifecycle = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end(JSON.stringify({
-      generation: 'generation-one',
+      generation,
       publicReady,
       ready: true,
       readyUrl: `http://127.0.0.1:${String(port)}/?token=fixture-token`,
@@ -50,6 +51,15 @@ test('exchanges and caches the private DSH launch URL', async t => {
   assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
   assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
   assert.equal(exchanges, 1)
+  generation = 'generation-two'
+  assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
+  assert.equal(exchanges, 2)
+  publicReady = false
+  assert.equal(await authentication.cookie(), null)
+  publicReady = true
+  assert.equal(await authentication.publicReady(), true)
+  assert.equal(await authentication.cookie(), 'dsh-auth-fixture=signed')
+  assert.equal(exchanges, 3)
 })
 
 test('keeps probing legacy DSH readiness without inventing a cookie', async t => {

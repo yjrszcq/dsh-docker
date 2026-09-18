@@ -924,7 +924,9 @@ test('recovers an unexpected DSH exit without stopping the Control Plane', async
     environment: environmentRunner,
     validateDeployment: async () => { calls.push('validate') },
     prepareDeployment: async () => { calls.push('prepare') },
+    onEnvironmentVerified: async () => { calls.push('environment:verified') },
     onDshRecovered: async () => { calls.push('recovery:published') },
+    onDshAvailable: async () => { calls.push('dsh:available') },
     recoveryDelaysMs: [0, 2_000, 5_000],
     sleep: async milliseconds => { calls.push(`delay:${String(milliseconds)}`) },
   })
@@ -934,7 +936,8 @@ test('recovers an unexpected DSH exit without stopping the Control Plane', async
   await runtime.recovery
 
   assert.deepEqual(calls, [
-    'delay:0', 'validate', 'prepare', 'environment:restart:dsh-runtime', 'recovery:published',
+    'delay:0', 'validate', 'prepare', 'environment:restart:dsh-runtime',
+    'environment:verified', 'recovery:published', 'dsh:available',
   ])
   assert.deepEqual(runtime.status().dshLifecycle, {
     state: 'running', action: null, taskId: null, attempt: 0, maxAttempts: 3,
@@ -997,6 +1000,7 @@ test('replaces a SIGKILLed DSH process while preserving the Control Plane', asyn
 test('does not restart DSH again when recovered-status publication fails', async () => {
   let emitEnvironmentFatal
   let restarts = 0
+  let publications = 0
   const reports = []
   const runtime = new BootstrapRuntime({
     controlPlane: {
@@ -1011,6 +1015,7 @@ test('does not restart DSH again when recovered-status publication fails', async
       status: () => ({ environmentVersion: '1.0.3', components: [{ id: 'dsh-runtime' }] }),
     },
     onDshRecovered: async () => { throw new Error('status unavailable') },
+    onDshAvailable: async () => { publications += 1 },
     recoveryDelaysMs: [0, 0, 0],
     report: (message, fields) => { reports.push({ message, fields }) },
   })
@@ -1018,6 +1023,7 @@ test('does not restart DSH again when recovered-status publication fails', async
   emitEnvironmentFatal(Object.assign(new Error('dsh-runtime exited'), { componentId: 'dsh-runtime' }))
   await runtime.recovery
   assert.equal(restarts, 1)
+  assert.equal(publications, 0)
   assert.equal(runtime.status().dshLifecycle.state, 'running')
   assert.equal(reports.some(entry => entry.message === 'dsh.recovery-status.failed'), true)
   await runtime.stop()

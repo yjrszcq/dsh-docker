@@ -94,12 +94,14 @@ export class BootstrapRuntime {
         await this.onEnvironmentVerified()
         this.recoveryMode = null
         this.publishDshLifecycle({ state: 'running', action: null, attempt: 0, error: null })
+        let recoveryStatusPublished = true
         try {
           await this.onDshRecovered()
         } catch (statusError) {
+          recoveryStatusPublished = false
           await this.record('dsh.recovery-status.failed', { error: statusError, level: 'warning' })
         }
-        await this.onDshAvailable()
+        if (recoveryStatusPublished) await this.onDshAvailable()
         await this.record('dsh.recovery.completed', { attempt, maxAttempts: this.recoveryDelaysMs.length })
         return
       } catch (recoveryError) {
