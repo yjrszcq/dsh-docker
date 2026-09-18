@@ -791,48 +791,54 @@ test('keeps the Control Plane running while Environment operations replace DSH',
   ])
 })
 
-test('classifies administrator access after Control Plane readiness and before DSH startup', async () => {
+test('starts DSH alongside the Control Plane but gates readiness on access classification', async () => {
   const calls = []
+  let resolveEnvironmentStarted
+  const environmentStarted = new Promise(resolve => { resolveEnvironmentStarted = resolve })
   const runtime = new BootstrapRuntime({
     controlPlane: {
       fatal: new Promise(() => {}),
-      start: async () => { calls.push('control:start') },
+      start: async () => { calls.push('control:start'); await environmentStarted },
       stop: async () => { calls.push('control:stop') },
       status: () => ({ components: [{ id: 'access-manager' }] }),
     },
     environment: {
       fatal: new Promise(() => {}),
-      start: async () => { calls.push('environment:start') },
+      start: async () => { calls.push('environment:start'); resolveEnvironmentStarted() },
       stop: async () => { calls.push('environment:stop') },
       status: () => ({ environmentVersion: '1.0.0', components: [{ id: 'dsh-runtime' }] }),
     },
-    beforeEnvironmentStart: async () => { calls.push('access:classify') },
+    beforeReady: async () => { calls.push('access:classify') },
   })
 
   await runtime.start()
-  assert.deepEqual(calls, ['control:start', 'access:classify', 'environment:start'])
+  assert.deepEqual(calls, ['control:start', 'environment:start', 'access:classify'])
   await runtime.stop()
 
   const blocked = []
+  let resolveBlockedEnvironmentStarted
+  const blockedEnvironmentStarted = new Promise(resolve => { resolveBlockedEnvironmentStarted = resolve })
   const failure = new Error('access classification failed')
   const blockedRuntime = new BootstrapRuntime({
     controlPlane: {
       fatal: new Promise(() => {}),
-      start: async () => { blocked.push('control:start') },
+      start: async () => { blocked.push('control:start'); await blockedEnvironmentStarted },
       stop: async () => { blocked.push('control:stop') },
       status: () => ({ components: [{ id: 'access-manager' }] }),
     },
     environment: {
       fatal: new Promise(() => {}),
-      start: async () => { blocked.push('environment:start') },
+      start: async () => { blocked.push('environment:start'); resolveBlockedEnvironmentStarted() },
       stop: async () => { blocked.push('environment:stop') },
       status: () => ({ environmentVersion: '1.0.0', components: [] }),
     },
-    beforeEnvironmentStart: async () => { blocked.push('access:classify'); throw failure },
+    beforeReady: async () => { blocked.push('access:classify'); throw failure },
   })
 
   await assert.rejects(blockedRuntime.start(), error => error === failure)
-  assert.deepEqual(blocked, ['control:start', 'access:classify', 'control:stop'])
+  assert.deepEqual(blocked, [
+    'control:start', 'environment:start', 'access:classify', 'environment:stop', 'control:stop',
+  ])
 })
 
 test('isolates a non-DSH Environment exit and keeps the Control Plane available', async () => {

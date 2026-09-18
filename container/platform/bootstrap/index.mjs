@@ -27,6 +27,10 @@ import {
   SystemSkillManager,
 } from '../../control-plane/modules/skill-manager/index.mjs'
 import { SnapshotClient } from '../../control-plane/modules/updater/lib/snapshot-client.mjs'
+import { recoverPlatformUpdateBeforeDshStart } from '../../control-plane/hooks/recovery/index.mjs'
+import { recoverUserPluginBeforeDshStart } from '../../control-plane/modules/plugin-manager/user-transaction.mjs'
+import { UserPluginJournal } from '../../control-plane/modules/plugin-manager/user-journal.mjs'
+import { UserPluginSelectionStore } from '../../control-plane/modules/plugin-manager/user-state.mjs'
 import {
   outboundProxyEnvironment,
   outboundProxyScopeEnabled,
@@ -267,7 +271,7 @@ runtime = new BootstrapRuntime({
     })
   },
   prepareDeployment: applyDeploymentResources,
-  beforeEnvironmentStart: async () => {
+  beforeReady: async () => {
     await access.request('POST', '/v1/classify', { token: accessLaunchToken, evidence: accessEvidence })
     await logs.diagnostic('bootstrap', 'access.classification.submitted')
   },
@@ -341,6 +345,19 @@ await listenBootstrapControl(server, paths.bootstrapSocket)
 await listenDshLifecycle(dshLifecycleServer, paths.dshLifecycleSocket)
 let imageCandidateHealthy = true
 try {
+  const recoveryStartedAt = Date.now()
+  const updateRecovery = await recoverPlatformUpdateBeforeDshStart({ dataRoot, runRoot, dshHome })
+  const userPluginRecovery = await recoverUserPluginBeforeDshStart({
+    journal: new UserPluginJournal(paths.userPluginJournalPath),
+    report: (message, fields) => logs.diagnostic('user-plugin-manager', message, fields),
+    selectionStore: new UserPluginSelectionStore(paths.userPluginStatePath),
+    snapshots: new SnapshotClient(new LocalApiClient(paths.snapshotSocket), 'user-plugin'),
+  })
+  await logs.diagnostic('bootstrap', 'startup-recovery.completed', {
+    elapsedMs: Date.now() - recoveryStartedAt,
+    updatePhase: updateRecovery?.phase ?? null,
+    userPluginPhase: userPluginRecovery?.phase ?? null,
+  })
   await runtime.start({
     allowRecovery: true,
     onEnvironmentFailure: async () => {

@@ -45,10 +45,21 @@ test('container smoke targets ephemeral views and the separated persistent layou
   assert.match(script, /readiness_timeout_ms=30000/)
   assert.match(script, /platform readiness exceeded 30 seconds/)
   assert.match(script, /DSH orphaned-bundle restart did not complete within the readiness timeout/)
+  assert.match(script, /DSH started before interrupted update recovery completed/)
   assert.doesNotMatch(script, /echo "DSH restart did not complete"/)
   assert.match(script, /clear only \/data\/platform/)
   assert.match(script, /Do not delete \/data\/dsh/)
   assert.doesNotMatch(script, /\/data\/platform\/(?:runtime|environments|system-plugins|bootstrap|run)\//)
+})
+
+test('Bootstrap resolves update and User Plugin recovery before concurrent startup', async () => {
+  const bootstrap = await readFile(new URL('../bootstrap/index.mjs', import.meta.url), 'utf8')
+  const updateRecovery = bootstrap.indexOf('await recoverPlatformUpdateBeforeDshStart(')
+  const userPluginRecovery = bootstrap.indexOf('await recoverUserPluginBeforeDshStart(')
+  const runtimeStart = bootstrap.indexOf('await runtime.start({')
+  assert.ok(updateRecovery >= 0)
+  assert.ok(userPluginRecovery > updateRecovery)
+  assert.ok(runtimeStart > userPluginRecovery)
 })
 
 test('Profile compatibility smoke migrates old stores and preserves node ownership', async () => {

@@ -342,47 +342,12 @@ export class UserPluginTransactionManager {
   }
 
   async recoverBeforeDshStart() {
-    let state = await this.journal.read()
-    if (state === undefined) return undefined
-    if (['completed', 'failed'].includes(state.phase)) {
-      if (state.snapshotId !== null) await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
-        taskId: state.taskId,
-        error,
-      }))
-      return state
-    }
-    if (state.phase === 'validated') {
-      return this.journal.transition('failed', {
-        error: 'transaction interrupted before DSH pause', recoveryResult: 'success',
-      })
-    }
-    if (state.phase === 'paused') {
-      return this.journal.transition('failed', {
-        error: 'transaction interrupted before snapshot', recoveryResult: 'success',
-      })
-    }
-    if (['committed', 'restarting'].includes(state.phase)) {
-      if (state.phase === 'committed') state = await this.journal.transition('restarting')
-      return state
-    }
-    try {
-      if (state.phase !== 'restoring') state = await this.journal.transition('restoring', {
-        error: state.error ?? 'transaction interrupted before commit',
-      })
-      await this.snapshots.restore(state.snapshotId)
-      await this.selectionStore.restore({
-        present: state.selectionPresent,
-        state: { schema: 1, disabled: state.previousDisabled },
-      })
-      const failed = await this.journal.transition('failed', { recoveryResult: 'success' })
-      await this.snapshots.remove(state.snapshotId).catch(error => this.record('user-plugin.snapshot.cleanup.failed', {
-        taskId: state.taskId,
-        error,
-      }))
-      return failed
-    } catch (error) {
-      return this.journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
-    }
+    return recoverUserPluginBeforeDshStart({
+      journal: this.journal,
+      report: (messageValue, fields) => this.record(messageValue, fields),
+      selectionStore: this.selectionStore,
+      snapshots: this.snapshots,
+    })
   }
 
   async completeDshStartup({ healthy, error = null }) {
@@ -398,6 +363,51 @@ export class UserPluginTransactionManager {
       }))
     }
     return next
+  }
+}
+
+export async function recoverUserPluginBeforeDshStart({ journal, selectionStore, snapshots, report = async () => {} }) {
+  const record = (messageValue, fields) => Promise.resolve()
+    .then(() => report(messageValue, fields))
+    .catch(() => {})
+  let state = await journal.read()
+  if (state === undefined) return undefined
+  if (['completed', 'failed'].includes(state.phase)) {
+    if (state.snapshotId !== null) await snapshots.remove(state.snapshotId).catch(error => record(
+      'user-plugin.snapshot.cleanup.failed', { taskId: state.taskId, error },
+    ))
+    return state
+  }
+  if (state.phase === 'validated') {
+    return journal.transition('failed', {
+      error: 'transaction interrupted before DSH pause', recoveryResult: 'success',
+    })
+  }
+  if (state.phase === 'paused') {
+    return journal.transition('failed', {
+      error: 'transaction interrupted before snapshot', recoveryResult: 'success',
+    })
+  }
+  if (['committed', 'restarting'].includes(state.phase)) {
+    if (state.phase === 'committed') state = await journal.transition('restarting')
+    return state
+  }
+  try {
+    if (state.phase !== 'restoring') state = await journal.transition('restoring', {
+      error: state.error ?? 'transaction interrupted before commit',
+    })
+    await snapshots.restore(state.snapshotId)
+    await selectionStore.restore({
+      present: state.selectionPresent,
+      state: { schema: 1, disabled: state.previousDisabled },
+    })
+    const failed = await journal.transition('failed', { recoveryResult: 'success' })
+    await snapshots.remove(state.snapshotId).catch(error => record(
+      'user-plugin.snapshot.cleanup.failed', { taskId: state.taskId, error },
+    ))
+    return failed
+  } catch (error) {
+    return journal.transition('failed', { error: message(error), recoveryResult: 'failed' })
   }
 }
 

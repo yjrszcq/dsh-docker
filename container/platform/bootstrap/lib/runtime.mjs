@@ -4,7 +4,7 @@ export class BootstrapRuntime {
     environment,
     validateDeployment = async () => {},
     prepareDeployment = async () => {},
-    beforeEnvironmentStart = async () => {},
+    beforeReady = async () => {},
     onEnvironmentFatal = async () => {},
     onDshRecovered = async () => {},
     ownsDshLifecycle = async () => false,
@@ -34,7 +34,7 @@ export class BootstrapRuntime {
     this.recoveryAbort = new AbortController()
     this.validateDeployment = validateDeployment
     this.prepareDeployment = prepareDeployment
-    this.beforeEnvironmentStart = beforeEnvironmentStart
+    this.beforeReady = beforeReady
     this.onEnvironmentFatal = onEnvironmentFatal
     this.onDshRecovered = onDshRecovered
     this.ownsDshLifecycle = ownsDshLifecycle
@@ -152,10 +152,20 @@ export class BootstrapRuntime {
     }
   }
 
-  async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
-    await this.controlPlane.start()
+  async stopEnvironment(phase, cause) {
     try {
-      await this.beforeEnvironmentStart()
+      await this.environment.stop()
+    } catch (error) {
+      await this.record('environment.cleanup.failed', {
+        error,
+        phase,
+        originalError: cause instanceof Error ? cause.message : String(cause),
+      })
+    }
+  }
+
+  async startEnvironment({ onEnvironmentFailure, allowRecovery }) {
+    try {
       await this.validateDeployment()
       await this.prepareDeployment()
       await this.environment.start()
@@ -167,9 +177,8 @@ export class BootstrapRuntime {
         const failure = new AggregateError([error, recoveryError], 'Deployment failed and its fallback could not be resolved')
         if (allowRecovery) {
           this.recoveryMode = failure.message
-          return this.status()
+          return
         }
-        await this.stopControlPlane('fallback-resolution', failure)
         throw failure
       }
       if (retry === true) {
@@ -180,17 +189,29 @@ export class BootstrapRuntime {
         } catch (fallbackError) {
           const failure = new AggregateError([error, fallbackError], 'Deployment candidate and fallback both failed')
           if (allowRecovery) this.recoveryMode = failure.message
-          else {
-            await this.stopControlPlane('fallback-start', failure)
-            throw failure
-          }
+          else throw failure
         }
       } else if (allowRecovery) {
         this.recoveryMode = error instanceof Error ? error.message : 'Deployment failed to start'
-      } else {
-        await this.stopControlPlane('environment-start', error)
-        throw error
-      }
+      } else throw error
+    }
+  }
+
+  async start({ onEnvironmentFailure, allowRecovery = false } = {}) {
+    const readiness = Promise.resolve().then(async () => {
+      await this.controlPlane.start()
+      await this.beforeReady()
+    })
+    const environment = Promise.resolve().then(() => this.startEnvironment({ onEnvironmentFailure, allowRecovery }))
+    const results = await Promise.allSettled([readiness, environment])
+    const failures = results.filter(result => result.status === 'rejected').map(result => result.reason)
+    if (failures.length > 0) {
+      const failure = failures.length === 1 ? failures[0] : new AggregateError(failures, 'Platform startup failed')
+      await Promise.all([
+        this.stopEnvironment('concurrent-start', failure),
+        this.stopControlPlane('concurrent-start', failure),
+      ])
+      throw failure
     }
     return this.status()
   }

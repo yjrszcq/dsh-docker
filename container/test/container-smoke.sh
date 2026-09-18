@@ -898,6 +898,16 @@ docker exec "$container" sh -c '
   [ "$(jq -r .phase /data/platform/state/updater/transaction.json)" = rolled-back ]
   [ "$(dsh-platform channel)" = experimental ]
 '
+docker logs "$container" 2>&1 | node -e '
+  const input = require("node:fs").readFileSync(0, "utf8").split("\n")
+  const entries = input.flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+  const recovery = entries.filter(entry => entry.message === "startup-recovery.completed").at(-1)
+  const dshStart = entries.filter(entry => entry.message === "component.starting" && entry.componentId === "dsh-runtime").at(-1)
+  if (recovery?.updatePhase !== "rolled-back" || dshStart === undefined
+    || Date.parse(recovery.timestamp) > Date.parse(dshStart.timestamp)) {
+    throw new Error("DSH started before interrupted update recovery completed")
+  }
+'
 cleanup
 trap - EXIT INT TERM
 
